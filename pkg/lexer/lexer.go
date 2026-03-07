@@ -186,6 +186,7 @@ func (l *Lexer) NextToken() Token {
 		tok.Literal = l.readString()
 		tok.Line = line
 		tok.Column = column
+		return tok // readString already advanced past closing quote, don't readChar again
 	case 0:
 		tok.Literal = ""
 		tok.Type = TokenEOF
