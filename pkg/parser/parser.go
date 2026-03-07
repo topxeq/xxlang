@@ -46,6 +46,9 @@ var precedence = map[lexer.TokenType]int{
 	lexer.TokenAssign:      ASSIGN,
 	lexer.TokenPlusAssign:  ASSIGN,
 	lexer.TokenMinusAssign: ASSIGN,
+	lexer.TokenAsteriskAssign: ASSIGN,
+	lexer.TokenSlashAssign: ASSIGN,
+	lexer.TokenPercentAssign: ASSIGN,
 	lexer.TokenIncrement:   CALL, // Postfix ++ has high precedence
 	lexer.TokenDecrement:   CALL, // Postfix -- has high precedence
 }
@@ -112,6 +115,9 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerInfix(lexer.TokenAssign, p.parseAssignmentExpression)
 	p.registerInfix(lexer.TokenPlusAssign, p.parseCompoundAssignmentExpression)
 	p.registerInfix(lexer.TokenMinusAssign, p.parseCompoundAssignmentExpression)
+	p.registerInfix(lexer.TokenAsteriskAssign, p.parseCompoundAssignmentExpression)
+	p.registerInfix(lexer.TokenSlashAssign, p.parseCompoundAssignmentExpression)
+	p.registerInfix(lexer.TokenPercentAssign, p.parseCompoundAssignmentExpression)
 	p.registerInfix(lexer.TokenIncrement, p.parsePostfixExpression)
 	p.registerInfix(lexer.TokenDecrement, p.parsePostfixExpression)
 
@@ -228,6 +234,26 @@ func (p *Parser) parseStatement() Statement {
 	case lexer.TokenContinue:
 		return p.parseContinueStatement()
 	case lexer.TokenLBrace:
+		// Check if this is a map literal or block statement
+		// Empty {} is treated as map literal
+		// { followed by expression-starting tokens that form a key:value pair is a map
+		// Otherwise it's a block statement
+		if p.peekTokenIs(lexer.TokenRBrace) {
+			// Empty map literal
+			return p.parseExpressionStatement()
+		}
+		// Check if it looks like a map literal (has string/int/ident key followed by colon)
+		// Common map key tokens: STRING, INT, FLOAT, IDENT, TRUE, FALSE, NULL
+		if p.peekTokenIs(lexer.TokenString) ||
+			p.peekTokenIs(lexer.TokenInt) ||
+			p.peekTokenIs(lexer.TokenFloat) ||
+			p.peekTokenIs(lexer.TokenIdent) ||
+			p.peekTokenIs(lexer.TokenTrue) ||
+			p.peekTokenIs(lexer.TokenFalse) ||
+			p.peekTokenIs(lexer.TokenNull) {
+			// This is likely a map literal - parse as expression statement
+			return p.parseExpressionStatement()
+		}
 		// Standalone block statement
 		return p.parseBlockStatement()
 	default:
@@ -557,28 +583,42 @@ func (p *Parser) parseCStyleForStatementWithInit() *ForStatement {
 		stmt.Init = p.parseStatement()
 	}
 
-	// Make sure we're past the first semicolon
+	// After parsing init, we need to be at the semicolon
+	// parseStatement for var leaves curToken at the semicolon it consumed
+	// parseExpressionStatement leaves curToken at the semicolon it consumed
 	if p.curTokenIs(lexer.TokenSemicolon) {
 		p.nextToken()
+	} else if p.peekTokenIs(lexer.TokenSemicolon) {
+		p.nextToken() // move to semicolon
+		p.nextToken() // move past semicolon to condition or next part
 	}
 
-	// Parse condition
-	if !p.curTokenIs(lexer.TokenSemicolon) {
+	// Parse condition (if not empty)
+	if !p.curTokenIs(lexer.TokenSemicolon) && !p.curTokenIs(lexer.TokenRParen) {
 		stmt.Condition = p.parseExpression(LOWEST)
 	}
 
-	if !p.expectPeek(lexer.TokenSemicolon) {
-		return nil
+	// After parsing condition, move past the semicolon
+	if p.curTokenIs(lexer.TokenSemicolon) {
+		p.nextToken()
+	} else if p.peekTokenIs(lexer.TokenSemicolon) {
+		p.nextToken() // move to semicolon
+		p.nextToken() // move past semicolon to update or rparen
 	}
 
-	p.nextToken()
-
-	// Parse update
+	// Parse update (if not empty)
 	if !p.curTokenIs(lexer.TokenRParen) {
 		stmt.Update = p.parseExpressionStatement()
 	}
 
-	if !p.expectPeek(lexer.TokenRParen) {
+	// After parsing update (or if empty), we should be at ')'
+	// parseExpressionStatement leaves curToken at the last token of expression
+	// So we need to check if we're at ')' or need to advance to it
+	if p.curTokenIs(lexer.TokenRParen) {
+		// Already at ')', just advance to '{'
+	} else if p.peekTokenIs(lexer.TokenRParen) {
+		p.nextToken() // move to ')'
+	} else if !p.expectPeek(lexer.TokenRParen) {
 		return nil
 	}
 
@@ -806,7 +846,7 @@ func (p *Parser) parseInfixExpression(left Expression) Expression {
 
 	precedence := p.curPrecedence()
 	p.nextToken()
-	expression.Right = p.parseExpression(precedence)
+	expression.Right = p.parseExpression(precedence + 1) // +1 for left associativity
 
 	return expression
 }

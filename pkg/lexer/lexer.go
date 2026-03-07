@@ -156,11 +156,32 @@ func (l *Lexer) NextToken() Token {
 			tok = newToken(TokenIllegal, l.ch, line, column)
 		}
 	case '*':
-		tok = newToken(TokenAsterisk, l.ch, line, column)
+		if l.peekChar() == '=' {
+			ch := l.ch
+			l.readChar()
+			literal := string(ch) + string(l.ch)
+			tok = Token{Type: TokenAsteriskAssign, Literal: literal, Line: line, Column: column}
+		} else {
+			tok = newToken(TokenAsterisk, l.ch, line, column)
+		}
 	case '/':
-		tok = newToken(TokenSlash, l.ch, line, column)
+		if l.peekChar() == '=' {
+			ch := l.ch
+			l.readChar()
+			literal := string(ch) + string(l.ch)
+			tok = Token{Type: TokenSlashAssign, Literal: literal, Line: line, Column: column}
+		} else {
+			tok = newToken(TokenSlash, l.ch, line, column)
+		}
 	case '%':
-		tok = newToken(TokenPercent, l.ch, line, column)
+		if l.peekChar() == '=' {
+			ch := l.ch
+			l.readChar()
+			literal := string(ch) + string(l.ch)
+			tok = Token{Type: TokenPercentAssign, Literal: literal, Line: line, Column: column}
+		} else {
+			tok = newToken(TokenPercent, l.ch, line, column)
+		}
 	case ',':
 		tok = newToken(TokenComma, l.ch, line, column)
 	case ':':

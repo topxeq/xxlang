@@ -12,8 +12,9 @@ const StackSize = 2048
 
 // Stack represents the VM operand stack
 type Stack struct {
-	data []objects.Object
-	sp   int // Stack pointer (points to next free slot)
+	data       []objects.Object
+	sp         int            // Stack pointer (points to next free slot)
+	lastPopped objects.Object // Last popped element
 }
 
 // NewStack creates a new stack with the default size
@@ -42,6 +43,7 @@ func (s *Stack) Pop() objects.Object {
 	s.sp--
 	obj := s.data[s.sp]
 	s.data[s.sp] = nil // Allow GC to collect the object
+	s.lastPopped = obj
 	return obj
 }
 
@@ -64,4 +66,9 @@ func (s *Stack) Peek(n int) objects.Object {
 // Len returns the number of elements on the stack
 func (s *Stack) Len() int {
 	return s.sp
+}
+
+// LastPopped returns the last popped element
+func (s *Stack) LastPopped() objects.Object {
+	return s.lastPopped
 }

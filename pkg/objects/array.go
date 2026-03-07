@@ -7,7 +7,8 @@ import (
 
 // Array represents an array value
 type Array struct {
-	Elements []Object
+	Elements   []Object
+	LastPopped Object // Used by pop() to return the popped value
 }
 
 // Type returns the object type

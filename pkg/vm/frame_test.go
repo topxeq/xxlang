@@ -4,15 +4,15 @@ package vm
 import (
 	"testing"
 
+	"github.com/topxeq/xxlang/pkg/compiler"
 	"github.com/topxeq/xxlang/pkg/objects"
 )
 
 func TestNewFrame(t *testing.T) {
-	fn := &objects.CompiledFunction{
+	fn := &compiler.CompiledFunction{
 		Instructions:  []byte{0x01, 0x02, 0x03},
 		NumLocals:     3,
 		NumParameters: 2,
-		Name:          "testFunc",
 	}
 
 	frame := NewFrame(fn, 5)
@@ -41,11 +41,10 @@ func TestNewFrame(t *testing.T) {
 func TestFrameInstructions(t *testing.T) {
 	instructions := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
 
-	fn := &objects.CompiledFunction{
+	fn := &compiler.CompiledFunction{
 		Instructions:  instructions,
 		NumLocals:     0,
 		NumParameters: 0,
-		Name:          "testFunc",
 	}
 
 	frame := NewFrame(fn, 0)
@@ -65,11 +64,10 @@ func TestFrameInstructions(t *testing.T) {
 }
 
 func TestFrameIP(t *testing.T) {
-	fn := &objects.CompiledFunction{
+	fn := &compiler.CompiledFunction{
 		Instructions:  []byte{0x01, 0x02, 0x03, 0x04, 0x05},
 		NumLocals:     0,
 		NumParameters: 0,
-		Name:          "testFunc",
 	}
 
 	frame := NewFrame(fn, 0)
@@ -92,11 +90,10 @@ func TestFrameIP(t *testing.T) {
 }
 
 func TestFrameLocals(t *testing.T) {
-	fn := &objects.CompiledFunction{
+	fn := &compiler.CompiledFunction{
 		Instructions:  []byte{0x01},
 		NumLocals:     5,
 		NumParameters: 0,
-		Name:          "testFunc",
 	}
 
 	frame := NewFrame(fn, 0)
@@ -133,11 +130,10 @@ func TestFrameLocals(t *testing.T) {
 }
 
 func TestFrameWithZeroLocals(t *testing.T) {
-	fn := &objects.CompiledFunction{
+	fn := &compiler.CompiledFunction{
 		Instructions:  []byte{0x01},
 		NumLocals:     0,
 		NumParameters: 0,
-		Name:          "noLocalsFunc",
 	}
 
 	frame := NewFrame(fn, 0)
@@ -148,11 +144,10 @@ func TestFrameWithZeroLocals(t *testing.T) {
 }
 
 func TestFrameBasePointer(t *testing.T) {
-	fn := &objects.CompiledFunction{
+	fn := &compiler.CompiledFunction{
 		Instructions:  []byte{0x01},
 		NumLocals:     1,
 		NumParameters: 1,
-		Name:          "testFunc",
 	}
 
 	// Test with different base pointers

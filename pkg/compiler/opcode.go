@@ -3,6 +3,9 @@ package compiler
 
 import "fmt"
 
+// GlobalsSize is the maximum number of global variables
+const GlobalsSize = 65536
+
 // Opcode represents a single bytecode instruction
 type Opcode byte
 
@@ -39,6 +42,8 @@ const (
 	OpDefineLocal // Define local variable
 	OpGetGlobal   // Get global variable
 	OpSetGlobal   // Set global variable
+	OpGetFree     // Get free variable (from closure)
+	OpSetFree     // Set free variable (in closure)
 
 	// Scope operations
 	OpPushScope // Push new scope
@@ -50,6 +55,7 @@ const (
 	OpJumpIfTrue  // Jump if top of stack is true
 	OpCall        // Call function
 	OpReturn      // Return from function
+	OpClosure     // Create closure with captured variables
 
 	// Collection operations
 	OpArray   // Create array from stack elements
@@ -114,6 +120,8 @@ var definitions = map[Opcode]*Definition{
 	OpDefineLocal: {"OpDefineLocal", []int{1}}, // 1-byte local index
 	OpGetGlobal:   {"OpGetGlobal", []int{2}},   // 2-byte global index
 	OpSetGlobal:   {"OpSetGlobal", []int{2}},   // 2-byte global index
+	OpGetFree:     {"OpGetFree", []int{1}},     // 1-byte free variable index
+	OpSetFree:     {"OpSetFree", []int{1}},     // 1-byte free variable index
 
 	// Scope operations
 	OpPushScope: {"OpPushScope", []int{}},
@@ -125,6 +133,7 @@ var definitions = map[Opcode]*Definition{
 	OpJumpIfTrue:  {"OpJumpIfTrue", []int{2}},  // 2-byte jump offset
 	OpCall:        {"OpCall", []int{1}},        // 1-byte argument count
 	OpReturn:      {"OpReturn", []int{}},
+	OpClosure:     {"OpClosure", []int{2, 1}},  // 2-byte constant index, 1-byte num free
 
 	// Collection operations
 	OpArray:    {"OpArray", []int{2}},    // 2-byte element count

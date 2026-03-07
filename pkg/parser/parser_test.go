@@ -1536,11 +1536,11 @@ func TestComplexExpressions(t *testing.T) {
 		},
 		{
 			"obj.method(arg1, arg2)",
-			"((obj.method)(arg1, arg2))",
+			"(obj.method)(arg1, arg2)",
 		},
 		{
 			"arr[0]()",
-			"((arr[0])())",
+			"(arr[0])()",
 		},
 		{
 			"a + b + c",

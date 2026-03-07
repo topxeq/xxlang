@@ -22,6 +22,7 @@ const (
 	InstanceType ObjectType = "INSTANCE"
 	ErrorType   ObjectType = "ERROR"
 	ReturnType  ObjectType = "RETURN"
+	ClosureType ObjectType = "CLOSURE"
 )
 
 // Object is the base interface for all values in Xxlang
@@ -98,14 +99,8 @@ func (r *Return) HashKey() HashKey { return HashKey{Type: ReturnType, Value: 0} 
 
 // IsTruthy checks if an object is truthy
 func IsTruthy(obj Object) bool {
-	switch obj {
-	case NULL:
+	if obj == NULL {
 		return false
-	case TRUE:
-		return true
-	case FALSE:
-		return false
-	default:
-		return true
 	}
+	return obj.ToBool().Value
 }
