@@ -62,7 +62,7 @@ func TestFloatLiteralString(t *testing.T) {
 
 func TestStringLiteralString(t *testing.T) {
 	sl := &StringLiteral{
-		Token: lexer.Token{Type: lexer.TokenString, Literal: `"hello"`},
+		Token: lexer.Token{Type: lexer.TokenString, Literal: "hello"},
 		Value: "hello",
 	}
 	if sl.String() != `"hello"` {
@@ -126,7 +126,7 @@ func TestMapLiteralString(t *testing.T) {
 	ml := &MapLiteral{
 		Token: lexer.Token{Type: lexer.TokenLBrace, Literal: "{"},
 		Pairs: map[Expression]Expression{
-			&StringLiteral{Token: lexer.Token{Type: lexer.TokenString, Literal: `"key"`}, Value: "key"}: &IntegerLiteral{Token: lexer.Token{Type: lexer.TokenInt, Literal: "42"}, Value: 42},
+			&StringLiteral{Token: lexer.Token{Type: lexer.TokenString, Literal: "key"}, Value: "key"}: &IntegerLiteral{Token: lexer.Token{Type: lexer.TokenInt, Literal: "42"}, Value: 42},
 		},
 	}
 	// Map order is not guaranteed, so we just check it contains the expected parts
@@ -471,10 +471,10 @@ func TestNodeTokenLiteral(t *testing.T) {
 		{
 			name: "StringLiteral",
 			node: &StringLiteral{
-				Token: lexer.Token{Type: lexer.TokenString, Literal: `"hello"`},
+				Token: lexer.Token{Type: lexer.TokenString, Literal: "hello"},
 				Value: "hello",
 			},
-			expected: `"hello"`,
+			expected: "hello",
 		},
 		{
 			name: "BooleanLiteral",
