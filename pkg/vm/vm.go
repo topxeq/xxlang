@@ -219,6 +219,11 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case compiler.OpTailCall:
+			if err := vm.executeTailCall(); err != nil {
+				return err
+			}
+
 		case compiler.OpReturn:
 			if err := vm.executeReturn(); err != nil {
 				return err
@@ -722,6 +727,59 @@ func (vm *VM) callBuiltin(fn *objects.Builtin, numArgs int) error {
 
 	result := fn.Fn(args...)
 	vm.stack.Push(result)
+	return nil
+}
+
+// executeTailCall implements tail call optimization
+// Instead of creating a new frame, it reuses the current frame
+func (vm *VM) executeTailCall() error {
+	numArgs := int(vm.readUint8())
+	vm.currentFrame().IP++
+
+	// Callee is below the arguments on the stack
+	callee := vm.stack.Peek(numArgs)
+
+	switch fn := callee.(type) {
+	case *compiler.CompiledFunction:
+		return vm.tailCallFunction(fn, numArgs, nil)
+	case *Closure:
+		return vm.tailCallFunction(fn.Fn, numArgs, fn.FreeVars)
+	case *objects.Builtin:
+		// Builtins don't benefit from TCO, just use regular call
+		return vm.callBuiltin(fn, numArgs)
+	default:
+		return fmt.Errorf("calling non-function: %T", callee)
+	}
+}
+
+// tailCallFunction reuses the current frame for a tail call
+func (vm *VM) tailCallFunction(fn *compiler.CompiledFunction, numArgs int, freeVars []objects.Object) error {
+	if numArgs != fn.NumParameters {
+		return fmt.Errorf("wrong number of arguments: want=%d, got=%d", fn.NumParameters, numArgs)
+	}
+
+	// Get current frame
+	frame := vm.currentFrame()
+
+	// Pop arguments in reverse order
+	args := make([]objects.Object, numArgs)
+	for i := numArgs - 1; i >= 0; i-- {
+		args[i] = vm.stack.Pop()
+	}
+
+	// Pop callee from stack
+	vm.stack.Pop()
+
+	// Update locals with new arguments
+	for i := 0; i < numArgs; i++ {
+		frame.Locals[i] = args[i]
+	}
+
+	// Reset frame to new function
+	frame.Fn = fn
+	frame.IP = -1 // Will be incremented to 0 in the main loop
+	frame.FreeVars = freeVars
+
 	return nil
 }
 

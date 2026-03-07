@@ -251,6 +251,14 @@ func (c *Compiler) Compile(node parser.Node) error {
 
 	case *parser.ReturnStatement:
 		if node.ReturnValue != nil {
+			// Check for tail call optimization
+			if callExpr, ok := node.ReturnValue.(*parser.CallExpression); ok {
+				// This is a tail call - compile as tail call
+				if err := c.compileTailCall(callExpr); err != nil {
+					return err
+				}
+				return nil
+			}
 			if err := c.Compile(node.ReturnValue); err != nil {
 				return err
 			}
@@ -818,6 +826,27 @@ func (c *Compiler) Compile(node parser.Node) error {
 		return fmt.Errorf("unknown node type: %T", node)
 	}
 
+	return nil
+}
+
+// compileTailCall compiles a tail call expression
+// A tail call is a function call that is the last operation in a function
+// Instead of creating a new call frame, we reuse the current one
+func (c *Compiler) compileTailCall(node *parser.CallExpression) error {
+	// Compile function
+	if err := c.Compile(node.Function); err != nil {
+		return err
+	}
+
+	// Compile arguments
+	for _, arg := range node.Arguments {
+		if err := c.Compile(arg); err != nil {
+			return err
+		}
+	}
+
+	// Emit tail call instruction instead of OpCall + OpReturn
+	c.emit(OpTailCall, len(node.Arguments))
 	return nil
 }
 
