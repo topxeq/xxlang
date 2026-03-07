@@ -825,6 +825,9 @@ func (c *Compiler) Compile(node parser.Node) error {
 	case *parser.ImportStatement:
 		return c.compileImportStatement(node)
 
+	case *parser.ExportStatement:
+		return c.compileExportStatement(node)
+
 	default:
 		return fmt.Errorf("unknown node type: %T", node)
 	}
@@ -891,6 +894,66 @@ func (c *Compiler) compileImportStatement(node *parser.ImportStatement) error {
 		// Simple import: import "./math"
 		// Just load and pop the module (for side effects)
 		c.emit(OpPop)
+	}
+
+	return nil
+}
+
+// compileExportStatement compiles an export statement
+func (c *Compiler) compileExportStatement(node *parser.ExportStatement) error {
+	// Handle different export types
+	switch stmt := node.Exportable.(type) {
+	case *parser.VarStatement:
+		// Compile the value expression
+		if err := c.Compile(stmt.Value); err != nil {
+			return err
+		}
+		// Define the variable in the symbol table
+		symbol := c.symbolTable.Define(stmt.Name.Value)
+		// Store in global
+		c.emit(OpSetGlobal, symbol.Index)
+		// Export the variable: push value, then set export
+		c.emit(OpGetGlobal, symbol.Index)
+		nameIdx := c.addConstant(&objects.String{Value: stmt.Name.Value})
+		c.emit(OpSetExport, nameIdx)
+
+	case *parser.ConstStatement:
+		// Compile the value expression
+		if err := c.Compile(stmt.Value); err != nil {
+			return err
+		}
+		// Define the constant in the symbol table
+		symbol := c.symbolTable.Define(stmt.Name.Value)
+		// Store in global
+		c.emit(OpSetGlobal, symbol.Index)
+		// Export the constant: push value, then set export
+		c.emit(OpGetGlobal, symbol.Index)
+		nameIdx := c.addConstant(&objects.String{Value: stmt.Name.Value})
+		c.emit(OpSetExport, nameIdx)
+
+	case *parser.ExpressionStatement:
+		// Handle function exports: export func add(a, b) { ... }
+		if fn, ok := stmt.Expression.(*parser.FunctionLiteral); ok {
+			if fn.Name == "" {
+				return fmt.Errorf("exported function must have a name")
+			}
+			// Compile the function - this will emit OpClosure
+			if err := c.Compile(fn); err != nil {
+				return err
+			}
+			// The function closure is on the stack, define and export it
+			symbol := c.symbolTable.Define(fn.Name)
+			c.emit(OpSetGlobal, symbol.Index)
+			// Export the function: push value, then set export
+			c.emit(OpGetGlobal, symbol.Index)
+			nameIdx := c.addConstant(&objects.String{Value: fn.Name})
+			c.emit(OpSetExport, nameIdx)
+			return nil
+		}
+		return fmt.Errorf("unsupported export expression type: %T", stmt.Expression)
+
+	default:
+		return fmt.Errorf("unsupported export type: %T", stmt)
 	}
 
 	return nil
