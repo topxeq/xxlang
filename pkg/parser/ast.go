@@ -377,7 +377,7 @@ func (sl *StringLiteral) TokenLiteral() string {
 
 // String returns a string representation of the string literal
 func (sl *StringLiteral) String() string {
-	return sl.Token.Literal
+	return "\"" + sl.Token.Literal + "\""
 }
 
 // BooleanLiteral represents a boolean literal expression
@@ -842,10 +842,11 @@ func (ts *ThrowStatement) String() string {
 
 // ImportStatement represents an import statement
 type ImportStatement struct {
-	Token    lexer.Token // The 'import' token
-	Name     *Identifier
-	Path     *StringLiteral
-	Alias    *Identifier
+	Token lexer.Token // The 'import' token
+	Name  *Identifier      // Default import name (import math from ...)
+	Path  *StringLiteral   // Module path
+	Alias *Identifier      // Namespace alias (import * as math from ...)
+	Names []*Identifier    // Destructured names (import { add, sub } from ...)
 }
 
 func (is *ImportStatement) statementNode() {}
@@ -859,10 +860,24 @@ func (is *ImportStatement) TokenLiteral() string {
 func (is *ImportStatement) String() string {
 	var sb strings.Builder
 	sb.WriteString("import ")
+
 	if is.Alias != nil {
+		sb.WriteString("* as ")
 		sb.WriteString(is.Alias.String())
-		sb.WriteString(" as ")
+		sb.WriteString(" from ")
+	} else if len(is.Names) > 0 {
+		sb.WriteString("{ ")
+		names := make([]string, len(is.Names))
+		for i, n := range is.Names {
+			names[i] = n.String()
+		}
+		sb.WriteString(strings.Join(names, ", "))
+		sb.WriteString(" } from ")
+	} else if is.Name != nil {
+		sb.WriteString(is.Name.String())
+		sb.WriteString(" from ")
 	}
+
 	sb.WriteString(is.Path.String())
 	sb.WriteString(";")
 	return sb.String()

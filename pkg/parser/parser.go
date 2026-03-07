@@ -233,6 +233,10 @@ func (p *Parser) parseStatement() Statement {
 		return p.parseBreakStatement()
 	case lexer.TokenContinue:
 		return p.parseContinueStatement()
+	case lexer.TokenImport:
+		return p.parseImportStatement()
+	case lexer.TokenExport:
+		return p.parseExportStatement()
 	case lexer.TokenLBrace:
 		// Check if this is a map literal or block statement
 		// Empty {} is treated as map literal
@@ -724,6 +728,154 @@ func (p *Parser) parseContinueStatement() *ContinueStatement {
 		p.nextToken()
 	}
 
+	return stmt
+}
+
+// parseImportStatement parses an import statement
+// Supports:
+//   - import "./math" - Simple import (just load module)
+//   - import math from "./math" - Default import (module stored as `math`)
+//   - import { add, sub } from "./math" - Destructuring import
+//   - import * as math from "./math" - Namespace import
+func (p *Parser) parseImportStatement() *ImportStatement {
+	stmt := &ImportStatement{Token: p.curToken}
+
+	p.nextToken()
+
+	// Check what kind of import this is
+	if p.curTokenIs(lexer.TokenString) {
+		// Simple import: import "./math"
+		stmt.Path = &StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
+	} else if p.curTokenIs(lexer.TokenAsterisk) {
+		// Namespace import: import * as math from "./math"
+		p.nextToken()
+		if !p.curTokenIs(lexer.TokenIdent) || p.curToken.Literal != "as" {
+			p.addError(fmt.Sprintf("line %d:%d: expected 'as' after '*', got %s",
+				p.curToken.Line, p.curToken.Column, p.curToken.Literal))
+			return nil
+		}
+		p.nextToken()
+		if !p.curTokenIs(lexer.TokenIdent) {
+			p.addError(fmt.Sprintf("line %d:%d: expected identifier after 'as', got %s",
+				p.curToken.Line, p.curToken.Column, p.curToken.Type))
+			return nil
+		}
+		stmt.Alias = &Identifier{Token: p.curToken, Value: p.curToken.Literal}
+		p.nextToken()
+		// Expect 'from'
+		if !p.curTokenIs(lexer.TokenIdent) || p.curToken.Literal != "from" {
+			p.addError(fmt.Sprintf("line %d:%d: expected 'from', got %s",
+				p.curToken.Line, p.curToken.Column, p.curToken.Literal))
+			return nil
+		}
+		p.nextToken()
+		if !p.curTokenIs(lexer.TokenString) {
+			p.addError(fmt.Sprintf("line %d:%d: expected string path, got %s",
+				p.curToken.Line, p.curToken.Column, p.curToken.Type))
+			return nil
+		}
+		stmt.Path = &StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
+	} else if p.curTokenIs(lexer.TokenLBrace) {
+		// Destructuring import: import { add, sub } from "./math"
+		p.nextToken()
+		stmt.Names = []*Identifier{}
+		for !p.curTokenIs(lexer.TokenRBrace) {
+			if !p.curTokenIs(lexer.TokenIdent) {
+				p.addError(fmt.Sprintf("line %d:%d: expected identifier in import list, got %s",
+					p.curToken.Line, p.curToken.Column, p.curToken.Type))
+				return nil
+			}
+			stmt.Names = append(stmt.Names, &Identifier{Token: p.curToken, Value: p.curToken.Literal})
+			p.nextToken()
+			if p.curTokenIs(lexer.TokenComma) {
+				p.nextToken()
+			} else if !p.curTokenIs(lexer.TokenRBrace) {
+				p.addError(fmt.Sprintf("line %d:%d: expected ',' or '}' in import list, got %s",
+					p.curToken.Line, p.curToken.Column, p.curToken.Type))
+				return nil
+			}
+		}
+		p.nextToken()
+		// Expect 'from'
+		if !p.curTokenIs(lexer.TokenIdent) || p.curToken.Literal != "from" {
+			p.addError(fmt.Sprintf("line %d:%d: expected 'from', got %s",
+				p.curToken.Line, p.curToken.Column, p.curToken.Literal))
+			return nil
+		}
+		p.nextToken()
+		if !p.curTokenIs(lexer.TokenString) {
+			p.addError(fmt.Sprintf("line %d:%d: expected string path, got %s",
+				p.curToken.Line, p.curToken.Column, p.curToken.Type))
+			return nil
+		}
+		stmt.Path = &StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
+	} else if p.curTokenIs(lexer.TokenIdent) {
+		// Default import: import math from "./math"
+		// Could also be the 'from' keyword if this is a side-effect only import with name
+		if p.curToken.Literal == "from" {
+			// This shouldn't happen - import from "./math" without binding name
+			p.addError(fmt.Sprintf("line %d:%d: expected identifier or path after import",
+				p.curToken.Line, p.curToken.Column))
+			return nil
+		}
+		stmt.Name = &Identifier{Token: p.curToken, Value: p.curToken.Literal}
+		p.nextToken()
+		// Expect 'from'
+		if !p.curTokenIs(lexer.TokenIdent) || p.curToken.Literal != "from" {
+			p.addError(fmt.Sprintf("line %d:%d: expected 'from', got %s",
+				p.curToken.Line, p.curToken.Column, p.curToken.Literal))
+			return nil
+		}
+		p.nextToken()
+		if !p.curTokenIs(lexer.TokenString) {
+			p.addError(fmt.Sprintf("line %d:%d: expected string path, got %s",
+				p.curToken.Line, p.curToken.Column, p.curToken.Type))
+			return nil
+		}
+		stmt.Path = &StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
+	} else {
+		p.addError(fmt.Sprintf("line %d:%d: unexpected token after import: %s",
+			p.curToken.Line, p.curToken.Column, p.curToken.Type))
+		return nil
+	}
+
+	if p.peekTokenIs(lexer.TokenSemicolon) {
+		p.nextToken()
+	}
+
+	return stmt
+}
+
+// parseExportStatement parses an export statement
+// Supports:
+//   - export func add(a, b) { return a + b } - Export function
+//   - export var PI = 3.14 - Export variable
+//   - export const VERSION = "1.0" - Export constant
+func (p *Parser) parseExportStatement() *ExportStatement {
+	stmt := &ExportStatement{Token: p.curToken}
+
+	p.nextToken()
+
+	// Parse the statement to export (var, const, func, etc.)
+	var exportable Statement
+	switch p.curToken.Type {
+	case lexer.TokenVar:
+		exportable = p.parseVarStatement()
+	case lexer.TokenConst:
+		exportable = p.parseConstStatement()
+	case lexer.TokenFunc:
+		exportable = p.parseExpressionStatement()
+	default:
+		p.addError(fmt.Sprintf("line %d:%d: cannot export %s, expected var, const, or func",
+			p.curToken.Line, p.curToken.Column, p.curToken.Type))
+		return nil
+	}
+
+	if exportable == nil {
+		return nil
+	}
+
+	stmt.Exportable = exportable
 	return stmt
 }
 

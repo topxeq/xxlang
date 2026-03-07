@@ -1587,3 +1587,77 @@ func TestGroupedExpressions(t *testing.T) {
 		}
 	}
 }
+
+// ============================================
+// Import Statement Tests
+// ============================================
+
+func TestImportStatements(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{
+			`import "./math"`,
+			`import "./math";`,
+		},
+		{
+			`import math from "./math"`,
+			`import math from "./math";`,
+		},
+		{
+			`import { add, sub } from "./math"`,
+			`import { add, sub } from "./math";`,
+		},
+		{
+			`import * as math from "./math"`,
+			`import * as math from "./math";`,
+		},
+	}
+
+	for _, tt := range tests {
+		l := lexer.New(tt.input)
+		p := New(l)
+		program := p.ParseProgram()
+		checkParserErrors(t, p)
+
+		if program.String() != tt.expected {
+			t.Errorf("program.String() = %s, want %s", program.String(), tt.expected)
+		}
+	}
+}
+
+// ============================================
+// Export Statement Tests
+// ============================================
+
+func TestExportStatements(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{
+			`export func add(a, b) { return a + b }`,
+			`export func add(a, b) { return (a + b); }`,
+		},
+		{
+			`export var PI = 3.14`,
+			`export var PI = 3.14;`,
+		},
+		{
+			`export const VERSION = "1.0"`,
+			`export const VERSION = "1.0";`,
+		},
+	}
+
+	for _, tt := range tests {
+		l := lexer.New(tt.input)
+		p := New(l)
+		program := p.ParseProgram()
+		checkParserErrors(t, p)
+
+		if program.String() != tt.expected {
+			t.Errorf("program.String() = %s, want %s", program.String(), tt.expected)
+		}
+	}
+}
