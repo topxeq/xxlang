@@ -891,3 +891,142 @@ func TestImportStatement_ModulePath(t *testing.T) {
 		}
 	}
 }
+
+// ============================================
+// Export Statement Tests
+// ============================================
+
+func TestExportStatement_Var(t *testing.T) {
+	input := `export var x = 10;`
+
+	program := parse(input)
+	compiler := New()
+	err := compiler.Compile(program)
+	if err != nil {
+		t.Fatalf("compiler error: %s", err)
+	}
+
+	bytecode := compiler.Bytecode()
+
+	// Should have OpSetGlobal (for defining the variable)
+	if !containsOpcode(bytecode.Instructions, OpSetGlobal) {
+		t.Error("expected OpSetGlobal in instructions")
+	}
+
+	// Should have OpSetExport (for exporting the variable)
+	if !containsOpcode(bytecode.Instructions, OpSetExport) {
+		t.Error("expected OpSetExport in instructions")
+	}
+
+	// Check that 'x' is defined in symbol table
+	symbol, ok := compiler.symbolTable.Resolve("x")
+	if !ok {
+		t.Error("variable 'x' not defined in symbol table")
+	}
+	if symbol.Scope != GlobalScope {
+		t.Errorf("expected GlobalScope for 'x', got %v", symbol.Scope)
+	}
+}
+
+func TestExportStatement_Const(t *testing.T) {
+	input := `export const PI = 3.14;`
+
+	program := parse(input)
+	compiler := New()
+	err := compiler.Compile(program)
+	if err != nil {
+		t.Fatalf("compiler error: %s", err)
+	}
+
+	bytecode := compiler.Bytecode()
+
+	// Should have OpSetGlobal (for defining the constant)
+	if !containsOpcode(bytecode.Instructions, OpSetGlobal) {
+		t.Error("expected OpSetGlobal in instructions")
+	}
+
+	// Should have OpSetExport (for exporting the constant)
+	if !containsOpcode(bytecode.Instructions, OpSetExport) {
+		t.Error("expected OpSetExport in instructions")
+	}
+
+	// Check that 'PI' is defined in symbol table
+	symbol, ok := compiler.symbolTable.Resolve("PI")
+	if !ok {
+		t.Error("variable 'PI' not defined in symbol table")
+	}
+	if symbol.Scope != GlobalScope {
+		t.Errorf("expected GlobalScope for 'PI', got %v", symbol.Scope)
+	}
+}
+
+func TestExportStatement_Func(t *testing.T) {
+	input := `export func add(a, b) { return a + b; }`
+
+	program := parse(input)
+	compiler := New()
+	err := compiler.Compile(program)
+	if err != nil {
+		t.Fatalf("compiler error: %s", err)
+	}
+
+	bytecode := compiler.Bytecode()
+
+	// Should have OpSetGlobal (for defining the function)
+	if !containsOpcode(bytecode.Instructions, OpSetGlobal) {
+		t.Error("expected OpSetGlobal in instructions")
+	}
+
+	// Should have OpSetExport (for exporting the function)
+	if !containsOpcode(bytecode.Instructions, OpSetExport) {
+		t.Error("expected OpSetExport in instructions")
+	}
+
+	// Should have OpClosure for the function
+	if !containsOpcode(bytecode.Instructions, OpClosure) {
+		t.Error("expected OpClosure in instructions")
+	}
+
+	// Check that 'add' is defined in symbol table
+	symbol, ok := compiler.symbolTable.Resolve("add")
+	if !ok {
+		t.Error("variable 'add' not defined in symbol table")
+	}
+	if symbol.Scope != GlobalScope {
+		t.Errorf("expected GlobalScope for 'add', got %v", symbol.Scope)
+	}
+}
+
+func TestExportStatement_Multiple(t *testing.T) {
+	input := `
+export var x = 10;
+export const PI = 3.14;
+export func add(a, b) { return a + b; }
+`
+
+	program := parse(input)
+	compiler := New()
+	err := compiler.Compile(program)
+	if err != nil {
+		t.Fatalf("compiler error: %s", err)
+	}
+
+	bytecode := compiler.Bytecode()
+
+	// Should have 3 OpSetExport for the three exports
+	count := countOpcode(bytecode.Instructions, OpSetExport)
+	if count != 3 {
+		t.Errorf("expected 3 OpSetExport, got %d", count)
+	}
+
+	// Check that all variables are defined in symbol table
+	for _, name := range []string{"x", "PI", "add"} {
+		symbol, ok := compiler.symbolTable.Resolve(name)
+		if !ok {
+			t.Errorf("variable %q not defined in symbol table", name)
+		}
+		if symbol.Scope != GlobalScope {
+			t.Errorf("expected GlobalScope for %q, got %v", name, symbol.Scope)
+		}
+	}
+}
