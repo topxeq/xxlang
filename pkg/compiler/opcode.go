@@ -54,6 +54,7 @@ const (
 	OpJumpIfFalse // Jump if top of stack is false
 	OpJumpIfTrue  // Jump if top of stack is true
 	OpCall        // Call function
+	OpTailCall    // Tail call (reuse current frame)
 	OpReturn      // Return from function
 	OpClosure     // Create closure with captured variables
 
@@ -78,6 +79,12 @@ const (
 	// Loop control
 	OpBreak    // Break from loop
 	OpContinue // Continue to next iteration
+
+	// Module operations
+	OpLoadModule // Load module and push onto stack
+	OpGetExport  // Get export from module
+	OpModule     // Create module from exports
+	OpSetExport  // Set export in current module
 )
 
 // Definition describes an opcode's format
@@ -132,6 +139,7 @@ var definitions = map[Opcode]*Definition{
 	OpJumpIfFalse: {"OpJumpIfFalse", []int{2}}, // 2-byte jump offset
 	OpJumpIfTrue:  {"OpJumpIfTrue", []int{2}},  // 2-byte jump offset
 	OpCall:        {"OpCall", []int{1}},        // 1-byte argument count
+	OpTailCall:    {"OpTailCall", []int{1}},    // 1-byte argument count
 	OpReturn:      {"OpReturn", []int{}},
 	OpClosure:     {"OpClosure", []int{2, 1}},  // 2-byte constant index, 1-byte num free
 
@@ -156,6 +164,12 @@ var definitions = map[Opcode]*Definition{
 	// Loop control
 	OpBreak:    {"OpBreak", []int{}},
 	OpContinue: {"OpContinue", []int{}},
+
+	// Module operations
+	OpLoadModule: {"OpLoadModule", []int{2}}, // 2-byte constant index for path
+	OpGetExport:  {"OpGetExport", []int{2}},  // 2-byte constant index for name
+	OpModule:     {"OpModule", []int{2}},     // 2-byte export count
+	OpSetExport:  {"OpSetExport", []int{2}},  // 2-byte constant index for name
 }
 
 // Lookup finds an opcode's definition
