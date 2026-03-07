@@ -68,3 +68,21 @@ func (f *Function) Inspect() string {
 }
 func (f *Function) ToBool() *Bool    { return TRUE }
 func (f *Function) HashKey() HashKey { return HashKey{Type: FunctionType, Value: 0} }
+
+// CompiledFunction represents a compiled function for the VM
+type CompiledFunction struct {
+	Instructions  []byte
+	NumLocals     int
+	NumParameters int
+	Name          string
+}
+
+// CompiledFunctionType is the type for compiled functions
+const CompiledFunctionType ObjectType = "COMPILED_FUNCTION"
+
+func (cf *CompiledFunction) Type() ObjectType { return CompiledFunctionType }
+func (cf *CompiledFunction) Inspect() string {
+	return "compiled function: " + cf.Name
+}
+func (cf *CompiledFunction) ToBool() *Bool    { return TRUE }
+func (cf *CompiledFunction) HashKey() HashKey { return HashKey{Type: CompiledFunctionType, Value: 0} }
