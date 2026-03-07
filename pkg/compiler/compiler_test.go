@@ -720,3 +720,174 @@ func compiledFunctionEqual(a, b *CompiledFunction) bool {
 		a.NumLocals == b.NumLocals &&
 		a.NumParameters == b.NumParameters
 }
+
+// ============================================
+// Import Statement Tests
+// ============================================
+
+func TestImportStatement_Simple(t *testing.T) {
+	tests := []struct {
+		input       string
+		expectedOps []Opcode
+	}{
+		{
+			`import "./math";`,
+			[]Opcode{OpLoadModule, OpPop},
+		},
+		{
+			`import "../utils";`,
+			[]Opcode{OpLoadModule, OpPop},
+		},
+	}
+
+	for _, tt := range tests {
+		program := parse(tt.input)
+		compiler := New()
+		err := compiler.Compile(program)
+		if err != nil {
+			t.Fatalf("compiler error for %q: %s", tt.input, err)
+		}
+
+		bytecode := compiler.Bytecode()
+
+		for _, op := range tt.expectedOps {
+			if !containsOpcode(bytecode.Instructions, op) {
+				t.Errorf("expected opcode %v not found in instructions for %q", op, tt.input)
+			}
+		}
+	}
+}
+
+func TestImportStatement_Default(t *testing.T) {
+	input := `import math from "./math";`
+
+	program := parse(input)
+	compiler := New()
+	err := compiler.Compile(program)
+	if err != nil {
+		t.Fatalf("compiler error: %s", err)
+	}
+
+	bytecode := compiler.Bytecode()
+
+	// Should have OpLoadModule and OpSetGlobal
+	if !containsOpcode(bytecode.Instructions, OpLoadModule) {
+		t.Error("expected OpLoadModule in instructions")
+	}
+	if !containsOpcode(bytecode.Instructions, OpSetGlobal) {
+		t.Error("expected OpSetGlobal in instructions")
+	}
+
+	// Check that 'math' is defined in symbol table
+	symbol, ok := compiler.symbolTable.Resolve("math")
+	if !ok {
+		t.Error("variable 'math' not defined in symbol table")
+	}
+	if symbol.Scope != GlobalScope {
+		t.Errorf("expected GlobalScope for 'math', got %v", symbol.Scope)
+	}
+}
+
+func TestImportStatement_Namespace(t *testing.T) {
+	input := `import * as math from "./math";`
+
+	program := parse(input)
+	compiler := New()
+	err := compiler.Compile(program)
+	if err != nil {
+		t.Fatalf("compiler error: %s", err)
+	}
+
+	bytecode := compiler.Bytecode()
+
+	// Should have OpLoadModule and OpSetGlobal for the namespace alias
+	if !containsOpcode(bytecode.Instructions, OpLoadModule) {
+		t.Error("expected OpLoadModule in instructions")
+	}
+	if !containsOpcode(bytecode.Instructions, OpSetGlobal) {
+		t.Error("expected OpSetGlobal in instructions")
+	}
+
+	// Check that 'math' namespace alias is defined in symbol table
+	symbol, ok := compiler.symbolTable.Resolve("math")
+	if !ok {
+		t.Error("variable 'math' not defined in symbol table")
+	}
+	if symbol.Scope != GlobalScope {
+		t.Errorf("expected GlobalScope for 'math', got %v", symbol.Scope)
+	}
+}
+
+func TestImportStatement_Destructuring(t *testing.T) {
+	input := `import { add, sub } from "./math";`
+
+	program := parse(input)
+	compiler := New()
+	err := compiler.Compile(program)
+	if err != nil {
+		t.Fatalf("compiler error: %s", err)
+	}
+
+	bytecode := compiler.Bytecode()
+
+	// Should have OpLoadModule, OpGetExport for each name, and OpSetGlobal for each
+	if !containsOpcode(bytecode.Instructions, OpLoadModule) {
+		t.Error("expected OpLoadModule in instructions")
+	}
+	if !containsOpcode(bytecode.Instructions, OpGetExport) {
+		t.Error("expected OpGetExport in instructions")
+	}
+
+	// Should have at least 2 OpSetGlobal for 'add' and 'sub'
+	count := countOpcode(bytecode.Instructions, OpSetGlobal)
+	if count < 2 {
+		t.Errorf("expected at least 2 OpSetGlobal, got %d", count)
+	}
+
+	// Check that 'add' and 'sub' are defined in symbol table
+	for _, name := range []string{"add", "sub"} {
+		symbol, ok := compiler.symbolTable.Resolve(name)
+		if !ok {
+			t.Errorf("variable %q not defined in symbol table", name)
+		}
+		if symbol.Scope != GlobalScope {
+			t.Errorf("expected GlobalScope for %q, got %v", name, symbol.Scope)
+		}
+	}
+}
+
+func TestImportStatement_ModulePath(t *testing.T) {
+	tests := []struct {
+		input    string
+		path     string
+	}{
+		{`import "./math";`, "./math"},
+		{`import "../utils";`, "../utils"},
+		{`import "module";`, "module"},
+	}
+
+	for _, tt := range tests {
+		program := parse(tt.input)
+		compiler := New()
+		err := compiler.Compile(program)
+		if err != nil {
+			t.Fatalf("compiler error for %q: %s", tt.input, err)
+		}
+
+		bytecode := compiler.Bytecode()
+
+		// Find the module path in constants
+		found := false
+		for _, c := range bytecode.Constants {
+			if str, ok := c.(*objects.String); ok {
+				if str.Value == tt.path {
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			t.Errorf("expected path %q in constants for %q", tt.path, tt.input)
+		}
+	}
+}

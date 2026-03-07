@@ -822,6 +822,9 @@ func (c *Compiler) Compile(node parser.Node) error {
 			}
 		}
 
+	case *parser.ImportStatement:
+		return c.compileImportStatement(node)
+
 	default:
 		return fmt.Errorf("unknown node type: %T", node)
 	}
@@ -847,6 +850,49 @@ func (c *Compiler) compileTailCall(node *parser.CallExpression) error {
 
 	// Emit tail call instruction instead of OpCall + OpReturn
 	c.emit(OpTailCall, len(node.Arguments))
+	return nil
+}
+
+// compileImportStatement compiles an import statement
+func (c *Compiler) compileImportStatement(node *parser.ImportStatement) error {
+	// Load the module path constant
+	pathIdx := c.addConstant(&objects.String{Value: node.Path.Value})
+
+	// Emit OpLoadModule to load the module and push it onto the stack
+	c.emit(OpLoadModule, pathIdx)
+
+	// Handle different import styles
+	if node.Name != nil {
+		// Default import: import math from "./math"
+		// The module (default export) is on the stack, store it in global
+		symbol := c.symbolTable.Define(node.Name.Value)
+		c.emit(OpSetGlobal, symbol.Index)
+	} else if node.Alias != nil {
+		// Namespace import: import * as math from "./math"
+		// The module object is on the stack, store it in global
+		symbol := c.symbolTable.Define(node.Alias.Value)
+		c.emit(OpSetGlobal, symbol.Index)
+	} else if len(node.Names) > 0 {
+		// Destructuring import: import { add, sub } from "./math"
+		// The module object is on the stack
+		for _, name := range node.Names {
+			// Duplicate module reference for each name
+			c.emit(OpDup)
+			// Get the export by name
+			nameIdx := c.addConstant(&objects.String{Value: name.Value})
+			c.emit(OpGetExport, nameIdx)
+			// Store in global
+			symbol := c.symbolTable.Define(name.Value)
+			c.emit(OpSetGlobal, symbol.Index)
+		}
+		// Pop the original module reference
+		c.emit(OpPop)
+	} else {
+		// Simple import: import "./math"
+		// Just load and pop the module (for side effects)
+		c.emit(OpPop)
+	}
+
 	return nil
 }
 
