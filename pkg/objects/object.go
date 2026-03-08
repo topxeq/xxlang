@@ -23,6 +23,7 @@ const (
 	ErrorType   ObjectType = "ERROR"
 	ReturnType  ObjectType = "RETURN"
 	ClosureType ObjectType = "CLOSURE"
+	ModuleType  ObjectType = "MODULE"
 )
 
 // Object is the base interface for all values in Xxlang

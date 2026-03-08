@@ -13,6 +13,8 @@ type Frame struct {
 	BasePointer int               // Stack base pointer for this frame
 	Locals      []objects.Object  // Local variables
 	FreeVars    []objects.Object  // Free variables (captured from closure)
+	Constants   []objects.Object  // Constants for this frame (from closure or VM)
+	Globals     []objects.Object  // Globals for this frame (from closure's module or VM)
 }
 
 // NewFrame creates a new call frame
@@ -23,6 +25,8 @@ func NewFrame(fn *compiler.CompiledFunction, basePointer int) *Frame {
 		BasePointer: basePointer,
 		Locals:      make([]objects.Object, fn.NumLocals),
 		FreeVars:    make([]objects.Object, len(fn.FreeVariables)),
+		Constants:   nil,  // Will be set by callFunction
+		Globals:     nil,  // Will be set by callFunction
 	}
 }
 

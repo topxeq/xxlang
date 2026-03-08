@@ -1,0 +1,8 @@
+// Simple test for module function calls
+import { add, greet, greeting } from "./utils"
+
+println("greeting: ", greeting)
+println("add(1, 2): ", add(1, 2))
+
+var result = greet("Alice")
+println("Result: ", result)

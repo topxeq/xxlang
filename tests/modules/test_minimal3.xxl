@@ -1,0 +1,4 @@
+// Minimal test - println with function call arg
+import { getCounter, increment } from "./utils"
+
+println("Result: ", increment())

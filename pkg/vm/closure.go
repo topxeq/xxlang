@@ -10,8 +10,10 @@ import (
 
 // Closure represents a function with captured variables
 type Closure struct {
-	Fn       *compiler.CompiledFunction
-	FreeVars []objects.Object
+	Fn        *compiler.CompiledFunction
+	FreeVars  []objects.Object
+	Constants []objects.Object // Constants from the creating VM
+	Globals   []objects.Object // Globals from the creating module (for exported functions)
 }
 
 // Type returns the object type
@@ -48,10 +50,18 @@ func (vm *VM) executeClosure() error {
 		return fmt.Errorf("expected CompiledFunction at index %d, got %T", fnIndex, vm.constants[fnIndex])
 	}
 
-	// Create closure with captured free variables
+	// Get globals from module context if available, otherwise use VM globals
+	globals := vm.globals
+	if vm.currentModule != nil && vm.currentModule.Globals != nil {
+		globals = vm.currentModule.Globals
+	}
+
+	// Create closure with captured free variables, constants, and globals
 	closure := &Closure{
-		Fn:       fn,
-		FreeVars: make([]objects.Object, numFree),
+		Fn:        fn,
+		FreeVars:  make([]objects.Object, numFree),
+		Constants: vm.constants, // Store the constants from this VM
+		Globals:   globals,       // Store globals for module-level variable access
 	}
 
 	// Pop the free variables from stack and store them in the closure

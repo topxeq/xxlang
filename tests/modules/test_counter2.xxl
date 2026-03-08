@@ -1,0 +1,7 @@
+// Test module state
+import { getCounter, increment } from "./utils"
+
+println("Counter: ", getCounter())
+println("Now incrementing...")
+increment()
+println("Counter after: ", getCounter())

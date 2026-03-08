@@ -1,0 +1,6 @@
+// Test module imports
+import { add, sub, PI } from "./math"
+
+println(add(1, 2))
+println(sub(5, 3))
+println(PI)

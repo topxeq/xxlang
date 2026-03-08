@@ -1,0 +1,28 @@
+// tests/modules/utils.xxl
+// A test module that exports utility functions
+
+export var greeting = "Hello from utils!"
+
+export func add(a, b) {
+    return a + b
+}
+
+export func multiply(a, b) {
+    return a * b
+}
+
+export func greet(name) {
+    return greeting + " Your name is " + name + "."
+}
+
+// Module-level state
+var counter = 0
+
+export func increment() {
+    counter = counter + 1
+    return counter
+}
+
+export func getCounter() {
+    return counter
+}

@@ -1,0 +1,7 @@
+// Minimal test - without println wrapper
+import { getCounter, increment } from "./utils"
+
+var a = getCounter()
+println(a)
+var b = increment()
+println(b)

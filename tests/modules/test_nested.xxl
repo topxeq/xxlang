@@ -1,0 +1,9 @@
+// Test nested call
+import { increment } from "./utils"
+
+// Simple case - call increment then println separately
+var x = increment()
+println("X: ", x)
+
+// Now try nested
+println("Y: ", increment())

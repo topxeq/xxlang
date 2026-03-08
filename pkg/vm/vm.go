@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/topxeq/xxlang/pkg/compiler"
+	"github.com/topxeq/xxlang/pkg/module"
 	"github.com/topxeq/xxlang/pkg/objects"
 )
 
@@ -16,11 +17,14 @@ const (
 
 // VM is the virtual machine that executes bytecode
 type VM struct {
-	constants   []objects.Object
-	stack       *Stack
-	frames      []*Frame
-	frameIndex  int
-	globals     []objects.Object
+	constants     []objects.Object
+	stack         *Stack
+	frames        []*Frame
+	frameIndex    int
+	globals       []objects.Object
+	loader        *module.Loader   // Module cache and cycle detection
+	currentModule *objects.Module  // Current module context for exports
+	sourcePath    string           // Current source file path for imports
 }
 
 // New creates a new VM with the given bytecode
@@ -41,6 +45,7 @@ func New(bytecode *compiler.Bytecode) *VM {
 		frames:     frames,
 		frameIndex: 1,
 		globals:    make([]objects.Object, GlobalsSize),
+		loader:     module.NewLoader(),
 	}
 }
 
@@ -62,6 +67,7 @@ func NewWithGlobalsStore(bytecode *compiler.Bytecode, globals []objects.Object) 
 		frames:     frames,
 		frameIndex: 1,
 		globals:    globals,
+		loader:     module.NewLoader(),
 	}
 }
 
@@ -81,6 +87,21 @@ func (vm *VM) LastPopped() objects.Object {
 // Globals returns the globals array
 func (vm *VM) Globals() []objects.Object {
 	return vm.globals
+}
+
+// SetSourcePath sets the source file path for module resolution
+func (vm *VM) SetSourcePath(path string) {
+	vm.sourcePath = path
+}
+
+// SetLoader sets the module loader (for sharing between VMs)
+func (vm *VM) SetLoader(loader *module.Loader) {
+	vm.loader = loader
+}
+
+// SetCurrentModule sets the current module context
+func (vm *VM) SetCurrentModule(mod *objects.Module) {
+	vm.currentModule = mod
 }
 
 // Run executes the bytecode
@@ -264,6 +285,11 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case compiler.OpGetMethod:
+			if err := vm.executeGetMethod(); err != nil {
+				return err
+			}
+
 		case compiler.OpBuiltin:
 			if err := vm.executeBuiltin(); err != nil {
 				return err
@@ -280,6 +306,26 @@ func (vm *VM) Run() error {
 
 		case compiler.OpBreak, compiler.OpContinue:
 			// These are handled during compilation, ignore at runtime
+
+		case compiler.OpLoadModule:
+			if err := vm.executeLoadModule(); err != nil {
+				return err
+			}
+
+		case compiler.OpGetExport:
+			if err := vm.executeGetExport(); err != nil {
+				return err
+			}
+
+		case compiler.OpSetExport:
+			if err := vm.executeSetExport(); err != nil {
+				return err
+			}
+
+		case compiler.OpModule:
+			if err := vm.executeModule(); err != nil {
+				return err
+			}
 
 		default:
 			return fmt.Errorf("unknown opcode: %d", op)
@@ -326,11 +372,18 @@ func (vm *VM) executeConstant() error {
 	constIndex := vm.readUint16()
 	vm.currentFrame().IP += 2
 
-	if int(constIndex) >= len(vm.constants) {
+	// Use frame's constants if available (for closures from modules), otherwise use VM's constants
+	frame := vm.currentFrame()
+	constants := frame.Constants
+	if constants == nil {
+		constants = vm.constants
+	}
+
+	if int(constIndex) >= len(constants) {
 		return fmt.Errorf("constant index out of range: %d", constIndex)
 	}
 
-	vm.stack.Push(vm.constants[constIndex])
+	vm.stack.Push(constants[constIndex])
 	return nil
 }
 
@@ -617,6 +670,8 @@ func (vm *VM) executeSetLocal() error {
 	frame := vm.currentFrame()
 	value := vm.stack.Pop()
 	frame.Locals[localIndex] = value
+	// Push the value back for assignment chaining (a = b = c)
+	vm.stack.Push(value)
 	return nil
 }
 
@@ -624,7 +679,13 @@ func (vm *VM) executeGetGlobal() error {
 	globalIndex := vm.readUint16()
 	vm.currentFrame().IP += 2
 
-	vm.stack.Push(vm.globals[globalIndex])
+	frame := vm.currentFrame()
+	// Use frame's globals if available (for module functions), otherwise use VM globals
+	if frame.Globals != nil {
+		vm.stack.Push(frame.Globals[globalIndex])
+	} else {
+		vm.stack.Push(vm.globals[globalIndex])
+	}
 	return nil
 }
 
@@ -633,7 +694,15 @@ func (vm *VM) executeSetGlobal() error {
 	vm.currentFrame().IP += 2
 
 	value := vm.stack.Pop()
-	vm.globals[globalIndex] = value
+	frame := vm.currentFrame()
+	// Use frame's globals if available (for module functions), otherwise use VM globals
+	if frame.Globals != nil {
+		frame.Globals[globalIndex] = value
+	} else {
+		vm.globals[globalIndex] = value
+	}
+	// Push the value back for assignment chaining (a = b = c)
+	vm.stack.Push(value)
 	return nil
 }
 
@@ -678,9 +747,9 @@ func (vm *VM) executeCall() error {
 
 	switch fn := callee.(type) {
 	case *compiler.CompiledFunction:
-		return vm.callFunction(fn, numArgs, nil)
+		return vm.callFunction(fn, numArgs, nil, nil, nil)
 	case *Closure:
-		return vm.callFunction(fn.Fn, numArgs, fn.FreeVars)
+		return vm.callFunction(fn.Fn, numArgs, fn.FreeVars, fn.Constants, fn.Globals)
 	case *objects.Builtin:
 		return vm.callBuiltin(fn, numArgs)
 	default:
@@ -688,7 +757,7 @@ func (vm *VM) executeCall() error {
 	}
 }
 
-func (vm *VM) callFunction(fn *compiler.CompiledFunction, numArgs int, freeVars []objects.Object) error {
+func (vm *VM) callFunction(fn *compiler.CompiledFunction, numArgs int, freeVars []objects.Object, constants []objects.Object, globals []objects.Object) error {
 	if numArgs != fn.NumParameters {
 		return fmt.Errorf("wrong number of arguments: want=%d, got=%d", fn.NumParameters, numArgs)
 	}
@@ -711,6 +780,12 @@ func (vm *VM) callFunction(fn *compiler.CompiledFunction, numArgs int, freeVars 
 	if freeVars != nil {
 		frame.FreeVars = freeVars
 	}
+
+	// Set constants for this frame (from closure or nil to use VM's constants)
+	frame.Constants = constants
+
+	// Set globals for this frame (from closure's module or nil to use VM's globals)
+	frame.Globals = globals
 
 	vm.pushFrame(frame)
 	return nil
@@ -741,9 +816,9 @@ func (vm *VM) executeTailCall() error {
 
 	switch fn := callee.(type) {
 	case *compiler.CompiledFunction:
-		return vm.tailCallFunction(fn, numArgs, nil)
+		return vm.tailCallFunction(fn, numArgs, nil, nil, nil)
 	case *Closure:
-		return vm.tailCallFunction(fn.Fn, numArgs, fn.FreeVars)
+		return vm.tailCallFunction(fn.Fn, numArgs, fn.FreeVars, fn.Constants, fn.Globals)
 	case *objects.Builtin:
 		// Builtins don't benefit from TCO, just use regular call
 		return vm.callBuiltin(fn, numArgs)
@@ -753,7 +828,7 @@ func (vm *VM) executeTailCall() error {
 }
 
 // tailCallFunction reuses the current frame for a tail call
-func (vm *VM) tailCallFunction(fn *compiler.CompiledFunction, numArgs int, freeVars []objects.Object) error {
+func (vm *VM) tailCallFunction(fn *compiler.CompiledFunction, numArgs int, freeVars []objects.Object, constants []objects.Object, globals []objects.Object) error {
 	if numArgs != fn.NumParameters {
 		return fmt.Errorf("wrong number of arguments: want=%d, got=%d", fn.NumParameters, numArgs)
 	}
@@ -779,6 +854,8 @@ func (vm *VM) tailCallFunction(fn *compiler.CompiledFunction, numArgs int, freeV
 	frame.Fn = fn
 	frame.IP = -1 // Will be incremented to 0 in the main loop
 	frame.FreeVars = freeVars
+	frame.Constants = constants
+	frame.Globals = globals
 
 	return nil
 }
@@ -1044,4 +1121,159 @@ func getBuiltin(index int) *objects.Builtin {
 	}
 
 	return builtins[index]
+}
+
+// Module opcode implementations
+
+// executeLoadModule loads a module and pushes it onto the stack.
+func (vm *VM) executeLoadModule() error {
+	pathIdx := vm.readUint16()
+	vm.currentFrame().IP += 2
+
+	importPath := vm.constants[pathIdx].(*objects.String).Value
+
+	// Resolve path relative to current source
+	resolvedPath, err := module.Resolve(vm.sourcePath, importPath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve import path '%s': %v", importPath, err)
+	}
+
+	// Check cache
+	if vm.loader.HasModule(resolvedPath) {
+		cachedMod, err := vm.loader.Get(resolvedPath)
+		if err != nil {
+			return err
+		}
+		// Convert to objects.Module and push onto stack
+		mod := &objects.Module{
+			Name:    cachedMod.Name,
+			Exports: cachedMod.Exports,
+		}
+		vm.stack.Push(mod)
+		return nil
+	}
+
+	// Load, compile, and execute the module
+	mod, err := vm.loadModuleFile(resolvedPath)
+	if err != nil {
+		return err
+	}
+
+	// Push module onto stack
+	vm.stack.Push(mod)
+	return nil
+}
+
+// executeGetExport gets an export from a module on the stack.
+func (vm *VM) executeGetExport() error {
+	nameIdx := vm.readUint16()
+	vm.currentFrame().IP += 2
+
+	name := vm.constants[nameIdx].(*objects.String).Value
+
+	// Pop the module from the stack
+	modObj := vm.stack.Pop()
+	mod, ok := modObj.(*objects.Module)
+	if !ok {
+		return fmt.Errorf("cannot get export from non-module type: %s", modObj.Type())
+	}
+
+	// Get the export
+	val, ok := mod.Exports[name]
+	if !ok {
+		return fmt.Errorf("export '%s' not found in module %s", name, mod.Name)
+	}
+
+	// Push the export value onto the stack
+	vm.stack.Push(val)
+	return nil
+}
+
+// executeSetExport sets an export in the current module.
+func (vm *VM) executeSetExport() error {
+	nameIdx := vm.readUint16()
+	vm.currentFrame().IP += 2
+
+	name := vm.constants[nameIdx].(*objects.String).Value
+
+	// Pop the value from the stack
+	value := vm.stack.Pop()
+
+	// Check if we have a current module context
+	if vm.currentModule == nil {
+		return fmt.Errorf("export statement outside of module context")
+	}
+
+	// Set the export
+	vm.currentModule.Exports[name] = value
+
+	// Push the value back (export statements may be used in expressions)
+	vm.stack.Push(value)
+	return nil
+}
+
+// executeModule creates a module object from exports on the stack.
+func (vm *VM) executeModule() error {
+	numExports := int(vm.readUint16())
+	vm.currentFrame().IP += 2
+
+	// Create a new module
+	mod := &objects.Module{
+		Name:    vm.sourcePath,
+		Exports: make(map[string]objects.Object),
+	}
+
+	// Pop name-value pairs from the stack
+	for i := 0; i < numExports; i++ {
+		value := vm.stack.Pop()
+		nameObj := vm.stack.Pop()
+		name := nameObj.(*objects.String).Value
+		mod.Exports[name] = value
+	}
+
+	// Push the module onto the stack
+	vm.stack.Push(mod)
+	return nil
+}
+
+// executeGetMethod gets a property or method from an object.
+// Currently supports Module objects for namespace imports.
+func (vm *VM) executeGetMethod() error {
+	nameIdx := vm.readUint16()
+	vm.currentFrame().IP += 2
+
+	frame := vm.currentFrame()
+	var name string
+	if frame.Constants != nil {
+		name = frame.Constants[nameIdx].(*objects.String).Value
+	} else {
+		name = vm.constants[nameIdx].(*objects.String).Value
+	}
+
+	// Get the object from the stack
+	obj := vm.stack.Pop()
+
+	// Handle Module objects (for namespace imports)
+	if mod, ok := obj.(*objects.Module); ok {
+		val, ok := mod.Exports[name]
+		if !ok {
+			return fmt.Errorf("export '%s' not found in module %s", name, mod.Name)
+		}
+		vm.stack.Push(val)
+		return nil
+	}
+
+	// Handle Map objects (for property access)
+	if m, ok := obj.(*objects.Map); ok {
+		key := &objects.String{Value: name}
+		pair, ok := m.Pairs[key.HashKey()]
+		if !ok {
+			vm.stack.Push(objects.NULL)
+			return nil
+		}
+		vm.stack.Push(pair.Value)
+		return nil
+	}
+
+	return fmt.Errorf("cannot access property '%s' on type %s", name, obj.Type())
 }
