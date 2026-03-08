@@ -232,6 +232,108 @@ func TestRegexCount(t *testing.T) {
 	}
 }
 
+func TestRegexLookahead(t *testing.T) {
+	// Positive lookahead: match "foo" only if followed by "bar"
+	result := callRegexFunc("find", String(`foo(?=bar)`), String("foobar foobaz"))
+	r, ok := result.(*objects.String)
+	if !ok {
+		t.Fatalf("find() should return String, got %T", result)
+	}
+	if r.Value != "foo" {
+		t.Errorf("find('foo(?=bar)', 'foobar foobaz') = %s, want 'foo' (first foo followed by bar)", r.Value)
+	}
+
+	// Negative lookahead: match "foo" only if NOT followed by "bar"
+	result = callRegexFunc("findAll", String(`foo(?!bar)`), String("foobar foobaz"))
+	arr, ok := result.(*objects.Array)
+	if !ok {
+		t.Fatalf("findAll() should return Array, got %T", result)
+	}
+	// Should match the "foo" in "foobaz" but not in "foobar"
+	if len(arr.Elements) != 1 {
+		t.Errorf("findAll('foo(?!bar)') length = %d, want 1", len(arr.Elements))
+	}
+}
+
+func TestRegexLookbehind(t *testing.T) {
+	// Positive lookbehind: match "bar" only if preceded by "foo"
+	result := callRegexFunc("find", String(`(?<=foo)bar`), String("foobar bazbar"))
+	r, ok := result.(*objects.String)
+	if !ok {
+		t.Fatalf("find() should return String, got %T", result)
+	}
+	if r.Value != "bar" {
+		t.Errorf("find('(?<=foo)bar', 'foobar bazbar') = %s, want 'bar' (bar preceded by foo)", r.Value)
+	}
+
+	// Negative lookbehind: match "bar" only if NOT preceded by "foo"
+	result = callRegexFunc("find", String(`(?<!foo)bar`), String("foobar bazbar"))
+	r, ok = result.(*objects.String)
+	if !ok {
+		t.Fatalf("find() should return String, got %T", result)
+	}
+	if r.Value != "bar" {
+		t.Errorf("find('(?<!foo)bar', 'foobar bazbar') = %s, want 'bar' (bar not preceded by foo)", r.Value)
+	}
+}
+
+func TestRegexBackreference(t *testing.T) {
+	// Match repeated words using backreference
+	result := callRegexFunc("find", String(`(\w+)\s+\1`), String("hello hello world world"))
+	r, ok := result.(*objects.String)
+	if !ok {
+		t.Fatalf("find() should return String, got %T", result)
+	}
+	if r.Value != "hello hello" {
+		t.Errorf("find('(\\w+)\\s+\\1', 'hello hello world world') = %s, want 'hello hello'", r.Value)
+	}
+
+	// Match HTML-like tags
+	result = callRegexFunc("find", String(`<(\w+)>.*?</\1>`), String("<div>content</div><span>other</span>"))
+	r, ok = result.(*objects.String)
+	if !ok {
+		t.Fatalf("find() should return String, got %T", result)
+	}
+	if r.Value != "<div>content</div>" {
+		t.Errorf("find('<(\\w+)>.*?</\\1>') = %s, want '<div>content</div>'", r.Value)
+	}
+}
+
+func TestRegexNamedGroups(t *testing.T) {
+	// Named capture groups (ECMAScript syntax: ?<name> instead of ?P<name>)
+	result := callRegexFunc("findGroups", String(`(?<name>\w+)@(?<domain>\w+\.\w+)`), String("email: test@example.com"))
+	arr, ok := result.(*objects.Array)
+	if !ok {
+		t.Fatalf("findGroups() should return Array, got %T", result)
+	}
+	// Groups: full match, name group, domain group
+	if len(arr.Elements) != 3 {
+		t.Errorf("findGroups() with named groups length = %d, want 3", len(arr.Elements))
+	}
+}
+
+func TestRegexTest(t *testing.T) {
+	// Test valid pattern
+	result := callRegexFunc("test", String(`\d+`))
+	r, ok := result.(*objects.Bool)
+	if !ok {
+		t.Fatalf("test() should return Bool, got %T", result)
+	}
+	if !r.Value {
+		t.Errorf("test('\\d+') should be true")
+	}
+
+	// Test invalid pattern
+	result = callRegexFunc("test", String(`[invalid`))
+	r, ok = result.(*objects.Bool)
+	if !ok {
+		t.Fatalf("test() should return Bool, got %T", result)
+	}
+	if r.Value {
+		t.Errorf("test('[invalid') should be false")
+	}
+}
+
 func TestRegexErrorCases(t *testing.T) {
 	// compile with wrong args
 	result := callRegexFunc("compile")
