@@ -94,6 +94,9 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(lexer.TokenFunc, p.parseFunctionLiteral)
 	p.registerPrefix(lexer.TokenIncrement, p.parsePrefixExpression)
 	p.registerPrefix(lexer.TokenDecrement, p.parsePrefixExpression)
+	p.registerPrefix(lexer.TokenNew, p.parseNewExpression)
+	p.registerPrefix(lexer.TokenThis, p.parseThisExpression)
+	p.registerPrefix(lexer.TokenSuper, p.parseSuperExpression)
 
 	// Register infix parse functions
 	p.registerInfix(lexer.TokenPlus, p.parseInfixExpression)
@@ -237,6 +240,8 @@ func (p *Parser) parseStatement() Statement {
 		return p.parseImportStatement()
 	case lexer.TokenExport:
 		return p.parseExportStatement()
+	case lexer.TokenClass:
+		return p.parseClassStatement()
 	case lexer.TokenLBrace:
 		// Check if this is a map literal or block statement
 		// Empty {} is treated as map literal
@@ -879,7 +884,73 @@ func (p *Parser) parseExportStatement() *ExportStatement {
 	return stmt
 }
 
-// parseExpression parses an expression with the given precedence
+// parseClassStatement parses a class declaration
+func (p *Parser) parseClassStatement() *ClassStatement {
+	stmt := &ClassStatement{Token: p.curToken}
+
+	// Expect class name
+	if !p.expectPeek(lexer.TokenIdent) {
+		return nil
+	}
+	stmt.Name = &Identifier{Token: p.curToken, Value: p.curToken.Literal}
+
+	// Check for extends
+	if p.peekTokenIs(lexer.TokenExtends) {
+		p.nextToken()
+		if !p.expectPeek(lexer.TokenIdent) {
+			return nil
+		}
+		stmt.SuperClass = &Identifier{Token: p.curToken, Value: p.curToken.Literal}
+	}
+
+	// Expect {
+	if !p.expectPeek(lexer.TokenLBrace) {
+		return nil
+	}
+
+	// Parse class body
+	stmt.Methods = []*FunctionLiteral{}
+	stmt.Fields = []*VarStatement{}
+
+	p.nextToken() // Advance past { to first token in body
+
+	for !p.curTokenIs(lexer.TokenRBrace) && !p.curTokenIs(lexer.TokenEOF) {
+		if p.curTokenIs(lexer.TokenFunc) {
+			method := p.parseFunctionLiteral()
+			if method != nil {
+				if fn, ok := method.(*FunctionLiteral); ok {
+					stmt.Methods = append(stmt.Methods, fn)
+				}
+			}
+			// After parseFunctionLiteral, curToken is at the function's closing }
+			// Advance past it to continue parsing the class body
+			if p.curTokenIs(lexer.TokenRBrace) {
+				p.nextToken()
+			}
+		} else if p.curTokenIs(lexer.TokenVar) {
+			field := p.parseVarStatement()
+			if field != nil {
+				stmt.Fields = append(stmt.Fields, field)
+			}
+			// After parseVarStatement, curToken is at the last token of the value
+			// Skip any semicolon and advance to the next token
+			if p.peekTokenIs(lexer.TokenSemicolon) {
+				p.nextToken() // Move to semicolon
+			}
+			p.nextToken() // Move past semicolon (or value) to next token
+		} else {
+			p.addError(fmt.Sprintf("unexpected token in class body: %s", p.curToken.Type))
+			return nil
+		}
+
+		// Skip any trailing semicolons
+		if p.curTokenIs(lexer.TokenSemicolon) {
+			p.nextToken()
+		}
+	}
+
+	return stmt
+}
 func (p *Parser) parseExpression(precedence int) Expression {
 	prefix := p.prefixParseFns[p.curToken.Type]
 	if prefix == nil {
@@ -1178,6 +1249,59 @@ func (p *Parser) parseFunctionParameters() []*Identifier {
 	}
 
 	return identifiers
+}
+
+// parseNewExpression parses a new expression
+func (p *Parser) parseNewExpression() Expression {
+	expr := &NewExpression{Token: p.curToken}
+
+	// Expect class name
+	if !p.expectPeek(lexer.TokenIdent) {
+		return nil
+	}
+	expr.Class = &Identifier{Token: p.curToken, Value: p.curToken.Literal}
+
+	// Expect (
+	if !p.expectPeek(lexer.TokenLParen) {
+		return nil
+	}
+
+	// Parse arguments
+	expr.Arguments = p.parseExpressionList(lexer.TokenRParen)
+
+	return expr
+}
+
+// parseThisExpression parses this expression
+func (p *Parser) parseThisExpression() Expression {
+	return &ThisExpression{Token: p.curToken}
+}
+
+// parseSuperExpression parses super expression
+func (p *Parser) parseSuperExpression() Expression {
+	expr := &SuperExpression{Token: p.curToken}
+
+	// Check for super.method() pattern
+	if p.peekTokenIs(lexer.TokenDot) {
+		p.nextToken() // consume dot
+		if !p.expectPeek(lexer.TokenIdent) {
+			return nil
+		}
+		methodName := p.curToken.Literal
+
+		// Check for method call
+		if p.peekTokenIs(lexer.TokenLParen) {
+			p.nextToken()
+			callExpr := &SuperCallExpression{
+				Token:  expr.Token,
+				Method: methodName,
+				Args:   p.parseExpressionList(lexer.TokenRParen),
+			}
+			return callExpr
+		}
+	}
+
+	return expr
 }
 
 // parseExpressionList parses a comma-separated list of expressions

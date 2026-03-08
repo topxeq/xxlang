@@ -74,6 +74,7 @@ const (
 	TokenExtends  TokenType = "EXTENDS"
 	TokenNew      TokenType = "NEW"
 	TokenThis     TokenType = "THIS"
+	TokenSuper    TokenType = "SUPER"
 	TokenNull     TokenType = "NULL"
 	TokenTrue     TokenType = "TRUE"
 	TokenFalse    TokenType = "FALSE"
@@ -122,6 +123,7 @@ var Keywords = map[string]TokenType{
 	"extends":  TokenExtends,
 	"new":      TokenNew,
 	"this":     TokenThis,
+	"super":    TokenSuper,
 	"null":     TokenNull,
 	"true":     TokenTrue,
 	"false":    TokenFalse,
