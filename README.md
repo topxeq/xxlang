@@ -1,5 +1,7 @@
 # Xxlang
 
+[中文文档](README_zh.md)
+
 Xxlang is a bytecode VM-based scripting language implemented in Go.
 
 ## Features
@@ -137,6 +139,55 @@ go build -o xxlang ./cmd/xxlang
 
 ## Running Tests
 
+```bash
+go test ./...
+```
+
+## Performance
+
+Xxlang uses a bytecode VM with tail call optimization (when possible).
+
+| Language | fib(35) Time |
+| Go | 0.056s |
+| Python  | 2.77s |
+| Xxlang | 9.37s |
+
+## Tail Call Optimization
+
+Xxlang supports tail call optimization for recursive functions, allowing constant stack space usage:
+
+```xxl
+func sumTail(n, acc) {
+    if (n <= 0) {
+        return acc
+    }
+    return sumTail(n - 1, acc + n)
+}
+
+```
+
+## Built-in Functions
+
+Xxlang provides 41 built-in functions for string, math, array, and map operations.
+
+## REPL Commands
+
+```
+exit, quit  - Exit the REPL
+help        - Show help message
+history     - Show command history
+clear       - Clear all variables and functions
+```
+
+## Building from Source
+
+```bash
+git clone https://github.com/topxeq/xxlang.git
+cd xxlang
+go build -o xxlang ./cmd/xxlang
+```
+
+## Running Tests
 ```bash
 go test ./...
 ```
