@@ -1661,3 +1661,91 @@ func TestExportStatements(t *testing.T) {
 		}
 	}
 }
+
+// ============================================
+// Class Statement Tests
+// ============================================
+
+func TestClassStatements(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{
+			`class Person {}`,
+			`class Person { }`,
+		},
+		{
+			`class Dog extends Animal {}`,
+			`class Dog extends Animal { }`,
+		},
+		{
+			`class Person {
+				var name = ""
+				func init(name) { this.name = name }
+			}`,
+			`class Person { func init(name) { ((this.name) = name) } var name = ""; }`,
+		},
+	}
+
+	for _, tt := range tests {
+		l := lexer.New(tt.input)
+		p := New(l)
+		program := p.ParseProgram()
+		checkParserErrors(t, p)
+
+		if program.String() != tt.expected {
+			t.Errorf("program.String() = %s, want %s", program.String(), tt.expected)
+		}
+	}
+}
+
+func TestNewExpression(t *testing.T) {
+	input := `new Person("Alice", 30)`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Statements[0].(*ExpressionStatement)
+	if !ok {
+		t.Fatalf("expected ExpressionStatement, got %T", program.Statements[0])
+	}
+
+	newExpr, ok := stmt.Expression.(*NewExpression)
+	if !ok {
+		t.Fatalf("expected NewExpression, got %T", stmt.Expression)
+	}
+	if newExpr.Class.String() != "Person" {
+		t.Errorf("expected Person, got %s", newExpr.Class.String())
+	}
+	if len(newExpr.Arguments) != 2 {
+		t.Errorf("expected 2 arguments, got %d", len(newExpr.Arguments))
+	}
+}
+
+func TestThisExpression(t *testing.T) {
+	input := `this.name`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Statements[0].(*ExpressionStatement)
+	if !ok {
+		t.Fatalf("expected ExpressionStatement, got %T", program.Statements[0])
+	}
+
+	dotExpr, ok := stmt.Expression.(*DotExpression)
+	if !ok {
+		t.Fatalf("expected DotExpression, got %T", stmt.Expression)
+	}
+
+	thisExpr, ok := dotExpr.Object.(*ThisExpression)
+	if !ok {
+		t.Fatalf("expected ThisExpression, got %T", dotExpr.Object)
+	}
+	if thisExpr.String() != "this" {
+		t.Errorf("expected 'this', got %s", thisExpr.String())
+	}
+}
