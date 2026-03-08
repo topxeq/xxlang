@@ -85,6 +85,13 @@ const (
 	OpGetExport  // Get export from module
 	OpModule     // Create module from exports
 	OpSetExport  // Set export in current module
+
+	// Class operations
+	OpClass    // Create class object
+	OpNew      // Create instance
+	OpGetField // Get instance field
+	OpSetField // Set instance field
+	OpSuper    // Get superclass method
 )
 
 // Definition describes an opcode's format
@@ -170,6 +177,13 @@ var definitions = map[Opcode]*Definition{
 	OpGetExport:  {"OpGetExport", []int{2}},  // 2-byte constant index for name
 	OpModule:     {"OpModule", []int{2}},     // 2-byte export count
 	OpSetExport:  {"OpSetExport", []int{2}},  // 2-byte constant index for name
+
+	// Class operations
+	OpClass:    {"OpClass", []int{2}},    // 2-byte: class name constant index
+	OpNew:      {"OpNew", []int{1}},      // 1-byte: argument count
+	OpGetField: {"OpGetField", []int{2}}, // 2-byte: field name constant index
+	OpSetField: {"OpSetField", []int{2}}, // 2-byte: field name constant index
+	OpSuper:    {"OpSuper", []int{2}},    // 2-byte: method name constant index
 }
 
 // Lookup finds an opcode's definition
