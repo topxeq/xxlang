@@ -1,5 +1,7 @@
 # Xxlang (现象语言)
 
+[English](README.md)
+
 Xxlang 是一个基于字节码虚拟机的脚本语言，使用 Go 语言实现。
 
 ## 特性
