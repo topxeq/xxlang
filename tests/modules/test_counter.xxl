@@ -1,0 +1,14 @@
+// Test module state
+import { getCounter, increment } from "./utils"
+
+println("Testing counter:")
+println("getCounter: ", getCounter)
+println("increment: ", increment)
+
+// Try calling them directly without println between
+var c = getCounter()
+println("Counter value: ", c)
+
+// Now try increment
+println("Calling increment:")
+increment()

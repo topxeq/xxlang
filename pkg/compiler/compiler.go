@@ -870,11 +870,13 @@ func (c *Compiler) compileImportStatement(node *parser.ImportStatement) error {
 		// The module (default export) is on the stack, store it in global
 		symbol := c.symbolTable.Define(node.Name.Value)
 		c.emit(OpSetGlobal, symbol.Index)
+		c.emit(OpPop) // Pop the pushed-back value from OpSetGlobal
 	} else if node.Alias != nil {
 		// Namespace import: import * as math from "./math"
 		// The module object is on the stack, store it in global
 		symbol := c.symbolTable.Define(node.Alias.Value)
 		c.emit(OpSetGlobal, symbol.Index)
+		c.emit(OpPop) // Pop the pushed-back value from OpSetGlobal
 	} else if len(node.Names) > 0 {
 		// Destructuring import: import { add, sub } from "./math"
 		// The module object is on the stack
@@ -887,6 +889,8 @@ func (c *Compiler) compileImportStatement(node *parser.ImportStatement) error {
 			// Store in global
 			symbol := c.symbolTable.Define(name.Value)
 			c.emit(OpSetGlobal, symbol.Index)
+			// Pop the pushed-back value from OpSetGlobal
+			c.emit(OpPop)
 		}
 		// Pop the original module reference
 		c.emit(OpPop)
@@ -910,12 +914,13 @@ func (c *Compiler) compileExportStatement(node *parser.ExportStatement) error {
 		}
 		// Define the variable in the symbol table
 		symbol := c.symbolTable.Define(stmt.Name.Value)
-		// Store in global
+		// Store in global (OpSetGlobal pushes the value back)
 		c.emit(OpSetGlobal, symbol.Index)
-		// Export the variable: push value, then set export
-		c.emit(OpGetGlobal, symbol.Index)
+		// Export the variable (value is already on stack from OpSetGlobal)
 		nameIdx := c.addConstant(&objects.String{Value: stmt.Name.Value})
 		c.emit(OpSetExport, nameIdx)
+		// Pop the pushed-back value from OpSetExport
+		c.emit(OpPop)
 
 	case *parser.ConstStatement:
 		// Compile the value expression
@@ -924,12 +929,13 @@ func (c *Compiler) compileExportStatement(node *parser.ExportStatement) error {
 		}
 		// Define the constant in the symbol table
 		symbol := c.symbolTable.Define(stmt.Name.Value)
-		// Store in global
+		// Store in global (OpSetGlobal pushes the value back)
 		c.emit(OpSetGlobal, symbol.Index)
-		// Export the constant: push value, then set export
-		c.emit(OpGetGlobal, symbol.Index)
+		// Export the constant (value is already on stack from OpSetGlobal)
 		nameIdx := c.addConstant(&objects.String{Value: stmt.Name.Value})
 		c.emit(OpSetExport, nameIdx)
+		// Pop the pushed-back value from OpSetExport
+		c.emit(OpPop)
 
 	case *parser.ExpressionStatement:
 		// Handle function exports: export func add(a, b) { ... }
@@ -937,17 +943,17 @@ func (c *Compiler) compileExportStatement(node *parser.ExportStatement) error {
 			if fn.Name == "" {
 				return fmt.Errorf("exported function must have a name")
 			}
-			// Compile the function - this will emit OpClosure
+			// Compile the function - this will emit OpClosure and OpSetGlobal
 			if err := c.Compile(fn); err != nil {
 				return err
 			}
-			// The function closure is on the stack, define and export it
-			symbol := c.symbolTable.Define(fn.Name)
-			c.emit(OpSetGlobal, symbol.Index)
-			// Export the function: push value, then set export
-			c.emit(OpGetGlobal, symbol.Index)
+			// The function is now stored in the global by FunctionLiteral compilation
+			// OpSetGlobal pushed the value back, so it's on stack
+			// Export the function (value is already on stack from OpSetGlobal)
 			nameIdx := c.addConstant(&objects.String{Value: fn.Name})
 			c.emit(OpSetExport, nameIdx)
+			// Pop the pushed-back value from OpSetExport
+			c.emit(OpPop)
 			return nil
 		}
 		return fmt.Errorf("unsupported export expression type: %T", stmt.Expression)

@@ -13,6 +13,9 @@ type Module struct {
 
 	// Exports maps exported symbol names to their values
 	Exports map[string]objects.Object
+
+	// Globals stores the module's global variables for exported functions to access
+	Globals []objects.Object
 }
 
 // NewModule creates a new module with the given name.

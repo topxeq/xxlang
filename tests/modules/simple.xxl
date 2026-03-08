@@ -1,0 +1,11 @@
+// Simple test module
+var x = 10
+
+export func getX() {
+    return x
+}
+
+export func setX(val) {
+    x = val
+    return x
+}

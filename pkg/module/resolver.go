@@ -19,8 +19,14 @@ var (
 
 // Resolve resolves an import path relative to the importer.
 // It handles relative paths starting with "./" or "../".
-// The returned path will have the .xxl extension added if not present.
+// Standard library paths starting with "std/" are returned as-is.
+// The returned path will have the .xxl extension added if not present (for file-based modules).
 func Resolve(importerPath, importPath string) (string, error) {
+	// Check if it's a standard library module
+	if strings.HasPrefix(importPath, "std/") {
+		return importPath, nil
+	}
+
 	// Check if it's a relative path
 	if !strings.HasPrefix(importPath, "./") && !strings.HasPrefix(importPath, "../") {
 		return "", ErrBareImportNotSupported

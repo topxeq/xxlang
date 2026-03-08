@@ -1,0 +1,18 @@
+// Test increment specifically
+import * as utils from "./utils"
+
+println("Testing increment specifically:")
+
+// Check exports
+println("greeting: ", utils.greeting)
+println("increment: ", utils.increment)
+println("getCounter: ", utils.getCounter)
+
+// Call getCounter first
+println("\ngetCounter(): ", utils.getCounter())
+
+// Now call increment
+println("\nCalling increment via variable:")
+var inc = utils.increment
+println("inc: ", inc)
+inc()

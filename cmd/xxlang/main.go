@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/topxeq/xxlang/pkg/compiler"
@@ -195,21 +196,59 @@ func printHistory(history []string) {
 }
 
 func runFile(filename string) {
+	// Get absolute path for module resolution
+	absPath, err := filepath.Abs(filename)
+	if err != nil {
+		fmt.Printf("Error resolving path '%s': %v\n", filename, err)
+		os.Exit(1)
+	}
+
 	// Read the file
-	code, err := os.ReadFile(filename)
+	code, err := os.ReadFile(absPath)
 	if err != nil {
 		fmt.Printf("Error reading file '%s': %v\n", filename, err)
 		os.Exit(1)
 	}
 
-	repl := NewREPL()
-	result, err := repl.Execute(string(code))
-	if err != nil {
+	// Lexical analysis
+	l := lexer.New(string(code))
+
+	// Parsing
+	p := parser.New(l)
+	program := p.ParseProgram()
+
+	// Check for parser errors
+	if len(p.Errors()) > 0 {
+		fmt.Printf("Error: %v\n", formatParserErrors(p.Errors()))
+		os.Exit(1)
+	}
+
+	// Compilation
+	c := compiler.New()
+	if err := c.Compile(program); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Create main module for exports
+	mainModule := &objects.Module{
+		Name:    absPath,
+		Exports: make(map[string]objects.Object),
+	}
+
+	// Execution
+	bytecode := c.Bytecode()
+	v := vm.NewWithGlobalsStore(bytecode, make([]objects.Object, compiler.GlobalsSize))
+	v.SetSourcePath(absPath)
+	v.SetCurrentModule(mainModule)
+
+	if err := v.Run(); err != nil {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Print result if it's meaningful
+	result := v.LastPopped()
 	if result != nil && result != objects.NULL {
 		fmt.Println(result.Inspect())
 	}

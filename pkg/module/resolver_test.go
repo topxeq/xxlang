@@ -32,8 +32,18 @@ func TestResolveRelativePath(t *testing.T) {
 }
 
 func TestResolveBarePath(t *testing.T) {
-	_, err := Resolve("/project/main.xxl", "std/math")
+	_, err := Resolve("/project/main.xxl", "some/bare/path")
 	if err == nil {
-		t.Error("expected error for bare import path")
+		t.Error("expected error for bare import path without std/ prefix")
+	}
+}
+
+func TestResolveStdlibPath(t *testing.T) {
+	got, err := Resolve("/project/main.xxl", "std/math")
+	if err != nil {
+		t.Errorf("Resolve std/math error: %v", err)
+	}
+	if got != "std/math" {
+		t.Errorf("Resolve std/math = %s, want std/math", got)
 	}
 }

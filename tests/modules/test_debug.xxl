@@ -1,0 +1,11 @@
+// Test to understand the issue
+import { increment } from "./utils"
+
+// Test 1: Direct call
+println("Test 1:")
+var a = increment()
+println(a)
+
+// Test 2: Nested call with println
+println("Test 2:")
+println(increment())

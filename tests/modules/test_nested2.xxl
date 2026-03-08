@@ -1,0 +1,14 @@
+// Test nested call
+import { increment } from "./utils"
+
+// Call increment standalone first
+var x = increment()
+println("X: ", x)
+
+// Call increment standalone again
+var y = increment()
+println("Y: ", y)
+
+// Call increment standalone third time
+var z = increment()
+println("Z: ", z)

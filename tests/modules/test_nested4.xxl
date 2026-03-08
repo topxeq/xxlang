@@ -1,0 +1,8 @@
+// Test nested call with zero-arg function
+import { getCounter, increment, add } from "./utils"
+
+// Test getCounter (reads global, 0 args)
+println("Counter: ", getCounter())
+
+// Test increment (writes global, 0 args)
+println("After increment: ", increment())
