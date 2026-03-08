@@ -988,6 +988,48 @@ func (te *ThisExpression) String() string {
 	return "this"
 }
 
+// SuperExpression represents the 'super' keyword
+type SuperExpression struct {
+	Token lexer.Token // The 'super' token
+}
+
+func (se *SuperExpression) expressionNode() {}
+
+func (se *SuperExpression) TokenLiteral() string {
+	return se.Token.Literal
+}
+
+func (se *SuperExpression) String() string {
+	return "super"
+}
+
+// SuperCallExpression represents a super.method() call
+type SuperCallExpression struct {
+	Token  lexer.Token // The 'super' token
+	Method string
+	Args   []Expression
+}
+
+func (sc *SuperCallExpression) expressionNode() {}
+
+func (sc *SuperCallExpression) TokenLiteral() string {
+	return sc.Token.Literal
+}
+
+func (sc *SuperCallExpression) String() string {
+	var sb strings.Builder
+	args := make([]string, len(sc.Args))
+	for i, arg := range sc.Args {
+		args[i] = arg.String()
+	}
+	sb.WriteString("super.")
+	sb.WriteString(sc.Method)
+	sb.WriteString("(")
+	sb.WriteString(strings.Join(args, ", "))
+	sb.WriteString(")")
+	return sb.String()
+}
+
 // ForInStatement represents a for-in loop statement
 type ForInStatement struct {
 	Token    lexer.Token // The 'for' token
