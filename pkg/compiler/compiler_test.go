@@ -1030,3 +1030,169 @@ export func add(a, b) { return a + b; }
 		}
 	}
 }
+
+// ============================================
+// Class Compilation Tests
+// ============================================
+
+func TestClassStatementCompilation(t *testing.T) {
+	input := `
+		class Person {
+			var name = ""
+			func init(name) { this.name = name }
+		}
+	`
+	program := parse(input)
+	compiler := New()
+	err := compiler.Compile(program)
+	if err != nil {
+		t.Fatalf("compiler error: %v", err)
+	}
+
+	bytecode := compiler.Bytecode()
+	if len(bytecode.Instructions) == 0 {
+		t.Error("expected instructions to be generated")
+	}
+
+	// Should have OpClass opcode
+	if !containsOpcode(bytecode.Instructions, OpClass) {
+		t.Error("expected OpClass in instructions")
+	}
+
+	// Should have OpSetGlobal for storing the class
+	if !containsOpcode(bytecode.Instructions, OpSetGlobal) {
+		t.Error("expected OpSetGlobal in instructions")
+	}
+
+	// Check that 'Person' is defined in symbol table
+	symbol, ok := compiler.symbolTable.Resolve("Person")
+	if !ok {
+		t.Error("class 'Person' not defined in symbol table")
+	}
+	if symbol.Scope != GlobalScope {
+		t.Errorf("expected GlobalScope for 'Person', got %v", symbol.Scope)
+	}
+}
+
+func TestNewExpressionCompilation(t *testing.T) {
+	input := `
+		class Person {}
+		var p = new Person();
+	`
+	program := parse(input)
+	compiler := New()
+	err := compiler.Compile(program)
+	if err != nil {
+		t.Fatalf("compiler error: %v", err)
+	}
+
+	bytecode := compiler.Bytecode()
+	if !containsOpcode(bytecode.Instructions, OpNew) {
+		t.Error("expected OpNew in instructions")
+	}
+}
+
+func TestThisExpressionCompilation(t *testing.T) {
+	input := `
+		class Counter {
+			var count = 0
+			func increment() { this.count = this.count + 1 }
+		}
+	`
+	program := parse(input)
+	compiler := New()
+	err := compiler.Compile(program)
+	if err != nil {
+		t.Fatalf("compiler error: %v", err)
+	}
+
+	bytecode := compiler.Bytecode()
+
+	// Check that OpGetLocal and OpSetField are in method instructions
+	// Methods are compiled functions stored in constants
+	foundGetLocal := false
+	foundSetField := false
+	for _, c := range bytecode.Constants {
+		if fn, ok := c.(*CompiledFunction); ok {
+			if containsOpcode(fn.Instructions, OpGetLocal) {
+				foundGetLocal = true
+			}
+			if containsOpcode(fn.Instructions, OpSetField) {
+				foundSetField = true
+			}
+		}
+	}
+
+	if !foundGetLocal {
+		t.Error("expected OpGetLocal in method instructions for 'this'")
+	}
+	if !foundSetField {
+		t.Error("expected OpSetField in method instructions for field assignment")
+	}
+}
+
+func TestSuperCallExpressionCompilation(t *testing.T) {
+	input := `
+		class Animal {
+			func init(name) { }
+		}
+		class Dog extends Animal {
+			func init(name) { super.init(name) }
+		}
+	`
+	program := parse(input)
+	compiler := New()
+	err := compiler.Compile(program)
+	if err != nil {
+		t.Fatalf("compiler error: %v", err)
+	}
+
+	bytecode := compiler.Bytecode()
+
+	// Check that OpSuper is in method instructions
+	foundSuper := false
+	for _, c := range bytecode.Constants {
+		if fn, ok := c.(*CompiledFunction); ok {
+			if containsOpcode(fn.Instructions, OpSuper) {
+				foundSuper = true
+				break
+			}
+		}
+	}
+
+	if !foundSuper {
+		t.Error("expected OpSuper in method instructions")
+	}
+}
+
+func TestClassWithSuperclassCompilation(t *testing.T) {
+	input := `
+		class Animal { var name = "" }
+		class Dog extends Animal { var breed = "" }
+	`
+	program := parse(input)
+	compiler := New()
+	err := compiler.Compile(program)
+	if err != nil {
+		t.Fatalf("compiler error: %v", err)
+	}
+
+	bytecode := compiler.Bytecode()
+
+	// Should have 2 OpClass (one for each class)
+	count := countOpcode(bytecode.Instructions, OpClass)
+	if count != 2 {
+		t.Errorf("expected 2 OpClass, got %d", count)
+	}
+
+	// Check that both classes are in symbol table
+	for _, name := range []string{"Animal", "Dog"} {
+		symbol, ok := compiler.symbolTable.Resolve(name)
+		if !ok {
+			t.Errorf("class %q not defined in symbol table", name)
+		}
+		if symbol.Scope != GlobalScope {
+			t.Errorf("expected GlobalScope for %q, got %v", name, symbol.Scope)
+		}
+	}
+}

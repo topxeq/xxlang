@@ -616,6 +616,15 @@ func (c *Compiler) Compile(node parser.Node) error {
 			// So we need to reorder: pop value, push arr, push index, push value
 			// Actually, let's change the VM to handle the order correctly
 			c.emit(OpSetIndex)
+		case *parser.DotExpression:
+			// For obj.field = value, compile object then emit OpSetField
+			if err := c.Compile(left.Object); err != nil {
+				return err
+			}
+			// Stack is now: [value, object]
+			// Add field name constant
+			nameIdx := c.addConstant(&objects.String{Value: left.Property.Value})
+			c.emit(OpSetField, nameIdx)
 		default:
 			return fmt.Errorf("cannot assign to %T", left)
 		}
@@ -827,6 +836,18 @@ func (c *Compiler) Compile(node parser.Node) error {
 
 	case *parser.ExportStatement:
 		return c.compileExportStatement(node)
+
+	case *parser.ClassStatement:
+		return c.compileClassStatement(node)
+
+	case *parser.NewExpression:
+		return c.compileNewExpression(node)
+
+	case *parser.ThisExpression:
+		return c.compileThisExpression(node)
+
+	case *parser.SuperCallExpression:
+		return c.compileSuperCallExpression(node)
 
 	default:
 		return fmt.Errorf("unknown node type: %T", node)
@@ -1065,4 +1086,110 @@ func (c *Compiler) leaveScope() *CompiledFunction {
 		NumLocals:     numLocals,
 		FreeVariables: freeVars,
 	}
+}
+
+// compileClassStatement compiles a class declaration
+func (c *Compiler) compileClassStatement(node *parser.ClassStatement) error {
+	// Compile superclass (push null if none)
+	if node.SuperClass != nil {
+		symbol, ok := c.symbolTable.Resolve(node.SuperClass.Value)
+		if !ok {
+			return fmt.Errorf("undefined superclass: %s", node.SuperClass.Value)
+		}
+		c.emit(OpGetGlobal, symbol.Index)
+	} else {
+		c.emit(OpNull)
+	}
+
+	// Compile default fields as a map
+	c.emit(OpMap, 0)
+	for _, field := range node.Fields {
+		// Duplicate map
+		c.emit(OpDup)
+		// Key
+		nameIdx := c.addConstant(&objects.String{Value: field.Name.Value})
+		c.emit(OpConstant, nameIdx)
+		// Value
+		if err := c.Compile(field.Value); err != nil {
+			return err
+		}
+		c.emit(OpSetIndex)
+	}
+
+	// Compile methods as a map
+	c.emit(OpMap, 0)
+	for _, method := range node.Methods {
+		// Duplicate map
+		c.emit(OpDup)
+		// Key (method name)
+		nameIdx := c.addConstant(&objects.String{Value: method.Name})
+		c.emit(OpConstant, nameIdx)
+		// Compile method as function
+		if err := c.Compile(method); err != nil {
+			return err
+		}
+		c.emit(OpSetIndex)
+	}
+
+	// Create class
+	nameIdx := c.addConstant(&objects.String{Value: node.Name.Value})
+	c.emit(OpClass, nameIdx)
+
+	// Store class in global
+	symbol := c.symbolTable.Define(node.Name.Value)
+	c.emit(OpSetGlobal, symbol.Index)
+
+	return nil
+}
+
+// compileNewExpression compiles a new expression
+func (c *Compiler) compileNewExpression(node *parser.NewExpression) error {
+	// Get class
+	symbol, ok := c.symbolTable.Resolve(node.Class.String())
+	if !ok {
+		return fmt.Errorf("undefined class: %s", node.Class.String())
+	}
+	c.emit(OpGetGlobal, symbol.Index)
+
+	// Compile arguments
+	for _, arg := range node.Arguments {
+		if err := c.Compile(arg); err != nil {
+			return err
+		}
+	}
+
+	// Create instance
+	c.emit(OpNew, len(node.Arguments))
+
+	return nil
+}
+
+// compileThisExpression compiles this expression
+func (c *Compiler) compileThisExpression(node *parser.ThisExpression) error {
+	// Push current instance reference onto stack
+	// This is handled at VM level - we emit a special marker
+	c.emit(OpGetLocal, 0) // this is always first local in method context
+	return nil
+}
+
+// compileSuperCallExpression compiles a super.method() call
+func (c *Compiler) compileSuperCallExpression(node *parser.SuperCallExpression) error {
+	// Get super method
+	nameIdx := c.addConstant(&objects.String{Value: node.Method})
+	c.emit(OpSuper, nameIdx)
+
+	// Push this as first argument
+	c.emit(OpGetLocal, 0)
+
+	// Compile remaining arguments
+	for _, arg := range node.Args {
+		if err := c.Compile(arg); err != nil {
+			return err
+		}
+	}
+
+	// Call method
+	c.emit(OpCall, len(node.Args)+1) // +1 for this
+
+	return nil
 }
