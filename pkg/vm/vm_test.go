@@ -661,3 +661,49 @@ func TestVMGlobals(t *testing.T) {
 
 	testIntegerObject(t, 42, globals[0])
 }
+
+func TestClassCreation(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		{
+			`
+			class Person {
+				var name = ""
+			}
+			var p = new Person()
+			p.name
+			`,
+			"",
+		},
+		{
+			`
+			class Counter {
+				var count = 0
+				func inc() {
+					this.count = this.count + 1
+				}
+			}
+			var c = new Counter()
+			c.inc()
+			c.count
+			`,
+			1,
+		},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		switch expected := tt.expected.(type) {
+		case int:
+			testIntegerObject(t, int64(expected), vm.LastPopped())
+		case int64:
+			testIntegerObject(t, expected, vm.LastPopped())
+		case string:
+			testStringObject(t, expected, vm.LastPopped())
+		case nil:
+			testNullObject(t, vm.LastPopped())
+		}
+	}
+}

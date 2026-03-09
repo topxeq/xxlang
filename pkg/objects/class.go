@@ -9,8 +9,8 @@ import (
 type Class struct {
 	Name       string
 	SuperClass *Class
-	Methods    map[string]*CompiledFunction
-	InitMethod *CompiledFunction // constructor
+	Methods    map[string]Object // methods are CompiledFunction objects
+	InitMethod Object            // constructor method
 	Fields     map[string]Object // default field values
 }
 

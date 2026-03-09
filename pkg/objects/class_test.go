@@ -7,7 +7,7 @@ func TestClassObject(t *testing.T) {
 	class := &Class{
 		Name:       "Person",
 		SuperClass: nil,
-		Methods:    make(map[string]*CompiledFunction),
+		Methods:    make(map[string]Object),
 		Fields:     make(map[string]Object),
 	}
 
