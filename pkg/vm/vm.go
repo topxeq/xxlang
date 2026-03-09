@@ -17,14 +17,15 @@ const (
 
 // VM is the virtual machine that executes bytecode
 type VM struct {
-	constants     []objects.Object
-	stack         *Stack
-	frames        []*Frame
-	frameIndex    int
-	globals       []objects.Object
-	loader        *module.Loader   // Module cache and cycle detection
-	currentModule *objects.Module  // Current module context for exports
-	sourcePath    string           // Current source file path for imports
+	constants       []objects.Object
+	stack           *Stack
+	frames          []*Frame
+	frameIndex      int
+	globals         []objects.Object
+	loader          *module.Loader   // Module cache and cycle detection
+	currentModule   *objects.Module  // Current module context for exports
+	sourcePath      string           // Current source file path for imports
+	currentInstance *objects.Instance // Current instance for this binding
 }
 
 // New creates a new VM with the given bytecode
@@ -290,6 +291,11 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case compiler.OpCallMethod:
+			if err := vm.executeCallMethod(); err != nil {
+				return err
+			}
+
 		case compiler.OpBuiltin:
 			if err := vm.executeBuiltin(); err != nil {
 				return err
@@ -324,6 +330,31 @@ func (vm *VM) Run() error {
 
 		case compiler.OpModule:
 			if err := vm.executeModule(); err != nil {
+				return err
+			}
+
+		case compiler.OpClass:
+			if err := vm.executeOpClass(); err != nil {
+				return err
+			}
+
+		case compiler.OpNew:
+			if err := vm.executeOpNew(); err != nil {
+				return err
+			}
+
+		case compiler.OpGetField:
+			if err := vm.executeOpGetField(); err != nil {
+				return err
+			}
+
+		case compiler.OpSetField:
+			if err := vm.executeOpSetField(); err != nil {
+				return err
+			}
+
+		case compiler.OpSuper:
+			if err := vm.executeOpSuper(); err != nil {
 				return err
 			}
 
@@ -659,6 +690,16 @@ func (vm *VM) executeGetLocal() error {
 	vm.currentFrame().IP++
 
 	frame := vm.currentFrame()
+	// If this is a method call and localIndex is 0, return 'this'
+	if frame.This != nil {
+		if localIndex == 0 {
+			vm.stack.Push(frame.This)
+			return nil
+		}
+		// Adjust index if 'this' is present (shift locals by 1)
+		vm.stack.Push(frame.Locals[localIndex-1])
+		return nil
+	}
 	vm.stack.Push(frame.Locals[localIndex])
 	return nil
 }
@@ -669,8 +710,13 @@ func (vm *VM) executeSetLocal() error {
 
 	frame := vm.currentFrame()
 	value := vm.stack.Pop()
-	frame.Locals[localIndex] = value
-	// Push the value back for assignment chaining (a = b = c)
+	// Adjust index if 'this' is present (shift locals by 1)
+	if frame.This != nil && localIndex > 0 {
+		frame.Locals[localIndex-1] = value
+	} else if frame.This == nil {
+		frame.Locals[localIndex] = value
+	}
+	// If localIndex is 0 and This is set, ignore (can't reassign this)
 	vm.stack.Push(value)
 	return nil
 }
@@ -1237,7 +1283,8 @@ func (vm *VM) executeModule() error {
 }
 
 // executeGetMethod gets a property or method from an object.
-// Currently supports Module objects for namespace imports.
+// For instances getting a method, the instance is left on stack below the method
+// so that OpCallMethod can use it as 'this'.
 func (vm *VM) executeGetMethod() error {
 	nameIdx := vm.readUint16()
 	vm.currentFrame().IP += 2
@@ -1250,8 +1297,32 @@ func (vm *VM) executeGetMethod() error {
 		name = vm.constants[nameIdx].(*objects.String).Value
 	}
 
-	// Get the object from the stack
-	obj := vm.stack.Pop()
+	// Peek at the object on the stack (don't pop yet)
+	obj := vm.stack.Top()
+
+	// Handle Instance objects (for method/field access)
+	if instance, ok := obj.(*objects.Instance); ok {
+		// First check for method - leave instance on stack and push method
+		method := vm.findMethod(instance.Class, name)
+		if method != nil {
+			// Stack: [... instance] -> [... instance, method]
+			// OpCallMethod will pop method, use instance as 'this'
+			vm.stack.Push(method)
+			return nil
+		}
+		// Check if it's a field - pop instance, push field value
+		if val, ok := instance.Fields[name]; ok {
+			vm.stack.Pop() // pop instance
+			vm.stack.Push(val)
+			return nil
+		}
+		vm.stack.Pop() // pop instance
+		vm.stack.Push(objects.NULL)
+		return nil
+	}
+
+	// For non-instance objects, pop and handle normally
+	obj = vm.stack.Pop()
 
 	// Handle Module objects (for namespace imports)
 	if mod, ok := obj.(*objects.Module); ok {
@@ -1276,4 +1347,296 @@ func (vm *VM) executeGetMethod() error {
 	}
 
 	return fmt.Errorf("cannot access property '%s' on type %s", name, obj.Type())
+}
+
+// executeCallMethod calls a method on an instance with 'this' binding
+func (vm *VM) executeCallMethod() error {
+	numArgs := int(vm.readUint8())
+	vm.currentFrame().IP++
+
+	// Stack: [... instance, method, arg1, arg2, ...]
+	// Peek(numArgs) gets the method
+	// Peek(numArgs+1) gets the instance (this)
+
+	method := vm.stack.Peek(numArgs)
+	instance := vm.stack.Peek(numArgs + 1)
+
+	// Verify instance is an Instance object
+	inst, ok := instance.(*objects.Instance)
+	if !ok {
+		return fmt.Errorf("cannot call method on non-instance type: %T", instance)
+	}
+
+	// Set current instance for this/super binding
+	vm.currentInstance = inst
+
+	// Get the compiled function
+	var fn *compiler.CompiledFunction
+	var freeVars []objects.Object
+	var constants []objects.Object
+	var globals []objects.Object
+
+	switch m := method.(type) {
+	case *compiler.CompiledFunction:
+		fn = m
+	case *Closure:
+		fn = m.Fn
+		freeVars = m.FreeVars
+		constants = m.Constants
+		globals = m.Globals
+	default:
+		return fmt.Errorf("method is not a function: %T", method)
+	}
+
+	// Check argument count
+	if numArgs != fn.NumParameters {
+		return fmt.Errorf("wrong number of arguments: want=%d, got=%d", fn.NumParameters, numArgs)
+	}
+
+	// Pop the method from stack
+	vm.stack.Pop()
+
+	// Now stack is: [... instance, arg1, arg2, ...]
+	// Pop arguments in reverse order
+	args := make([]objects.Object, numArgs)
+	for i := numArgs - 1; i >= 0; i-- {
+		args[i] = vm.stack.Pop()
+	}
+
+	// Pop instance from stack
+	vm.stack.Pop()
+
+	// Create new frame with the instance as 'this'
+	frame := NewFrame(fn, vm.stack.Len())
+	frame.This = inst
+
+	// Store arguments in locals (starting at index 0, shifted by executeGetLocal)
+	for i := 0; i < numArgs; i++ {
+		frame.Locals[i] = args[i]
+	}
+
+	// Set free variables
+	if freeVars != nil {
+		frame.FreeVars = freeVars
+	}
+
+	// Set constants and globals
+	frame.Constants = constants
+	frame.Globals = globals
+
+	vm.pushFrame(frame)
+	return nil
+}
+
+// executeOpClass creates a class object
+func (vm *VM) executeOpClass() error {
+	nameIdx := int(vm.readUint16())
+	vm.currentFrame().IP += 2
+
+	name := vm.constants[nameIdx].(*objects.String).Value
+
+	// Pop methods map
+	methodsObj := vm.stack.Pop()
+	methods, ok := methodsObj.(*objects.Map)
+	if !ok {
+		return fmt.Errorf("methods must be a map")
+	}
+
+	// Pop fields map
+	fieldsObj := vm.stack.Pop()
+	fields, ok := fieldsObj.(*objects.Map)
+	if !ok {
+		return fmt.Errorf("fields must be a map")
+	}
+
+	// Pop superclass (or null)
+	superObj := vm.stack.Pop()
+	var superClass *objects.Class
+	if superObj != objects.NULL {
+		superClass, ok = superObj.(*objects.Class)
+		if !ok {
+			return fmt.Errorf("superclass must be a class")
+		}
+	}
+
+	// Build methods map
+	classMethods := make(map[string]objects.Object)
+	var initMethod objects.Object
+	for _, pair := range methods.Pairs {
+		methodName := pair.Key.(*objects.String).Value
+		classMethods[methodName] = pair.Value
+		if methodName == "init" {
+			initMethod = pair.Value
+		}
+	}
+
+	// Build fields map
+	classFields := make(map[string]objects.Object)
+	for _, pair := range fields.Pairs {
+		fieldName := pair.Key.(*objects.String).Value
+		classFields[fieldName] = pair.Value
+	}
+
+	// Create class
+	class := &objects.Class{
+		Name:       name,
+		SuperClass: superClass,
+		Methods:    classMethods,
+		InitMethod: initMethod,
+		Fields:     classFields,
+	}
+
+	vm.stack.Push(class)
+	return nil
+}
+
+// executeOpNew creates a new instance
+func (vm *VM) executeOpNew() error {
+	argCount := int(vm.readUint8())
+	vm.currentFrame().IP++
+
+	classObj := vm.stack.Pop()
+	class, ok := classObj.(*objects.Class)
+	if !ok {
+		return fmt.Errorf("cannot use 'new' on non-class type")
+	}
+
+	// Collect fields from class hierarchy
+	fields := make(map[string]objects.Object)
+	vm.collectFields(class, fields)
+
+	// Create instance
+	instance := &objects.Instance{
+		Class:  class,
+		Fields: fields,
+	}
+
+	// Call init if exists
+	if class.InitMethod != nil {
+		// Get the compiled function for init
+		initFn, ok := class.InitMethod.(*compiler.CompiledFunction)
+		if !ok {
+			return fmt.Errorf("init method must be a function")
+		}
+
+		// Set current instance for this binding
+		vm.currentInstance = instance
+
+		// Push instance as first argument (this)
+		vm.stack.Push(instance)
+
+		// Pop arguments and push them back in order
+		args := make([]objects.Object, argCount)
+		for i := argCount - 1; i >= 0; i-- {
+			args[i] = vm.stack.Pop()
+		}
+		for _, arg := range args {
+			vm.stack.Push(arg)
+		}
+
+		// Call init
+		if err := vm.callFunction(initFn, argCount+1, nil, nil, nil); err != nil {
+			return err
+		}
+
+		// Pop return value
+		vm.stack.Pop()
+	}
+
+	// Push instance onto stack
+	vm.stack.Push(instance)
+	return nil
+}
+
+// executeOpGetField gets a field from an instance
+func (vm *VM) executeOpGetField() error {
+	nameIdx := int(vm.readUint16())
+	vm.currentFrame().IP += 2
+
+	name := vm.constants[nameIdx].(*objects.String).Value
+
+	obj := vm.stack.Pop()
+	instance, ok := obj.(*objects.Instance)
+	if !ok {
+		return fmt.Errorf("cannot access field '%s' on %s", name, obj.Type())
+	}
+
+	value, ok := instance.Fields[name]
+	if !ok {
+		vm.stack.Push(objects.NULL)
+	} else {
+		vm.stack.Push(value)
+	}
+	return nil
+}
+
+// executeOpSetField sets a field on an instance
+func (vm *VM) executeOpSetField() error {
+	nameIdx := int(vm.readUint16())
+	vm.currentFrame().IP += 2
+
+	name := vm.constants[nameIdx].(*objects.String).Value
+
+	// Stack order from compiler: [value, object]
+	// value is pushed first, then object
+	// So we pop: object (top), then value (below)
+	obj := vm.stack.Pop()
+	value := vm.stack.Pop()
+
+	instance, ok := obj.(*objects.Instance)
+	if !ok {
+		return fmt.Errorf("cannot set field '%s' on %s", name, obj.Type())
+	}
+
+	instance.Fields[name] = value
+	vm.stack.Push(value)
+	return nil
+}
+
+// executeOpSuper gets a method from the superclass
+func (vm *VM) executeOpSuper() error {
+	nameIdx := int(vm.readUint16())
+	vm.currentFrame().IP += 2
+
+	name := vm.constants[nameIdx].(*objects.String).Value
+
+	if vm.currentInstance == nil {
+		return fmt.Errorf("cannot use 'super' outside of method context")
+	}
+
+	class := vm.currentInstance.Class
+	if class.SuperClass == nil {
+		return fmt.Errorf("class '%s' has no superclass", class.Name)
+	}
+
+	// Find method in superclass chain
+	method := vm.findMethod(class.SuperClass, name)
+	if method == nil {
+		return fmt.Errorf("method '%s' not found in superclass", name)
+	}
+
+	vm.stack.Push(method)
+	return nil
+}
+
+// collectFields collects fields from class hierarchy
+func (vm *VM) collectFields(class *objects.Class, fields map[string]objects.Object) {
+	// Collect from parent first
+	if class.SuperClass != nil {
+		vm.collectFields(class.SuperClass, fields)
+	}
+	// Collect from this class (overrides parent)
+	for name, value := range class.Fields {
+		fields[name] = value
+	}
+}
+
+// findMethod finds a method in class hierarchy
+func (vm *VM) findMethod(class *objects.Class, name string) objects.Object {
+	for c := class; c != nil; c = c.SuperClass {
+		if method, ok := c.Methods[name]; ok {
+			return method
+		}
+	}
+	return nil
 }

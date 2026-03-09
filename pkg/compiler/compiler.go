@@ -692,19 +692,39 @@ func (c *Compiler) Compile(node parser.Node) error {
 		}
 
 	case *parser.CallExpression:
-		// Compile function
-		if err := c.Compile(node.Function); err != nil {
-			return err
-		}
-
-		// Compile arguments
-		for _, arg := range node.Arguments {
-			if err := c.Compile(arg); err != nil {
+		// Check if this is a method call (obj.method())
+		if dot, ok := node.Function.(*parser.DotExpression); ok {
+			// Compile the object
+			if err := c.Compile(dot.Object); err != nil {
 				return err
 			}
-		}
+			// Get the method name
+			nameConst := c.addConstant(&objects.String{Value: dot.Property.Value})
+			c.emit(OpGetMethod, nameConst)
+			// Compile arguments
+			for _, arg := range node.Arguments {
+				if err := c.Compile(arg); err != nil {
+					return err
+				}
+			}
+			// Call method with this binding
+			c.emit(OpCallMethod, len(node.Arguments))
+		} else {
+			// Regular function call
+			// Compile function
+			if err := c.Compile(node.Function); err != nil {
+				return err
+			}
 
-		c.emit(OpCall, len(node.Arguments))
+			// Compile arguments
+			for _, arg := range node.Arguments {
+				if err := c.Compile(arg); err != nil {
+					return err
+				}
+			}
+
+			c.emit(OpCall, len(node.Arguments))
+		}
 
 	case *parser.DotExpression:
 		// Compile object
@@ -1101,11 +1121,8 @@ func (c *Compiler) compileClassStatement(node *parser.ClassStatement) error {
 		c.emit(OpNull)
 	}
 
-	// Compile default fields as a map
-	c.emit(OpMap, 0)
+	// Compile default fields as key-value pairs
 	for _, field := range node.Fields {
-		// Duplicate map
-		c.emit(OpDup)
 		// Key
 		nameIdx := c.addConstant(&objects.String{Value: field.Name.Value})
 		c.emit(OpConstant, nameIdx)
@@ -1113,14 +1130,12 @@ func (c *Compiler) compileClassStatement(node *parser.ClassStatement) error {
 		if err := c.Compile(field.Value); err != nil {
 			return err
 		}
-		c.emit(OpSetIndex)
 	}
+	// Create fields map from key-value pairs
+	c.emit(OpMap, len(node.Fields))
 
-	// Compile methods as a map
-	c.emit(OpMap, 0)
+	// Compile methods as key-value pairs
 	for _, method := range node.Methods {
-		// Duplicate map
-		c.emit(OpDup)
 		// Key (method name)
 		nameIdx := c.addConstant(&objects.String{Value: method.Name})
 		c.emit(OpConstant, nameIdx)
@@ -1128,8 +1143,9 @@ func (c *Compiler) compileClassStatement(node *parser.ClassStatement) error {
 		if err := c.Compile(method); err != nil {
 			return err
 		}
-		c.emit(OpSetIndex)
 	}
+	// Create methods map from key-value pairs
+	c.emit(OpMap, len(node.Methods))
 
 	// Create class
 	nameIdx := c.addConstant(&objects.String{Value: node.Name.Value})

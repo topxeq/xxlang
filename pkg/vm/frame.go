@@ -15,6 +15,7 @@ type Frame struct {
 	FreeVars    []objects.Object  // Free variables (captured from closure)
 	Constants   []objects.Object  // Constants for this frame (from closure or VM)
 	Globals     []objects.Object  // Globals for this frame (from closure's module or VM)
+	This        objects.Object    // 'this' for method calls
 }
 
 // NewFrame creates a new call frame
@@ -27,6 +28,7 @@ func NewFrame(fn *compiler.CompiledFunction, basePointer int) *Frame {
 		FreeVars:    make([]objects.Object, len(fn.FreeVariables)),
 		Constants:   nil,  // Will be set by callFunction
 		Globals:     nil,  // Will be set by callFunction
+		This:        nil,  // Will be set by callFunction for method calls
 	}
 }
 
