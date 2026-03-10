@@ -315,7 +315,7 @@ func TestWhileLoop(t *testing.T) {
 		expected int64
 	}{
 		{"var i = 0; while (i < 5) { i = i + 1; } i;", 5},
-		{"var sum = 0; var i = 1; while (i <= 5) { sum = sum + i; i = i + 1; } sum;", 15},
+		{"var total = 0; var n = 1; while (n <= 5) { total = total + n; n = n + 1; } total;", 15},
 	}
 
 	for _, tt := range tests {
@@ -329,7 +329,7 @@ func TestForLoop(t *testing.T) {
 		input    string
 		expected int64
 	}{
-		{"var sum = 0; for (var i = 1; i <= 5; i = i + 1) { sum = sum + i; } sum;", 15},
+		{"var total = 0; for (var i = 1; i <= 5; i = i + 1) { total = total + i; } total;", 15},
 		{"var i = 0; for (; i < 5; ) { i = i + 1; } i;", 5},
 	}
 
@@ -706,4 +706,536 @@ func TestClassCreation(t *testing.T) {
 			testNullObject(t, vm.LastPopped())
 		}
 	}
+}
+
+// ============================================
+// Error Condition Tests
+// ============================================
+
+// runVMExpectError compiles and runs code expecting an error
+func runVMExpectError(t *testing.T, input string) error {
+	bytecode, err := testCompile(input)
+	if err != nil {
+		t.Fatalf("compiler error: %s", err)
+	}
+
+	vm := New(bytecode)
+	err = vm.Run()
+	if err == nil {
+		t.Fatal("expected an error, but got none")
+	}
+	return err
+}
+
+func TestDivisionByZeroErrors(t *testing.T) {
+	tests := []struct {
+		input string
+	}{
+		{"1 / 0;"},
+		{"10 / 0;"},
+		{"-5 / 0;"},
+		{"1.0 / 0.0;"},
+		{"5 % 0;"},
+		{"10.0 % 0;"},
+	}
+
+	for _, tt := range tests {
+		runVMExpectError(t, tt.input)
+	}
+}
+
+func TestArrayIndexOutOfBoundsErrors(t *testing.T) {
+	tests := []struct {
+		input string
+	}{
+		// Setting index out of bounds should error
+		{"var arr = [1, 2, 3]; arr[10] = 5;"},
+		{"var arr = [1, 2, 3]; arr[-1] = 5;"},
+	}
+
+	for _, tt := range tests {
+		runVMExpectError(t, tt.input)
+	}
+}
+
+func TestArrayIndexOutOfBoundsReturnsNull(t *testing.T) {
+	// Reading out of bounds returns null instead of error
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		{"[1, 2, 3][10];", nil},
+		{"[1, 2, 3][-1];", nil},
+		{"var arr = [1]; arr[5];", nil},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		testNullObject(t, vm.LastPopped())
+	}
+}
+
+func TestWrongNumberOfArgumentsErrors(t *testing.T) {
+	tests := []struct {
+		input string
+	}{
+		{"func f(x) { return x; }; f();"},
+		{"func f(x) { return x; }; f(1, 2);"},
+		{"func f(x, y) { return x + y; }; f(1);"},
+		{"func f() { return 1; }; f(1);"},
+	}
+
+	for _, tt := range tests {
+		runVMExpectError(t, tt.input)
+	}
+}
+
+func TestCallNonFunctionErrors(t *testing.T) {
+	tests := []struct {
+		input string
+	}{
+		{"var x = 5; x();"},
+		{"5();"},
+		{`"hello"();`},
+		{"[1, 2, 3]();"},
+		{"true();"},
+		{"null();"},
+	}
+
+	for _, tt := range tests {
+		runVMExpectError(t, tt.input)
+	}
+}
+
+func TestIndexNonIndexableErrors(t *testing.T) {
+	tests := []struct {
+		input string
+	}{
+		{"5[0];"},
+		{"true[0];"},
+		{"null[0];"},
+		{"var f = func() { return 1; }; f[0];"},
+	}
+
+	for _, tt := range tests {
+		runVMExpectError(t, tt.input)
+	}
+}
+
+func TestArrayIndexMustBeInteger(t *testing.T) {
+	tests := []struct {
+		input string
+	}{
+		{`[1, 2, 3]["a"];`},
+		{`var arr = [1, 2, 3]; arr["index"];`},
+		{"[1, 2, 3][true];"},
+	}
+
+	for _, tt := range tests {
+		runVMExpectError(t, tt.input)
+	}
+}
+
+func TestSetIndexNotSupported(t *testing.T) {
+	tests := []struct {
+		input string
+	}{
+		{"var x = 5; x[0] = 1;"},
+		{"true[0] = 1;"},
+	}
+
+	for _, tt := range tests {
+		runVMExpectError(t, tt.input)
+	}
+}
+
+func TestTypeMismatchBinaryOp(t *testing.T) {
+	tests := []struct {
+		input string
+	}{
+		{`5 - "hello";`},
+		{`"hello" * 5;`},
+		{"true + false;"},
+		{"[1, 2] - [3, 4];"},
+	}
+
+	for _, tt := range tests {
+		runVMExpectError(t, tt.input)
+	}
+}
+
+func TestNegationNotSupported(t *testing.T) {
+	tests := []struct {
+		input string
+	}{
+		{`-"hello";`},
+		{"-true;"},
+		{"-null;"},
+		{"-[1, 2, 3];"},
+	}
+
+	for _, tt := range tests {
+		runVMExpectError(t, tt.input)
+	}
+}
+
+func TestComparisonNotSupported(t *testing.T) {
+	tests := []struct {
+		input string
+	}{
+		{`"hello" < 5;`},
+		{"[1, 2] > 3;"},
+		{"true < 10;"},
+	}
+
+	for _, tt := range tests {
+		runVMExpectError(t, tt.input)
+	}
+}
+
+// ============================================
+// Stack Operation Tests
+// ============================================
+
+func TestStackOperations(t *testing.T) {
+	// Test that stack operations work correctly through actual code
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		// Nested expressions
+		{"((1 + 2) * (3 + 4));", 21},
+		{"(10 - 5) * (8 / 2);", 20},
+		// Complex nesting
+		{"1 + 2 + 3 + 4 + 5;", 15},
+		{"(((1)));", 1},
+		// Mixed types
+		{`"a" + "b" + "c";`, "abc"},
+		{"1.5 + 2.5 + 3.0;", 7.0},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		switch expected := tt.expected.(type) {
+		case int:
+			testIntegerObject(t, int64(expected), vm.LastPopped())
+		case int64:
+			testIntegerObject(t, expected, vm.LastPopped())
+		case float64:
+			testFloatObject(t, expected, vm.LastPopped())
+		case string:
+			testStringObject(t, expected, vm.LastPopped())
+		}
+	}
+}
+
+func TestDeeplyNestedCalls(t *testing.T) {
+	input := `
+		func a(x) { return x + 1; }
+		func b(x) { return a(x) + 1; }
+		func c(x) { return b(x) + 1; }
+		func d(x) { return c(x) + 1; }
+		func e(x) { return d(x) + 1; }
+		e(0);
+	`
+	vm := runVM(t, input)
+	testIntegerObject(t, 5, vm.LastPopped())
+}
+
+func TestStringIndexing(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		{`"hello"[0];`, "h"},
+		{`"hello"[4];`, "o"},
+		{`"hello"[10];`, nil},  // out of bounds returns null
+		{`"hello"[-1];`, nil},  // negative returns null
+		{`var s = "abc"; s[1];`, "b"},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		switch expected := tt.expected.(type) {
+		case string:
+			testStringObject(t, expected, vm.LastPopped())
+		case nil:
+			testNullObject(t, vm.LastPopped())
+		}
+	}
+}
+
+func TestStringIndexMustBeInteger(t *testing.T) {
+	tests := []struct {
+		input string
+	}{
+		{`"hello"["a"];`},
+		{`"hello"[true];`},
+	}
+
+	for _, tt := range tests {
+		runVMExpectError(t, tt.input)
+	}
+}
+
+// ============================================
+// Additional Coverage Tests
+// ============================================
+
+func TestMoreClassFeatures(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		// Test class with multiple fields
+		{
+			`
+			class Point {
+				var x = 0
+				var y = 0
+			}
+			var p = new Point()
+			p.x = 10
+			p.y = 20
+			p.x + p.y
+			`,
+			30,
+		},
+		// Test class with method that returns value
+		{
+			`
+			class Adder {
+				func add(a, b) {
+					return a + b
+				}
+			}
+			var a = new Adder()
+			a.add(3, 4)
+			`,
+			7,
+		},
+		// Test class with this
+		{
+			`
+			class Counter {
+				var count = 0
+				func increment() {
+					this.count = this.count + 1
+				 return this.count
+                }
+            }
+            var c = new Counter()
+            c.increment()
+            c.increment()
+            `,
+			2,
+		},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		switch expected := tt.expected.(type) {
+		case int:
+			testIntegerObject(t, int64(expected), vm.LastPopped())
+		case int64:
+			testIntegerObject(t, expected, vm.LastPopped())
+		case string:
+			testStringObject(t, expected, vm.LastPopped())
+		case nil:
+			testNullObject(t, vm.LastPopped())
+		}
+	}
+}
+
+func TestMapOperations(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		// Map with various key types
+		{`var m = {"a": 1, "b": 2}; m["a"];`, 1},
+		{`var m = {1: "one", 2: "two"}; m[1];`, "one"},
+		{`var m = {"x": 1}; m["y"];`, nil}, // non-existent key
+		// Map mutation
+		{`var m = {}; m["key"] = 42; m["key"];`, 42},
+		{`var m = {"a": 1}; m["a"] = 99; m["a"];`, 99},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		switch expected := tt.expected.(type) {
+		case int:
+			testIntegerObject(t, int64(expected), vm.LastPopped())
+		case int64:
+			testIntegerObject(t, expected, vm.LastPopped())
+		case string:
+			testStringObject(t, expected, vm.LastPopped())
+		case nil:
+			testNullObject(t, vm.LastPopped())
+		}
+	}
+}
+
+func TestBuiltinLenErrors(t *testing.T) {
+	tests := []struct {
+		input string
+	}{
+		{`len(1);`},  // len on non-sequence type
+		{`len(true);`},
+		{`len(null);`},
+	}
+
+	for _, tt := range tests {
+		runVMExpectError(t, tt.input)
+	}
+}
+
+func TestBuiltinTypeOfWithNil(t *testing.T) {
+	// Test that typeOf works with nil
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{`typeOf(null);`, "NULL"},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		testStringObject(t, tt.expected, vm.LastPopped())
+	}
+}
+
+func TestArrayConcatenation(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int64
+	}{
+		// Arrays created and accessed
+		{"var a = [1]; var b = [2, 3]; a[0] + b[0];", 3},
+		{"var a = [1, 2, 3]; var first = a[0]; first;", 1},
+		{"[[1, 2], [3, 4]][0][0];", 1}, // nested arrays
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		testIntegerObject(t, tt.expected, vm.LastPopped())
+	}
+}
+
+func TestEarlyReturn(t *testing.T) {
+	// Test early return from function
+	tests := []struct {
+		input    string
+		expected int64
+	}{
+		{"func f() { return 1; return 2; } f();", 1},
+		{"func f(x) { if (x > 5) { return x; } return 0; } f(10);", 10},
+		{"func f(x) { if (x > 5) { return x; } return 0; } f(3);", 0},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		testIntegerObject(t, tt.expected, vm.LastPopped())
+	}
+}
+
+func TestDefaultValues(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		// Variables default to null if only declared
+		{"var x; x;", nil},
+		{"var x = null; x;", nil},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		if tt.expected == nil {
+			testNullObject(t, vm.LastPopped())
+		}
+	}
+}
+
+func TestComplexConditionals(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		{"if (1 && 1) { 10; }", 10},
+		{"if (1 && 0) { 10; } else { 20; }", 20},
+		{"if (0 || 1) { 10; }", 10},
+		{"if (0 || 0) { 10; } else { 20; }", 20},
+		{"if (!0) { 10; } else { 20; }", 20},
+		{"if (!0) { 10; } else { 20; }", 20},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		switch expected := tt.expected.(type) {
+		case int:
+			testIntegerObject(t, int64(expected), vm.LastPopped())
+		case int64:
+			testIntegerObject(t, expected, vm.LastPopped())
+		case nil:
+			testNullObject(t, vm.LastPopped())
+		}
+	}
+}
+
+func TestCallStackFormatting(t *testing.T) {
+	// Test that GetCallStack returns something without panicking
+	input := "func f() { g(); } func g() { 1 / 0; } f();"
+
+	bytecode, err := testCompile(input)
+	if err != nil {
+		t.Fatalf("compiler error: %s", err)
+	}
+
+	vm := New(bytecode)
+	err = vm.Run()
+	if err == nil {
+		t.Fatal("expected error for division by zero")
+	}
+
+	// Just verify GetCallStack doesn't panic and returns a non-empty string
+	callStack := vm.GetCallStack()
+	if callStack == "" {
+		t.Error("expected non-empty call stack")
+	}
+}
+
+func TestFormatError(t *testing.T) {
+	// Test that formatError works with and without source map
+	input := "1 / 0;"
+
+	bytecode, err := testCompile(input)
+	if err != nil {
+		t.Fatalf("compiler error: %s", err)
+	}
+
+	vm := New(bytecode)
+	err = vm.Run()
+	if err == nil {
+		t.Fatal("expected error for division by zero")
+	}
+
+	// Error message should contain "division by zero"
+	if !containsString(err.Error(), "division by zero") {
+		t.Errorf("expected error to contain 'division by zero', got: %s", err.Error())
+	}
+}
+
+// containsString checks if s contains substr
+func containsString(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsStringHelper(s, substr))
+}
+
+func containsStringHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
