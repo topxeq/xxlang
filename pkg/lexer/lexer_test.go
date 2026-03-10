@@ -381,3 +381,495 @@ func TestNextToken_DotOperator(t *testing.T) {
 		}
 	}
 }
+
+// Edge case tests
+
+func TestNextToken_UnicodeStrings(t *testing.T) {
+	input := `"hello world" "中文测试" "日本語" "emoji: 🎉" "mixed: hello世界"`
+
+	expected := []Token{
+		{Type: TokenString, Literal: "hello world"},
+		{Type: TokenString, Literal: "中文测试"},
+		{Type: TokenString, Literal: "日本語"},
+		{Type: TokenString, Literal: "emoji: 🎉"},
+		{Type: TokenString, Literal: "mixed: hello世界"},
+		{Type: TokenEOF, Literal: ""},
+	}
+
+	l := New(input)
+
+	for i, exp := range expected {
+		tok := l.NextToken()
+		if tok.Type != exp.Type {
+			t.Fatalf("tests[%d] - wrong token type. expected=%q, got=%q",
+				i, exp.Type, tok.Type)
+		}
+		if tok.Literal != exp.Literal {
+			t.Fatalf("tests[%d] - wrong literal. expected=%q, got=%q",
+				i, exp.Literal, tok.Literal)
+		}
+	}
+}
+
+func TestNextToken_EscapeSequences(t *testing.T) {
+	input := `"newline\n" "tab\t" "return\r" "null\0" "quote\"" "backslash\\" "unknown\x"`
+
+	expected := []Token{
+		{Type: TokenString, Literal: "newline\n"},
+		{Type: TokenString, Literal: "tab\t"},
+		{Type: TokenString, Literal: "return\r"},
+		{Type: TokenString, Literal: "null\x00"},
+		{Type: TokenString, Literal: "quote\""},
+		{Type: TokenString, Literal: "backslash\\"},
+		{Type: TokenString, Literal: "unknownx"},
+		{Type: TokenEOF, Literal: ""},
+	}
+
+	l := New(input)
+
+	for i, exp := range expected {
+		tok := l.NextToken()
+		if tok.Type != exp.Type {
+			t.Fatalf("tests[%d] - wrong token type. expected=%q, got=%q",
+				i, exp.Type, tok.Type)
+		}
+		if tok.Literal != exp.Literal {
+			t.Fatalf("tests[%d] - wrong literal. expected=%q, got=%q",
+				i, exp.Literal, tok.Literal)
+		}
+	}
+}
+
+func TestNextToken_LargeIntegers(t *testing.T) {
+	input := `9223372036854775807 0 1234567890123456789`
+
+	expected := []Token{
+		{Type: TokenInt, Literal: "9223372036854775807"},
+		{Type: TokenInt, Literal: "0"},
+		{Type: TokenInt, Literal: "1234567890123456789"},
+		{Type: TokenEOF, Literal: ""},
+	}
+
+	l := New(input)
+
+	for i, exp := range expected {
+		tok := l.NextToken()
+		if tok.Type != exp.Type {
+			t.Fatalf("tests[%d] - wrong token type. expected=%q, got=%q",
+				i, exp.Type, tok.Type)
+		}
+		if tok.Literal != exp.Literal {
+			t.Fatalf("tests[%d] - wrong literal. expected=%q, got=%q",
+				i, exp.Literal, tok.Literal)
+		}
+	}
+}
+
+func TestNextToken_FloatsWithExponents(t *testing.T) {
+	input := `1e10 1E10 1e+10 1e-10 1.5e10 1.5E-5 1.5e+5 9.999999e99`
+
+	expected := []Token{
+		{Type: TokenFloat, Literal: "1e10"},
+		{Type: TokenFloat, Literal: "1E10"},
+		{Type: TokenFloat, Literal: "1e+10"},
+		{Type: TokenFloat, Literal: "1e-10"},
+		{Type: TokenFloat, Literal: "1.5e10"},
+		{Type: TokenFloat, Literal: "1.5E-5"},
+		{Type: TokenFloat, Literal: "1.5e+5"},
+		{Type: TokenFloat, Literal: "9.999999e99"},
+		{Type: TokenEOF, Literal: ""},
+	}
+
+	l := New(input)
+
+	for i, exp := range expected {
+		tok := l.NextToken()
+		if tok.Type != exp.Type {
+			t.Fatalf("tests[%d] - wrong token type. expected=%q, got=%q",
+				i, exp.Type, tok.Type)
+		}
+		if tok.Literal != exp.Literal {
+			t.Fatalf("tests[%d] - wrong literal. expected=%q, got=%q",
+				i, exp.Literal, tok.Literal)
+		}
+	}
+}
+
+func TestNextToken_NegativeNumbers(t *testing.T) {
+	input := `-5 -3.14 -1e10 -0.5`
+
+	expected := []Token{
+		{Type: TokenMinus, Literal: "-"},
+		{Type: TokenInt, Literal: "5"},
+		{Type: TokenMinus, Literal: "-"},
+		{Type: TokenFloat, Literal: "3.14"},
+		{Type: TokenMinus, Literal: "-"},
+		{Type: TokenFloat, Literal: "1e10"},
+		{Type: TokenMinus, Literal: "-"},
+		{Type: TokenFloat, Literal: "0.5"},
+		{Type: TokenEOF, Literal: ""},
+	}
+
+	l := New(input)
+
+	for i, exp := range expected {
+		tok := l.NextToken()
+		if tok.Type != exp.Type {
+			t.Fatalf("tests[%d] - wrong token type. expected=%q, got=%q",
+				i, exp.Type, tok.Type)
+		}
+		if tok.Literal != exp.Literal {
+			t.Fatalf("tests[%d] - wrong literal. expected=%q, got=%q",
+				i, exp.Literal, tok.Literal)
+		}
+	}
+}
+
+func TestNextToken_ConsecutiveOperators(t *testing.T) {
+	// Test operators that are adjacent but not combined (separated by space)
+	// and operators that are combined without space
+	input := `<< >> != < = > = && ||`
+
+	expected := []Token{
+		{Type: TokenLT, Literal: "<"},
+		{Type: TokenLT, Literal: "<"},
+		{Type: TokenGT, Literal: ">"},
+		{Type: TokenGT, Literal: ">"},
+		{Type: TokenNotEqual, Literal: "!="},
+		{Type: TokenLT, Literal: "<"},
+		{Type: TokenAssign, Literal: "="},
+		{Type: TokenGT, Literal: ">"},
+		{Type: TokenAssign, Literal: "="},
+		{Type: TokenAnd, Literal: "&&"},
+		{Type: TokenOr, Literal: "||"},
+		{Type: TokenEOF, Literal: ""},
+	}
+
+	l := New(input)
+
+	for i, exp := range expected {
+		tok := l.NextToken()
+		if tok.Type != exp.Type {
+			t.Fatalf("tests[%d] - wrong token type. expected=%q, got=%q",
+				i, exp.Type, tok.Type)
+		}
+		if tok.Literal != exp.Literal {
+			t.Fatalf("tests[%d] - wrong literal. expected=%q, got=%q",
+				i, exp.Literal, tok.Literal)
+		}
+	}
+}
+
+func TestNextToken_UnterminatedString(t *testing.T) {
+	input := `"unterminated string`
+
+	l := New(input)
+	tok := l.NextToken()
+
+	if tok.Type != TokenString {
+		t.Fatalf("wrong token type. expected=%q, got=%q", TokenString, tok.Type)
+	}
+	if tok.Literal != "unterminated string" {
+		t.Fatalf("wrong literal. expected=%q, got=%q", "unterminated string", tok.Literal)
+	}
+
+	// After unterminated string, we should get EOF
+	tok = l.NextToken()
+	if tok.Type != TokenEOF {
+		t.Fatalf("expected EOF after unterminated string, got=%q", tok.Type)
+	}
+}
+
+func TestNextToken_IllegalCharacters(t *testing.T) {
+	input := `@ # $ ` + "`"
+
+	expected := []Token{
+		{Type: TokenIllegal, Literal: "@"},
+		{Type: TokenIllegal, Literal: "#"},
+		{Type: TokenIllegal, Literal: "$"},
+		{Type: TokenIllegal, Literal: "`"},
+		{Type: TokenEOF, Literal: ""},
+	}
+
+	l := New(input)
+
+	for i, exp := range expected {
+		tok := l.NextToken()
+		if tok.Type != exp.Type {
+			t.Fatalf("tests[%d] - wrong token type. expected=%q, got=%q",
+				i, exp.Type, tok.Type)
+		}
+		if tok.Literal != exp.Literal {
+			t.Fatalf("tests[%d] - wrong literal. expected=%q, got=%q",
+				i, exp.Literal, tok.Literal)
+		}
+	}
+}
+
+func TestNextToken_AssignCompoundOperators(t *testing.T) {
+	input := `+= -= *= /= %= => =`
+
+	expected := []Token{
+		{Type: TokenPlusAssign, Literal: "+="},
+		{Type: TokenMinusAssign, Literal: "-="},
+		{Type: TokenAsteriskAssign, Literal: "*="},
+		{Type: TokenSlashAssign, Literal: "/="},
+		{Type: TokenPercentAssign, Literal: "%="},
+		{Type: TokenArrow, Literal: "=>"},
+		{Type: TokenAssign, Literal: "="},
+		{Type: TokenEOF, Literal: ""},
+	}
+
+	l := New(input)
+
+	for i, exp := range expected {
+		tok := l.NextToken()
+		if tok.Type != exp.Type {
+			t.Fatalf("tests[%d] - wrong token type. expected=%q, got=%q",
+				i, exp.Type, tok.Type)
+		}
+		if tok.Literal != exp.Literal {
+			t.Fatalf("tests[%d] - wrong literal. expected=%q, got=%q",
+				i, exp.Literal, tok.Literal)
+		}
+	}
+}
+
+func TestNextToken_UnterminatedMultiLineComment(t *testing.T) {
+	input := `/* unterminated comment`
+
+	l := New(input)
+	tok := l.NextToken()
+
+	// Unterminated multi-line comment should be skipped and we should get EOF
+	if tok.Type != TokenEOF {
+		t.Fatalf("expected EOF after unterminated multi-line comment, got=%q", tok.Type)
+	}
+}
+
+func TestNextToken_SingleAmpersandAndPipe(t *testing.T) {
+	input := `& |`
+
+	expected := []Token{
+		{Type: TokenIllegal, Literal: "&"},
+		{Type: TokenIllegal, Literal: "|"},
+		{Type: TokenEOF, Literal: ""},
+	}
+
+	l := New(input)
+
+	for i, exp := range expected {
+		tok := l.NextToken()
+		if tok.Type != exp.Type {
+			t.Fatalf("tests[%d] - wrong token type. expected=%q, got=%q",
+				i, exp.Type, tok.Type)
+		}
+		if tok.Literal != exp.Literal {
+			t.Fatalf("tests[%d] - wrong literal. expected=%q, got=%q",
+				i, exp.Literal, tok.Literal)
+		}
+	}
+}
+
+func TestNextToken_UnderscoreIdentifiers(t *testing.T) {
+	input := `_var _func __private _123`
+
+	expected := []Token{
+		{Type: TokenIdent, Literal: "_var"},
+		{Type: TokenIdent, Literal: "_func"},
+		{Type: TokenIdent, Literal: "__private"},
+		{Type: TokenIdent, Literal: "_123"},
+		{Type: TokenEOF, Literal: ""},
+	}
+
+	l := New(input)
+
+	for i, exp := range expected {
+		tok := l.NextToken()
+		if tok.Type != exp.Type {
+			t.Fatalf("tests[%d] - wrong token type. expected=%q, got=%q",
+				i, exp.Type, tok.Type)
+		}
+		if tok.Literal != exp.Literal {
+			t.Fatalf("tests[%d] - wrong literal. expected=%q, got=%q",
+				i, exp.Literal, tok.Literal)
+		}
+	}
+}
+
+func TestNextToken_EmptyString(t *testing.T) {
+	input := `""`
+
+	l := New(input)
+	tok := l.NextToken()
+
+	if tok.Type != TokenString {
+		t.Fatalf("wrong token type. expected=%q, got=%q", TokenString, tok.Type)
+	}
+	if tok.Literal != "" {
+		t.Fatalf("wrong literal. expected empty string, got=%q", tok.Literal)
+	}
+}
+
+func TestNextToken_SuperKeyword(t *testing.T) {
+	input := `super.method()`
+
+	expected := []Token{
+		{Type: TokenSuper, Literal: "super"},
+		{Type: TokenDot, Literal: "."},
+		{Type: TokenIdent, Literal: "method"},
+		{Type: TokenLParen, Literal: "("},
+		{Type: TokenRParen, Literal: ")"},
+		{Type: TokenEOF, Literal: ""},
+	}
+
+	l := New(input)
+
+	for i, exp := range expected {
+		tok := l.NextToken()
+		if tok.Type != exp.Type {
+			t.Fatalf("tests[%d] - wrong token type. expected=%q, got=%q",
+				i, exp.Type, tok.Type)
+		}
+		if tok.Literal != exp.Literal {
+			t.Fatalf("tests[%d] - wrong literal. expected=%q, got=%q",
+				i, exp.Literal, tok.Literal)
+		}
+	}
+}
+
+func TestNextToken_WhitespaceAndNewlines(t *testing.T) {
+	input := "var\t\n  x\n=\n5;"
+
+	expected := []Token{
+		{Type: TokenVar, Literal: "var", Line: 1, Column: 1},
+		{Type: TokenIdent, Literal: "x", Line: 2, Column: 3},
+		{Type: TokenAssign, Literal: "=", Line: 3, Column: 1},
+		{Type: TokenInt, Literal: "5", Line: 4, Column: 1},
+		{Type: TokenSemicolon, Literal: ";", Line: 4, Column: 2},
+		{Type: TokenEOF, Literal: "", Line: 4, Column: 3},
+	}
+
+	l := New(input)
+
+	for i, exp := range expected {
+		tok := l.NextToken()
+		if tok.Type != exp.Type {
+			t.Fatalf("tests[%d] - wrong token type. expected=%q, got=%q",
+				i, exp.Type, tok.Type)
+		}
+		if tok.Literal != exp.Literal {
+			t.Fatalf("tests[%d] - wrong literal. expected=%q, got=%q",
+				i, exp.Literal, tok.Literal)
+		}
+		if tok.Line != exp.Line {
+			t.Fatalf("tests[%d] - wrong line. expected=%d, got=%d",
+				i, exp.Line, tok.Line)
+		}
+	}
+}
+
+func TestNextToken_IncrementDecrement(t *testing.T) {
+	input := `i++ j-- ++i --j`
+
+	expected := []Token{
+		{Type: TokenIdent, Literal: "i"},
+		{Type: TokenIncrement, Literal: "++"},
+		{Type: TokenIdent, Literal: "j"},
+		{Type: TokenDecrement, Literal: "--"},
+		{Type: TokenIncrement, Literal: "++"},
+		{Type: TokenIdent, Literal: "i"},
+		{Type: TokenDecrement, Literal: "--"},
+		{Type: TokenIdent, Literal: "j"},
+		{Type: TokenEOF, Literal: ""},
+	}
+
+	l := New(input)
+
+	for i, exp := range expected {
+		tok := l.NextToken()
+		if tok.Type != exp.Type {
+			t.Fatalf("tests[%d] - wrong token type. expected=%q, got=%q",
+				i, exp.Type, tok.Type)
+		}
+		if tok.Literal != exp.Literal {
+			t.Fatalf("tests[%d] - wrong literal. expected=%q, got=%q",
+				i, exp.Literal, tok.Literal)
+		}
+	}
+}
+
+func TestNextToken_ComplexExpression(t *testing.T) {
+	input := `result = (a + b) * c / d % e;`
+
+	expected := []Token{
+		{Type: TokenIdent, Literal: "result"},
+		{Type: TokenAssign, Literal: "="},
+		{Type: TokenLParen, Literal: "("},
+		{Type: TokenIdent, Literal: "a"},
+		{Type: TokenPlus, Literal: "+"},
+		{Type: TokenIdent, Literal: "b"},
+		{Type: TokenRParen, Literal: ")"},
+		{Type: TokenAsterisk, Literal: "*"},
+		{Type: TokenIdent, Literal: "c"},
+		{Type: TokenSlash, Literal: "/"},
+		{Type: TokenIdent, Literal: "d"},
+		{Type: TokenPercent, Literal: "%"},
+		{Type: TokenIdent, Literal: "e"},
+		{Type: TokenSemicolon, Literal: ";"},
+		{Type: TokenEOF, Literal: ""},
+	}
+
+	l := New(input)
+
+	for i, exp := range expected {
+		tok := l.NextToken()
+		if tok.Type != exp.Type {
+			t.Fatalf("tests[%d] - wrong token type. expected=%q, got=%q",
+				i, exp.Type, tok.Type)
+		}
+		if tok.Literal != exp.Literal {
+			t.Fatalf("tests[%d] - wrong literal. expected=%q, got=%q",
+				i, exp.Literal, tok.Literal)
+		}
+	}
+}
+
+func TestNextToken_EscapeAtEndOfString(t *testing.T) {
+	input := `"test\\"`
+
+	l := New(input)
+	tok := l.NextToken()
+
+	if tok.Type != TokenString {
+		t.Fatalf("wrong token type. expected=%q, got=%q", TokenString, tok.Type)
+	}
+	if tok.Literal != "test\\" {
+		t.Fatalf("wrong literal. expected=%q, got=%q", "test\\", tok.Literal)
+	}
+}
+
+func TestNextToken_FloatStartsWithZero(t *testing.T) {
+	input := `0.5 0.123 0.0`
+
+	expected := []Token{
+		{Type: TokenFloat, Literal: "0.5"},
+		{Type: TokenFloat, Literal: "0.123"},
+		{Type: TokenFloat, Literal: "0.0"},
+		{Type: TokenEOF, Literal: ""},
+	}
+
+	l := New(input)
+
+	for i, exp := range expected {
+		tok := l.NextToken()
+		if tok.Type != exp.Type {
+			t.Fatalf("tests[%d] - wrong token type. expected=%q, got=%q",
+				i, exp.Type, tok.Type)
+		}
+		if tok.Literal != exp.Literal {
+			t.Fatalf("tests[%d] - wrong literal. expected=%q, got=%q",
+				i, exp.Literal, tok.Literal)
+		}
+	}
+}
