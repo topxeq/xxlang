@@ -1,0 +1,13 @@
+// benchmarks/xxlang/array.xxl
+// Array operations benchmark
+
+var arr = []
+for (var i = 0; i < 1000; i = i + 1) {
+    arr.push(i)
+}
+
+var sum = 0
+for (var i = 0; i < len(arr); i = i + 1) {
+    sum = sum + arr[i]
+}
+print(sum)

@@ -1,0 +1,12 @@
+// benchmarks/xxlang/function_calls.xxl
+// Function call overhead benchmark
+
+func add(a, b) {
+    return a + b
+}
+
+var sum = 0
+for (var i = 0; i < 10000; i = i + 1) {
+    sum = add(sum, i)
+}
+print(sum)
