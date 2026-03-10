@@ -2,15 +2,25 @@
 
 [中文文档](README_zh.md)
 
-Xxlang is a bytecode VM-based scripting language implemented in Go.
+Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language implemented in Go.
 
 ## Features
 
 - **Bytecode VM** - Efficient execution with a stack-based virtual machine
 - **Closures** - First-class functions with proper closure support
-- **Rich Built-ins** - 41 built-in functions for string, math, array, and map operations
+- **Classes & OOP** - Object-oriented programming with inheritance
+- **Module System** - Import/export with standard library
+- **Rich Built-ins** - 41+ built-in functions for string, math, array, and map operations
 - **REPL** - Interactive REPL with multi-line support and persistent state
 - **Embeddable** - Can be used as a library in other Go projects
+- **Compilable** - Compile to standalone executable or bytecode
+
+## Documentation
+
+- [Language Reference](docs/LANGUAGE.md) - Complete language syntax and features
+- [Standard Library](docs/STDLIB.md) - Built-in modules and functions
+- [Embedding Guide](docs/EMBEDDING.md) - Using Xxlang in Go applications
+- [Performance Benchmarks](benchmarks/RESULTS.md) - Performance analysis
 
 ## Installation
 
@@ -22,10 +32,13 @@ go install github.com/topxeq/xxlang/cmd/xxlang@latest
 
 ```bash
 # Run a file
-xxlang script.xxl
+xxlang run script.xxl
 
 # Start interactive REPL
 xxlang
+
+# Compile to executable
+xxlang compile -o program script.xxl
 ```
 
 ## Language Examples
@@ -60,6 +73,25 @@ println(counter())  // 1
 println(counter())  // 2
 ```
 
+### Classes and OOP
+
+```xxl
+class Point {
+    func init(x, y) {
+        this.x = x
+        this.y = y
+    }
+
+    func add(other) {
+        return new Point(this.x + other.x, this.y + other.y)
+    }
+}
+
+var p1 = new Point(1, 2)
+var p2 = new Point(3, 4)
+var p3 = p1.add(p2)
+```
+
 ### Control Flow
 
 ```xxl
@@ -70,16 +102,9 @@ if (x > 0) {
     println("non-positive")
 }
 
-// While loop
-var i = 0
-while (i < 5) {
-    println(i)
-    i = i + 1
-}
-
 // For loop
-for (var j = 0; j < 5; j = j + 1) {
-    println(j)
+for (var i = 0; i < 5; i = i + 1) {
+    println(i)
 }
 
 // For-in loop
@@ -88,46 +113,62 @@ for (item in [1, 2, 3]) {
 }
 ```
 
-### Built-in Functions
+### Modules
 
 ```xxl
-// String functions
-println(upper("hello"))      // HELLO
-println(lower("HELLO"))      // hello
-println(substr("hello", 1, 4))  // ell
-println(split("a,b,c", ","))    // [a, b, c]
-println(containsStr("hello", "ell"))  // true
+// Import standard library
+import "std/math"
+println(math.sqrt(16))
 
-// Math functions
-println(sqrt(16))    // 4
-println(pow(2, 10))  // 1024
-println(abs(-42))    // 42
-println(floor(3.7))  // 3
-println(ceil(3.2))   // 4
+// Import specific functions
+import "std/io" { readFile, writeFile }
+```
 
-// Array functions
-var arr = [3, 1, 4, 1, 5]
-println(sort(arr))      // [1, 1, 3, 4, 5]
-println(sum(arr))       // 14
-println(reverse(arr))   // [5, 1, 4, 1, 3]
-println(first(arr))     // 3
-println(last(arr))      // 5
+## Built-in Functions
 
-// Map functions
-var m = {"a": 1, "b": 2}
-println(keys(m))        // [a, b]
-println(values(m))      // [1, 2]
-println(hasKey(m, "a")) // true
+### String Functions
+```xxl
+upper("hello")              // "HELLO"
+lower("HELLO")              // "hello"
+split("a,b,c", ",")         // ["a", "b", "c"]
+containsStr("hello", "ell") // true
+```
+
+### Math Functions
+```xxl
+sqrt(16)    // 4
+pow(2, 10)  // 1024
+abs(-42)    // 42
+floor(3.7)  // 3
+ceil(3.2)   // 4
+```
+
+### Array Functions
+```xxl
+sort([3, 1, 2])    // [1, 2, 3]
+sum([1, 2, 3])      // 6
+reverse([1, 2, 3])  // [3, 2, 1]
+push([1, 2], 3)     // [1, 2, 3]
+```
+
+## CLI Commands
+
+```bash
+xxlang                   # Start REPL
+xxlang run file.xxl      # Run script
+xxlang compile file.xxl  # Compile to executable
+xxlang version           # Show version
+xxlang help              # Show help
 ```
 
 ## REPL Commands
 
-```
-exit, quit  - Exit the REPL
-help        - Show help message
-history     - Show command history
-clear       - Clear all variables and functions
-```
+| Command | Description |
+|---------|-------------|
+| `exit`, `quit` | Exit the REPL |
+| `help` | Show help message |
+| `history` | Show command history |
+| `clear` | Clear all variables and functions |
 
 ## Building from Source
 
@@ -145,52 +186,15 @@ go test ./...
 
 ## Performance
 
-Xxlang uses a bytecode VM with tail call optimization (when possible).
+Xxlang uses a bytecode VM with tail call optimization.
 
-| Language | fib(35) Time |
-| Go | 0.056s |
-| Python  | 2.77s |
-| Xxlang | 9.37s |
+| Language | fib(35) Time | Relative to Go |
+|----------|--------------|----------------|
+| Go | 0.056s | 1x |
+| Python | 2.77s | 49x |
+| Xxlang | 9.37s | 167x |
 
-## Tail Call Optimization
-
-Xxlang supports tail call optimization for recursive functions, allowing constant stack space usage:
-
-```xxl
-func sumTail(n, acc) {
-    if (n <= 0) {
-        return acc
-    }
-    return sumTail(n - 1, acc + n)
-}
-
-```
-
-## Built-in Functions
-
-Xxlang provides 41 built-in functions for string, math, array, and map operations.
-
-## REPL Commands
-
-```
-exit, quit  - Exit the REPL
-help        - Show help message
-history     - Show command history
-clear       - Clear all variables and functions
-```
-
-## Building from Source
-
-```bash
-git clone https://github.com/topxeq/xxlang.git
-cd xxlang
-go build -o xxlang ./cmd/xxlang
-```
-
-## Running Tests
-```bash
-go test ./...
-```
+See [benchmarks/RESULTS.md](benchmarks/RESULTS.md) for detailed analysis.
 
 ## License
 
