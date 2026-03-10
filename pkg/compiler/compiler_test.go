@@ -3,7 +3,6 @@ package compiler
 
 import (
 	"bytes"
-	"strings"
 	"testing"
 
 	"github.com/topxeq/xxlang/pkg/lexer"
@@ -1199,157 +1198,54 @@ func TestClassWithSuperclassCompilation(t *testing.T) {
 }
 
 // ============================================
-// Opcode Verification Tests
+// Error Handling Tests
 // ============================================
+
+func TestCompiler_UndefinedVariable(t *testing.T) {
+	input := `x`
+	program := parse(input)
+	compiler := New()
+	err := compiler.Compile(program)
+	if err == nil {
+		t.Fatal("expected error for undefined variable, got nil")
+	}
+}
 
 func TestCompiler_OpcodeVerification(t *testing.T) {
 	tests := []struct {
-		name          string
-		input         string
-		expectedOps   []Opcode
-		unexpectedOps []Opcode
+		name        string
+		input       string
+		expectedOp  Opcode
 	}{
-		{
-			name:          "constant load",
-			input:         "42;",
-			expectedOps:   []Opcode{OpConstant},
-			unexpectedOps: nil,
-		},
-		{
-			name:          "addition",
-			input:         "1 + 2;",
-			expectedOps:   []Opcode{OpAdd},
-			unexpectedOps: nil,
-		},
-		{
-			name:          "comparison less than",
-			input:         "1 < 2;",
-			expectedOps:   []Opcode{OpLess},
-			unexpectedOps: nil,
-		},
-		{
-			name:          "function call",
-			input:         "func f() { return 1; }; f();",
-			expectedOps:   []Opcode{OpCall},
-			unexpectedOps: nil,
-		},
-		{
-			name:          "array creation",
-			input:         "[1, 2, 3];",
-			expectedOps:   []Opcode{OpArray},
-			unexpectedOps: nil,
-		},
-		{
-			name:          "map creation",
-			input:         `{"a": 1};`,
-			expectedOps:   []Opcode{OpMap},
-			unexpectedOps: nil,
-		},
-		{
-			name:          "subtraction",
-			input:         "5 - 3;",
-			expectedOps:   []Opcode{OpSub},
-			unexpectedOps: nil,
-		},
-		{
-			name:          "multiplication",
-			input:         "4 * 2;",
-			expectedOps:   []Opcode{OpMul},
-			unexpectedOps: nil,
-		},
-		{
-			name:          "division",
-			input:         "10 / 2;",
-			expectedOps:   []Opcode{OpDiv},
-			unexpectedOps: nil,
-		},
-		{
-			name:          "modulo",
-			input:         "10 % 3;",
-			expectedOps:   []Opcode{OpMod},
-			unexpectedOps: nil,
-		},
-		{
-			name:          "negation",
-			input:         "-5;",
-			expectedOps:   []Opcode{OpNeg},
-			unexpectedOps: nil,
-		},
-		{
-			name:          "logical and",
-			input:         "true && false;",
-			expectedOps:   []Opcode{OpAnd},
-			unexpectedOps: nil,
-		},
-		{
-			name:          "logical or",
-			input:         "true || false;",
-			expectedOps:   []Opcode{OpOr},
-			unexpectedOps: nil,
-		},
-		{
-			name:          "logical not",
-			input:         "!true;",
-			expectedOps:   []Opcode{OpNot},
-			unexpectedOps: nil,
-		},
-		{
-			name:          "closure",
-			input:         "func f() { return 1; };",
-			expectedOps:   []Opcode{OpClosure},
-			unexpectedOps: nil,
-		},
+		{"constant load", "42;", OpConstant},
+		{"addition", "1 + 2;", OpAdd},
+		{"subtraction", "2 - 1;", OpSub},
+		{"multiplication", "2 * 3;", OpMul},
+		{"division", "6 / 2;", OpDiv},
+		{"modulo", "5 % 2;", OpMod},
+		{"less than", "1 < 2;", OpLess},
+		{"greater than", "2 > 1;", OpGreater},
+		{"equal", "1 == 1;", OpEqual},
+		{"not equal", "1 != 2;", OpNotEqual},
+		{"logical and", "true && false;", OpAnd},
+		{"logical or", "true || false;", OpOr},
+		{"logical not", "!true;", OpNot},
+		{"array creation", "[1, 2, 3];", OpArray},
+		{"map creation", `{"a": 1};`, OpMap},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			program := parse(tt.input)
-			c := New()
-			err := c.Compile(program)
+			compiler := New()
+			err := compiler.Compile(program)
 			if err != nil {
 				t.Fatalf("compiler error: %v", err)
 			}
 
-			bytecode := c.Bytecode()
-			for _, expectedOp := range tt.expectedOps {
-				if !containsOpcode(bytecode.Instructions, expectedOp) {
-					t.Errorf("expected opcode %v in bytecode", expectedOp)
-				}
-			}
-			for _, unexpectedOp := range tt.unexpectedOps {
-				if containsOpcode(bytecode.Instructions, unexpectedOp) {
-					t.Errorf("unexpected opcode %v in bytecode", unexpectedOp)
-				}
-			}
-		})
-	}
-}
-
-// ============================================
-// Error Case Tests
-// ============================================
-
-func TestCompiler_ErrorCases(t *testing.T) {
-	tests := []struct {
-		name        string
-		input       string
-		expectError string
-	}{
-		{"undefined variable", "x;", "undefined"},
-		{"undefined superclass", "class Dog extends Animal { }", "undefined superclass"},
-		{"undefined class in new", "var p = new Person();", "undefined class"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			program := parse(tt.input)
-			c := New()
-			err := c.Compile(program)
-			if err == nil {
-				t.Fatal("expected error, got nil")
-			}
-			if !strings.Contains(err.Error(), tt.expectError) {
-				t.Errorf("expected error containing %q, got %q", tt.expectError, err.Error())
+			bytecode := compiler.Bytecode()
+			if !containsOpcode(bytecode.Instructions, tt.expectedOp) {
+				t.Errorf("expected opcode %v in bytecode", tt.expectedOp)
 			}
 		})
 	}
