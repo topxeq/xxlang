@@ -3,6 +3,7 @@ package vm
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/topxeq/xxlang/pkg/compiler"
 	"github.com/topxeq/xxlang/pkg/module"
@@ -28,6 +29,7 @@ type VM struct {
 	currentInstance  *objects.Instance // Current instance for this binding
 	pendingInstance  *objects.Instance // Instance to push after init returns
 	initFrame        *Frame           // The init frame that should push pendingInstance
+	sourceMap        *compiler.SourceMap // Source map for error reporting
 }
 
 // New creates a new VM with the given bytecode
@@ -49,6 +51,7 @@ func New(bytecode *compiler.Bytecode) *VM {
 		frameIndex: 1,
 		globals:    make([]objects.Object, GlobalsSize),
 		loader:     module.NewLoader(),
+		sourceMap:  bytecode.SourceMap,
 	}
 }
 
@@ -71,6 +74,7 @@ func NewWithGlobalsStore(bytecode *compiler.Bytecode, globals []objects.Object) 
 		frameIndex: 1,
 		globals:    globals,
 		loader:     module.NewLoader(),
+		sourceMap:  bytecode.SourceMap,
 	}
 }
 
@@ -105,6 +109,52 @@ func (vm *VM) SetLoader(loader *module.Loader) {
 // SetCurrentModule sets the current module context
 func (vm *VM) SetCurrentModule(mod *objects.Module) {
 	vm.currentModule = mod
+}
+
+// formatError formats an error message with source location
+func (vm *VM) formatError(message string) string {
+	if vm.sourceMap == nil {
+		return message
+	}
+
+	// Get current instruction position
+	ip := vm.currentFrame().IP
+	return vm.sourceMap.FormatError(ip, message)
+}
+
+// GetCallStack returns the current call stack as a formatted string
+func (vm *VM) GetCallStack() string {
+	var sb strings.Builder
+	sb.WriteString("Call Stack:\n")
+
+	// Walk through frames in reverse order (most recent first)
+	for i := vm.frameIndex - 1; i >= 0; i-- {
+		frame := vm.frames[i]
+		ip := frame.IP
+
+		var location string
+		if vm.sourceMap != nil {
+			if loc, ok := vm.sourceMap.Get(ip); ok {
+				if vm.sourceMap.SourceFile != "" {
+					location = fmt.Sprintf("%s:%d:%d", vm.sourceMap.SourceFile, loc.Line, loc.Column)
+				} else {
+					location = fmt.Sprintf("line %d:%d", loc.Line, loc.Column)
+				}
+			}
+		}
+
+		if location == "" {
+			location = fmt.Sprintf("instruction %d", ip)
+		}
+
+		if i == 0 {
+			sb.WriteString(fmt.Sprintf("  at <main> (%s)\n", location))
+		} else {
+			sb.WriteString(fmt.Sprintf("  at function#%d (%s)\n", i, location))
+		}
+	}
+
+	return sb.String()
 }
 
 // Run executes the bytecode
