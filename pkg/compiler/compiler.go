@@ -146,6 +146,7 @@ type CompilationScope struct {
 type Bytecode struct {
 	Instructions []byte
 	Constants    []objects.Object
+	SourceMap    *SourceMap // Maps instruction positions to source locations
 }
 
 // CompiledFunction represents a compiled function
@@ -187,6 +188,11 @@ type Compiler struct {
 
 	lastInstruction     EmittedInstruction
 	previousInstruction EmittedInstruction
+
+	// Source mapping
+	sourceMap  *SourceMap
+	sourceFile string
+	sourceCode string
 }
 
 // New creates a new compiler
@@ -196,6 +202,7 @@ func New() *Compiler {
 		symbolTable: NewSymbolTable(),
 		scopes:      []CompilationScope{{instructions: []byte{}}},
 		scopeIndex:  0,
+		sourceMap:   NewSourceMap(),
 	}
 }
 
@@ -206,7 +213,15 @@ func NewWithState(s *SymbolTable, constants []objects.Object) *Compiler {
 		symbolTable: s,
 		scopes:      []CompilationScope{{instructions: []byte{}}},
 		scopeIndex:  0,
+		sourceMap:   NewSourceMap(),
 	}
+}
+
+// SetSource sets the source file path and code for error reporting
+func (c *Compiler) SetSource(path string, code string) {
+	c.sourceFile = path
+	c.sourceCode = code
+	c.sourceMap.SetSourceFile(path, code)
 }
 
 // Compile compiles an AST node into bytecode
@@ -1011,6 +1026,7 @@ func (c *Compiler) Bytecode() *Bytecode {
 	return &Bytecode{
 		Instructions: c.currentInstructions(),
 		Constants:    c.constants,
+		SourceMap:    c.sourceMap,
 	}
 }
 
