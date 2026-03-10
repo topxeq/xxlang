@@ -12,13 +12,23 @@ import (
 	"github.com/topxeq/xxlang/pkg/module"
 	"github.com/topxeq/xxlang/pkg/objects"
 	"github.com/topxeq/xxlang/pkg/parser"
+	"github.com/topxeq/xxlang/pkg/plugin"
 	"github.com/topxeq/xxlang/pkg/stdlib"
 )
 
 // loadModuleFile loads, compiles, and executes a module file.
 // It handles caching and circular dependency detection.
+// Supports three module types:
+//   - std/* : Standard library modules
+//   - plugin/* : Native Go plugins (.so files)
+//   - *.xxl : xxlang source files
 func (vm *VM) loadModuleFile(resolvedPath string) (*objects.Module, error) {
-	// Check if it's a standard library module first
+	// Check if it's a native plugin first
+	if strings.HasPrefix(resolvedPath, "plugin/") {
+		return vm.loadNativePlugin(resolvedPath)
+	}
+
+	// Check if it's a standard library module
 	if strings.HasPrefix(resolvedPath, "std/") {
 		if stdlib.Has(resolvedPath) {
 			stdMod := stdlib.Get(resolvedPath)
@@ -97,4 +107,60 @@ func (vm *VM) loadModuleFile(resolvedPath string) (*objects.Module, error) {
         Exports: mod.Exports,
     })
     return mod, nil
+}
+
+// loadNativePlugin loads a native Go plugin (.so file).
+// Plugin path format: plugin/name (e.g., plugin/mysql)
+func (vm *VM) loadNativePlugin(path string) (*objects.Module, error) {
+	// Extract plugin name from path (plugin/name -> name)
+	pluginName := strings.TrimPrefix(path, "plugin/")
+	if pluginName == "" {
+		return nil, fmt.Errorf("invalid plugin path: %s", path)
+	}
+
+	// Check if already loaded
+	if vm.loader.HasModule(path) {
+		cachedMod, err := vm.loader.Get(path)
+		if err != nil {
+			return nil, err
+		}
+		return &objects.Module{
+			Name:    cachedMod.Name,
+			Exports: cachedMod.Exports,
+			Globals: cachedMod.Globals,
+		}, nil
+	}
+
+	// Create a plugin loader
+	loader := plugin.NewLoader()
+
+	// Add plugin search paths from environment or defaults
+	if pluginPath := os.Getenv("XXLANG_PLUGIN_PATH"); pluginPath != "" {
+		for _, p := range strings.Split(pluginPath, ":") {
+			loader.AddPath(p)
+		}
+	}
+
+	// Also search relative to source path if available
+	if vm.sourcePath != "" {
+		loader.AddPath(vm.sourcePath + "/plugins")
+		loader.AddPath(vm.sourcePath + "/plugin")
+	}
+
+	// Load the plugin
+	p, err := loader.Load(pluginName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load plugin %s: %v", pluginName, err)
+	}
+
+	// Convert plugin to module
+	mod := plugin.ToModule(p)
+
+	// Cache the module
+	vm.loader.Set(path, &module.Module{
+		Name:    mod.Name,
+		Exports: mod.Exports,
+	})
+
+	return mod, nil
 }

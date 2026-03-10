@@ -69,7 +69,7 @@ func createTestFile(t *testing.T, content string) string {
 func runXxlang(t *testing.T, binPath, filePath string) (string, error) {
 	t.Helper()
 
-	cmd := exec.Command(binPath, filePath)
+	cmd := exec.Command(binPath, "run", filePath)
 	output, err := cmd.CombinedOutput()
 	return string(output), err
 }
