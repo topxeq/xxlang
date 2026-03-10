@@ -1357,7 +1357,37 @@ func (vm *VM) executeGetMethod() error {
 		return nil
 	}
 
-	// For non-instance objects, pop and handle normally
+	// Handle Map objects - property access takes precedence over methods
+	if m, ok := obj.(*objects.Map); ok {
+		key := &objects.String{Value: name}
+		pair, exists := m.Pairs[key.HashKey()]
+		if exists {
+			// Property exists - pop map and push value
+			vm.stack.Pop()
+			vm.stack.Push(pair.Value)
+			return nil
+		}
+		// Property doesn't exist - check for map method
+		if method, ok := objects.GetMethod(objects.MapType, name); ok {
+			// Stack: [... map] -> [... map, method]
+			vm.stack.Push(method)
+			return nil
+		}
+		// No property and no method - pop map and push NULL
+		vm.stack.Pop()
+		vm.stack.Push(objects.NULL)
+		return nil
+	}
+
+	// Check for primitive type methods (Int, Float, String, Array, Bool, Null)
+	if method, ok := objects.GetMethod(obj.Type(), name); ok {
+		// Stack: [... obj] -> [... obj, method]
+		// OpCallMethod will pop method, use obj as receiver
+		vm.stack.Push(method)
+		return nil
+	}
+
+	// For non-instance objects without methods, pop and handle normally
 	obj = vm.stack.Pop()
 
 	// Handle Module objects (for namespace imports)
@@ -1367,18 +1397,6 @@ func (vm *VM) executeGetMethod() error {
 			return fmt.Errorf("export '%s' not found in module %s", name, mod.Name)
 		}
 		vm.stack.Push(val)
-		return nil
-	}
-
-	// Handle Map objects (for property access)
-	if m, ok := obj.(*objects.Map); ok {
-		key := &objects.String{Value: name}
-		pair, ok := m.Pairs[key.HashKey()]
-		if !ok {
-			vm.stack.Push(objects.NULL)
-			return nil
-		}
-		vm.stack.Push(pair.Value)
 		return nil
 	}
 
@@ -1401,7 +1419,34 @@ func (vm *VM) executeCallMethod() error {
 	// Check if this is an Instance object for method binding
 	inst, ok := instance.(*objects.Instance)
 	if !ok {
-		// Not an instance - treat as regular function call
+		// Check if method is a Builtin (for primitive type methods)
+		if builtin, isBuiltin := method.(*objects.Builtin); isBuiltin {
+			// Stack: [... receiver, builtin_method, arg1, arg2, ...]
+			// Pop arguments first
+			args := make([]objects.Object, numArgs)
+			for i := numArgs - 1; i >= 0; i-- {
+				args[i] = vm.stack.Pop()
+			}
+
+			// Pop the builtin method
+			vm.stack.Pop()
+
+			// Pop the receiver
+			receiver := vm.stack.Pop()
+
+			// Call builtin with receiver as first argument
+			callArgs := make([]objects.Object, numArgs+1)
+			callArgs[0] = receiver
+			for i := 0; i < numArgs; i++ {
+				callArgs[i+1] = args[i]
+			}
+
+			result := builtin.Fn(callArgs...)
+			vm.stack.Push(result)
+			return nil
+		}
+
+		// Not an instance and not a builtin method - treat as regular function call
 		// Stack is: [method, arg1, arg2, ...]
 		// Pop arguments first
 		args := make([]objects.Object, numArgs)
