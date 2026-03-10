@@ -254,3 +254,130 @@ func TestIOErrorCases(t *testing.T) {
 		t.Errorf("setEnv with 1 arg should return error, got %T", result)
 	}
 }
+
+func TestIOPrintf(t *testing.T) {
+	// Test printf with format strings
+	tests := []struct {
+		name   string
+		format string
+		args   []objects.Object
+	}{
+		{"string format", "Hello %s", []objects.Object{String("World")}},
+		{"int format", "Number: %d", []objects.Object{Int(42)}},
+		{"float format", "Float: %f", []objects.Object{Float(3.14)}},
+		{"bool format", "Bool: %v", []objects.Object{Bool(true)}},
+		{"multiple args", "%s %d %f", []objects.Object{String("test"), Int(10), Float(2.5)}},
+		{"no placeholders", "no placeholders", []objects.Object{}},
+		{"empty format", "", []objects.Object{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// printf returns null
+			result := callIOFunc("printf", append([]objects.Object{String(tt.format)}, tt.args...)...)
+			if _, ok := result.(*objects.Null); !ok {
+				t.Errorf("printf should return null, got %T", result)
+			}
+		})
+	}
+}
+
+func TestIOPrintfErrors(t *testing.T) {
+	// printf with no args
+	result := callIOFunc("printf")
+	if _, ok := result.(*objects.Error); !ok {
+		t.Errorf("printf with 0 args should return error, got %T", result)
+	}
+
+	// printf with non-string format
+	result = callIOFunc("printf", Int(42))
+	if _, ok := result.(*objects.Error); !ok {
+		t.Errorf("printf with non-string format should return error, got %T", result)
+	}
+}
+
+func TestIOReadFileEdgeCases(t *testing.T) {
+	// Test readFile with empty path
+	result := callIOFunc("readFile", String(""))
+	if _, ok := result.(*objects.Error); !ok {
+		t.Errorf("readFile with empty path should return error, got %T", result)
+	}
+
+	// Test readFile with non-string argument
+	result = callIOFunc("readFile", Int(42))
+	if _, ok := result.(*objects.Error); !ok {
+		t.Errorf("readFile with non-string should return error, got %T", result)
+	}
+
+	// Test readFile with directory path
+	tmpDir := os.TempDir()
+	result = callIOFunc("readFile", String(tmpDir))
+	if _, ok := result.(*objects.Error); !ok {
+		t.Errorf("readFile with directory path should return error, got %T", result)
+	}
+}
+
+func TestIOWriteFileEdgeCases(t *testing.T) {
+	// Test writeFile with non-string filename
+	result := callIOFunc("writeFile", Int(42), String("content"))
+	if _, ok := result.(*objects.Error); !ok {
+		t.Errorf("writeFile with non-string filename should return error, got %T", result)
+	}
+
+	// Test writeFile with non-string content
+	result = callIOFunc("writeFile", String("/tmp/test.txt"), Int(42))
+	if _, ok := result.(*objects.Error); !ok {
+		t.Errorf("writeFile with non-string content should return error, got %T", result)
+	}
+
+	// Test writeFile with empty content
+	tmpDir := os.TempDir()
+	testFile := filepath.Join(tmpDir, "xxlang_test_empty.txt")
+	defer os.Remove(testFile)
+
+	result = callIOFunc("writeFile", String(testFile), String(""))
+	if _, ok := result.(*objects.Null); !ok {
+		t.Errorf("writeFile with empty content should return null, got %T", result)
+	}
+
+	// Verify file was created and is empty
+	content, err := os.ReadFile(testFile)
+	if err != nil {
+		t.Errorf("failed to read file: %v", err)
+	}
+	if string(content) != "" {
+		t.Errorf("file content = %q, want empty", content)
+	}
+
+	// Test writeFile to invalid path (should fail)
+	result = callIOFunc("writeFile", String("/nonexistent/directory/file.txt"), String("test"))
+	if _, ok := result.(*objects.Error); !ok {
+		t.Errorf("writeFile to invalid path should return error, got %T", result)
+	}
+}
+
+func TestIOPrintPrintln(t *testing.T) {
+	// print with multiple args
+	result := callIOFunc("print", String("hello"), Int(42))
+	if _, ok := result.(*objects.Null); !ok {
+		t.Errorf("print should return null, got %T", result)
+	}
+
+	// println with multiple args
+	result = callIOFunc("println", String("hello"), Int(42), Bool(true))
+	if _, ok := result.(*objects.Null); !ok {
+		t.Errorf("println should return null, got %T", result)
+	}
+
+	// print with no args
+	result = callIOFunc("print")
+	if _, ok := result.(*objects.Null); !ok {
+		t.Errorf("print with no args should return null, got %T", result)
+	}
+
+	// println with no args
+	result = callIOFunc("println")
+	if _, ok := result.(*objects.Null); !ok {
+		t.Errorf("println with no args should return null, got %T", result)
+	}
+}
