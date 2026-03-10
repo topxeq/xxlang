@@ -251,6 +251,7 @@ func runFile(filename string) {
 
     // Compilation
     c := compiler.New()
+    c.SetSource(absPath, string(code)) // Enable source mapping
     if err := c.Compile(program); err != nil {
         fmt.Printf("Error: %v\n", err)
         os.Exit(1)
@@ -269,7 +270,9 @@ func runFile(filename string) {
     v.SetCurrentModule(mainModule)
 
     if err := v.Run(); err != nil {
-        fmt.Printf("Error: %v\n", err)
+        // Format runtime error with source location and call stack
+        fmt.Fprintf(os.Stderr, "Runtime Error: %v\n", err)
+        fmt.Fprintf(os.Stderr, "\n%s", v.GetCallStack())
         os.Exit(1)
     }
 
