@@ -1,12 +1,11 @@
-// cmd/xxlang/main.go
 package main
 
 import (
 	"bufio"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/topxeq/xxlang/pkg/compiler"
@@ -16,8 +15,14 @@ import (
 	"github.com/topxeq/xxlang/pkg/vm"
 )
 
-const PROMPT = ">> "
-const CONTINUE_PROMPT = ".. "
+const (
+	PROMPT          = ">> "
+	CONTINUE_PROMPT = ".. "
+)
+
+const (
+	Version   = "0.3.0"
+)
 
 // REPL represents an interactive REPL session
 type REPL struct {
@@ -38,119 +43,325 @@ func NewREPL() *REPL {
 }
 
 func main() {
-	// Command-line flags
-	flag.Parse()
-
-	// Check if running a file
-	args := flag.Args()
-	if len(args) > 0 {
-		runFile(args[0])
-		return
+	// Handle subcommands
+	if len(os.Args) < 2 {
+		printUsage()
+		os.Exit(1)
 	}
 
-	// Start interactive REPL
-	startREPL()
+	// Check for help or version flags
+	for _, arg := range os.Args[1:] {
+		if arg == "--help" || arg == "-h" || arg == "help" {
+			printUsage()
+			return
+		}
+		if arg == "--version" || arg == "-v" || arg == "version" {
+			printVersion()
+			return
+		}
+	}
+
+	switch os.Args[1] {
+	case "compile":
+		if err := compileCmd(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "run":
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: xxlang run <file>")
+			os.Exit(1)
+		}
+		runFile(os.Args[2])
+	case "version":
+		printVersion()
+	case "help":
+		printUsage()
+	default:
+		// No subcommand - start REPL
+		startREPL()
+	}
+}
+
+func printUsage() {
+    fmt.Printf("Xxlang v%s\n", Version)
+    fmt.Println()
+    fmt.Println("Usage:")
+    fmt.Println("  xxlang                    Start interactive REPL")
+    fmt.Println("  xxlang run <file>       Execute a .xxl file")
+    fmt.Println("  xxlang compile <file>  Compile file to bytecode")
+    fmt.Println("  xxlang version             Print version information")
+    fmt.Println("  xxlang help             Print this help message")
+    fmt.Println()
+    fmt.Println("Options:")
+    fmt.Println("  -o, --output path   Output path for compiled file")
+    fmt.Println("      --target os/arch  Cross-compile for target OS/architecture")
+    fmt.Println("      --bytecode         Output as bytecode (.xxb) instead of executable")
+    fmt.Println()
+    fmt.Println("Examples:")
+    fmt.Println("  xxlang")
+    fmt.Println("  xxlang run script.xxl")
+    fmt.Println("  xxlang compile -o program script.xxl")
+    fmt.Println("  xxlang compile -o program.exe --target windows/amd64 script.xxl")
+    fmt.Println("  xxlang compile --bytecode script.xxl")
+}
+
+func printVersion() {
+    fmt.Printf("Xxlang v%s (Go %s)\n", Version, runtime.Version())
 }
 
 func startREPL() {
-	repl := NewREPL()
-	scanner := bufio.NewScanner(os.Stdin)
+    repl := NewREPL()
+    scanner := bufio.NewScanner(os.Stdin)
 
-	fmt.Println("Xxlang REPL v0.2")
-	fmt.Println("Type 'exit' or 'quit' to exit, 'help' for help, 'history' for command history")
-	fmt.Println("Multi-line: end line with '{' to continue")
-	fmt.Print(PROMPT)
+    fmt.Println("Xxlang REPL v" + Version)
+    fmt.Println("Type 'exit' or 'quit' to exit, 'help' for help, 'history' for command history")
+    fmt.Println("Multi-line: end line with '{' to continue")
+    fmt.Print(PROMPT)
 
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+    for scanner.Scan() {
+        line := strings.TrimSpace(scanner.Text())
 
-		if line == "" {
-			fmt.Print(PROMPT)
-			continue
-		}
+        if line == "" {
+            fmt.Print(PROMPT)
+            continue
+        }
 
-		// Handle special commands
-		switch line {
-		case "exit", "quit":
-			fmt.Println("Goodbye!")
-			return
-		case "help":
-			printHelp()
-			fmt.Print(PROMPT)
-			continue
-		case "history":
-			printHistory(repl.history)
-			fmt.Print(PROMPT)
-			continue
-		case "clear":
-			repl = NewREPL()
-			fmt.Println("Cleared all variables and functions")
-			fmt.Print(PROMPT)
-			continue
-		}
+        // Handle special commands
+        switch line {
+        case "exit", "quit":
+            fmt.Println("Goodbye!")
+            return
+        case "help":
+            printHelp()
+            fmt.Print(PROMPT)
+            continue
+        case "history":
+            printHistory(repl.history)
+            fmt.Print(PROMPT)
+            continue
+        case "clear":
+            repl = NewREPL()
+            fmt.Println("Cleared all variables and functions")
+            fmt.Print(PROMPT)
+            continue
+        }
 
-		// Check for multi-line input
-		input := line
-		for countOpenBraces(input) > 0 {
-			fmt.Print(CONTINUE_PROMPT)
-			if !scanner.Scan() {
-				break
-			}
-			nextLine := scanner.Text()
-			input += "\n" + nextLine
-		}
+        // Check for multi-line input
+        input := line
+        for countOpenBraces(input) > 0 {
+            fmt.Print(CONTINUE_PROMPT)
+            if !scanner.Scan() {
+                break
+            }
+            nextLine := scanner.Text()
+            input += "\n" + nextLine
+        }
 
-		// Add to history
-		repl.history = append(repl.history, input)
+        // Add to history
+        repl.history = append(repl.history, input)
 
-		// Parse and execute the input
-		result, err := repl.Execute(input)
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-		} else if result != nil && result != objects.NULL {
-			fmt.Println(result.Inspect())
-		}
+        // Parse and execute the input
+        result, err := repl.Execute(input)
+        if err != nil {
+            fmt.Printf("Error: %v\n", err)
+        } else if result != nil && result != objects.NULL {
+            fmt.Println(result.Inspect())
+        }
 
-		fmt.Print(PROMPT)
-	}
+        fmt.Print(PROMPT)
+    }
 
-	if err := scanner.Err(); err != nil {
-		fmt.Printf("Error reading input: %v\n", err)
-	}
+    if err := scanner.Err(); err != nil {
+        fmt.Printf("Error reading input: %v\n", err)
+    }
+}
+
+// Execute compiles and runs code in the REPL context
+func (r *REPL) Execute(input string) (objects.Object, error) {
+    // Lexical analysis
+    l := lexer.New(input)
+
+    // Parsing
+    p := parser.New(l)
+    program := p.ParseProgram()
+
+    // Check for parser errors
+    if len(p.Errors()) > 0 {
+        return nil, formatParserErrors(p.Errors())
+    }
+
+    // Compilation with persistent state
+    c := compiler.NewWithState(r.symbolTable, r.constants)
+    if err := c.Compile(program); err != nil {
+        return nil, fmt.Errorf("compiler error: %v", err)
+    }
+
+    // Update constants
+    r.constants = c.Bytecode().Constants
+
+    // Execution with persistent globals
+    bytecode := c.Bytecode()
+    v := vm.NewWithGlobalsStore(bytecode, r.globals)
+
+    if err := v.Run(); err != nil {
+        return nil, fmt.Errorf("runtime error: %v", err)
+    }
+
+    // Update globals for next execution
+    r.globals = v.Globals()
+
+    return v.LastPopped(), nil
+}
+
+// runFile runs an xxlang source file
+func runFile(filename string) {
+    // Get absolute path for module resolution
+    absPath, err := filepath.Abs(filename)
+    if err != nil {
+        fmt.Printf("Error resolving path '%s': %v\n", filename, err)
+        os.Exit(1)
+    }
+
+    // Check if it's a bytecode file
+    if strings.HasSuffix(absPath, ".xxb") {
+        runBytecodeFile(absPath)
+        return
+    }
+
+    // Read the source file
+    code, err := os.ReadFile(absPath)
+    if err != nil {
+        fmt.Printf("Error reading file '%s': %v\n", filename, err)
+        os.Exit(1)
+    }
+
+    // Lexical analysis
+    l := lexer.New(string(code))
+
+    // Parsing
+    p := parser.New(l)
+    program := p.ParseProgram()
+
+    // Check for parser errors
+    if len(p.Errors()) > 0 {
+        fmt.Printf("Error: %v\n", formatParserErrors(p.Errors()))
+        os.Exit(1)
+    }
+
+    // Compilation
+    c := compiler.New()
+    if err := c.Compile(program); err != nil {
+        fmt.Printf("Error: %v\n", err)
+        os.Exit(1)
+    }
+
+    // Create main module for exports
+    mainModule := &objects.Module{
+        Name:    absPath,
+        Exports: make(map[string]objects.Object),
+    }
+
+    // Execution
+    bytecode := c.Bytecode()
+    v := vm.NewWithGlobalsStore(bytecode, make([]objects.Object, compiler.GlobalsSize))
+    v.SetSourcePath(absPath)
+    v.SetCurrentModule(mainModule)
+
+    if err := v.Run(); err != nil {
+        fmt.Printf("Error: %v\n", err)
+        os.Exit(1)
+    }
+
+    // Print result if it's meaningful
+    result := v.LastPopped()
+    if result != nil && result != objects.NULL {
+        fmt.Println(result.Inspect())
+    }
+}
+
+// runBytecodeFile runs a compiled bytecode file
+func runBytecodeFile(filename string) {
+    // Read the bytecode file
+    bytecodeData, err := os.ReadFile(filename)
+    if err != nil {
+        fmt.Printf("Error reading bytecode file '%s': %v\n", filename, err)
+        os.Exit(1)
+    }
+
+    // Deserialize the bytecode
+    bytecode, err := compiler.Deserialize(bytecodeData)
+    if err != nil {
+        fmt.Printf("Error loading bytecode: %v\n", err)
+        os.Exit(1)
+    }
+
+    // Create main module for exports
+    mainModule := &objects.Module{
+        Name:    filename,
+        Exports: make(map[string]objects.Object),
+    }
+
+    // Execution
+    v := vm.NewWithGlobalsStore(bytecode, make([]objects.Object, compiler.GlobalsSize))
+    v.SetSourcePath(filename)
+    v.SetCurrentModule(mainModule)
+
+    if err := v.Run(); err != nil {
+        fmt.Printf("Error: %v\n", err)
+        os.Exit(1)
+    }
+
+    // Print result if it's meaningful
+    result := v.LastPopped()
+    if result != nil && result != objects.NULL {
+        fmt.Println(result.Inspect())
+    }
+}
+
+func formatParserErrors(errors []string) error {
+    var sb strings.Builder
+    sb.WriteString("parser errors:\n")
+    for _, err := range errors {
+        sb.WriteString("  ")
+        sb.WriteString(err)
+        sb.WriteString("\n")
+    }
+    return fmt.Errorf("%s", sb.String())
 }
 
 // countOpenBraces counts unclosed braces in the input
 func countOpenBraces(input string) int {
-	count := 0
-	inString := false
-	escape := false
+    count := 0
+    inString := false
+    escape := false
 
-	for _, ch := range input {
-		if escape {
-			escape = false
-			continue
-		}
-		switch ch {
-		case '\\':
-			escape = true
-		case '"':
-			inString = !inString
-		case '{':
-			if !inString {
-				count++
-			}
-		case '}':
-			if !inString {
-				count--
-			}
-		}
-	}
+    for _, ch := range input {
+        if escape {
+            escape = false
+            continue
+        }
+        switch ch {
+        case '\\':
+            escape = true
+        case '"':
+            inString = !inString
+        case '{':
+            if !inString {
+                count++
+            }
+        case '}':
+            if !inString {
+                count--
+            }
+        }
+    }
 
-	return count
+    return count
 }
 
 func printHelp() {
-	fmt.Print(`Xxlang REPL Commands:
+    fmt.Print(`Xxlang REPL Commands:
   exit, quit  - Exit the REPL
   help        - Show this help message
   history     - Show command history
@@ -179,125 +390,18 @@ Examples:
 }
 
 func printHistory(history []string) {
-	if len(history) == 0 {
-		fmt.Println("No commands in history")
-		return
-	}
-	for i, cmd := range history {
-		// Truncate long commands for display
-		display := cmd
-		if len(display) > 60 {
-			display = display[:57] + "..."
-		}
-		// Replace newlines with escaped version
-		display = strings.ReplaceAll(display, "\n", "\\n")
-		fmt.Printf("%3d: %s\n", i+1, display)
-	}
-}
-
-func runFile(filename string) {
-	// Get absolute path for module resolution
-	absPath, err := filepath.Abs(filename)
-	if err != nil {
-		fmt.Printf("Error resolving path '%s': %v\n", filename, err)
-		os.Exit(1)
-	}
-
-	// Read the file
-	code, err := os.ReadFile(absPath)
-	if err != nil {
-		fmt.Printf("Error reading file '%s': %v\n", filename, err)
-		os.Exit(1)
-	}
-
-	// Lexical analysis
-	l := lexer.New(string(code))
-
-	// Parsing
-	p := parser.New(l)
-	program := p.ParseProgram()
-
-	// Check for parser errors
-	if len(p.Errors()) > 0 {
-		fmt.Printf("Error: %v\n", formatParserErrors(p.Errors()))
-		os.Exit(1)
-	}
-
-	// Compilation
-	c := compiler.New()
-	if err := c.Compile(program); err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Create main module for exports
-	mainModule := &objects.Module{
-		Name:    absPath,
-		Exports: make(map[string]objects.Object),
-	}
-
-	// Execution
-	bytecode := c.Bytecode()
-	v := vm.NewWithGlobalsStore(bytecode, make([]objects.Object, compiler.GlobalsSize))
-	v.SetSourcePath(absPath)
-	v.SetCurrentModule(mainModule)
-
-	if err := v.Run(); err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Print result if it's meaningful
-	result := v.LastPopped()
-	if result != nil && result != objects.NULL {
-		fmt.Println(result.Inspect())
-	}
-}
-
-// Execute compiles and runs code in the REPL context
-func (r *REPL) Execute(input string) (objects.Object, error) {
-	// Lexical analysis
-	l := lexer.New(input)
-
-	// Parsing
-	p := parser.New(l)
-	program := p.ParseProgram()
-
-	// Check for parser errors
-	if len(p.Errors()) > 0 {
-		return nil, formatParserErrors(p.Errors())
-	}
-
-	// Compilation with persistent state
-	c := compiler.NewWithState(r.symbolTable, r.constants)
-	if err := c.Compile(program); err != nil {
-		return nil, fmt.Errorf("compiler error: %v", err)
-	}
-
-	// Update constants
-	r.constants = c.Bytecode().Constants
-
-	// Execution with persistent globals
-	bytecode := c.Bytecode()
-	v := vm.NewWithGlobalsStore(bytecode, r.globals)
-
-	if err := v.Run(); err != nil {
-		return nil, fmt.Errorf("runtime error: %v", err)
-	}
-
-	// Update globals for next execution
-	r.globals = v.Globals()
-
-	return v.LastPopped(), nil
-}
-
-func formatParserErrors(errors []string) error {
-	var sb strings.Builder
-	sb.WriteString("parser errors:\n")
-	for _, err := range errors {
-		sb.WriteString("  ")
-		sb.WriteString(err)
-		sb.WriteString("\n")
-	}
-	return fmt.Errorf("%s", sb.String())
+    if len(history) == 0 {
+        fmt.Println("No commands in history")
+        return
+    }
+    for i, cmd := range history {
+        // Truncate long commands for display
+        display := cmd
+        if len(display) > 60 {
+            display = display[:57] + "..."
+        }
+        // Replace newlines with escaped version
+        display = strings.ReplaceAll(display, "\n", "\\n")
+        fmt.Printf("%3d: %s\n", i+1, display)
+    }
 }
