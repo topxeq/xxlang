@@ -1108,6 +1108,64 @@ func (c *Compiler) leaveScope() *CompiledFunction {
 	}
 }
 
+// compileMethod compiles a method without binding it to a global variable.
+// Methods are stored in the class's methods map, not as standalone globals.
+func (c *Compiler) compileMethod(node *parser.FunctionLiteral) error {
+	// Enter function scope
+	c.enterScope()
+
+	// Reserve local slot 0 for 'this' (set by VM when calling method)
+	// Define a dummy symbol at index 0 for 'this'
+	c.symbolTable.Define("this")
+
+	// Define parameters as local variables (starting at index 1)
+	for _, p := range node.Parameters {
+		c.symbolTable.Define(p.Value)
+	}
+
+	// Compile body
+	if err := c.Compile(node.Body); err != nil {
+		return err
+	}
+
+	// Ensure function ends with return
+	if c.lastInstruction.Opcode != OpReturn {
+		c.emit(OpNull)
+		c.emit(OpReturn)
+	}
+
+	// Leave function scope and get compiled function
+	compiledFn := c.leaveScope()
+	compiledFn.NumParameters = len(node.Parameters)
+
+	// Add function to constants
+	fnIndex := c.addConstant(compiledFn)
+
+	// Emit OpClosure with function index and number of free variables
+	// For each free variable, emit code to push its value onto the stack
+	for _, freeVar := range compiledFn.FreeVariables {
+		// Push the value of each free variable onto the stack
+		// This will be captured in the closure
+		switch freeVar.Scope {
+		case GlobalScope:
+			c.emit(OpGetGlobal, freeVar.Index)
+		case LocalScope:
+			c.emit(OpGetLocal, freeVar.Index)
+		case FreeScope:
+			// Free variable in outer function - get it from outer's free vars
+			c.emit(OpGetFree, freeVar.Index)
+		}
+	}
+
+	// Emit closure instruction
+	c.emit(OpClosure, fnIndex, len(compiledFn.FreeVariables))
+
+	// Note: We do NOT bind method names to globals like we do for named functions
+	// Methods are only accessible through the class's methods map
+
+	return nil
+}
+
 // compileClassStatement compiles a class declaration
 func (c *Compiler) compileClassStatement(node *parser.ClassStatement) error {
 	// Compile superclass (push null if none)
@@ -1139,8 +1197,8 @@ func (c *Compiler) compileClassStatement(node *parser.ClassStatement) error {
 		// Key (method name)
 		nameIdx := c.addConstant(&objects.String{Value: method.Name})
 		c.emit(OpConstant, nameIdx)
-		// Compile method as function
-		if err := c.Compile(method); err != nil {
+		// Compile method as function (with 'this' at local 0)
+		if err := c.compileMethod(method); err != nil {
 			return err
 		}
 	}
@@ -1190,22 +1248,22 @@ func (c *Compiler) compileThisExpression(node *parser.ThisExpression) error {
 
 // compileSuperCallExpression compiles a super.method() call
 func (c *Compiler) compileSuperCallExpression(node *parser.SuperCallExpression) error {
+	// Push this first (as the instance for OpCallMethod)
+	c.emit(OpGetLocal, 0)
+
 	// Get super method
 	nameIdx := c.addConstant(&objects.String{Value: node.Method})
 	c.emit(OpSuper, nameIdx)
 
-	// Push this as first argument
-	c.emit(OpGetLocal, 0)
-
-	// Compile remaining arguments
+	// Compile arguments (not including this)
 	for _, arg := range node.Args {
 		if err := c.Compile(arg); err != nil {
 			return err
 		}
 	}
 
-	// Call method
-	c.emit(OpCall, len(node.Args)+1) // +1 for this
+	// Call method with OpCallMethod (which handles this separately)
+	c.emit(OpCallMethod, len(node.Args))
 
 	return nil
 }

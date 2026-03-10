@@ -17,15 +17,17 @@ const (
 
 // VM is the virtual machine that executes bytecode
 type VM struct {
-	constants       []objects.Object
-	stack           *Stack
-	frames          []*Frame
-	frameIndex      int
-	globals         []objects.Object
-	loader          *module.Loader   // Module cache and cycle detection
-	currentModule   *objects.Module  // Current module context for exports
-	sourcePath      string           // Current source file path for imports
-	currentInstance *objects.Instance // Current instance for this binding
+	constants        []objects.Object
+	stack            *Stack
+	frames           []*Frame
+	frameIndex       int
+	globals          []objects.Object
+	loader           *module.Loader   // Module cache and cycle detection
+	currentModule    *objects.Module  // Current module context for exports
+	sourcePath       string           // Current source file path for imports
+	currentInstance  *objects.Instance // Current instance for this binding
+	pendingInstance  *objects.Instance // Instance to push after init returns
+	initFrame        *Frame           // The init frame that should push pendingInstance
 }
 
 // New creates a new VM with the given bytecode
@@ -372,6 +374,16 @@ func (vm *VM) currentFrame() *Frame {
 	return vm.frames[vm.frameIndex-1]
 }
 
+func (vm *VM) currentFrameMethodName() string {
+	frame := vm.currentFrame()
+	if frame.This != nil {
+		if inst, ok := frame.This.(*objects.Instance); ok {
+			return fmt.Sprintf("method of %s", inst.Class.Name)
+		}
+	}
+	return "main"
+}
+
 func (vm *VM) pushFrame(f *Frame) {
 	if vm.frameIndex >= MaxFrames {
 		panic("frame overflow")
@@ -690,6 +702,7 @@ func (vm *VM) executeGetLocal() error {
 	vm.currentFrame().IP++
 
 	frame := vm.currentFrame()
+
 	// If this is a method call and localIndex is 0, return 'this'
 	if frame.This != nil {
 		if localIndex == 0 {
@@ -697,7 +710,11 @@ func (vm *VM) executeGetLocal() error {
 			return nil
 		}
 		// Adjust index if 'this' is present (shift locals by 1)
-		vm.stack.Push(frame.Locals[localIndex-1])
+		adjustedIndex := int(localIndex) - 1
+		if adjustedIndex >= len(frame.Locals) {
+			return fmt.Errorf("local variable index %d out of bounds", localIndex)
+		}
+		vm.stack.Push(frame.Locals[adjustedIndex])
 		return nil
 	}
 	vm.stack.Push(frame.Locals[localIndex])
@@ -918,6 +935,14 @@ func (vm *VM) executeReturn() error {
 		for vm.stack.Len() > frame.BasePointer {
 			vm.stack.Pop()
 		}
+	}
+
+	// Check if we're returning from the init frame that should push the instance
+	if vm.pendingInstance != nil && frame == vm.initFrame {
+		vm.stack.Push(vm.pendingInstance)
+		vm.pendingInstance = nil
+		vm.initFrame = nil
+		return nil
 	}
 
 	// Push the return value
@@ -1393,15 +1418,15 @@ func (vm *VM) executeCallMethod() error {
 		return fmt.Errorf("wrong number of arguments: want=%d, got=%d", fn.NumParameters, numArgs)
 	}
 
-	// Pop the method from stack
-	vm.stack.Pop()
-
-	// Now stack is: [... instance, arg1, arg2, ...]
-	// Pop arguments in reverse order
+	// Stack order: [... instance, method, arg1, arg2, ...]
+	// Pop arguments first (they are on top of the method)
 	args := make([]objects.Object, numArgs)
 	for i := numArgs - 1; i >= 0; i-- {
 		args[i] = vm.stack.Pop()
 	}
+
+	// Pop the method from stack
+	vm.stack.Pop()
 
 	// Pop instance from stack
 	vm.stack.Pop()
@@ -1425,6 +1450,8 @@ func (vm *VM) executeCallMethod() error {
 	frame.Globals = globals
 
 	vm.pushFrame(frame)
+
+
 	return nil
 }
 
@@ -1470,6 +1497,11 @@ func (vm *VM) executeOpClass() error {
 		}
 	}
 
+	// If no init method in this class, look in superclass chain
+	if initMethod == nil && superClass != nil {
+		initMethod = vm.findInitMethod(superClass)
+	}
+
 	// Build fields map
 	classFields := make(map[string]objects.Object)
 	for _, pair := range fields.Pairs {
@@ -1495,6 +1527,14 @@ func (vm *VM) executeOpNew() error {
 	argCount := int(vm.readUint8())
 	vm.currentFrame().IP++
 
+	// Stack has: [class, arg1, arg2, ...]
+	// Pop arguments first (in reverse order)
+	args := make([]objects.Object, argCount)
+	for i := argCount - 1; i >= 0; i-- {
+		args[i] = vm.stack.Pop()
+	}
+
+	// Now pop the class
 	classObj := vm.stack.Pop()
 	class, ok := classObj.(*objects.Class)
 	if !ok {
@@ -1513,34 +1553,56 @@ func (vm *VM) executeOpNew() error {
 
 	// Call init if exists
 	if class.InitMethod != nil {
-		// Get the compiled function for init
-		initFn, ok := class.InitMethod.(*compiler.CompiledFunction)
-		if !ok {
-			return fmt.Errorf("init method must be a function")
+		// The init method can be either a Closure or CompiledFunction
+		var initFn *compiler.CompiledFunction
+		var freeVars []objects.Object
+		var constants []objects.Object
+		var globals []objects.Object
+
+		switch m := class.InitMethod.(type) {
+		case *Closure:
+			initFn = m.Fn
+			freeVars = m.FreeVars
+			constants = m.Constants
+			globals = m.Globals
+		case *compiler.CompiledFunction:
+			initFn = m
+		default:
+			return fmt.Errorf("init method must be a function, got %T", class.InitMethod)
 		}
 
-		// Set current instance for this binding
+		// Check argument count
+		if argCount != initFn.NumParameters {
+			return fmt.Errorf("wrong number of arguments for init: want=%d, got=%d", initFn.NumParameters, argCount)
+		}
+
+		// Set current instance for this/super binding
 		vm.currentInstance = instance
 
-		// Push instance as first argument (this)
-		vm.stack.Push(instance)
+		// Create new frame with the instance as 'this'
+		frame := NewFrame(initFn, vm.stack.Len())
+		frame.This = instance
 
-		// Pop arguments and push them back in order
-		args := make([]objects.Object, argCount)
-		for i := argCount - 1; i >= 0; i-- {
-			args[i] = vm.stack.Pop()
-		}
-		for _, arg := range args {
-			vm.stack.Push(arg)
+		// Store arguments in locals
+		for i := 0; i < argCount; i++ {
+			frame.Locals[i] = args[i]
 		}
 
-		// Call init
-		if err := vm.callFunction(initFn, argCount+1, nil, nil, nil); err != nil {
-			return err
+		// Set free variables
+		if freeVars != nil {
+			frame.FreeVars = freeVars
 		}
 
-		// Pop return value
-		vm.stack.Pop()
+		// Set constants and globals
+		frame.Constants = constants
+		frame.Globals = globals
+
+		// Store the instance so we can push it after init returns
+		vm.pendingInstance = instance
+		vm.initFrame = frame
+
+		vm.pushFrame(frame)
+		return nil
 	}
 
 	// Push instance onto stack
@@ -1553,7 +1615,13 @@ func (vm *VM) executeOpGetField() error {
 	nameIdx := int(vm.readUint16())
 	vm.currentFrame().IP += 2
 
-	name := vm.constants[nameIdx].(*objects.String).Value
+	frame := vm.currentFrame()
+	var name string
+	if frame.Constants != nil && int(nameIdx) < len(frame.Constants) {
+		name = frame.Constants[nameIdx].(*objects.String).Value
+	} else {
+		name = vm.constants[nameIdx].(*objects.String).Value
+	}
 
 	obj := vm.stack.Pop()
 	instance, ok := obj.(*objects.Instance)
@@ -1575,7 +1643,13 @@ func (vm *VM) executeOpSetField() error {
 	nameIdx := int(vm.readUint16())
 	vm.currentFrame().IP += 2
 
-	name := vm.constants[nameIdx].(*objects.String).Value
+	frame := vm.currentFrame()
+	var name string
+	if frame.Constants != nil && int(nameIdx) < len(frame.Constants) {
+		name = frame.Constants[nameIdx].(*objects.String).Value
+	} else {
+		name = vm.constants[nameIdx].(*objects.String).Value
+	}
 
 	// Stack order from compiler: [value, object]
 	// value is pushed first, then object
@@ -1598,7 +1672,13 @@ func (vm *VM) executeOpSuper() error {
 	nameIdx := int(vm.readUint16())
 	vm.currentFrame().IP += 2
 
-	name := vm.constants[nameIdx].(*objects.String).Value
+	frame := vm.currentFrame()
+	var name string
+	if frame.Constants != nil && int(nameIdx) < len(frame.Constants) {
+		name = frame.Constants[nameIdx].(*objects.String).Value
+	} else {
+		name = vm.constants[nameIdx].(*objects.String).Value
+	}
 
 	if vm.currentInstance == nil {
 		return fmt.Errorf("cannot use 'super' outside of method context")
@@ -1635,6 +1715,16 @@ func (vm *VM) collectFields(class *objects.Class, fields map[string]objects.Obje
 func (vm *VM) findMethod(class *objects.Class, name string) objects.Object {
 	for c := class; c != nil; c = c.SuperClass {
 		if method, ok := c.Methods[name]; ok {
+			return method
+		}
+	}
+	return nil
+}
+
+// findInitMethod finds the init method in class hierarchy
+func (vm *VM) findInitMethod(class *objects.Class) objects.Object {
+	for c := class; c != nil; c = c.SuperClass {
+		if method, ok := c.Methods["init"]; ok {
 			return method
 		}
 	}
