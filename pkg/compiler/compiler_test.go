@@ -3,6 +3,7 @@ package compiler
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/topxeq/xxlang/pkg/lexer"
@@ -1194,5 +1195,162 @@ func TestClassWithSuperclassCompilation(t *testing.T) {
 		if symbol.Scope != GlobalScope {
 			t.Errorf("expected GlobalScope for %q, got %v", name, symbol.Scope)
 		}
+	}
+}
+
+// ============================================
+// Opcode Verification Tests
+// ============================================
+
+func TestCompiler_OpcodeVerification(t *testing.T) {
+	tests := []struct {
+		name          string
+		input         string
+		expectedOps   []Opcode
+		unexpectedOps []Opcode
+	}{
+		{
+			name:          "constant load",
+			input:         "42;",
+			expectedOps:   []Opcode{OpConstant},
+			unexpectedOps: nil,
+		},
+		{
+			name:          "addition",
+			input:         "1 + 2;",
+			expectedOps:   []Opcode{OpAdd},
+			unexpectedOps: nil,
+		},
+		{
+			name:          "comparison less than",
+			input:         "1 < 2;",
+			expectedOps:   []Opcode{OpLess},
+			unexpectedOps: nil,
+		},
+		{
+			name:          "function call",
+			input:         "func f() { return 1; }; f();",
+			expectedOps:   []Opcode{OpCall},
+			unexpectedOps: nil,
+		},
+		{
+			name:          "array creation",
+			input:         "[1, 2, 3];",
+			expectedOps:   []Opcode{OpArray},
+			unexpectedOps: nil,
+		},
+		{
+			name:          "map creation",
+			input:         `{"a": 1};`,
+			expectedOps:   []Opcode{OpMap},
+			unexpectedOps: nil,
+		},
+		{
+			name:          "subtraction",
+			input:         "5 - 3;",
+			expectedOps:   []Opcode{OpSub},
+			unexpectedOps: nil,
+		},
+		{
+			name:          "multiplication",
+			input:         "4 * 2;",
+			expectedOps:   []Opcode{OpMul},
+			unexpectedOps: nil,
+		},
+		{
+			name:          "division",
+			input:         "10 / 2;",
+			expectedOps:   []Opcode{OpDiv},
+			unexpectedOps: nil,
+		},
+		{
+			name:          "modulo",
+			input:         "10 % 3;",
+			expectedOps:   []Opcode{OpMod},
+			unexpectedOps: nil,
+		},
+		{
+			name:          "negation",
+			input:         "-5;",
+			expectedOps:   []Opcode{OpNeg},
+			unexpectedOps: nil,
+		},
+		{
+			name:          "logical and",
+			input:         "true && false;",
+			expectedOps:   []Opcode{OpAnd},
+			unexpectedOps: nil,
+		},
+		{
+			name:          "logical or",
+			input:         "true || false;",
+			expectedOps:   []Opcode{OpOr},
+			unexpectedOps: nil,
+		},
+		{
+			name:          "logical not",
+			input:         "!true;",
+			expectedOps:   []Opcode{OpNot},
+			unexpectedOps: nil,
+		},
+		{
+			name:          "closure",
+			input:         "func f() { return 1; };",
+			expectedOps:   []Opcode{OpClosure},
+			unexpectedOps: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			program := parse(tt.input)
+			c := New()
+			err := c.Compile(program)
+			if err != nil {
+				t.Fatalf("compiler error: %v", err)
+			}
+
+			bytecode := c.Bytecode()
+			for _, expectedOp := range tt.expectedOps {
+				if !containsOpcode(bytecode.Instructions, expectedOp) {
+					t.Errorf("expected opcode %v in bytecode", expectedOp)
+				}
+			}
+			for _, unexpectedOp := range tt.unexpectedOps {
+				if containsOpcode(bytecode.Instructions, unexpectedOp) {
+					t.Errorf("unexpected opcode %v in bytecode", unexpectedOp)
+				}
+			}
+		})
+	}
+}
+
+// ============================================
+// Error Case Tests
+// ============================================
+
+func TestCompiler_ErrorCases(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		expectError string
+	}{
+		{"undefined variable", "x;", "undefined"},
+		{"undefined superclass", "class Dog extends Animal { }", "undefined superclass"},
+		{"undefined class in new", "var p = new Person();", "undefined class"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			program := parse(tt.input)
+			c := New()
+			err := c.Compile(program)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.expectError) {
+				t.Errorf("expected error containing %q, got %q", tt.expectError, err.Error())
+			}
+		})
 	}
 }
