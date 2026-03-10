@@ -1275,6 +1275,17 @@ func (vm *VM) executeSetExport() error {
 		return fmt.Errorf("export statement outside of module context")
 	}
 
+	// If the exported value is a CompiledFunction, wrap it in a Closure
+	// so it has access to the module's constants and globals when called
+	if fn, ok := value.(*compiler.CompiledFunction); ok {
+		value = &Closure{
+			Fn:        fn,
+			FreeVars:  nil,
+			Constants: vm.constants,
+			Globals:   vm.globals,
+		}
+	}
+
 	// Set the export
 	vm.currentModule.Exports[name] = value
 
@@ -1375,6 +1386,7 @@ func (vm *VM) executeGetMethod() error {
 }
 
 // executeCallMethod calls a method on an instance with 'this' binding
+// For non-instance calls (like module functions), it falls back to regular call
 func (vm *VM) executeCallMethod() error {
 	numArgs := int(vm.readUint8())
 	vm.currentFrame().IP++
@@ -1386,10 +1398,31 @@ func (vm *VM) executeCallMethod() error {
 	method := vm.stack.Peek(numArgs)
 	instance := vm.stack.Peek(numArgs + 1)
 
-	// Verify instance is an Instance object
+	// Check if this is an Instance object for method binding
 	inst, ok := instance.(*objects.Instance)
 	if !ok {
-		return fmt.Errorf("cannot call method on non-instance type: %T", instance)
+		// Not an instance - treat as regular function call
+		// Stack is: [method, arg1, arg2, ...]
+		// Pop arguments first
+		args := make([]objects.Object, numArgs)
+		for i := numArgs - 1; i >= 0; i-- {
+			args[i] = vm.stack.Pop()
+		}
+
+		// Pop the function
+		fn := vm.stack.Pop()
+
+		// Call as regular function
+		switch f := fn.(type) {
+		case *compiler.CompiledFunction:
+			return vm.callFunction(f, numArgs, nil, nil, nil)
+		case *Closure:
+			return vm.callFunction(f.Fn, numArgs, f.FreeVars, f.Constants, f.Globals)
+		case *objects.Builtin:
+			return vm.callBuiltin(f, numArgs)
+		default:
+			return fmt.Errorf("cannot call non-function: %T", fn)
+		}
 	}
 
 	// Set current instance for this/super binding
