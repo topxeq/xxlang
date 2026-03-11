@@ -43,3 +43,134 @@ func TestBoolToBool(t *testing.T) {
 		t.Error("FALSE.ToBool() should return FALSE")
 	}
 }
+
+func TestBoolHashKey(t *testing.T) {
+	// Same values should have same hash keys
+	if TRUE.HashKey() != TRUE.HashKey() {
+		t.Error("TRUE hash keys should be equal")
+	}
+	if FALSE.HashKey() != FALSE.HashKey() {
+		t.Error("FALSE hash keys should be equal")
+	}
+	// Different values should have different hash keys
+	if TRUE.HashKey() == FALSE.HashKey() {
+		t.Error("TRUE and FALSE hash keys should be different")
+	}
+}
+
+func TestNullHashKey(t *testing.T) {
+	if NULL.HashKey() != NULL.HashKey() {
+		t.Error("NULL hash keys should be equal")
+	}
+}
+
+// ============================================================
+// Error Type Tests
+// ============================================================
+
+func TestErrorType(t *testing.T) {
+	e := &Error{Message: "test error"}
+	if got := e.Type(); got != ErrorType {
+		t.Errorf("Error.Type() = %s, want ERROR", got)
+	}
+}
+
+func TestErrorInspect(t *testing.T) {
+	e := &Error{Message: "test error"}
+	if got := e.Inspect(); got != "ERROR: test error" {
+		t.Errorf("Error.Inspect() = %s, want 'ERROR: test error'", got)
+	}
+}
+
+func TestErrorToBool(t *testing.T) {
+	e := &Error{Message: "test error"}
+	if e.ToBool() != FALSE {
+		t.Error("Error.ToBool() should be FALSE")
+	}
+}
+
+func TestErrorHashKey(t *testing.T) {
+	e1 := &Error{Message: "error 1"}
+	e2 := &Error{Message: "error 2"}
+	// All errors have the same hash key (type-based, not value-based)
+	if e1.HashKey() != e2.HashKey() {
+		t.Error("Error hash keys should be equal")
+	}
+}
+
+// ============================================================
+// Return Type Tests
+// ============================================================
+
+func TestReturnType(t *testing.T) {
+	r := &Return{Value: &Int{Value: 42}}
+	if got := r.Type(); got != ReturnType {
+		t.Errorf("Return.Type() = %s, want RETURN", got)
+	}
+}
+
+func TestReturnInspect(t *testing.T) {
+	r := &Return{Value: &Int{Value: 42}}
+	if got := r.Inspect(); got != "42" {
+		t.Errorf("Return.Inspect() = %s, want '42'", got)
+	}
+}
+
+func TestReturnToBool(t *testing.T) {
+	r := &Return{Value: &Int{Value: 42}}
+	if r.ToBool() != TRUE {
+		t.Error("Return(42).ToBool() should be TRUE")
+	}
+
+	rZero := &Return{Value: &Int{Value: 0}}
+	if rZero.ToBool() != FALSE {
+		t.Error("Return(0).ToBool() should be FALSE")
+	}
+}
+
+func TestReturnHashKey(t *testing.T) {
+	r := &Return{Value: &Int{Value: 42}}
+	if r.HashKey() != (HashKey{Type: ReturnType, Value: 0}) {
+		t.Error("Return.HashKey() should return constant hash")
+	}
+}
+
+// ============================================================
+// IsTruthy Tests
+// ============================================================
+
+func TestIsTruthy(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    Object
+		expected bool
+	}{
+		{"null is falsy", NULL, false},
+		{"zero is falsy", &Int{Value: 0}, false},
+		{"non-zero is truthy", &Int{Value: 1}, true},
+		{"empty string is falsy", &String{Value: ""}, false},
+		{"non-empty string is truthy", &String{Value: "hello"}, true},
+		{"empty array is falsy", &Array{Elements: []Object{}}, false},
+		{"non-empty array is truthy", &Array{Elements: []Object{&Int{Value: 1}}}, true},
+		{"empty map is falsy", &Map{Pairs: map[HashKey]MapPair{}}, false},
+		{"non-empty map is truthy", createTestMap(), true},
+		{"false is falsy", FALSE, false},
+		{"true is truthy", TRUE, true},
+		{"error is falsy", &Error{Message: "test"}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsTruthy(tt.input); got != tt.expected {
+				t.Errorf("IsTruthy(%s) = %v, want %v", tt.input.Inspect(), got, tt.expected)
+			}
+		})
+	}
+}
+
+func createTestMap() *Map {
+	pairs := make(map[HashKey]MapPair)
+	key := &String{Value: "a"}
+	pairs[key.HashKey()] = MapPair{Key: key, Value: &Int{Value: 1}}
+	return &Map{Pairs: pairs}
+}
