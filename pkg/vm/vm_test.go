@@ -2,6 +2,7 @@
 package vm
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/topxeq/xxlang/pkg/compiler"
@@ -1257,4 +1258,484 @@ func containsStringHelper(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// ============================================
+// Closure Tests
+// ============================================
+
+func TestClosureMethods(t *testing.T) {
+	// Test Closure Inspect
+	c := &Closure{
+		Fn:       &compiler.CompiledFunction{Instructions: []byte{}},
+		FreeVars: []objects.Object{&objects.Int{Value: 1}},
+	}
+	if c.Inspect() == "" {
+		t.Error("Closure.Inspect() should return non-empty string")
+	}
+	if !strings.Contains(c.Inspect(), "closure") {
+		t.Errorf("Closure.Inspect() should contain 'closure', got %s", c.Inspect())
+	}
+
+	// Test Closure ToBool
+	if c.ToBool() != objects.TRUE {
+		t.Error("Closure.ToBool() should return TRUE")
+	}
+
+	// Test Closure HashKey
+	hk := c.HashKey()
+	if hk.Type != objects.ClosureType {
+		t.Errorf("Closure.HashKey().Type should be ClosureType, got %s", hk.Type)
+	}
+}
+
+// ============================================
+// String Comparison Tests
+// ============================================
+
+func TestStringComparison(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{`"a" < "b"`, true},
+		{`"b" < "a"`, false},
+		{`"a" < "a"`, false},
+		{`"a" <= "a"`, true},
+		{`"a" <= "b"`, true},
+		{`"b" <= "a"`, false},
+		{`"b" > "a"`, true},
+		{`"a" > "b"`, false},
+		{`"a" >= "a"`, true},
+		{`"b" >= "a"`, true},
+		{`"a" >= "b"`, false},
+		{`"abc" < "abd"`, true},
+		{`"abc" > "abb"`, true},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		testBooleanObject(t, tt.expected, vm.LastPopped())
+	}
+}
+
+// ============================================
+// JumpIfTrue Tests
+// ============================================
+
+func TestJumpIfTrue(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		// Test || short-circuit with true
+		{`true || false`, true},
+		{`true || true`, true},
+		{`false || true`, true},
+		{`false || false`, false},
+		// Test complex || expressions
+		{`1 == 1 || 2 == 3`, true},
+		{`1 == 2 || 2 == 2`, true},
+		{`1 == 2 || 2 == 3`, false},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		switch expected := tt.expected.(type) {
+		case bool:
+			testBooleanObject(t, expected, vm.LastPopped())
+		}
+	}
+}
+
+// ============================================
+// Class with Init Method Tests
+// ============================================
+
+func TestClassWithInit(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		{
+			`
+			class Point {
+				func init(x, y) {
+					this.x = x
+					this.y = y
+				}
+			}
+			var p = new Point(3, 4)
+			p.x
+			`,
+			3,
+		},
+		{
+			`
+			class Point {
+				func init(x, y) {
+					this.x = x
+					this.y = y
+				}
+			}
+			var p = new Point(3, 4)
+			p.y
+			`,
+			4,
+		},
+		{
+			`
+			class Counter {
+				func init() {
+					this.count = 0
+				}
+				func inc() {
+					this.count = this.count + 1
+				}
+			}
+			var c = new Counter()
+			c.inc()
+			c.inc()
+			c.count
+			`,
+			2,
+		},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		switch expected := tt.expected.(type) {
+		case int:
+			testIntegerObject(t, int64(expected), vm.LastPopped())
+		}
+	}
+}
+
+// ============================================
+// Field Access Tests
+// ============================================
+
+func TestFieldAccess(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		{
+			`
+			class Person {
+				var name = "John"
+				var age = 30
+			}
+			var p = new Person()
+			p.name
+			`,
+			"John",
+		},
+		{
+			`
+			class Person {
+				var name = "John"
+				var age = 30
+			}
+			var p = new Person()
+			p.age
+			`,
+			30,
+		},
+		{
+			`
+			class Point {
+				var x = 0
+				var y = 0
+			}
+			var p = new Point()
+			p.x = 10
+			p.y = 20
+			p.x + p.y
+			`,
+			30,
+		},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		switch expected := tt.expected.(type) {
+		case int:
+			testIntegerObject(t, int64(expected), vm.LastPopped())
+		case string:
+			testStringObject(t, expected, vm.LastPopped())
+		}
+	}
+}
+
+// ============================================
+// VM Utility Method Tests
+// ============================================
+
+func TestVMStackTop(t *testing.T) {
+	input := "var x = 42; x"
+	bytecode, err := testCompile(input)
+	if err != nil {
+		t.Fatalf("compiler error: %s", err)
+	}
+
+	vm := New(bytecode)
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("vm error: %s", err)
+	}
+
+	top := vm.StackTop()
+	if top == nil {
+		t.Fatal("StackTop() should not return nil after run")
+	}
+	testIntegerObject(t, 42, top)
+}
+
+func TestVMSetSourcePath(t *testing.T) {
+	input := "42"
+	bytecode, err := testCompile(input)
+	if err != nil {
+		t.Fatalf("compiler error: %s", err)
+	}
+
+	vm := New(bytecode)
+	vm.SetSourcePath("/test/path.xxl")
+	// Should not panic
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("vm error: %s", err)
+	}
+}
+
+func TestVMGlobalsMethod(t *testing.T) {
+	input := "var x = 10; x"
+	bytecode, err := testCompile(input)
+	if err != nil {
+		t.Fatalf("compiler error: %s", err)
+	}
+
+	vm := New(bytecode)
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("vm error: %s", err)
+	}
+
+	globals := vm.Globals()
+	if globals == nil {
+		t.Fatal("Globals() should not return nil")
+	}
+}
+
+// ============================================
+// Return Statement Tests
+// ============================================
+
+func TestReturnValues(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		{`func f() { return 42; } f()`, 42},
+		{`func f() { var x = 1; return x; } f()`, 1},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		switch expected := tt.expected.(type) {
+		case int:
+			testIntegerObject(t, int64(expected), vm.LastPopped())
+		case nil:
+			testNullObject(t, vm.LastPopped())
+		}
+	}
+}
+
+// ============================================
+// JumpIfTrue Extended Tests
+// ============================================
+
+func TestJumpIfTrueExtended(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		// Short-circuit || with true on left
+		{`true || false`, true},
+		{`true || true`, true},
+		{`false || true`, true},
+		{`false || false`, false},
+		// With expressions
+		{`1 == 1 || 2 == 3`, true},
+		{`1 == 2 || 2 == 2`, true},
+		{`1 == 2 || 2 == 3`, false},
+		// Nested
+		{`(true || false) || false`, true},
+		{`false || (true || false)`, true},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		switch expected := tt.expected.(type) {
+		case bool:
+			testBooleanObject(t, expected, vm.LastPopped())
+		}
+	}
+}
+
+// ============================================
+// Class Init Method Tests
+// ============================================
+
+func TestClassInitMethod(t *testing.T) {
+	input := `
+		class Point {
+			func init(x, y) {
+				this.x = x
+				this.y = y
+			}
+		}
+		var p = new Point(3, 4)
+		p.x + p.y
+	`
+	vm := runVM(t, input)
+	testIntegerObject(t, 7, vm.LastPopped())
+}
+
+// ============================================
+// Class Field Mutation Tests
+// ============================================
+
+func TestClassFieldMutation(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		{
+			`
+			class Box {
+				var value = 0
+			}
+			var b = new Box()
+			b.value = 10
+			b.value
+			`,
+			10,
+		},
+		{
+			`
+			class Box {
+				var value = 0
+			}
+			var b = new Box()
+			b.value = 5
+			b.value = b.value + 5
+			b.value
+			`,
+			10,
+		},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		switch expected := tt.expected.(type) {
+		case int:
+			testIntegerObject(t, int64(expected), vm.LastPopped())
+		}
+	}
+}
+
+// ============================================
+// Multiple Class Instance Tests
+// ============================================
+
+func TestMultipleClassInstances(t *testing.T) {
+	input := `
+		class Counter {
+			var count = 0
+			func inc() {
+				this.count = this.count + 1
+			}
+		}
+		var c1 = new Counter()
+		var c2 = new Counter()
+		c1.inc()
+		c1.inc()
+		c2.inc()
+		c1.count + c2.count
+	`
+	vm := runVM(t, input)
+	testIntegerObject(t, 3, vm.LastPopped())
+}
+
+// ============================================
+// Compound Assignment Tests
+// ============================================
+
+func TestCompoundAssignment(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		{`var x = 5; x += 3; x`, 8},
+		{`var x = 5; x -= 3; x`, 2},
+		{`var x = 5; x *= 3; x`, 15},
+		{`var x = 15; x /= 3; x`, 5},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		switch expected := tt.expected.(type) {
+		case int:
+			testIntegerObject(t, int64(expected), vm.LastPopped())
+		}
+	}
+}
+
+// ============================================
+// Float Arithmetic Extended Tests
+// ============================================
+
+func TestFloatArithmeticExtended(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected float64
+	}{
+		{`1.5 + 2.5`, 4.0},
+		{`5.5 - 2.5`, 3.0},
+		{`2.5 * 2.0`, 5.0},
+		{`10.0 / 4.0`, 2.5},
+		{`3.5 + 2`, 5.5},
+		{`2 + 3.5`, 5.5},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		testFloatObject(t, tt.expected, vm.LastPopped())
+	}
+}
+
+// ============================================
+// Boolean Operations Tests
+// ============================================
+
+func TestBooleanOperations(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{`!true`, false},
+		{`!false`, true},
+		{`!!true`, true},
+		{`!!false`, false},
+		{`true && true`, true},
+		{`true && false`, false},
+		{`false && true`, false},
+		{`false && false`, false},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		testBooleanObject(t, tt.expected, vm.LastPopped())
+	}
 }
