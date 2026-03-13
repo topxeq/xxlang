@@ -20,7 +20,7 @@ func NewOptimizer(bytecode *Bytecode) *Optimizer {
 // Optimize runs all optimization passes
 func (o *Optimizer) Optimize() *Bytecode {
 	result := o.FoldConstants()
-	// More passes can be added here
+	result = o.GenerateSuperinstructions()
 	return result
 }
 
@@ -148,4 +148,105 @@ func (o *Optimizer) foldBinaryOp(left, right objects.Object, op Opcode) (objects
 	}
 
 	return nil, false
+}
+
+// GenerateSuperinstructions combines common instruction sequences into single instructions
+func (o *Optimizer) GenerateSuperinstructions() *Bytecode {
+	instructions := o.bytecode.Instructions
+
+	if len(instructions) < 3 {
+		return o.bytecode
+	}
+
+	newInstructions := make([]byte, 0, len(instructions))
+
+	i := 0
+	for i < len(instructions) {
+		op := Opcode(instructions[i])
+
+		// Pattern: OpGetLocal + OpGetLocal + OpAdd/Sub/Mul
+		if op == OpGetLocal && i+4 < len(instructions) {
+			idx1 := int(instructions[i+1])
+
+			if Opcode(instructions[i+2]) == OpGetLocal {
+				idx2 := int(instructions[i+3])
+				binOp := Opcode(instructions[i+4])
+
+				// Check if both indices fit in a byte (0-255)
+				if idx1 <= 255 && idx2 <= 255 {
+					var superOp Opcode
+					switch binOp {
+					case OpAdd:
+						superOp = OpGetLocalAdd
+					case OpSub:
+						superOp = OpGetLocalSub
+					case OpMul:
+						superOp = OpGetLocalMul
+					}
+
+					if superOp != 0 {
+						// Emit superinstruction
+						newInstructions = append(newInstructions, byte(superOp), byte(idx1), byte(idx2))
+						i += 5 // Skip OpGetLocal(2) + OpGetLocal(2) + BinOp(1)
+						continue
+					}
+				}
+			}
+		}
+
+		// Pattern: OpConstant + OpConstant + OpAdd/Sub/Mul
+		// OpConstant = 3 bytes (1 opcode + 2 byte index), so 2*3+1 = 7 bytes total
+		if op == OpConstant && i+6 < len(instructions) {
+			idx1 := int(instructions[i+1])<<8 | int(instructions[i+2])
+
+			if Opcode(instructions[i+3]) == OpConstant {
+				idx2 := int(instructions[i+4])<<8 | int(instructions[i+5])
+				binOp := Opcode(instructions[i+6])
+
+				// Only fold if both constants are integers (not functions, strings, etc.)
+				constants := o.bytecode.Constants
+				_, ok1 := constants[idx1].(*objects.Int)
+				_, ok2 := constants[idx2].(*objects.Int)
+
+				if ok1 && ok2 {
+					var superOp Opcode
+					switch binOp {
+					case OpAdd:
+						superOp = OpConstantAdd
+					case OpSub:
+						superOp = OpConstantSub
+					case OpMul:
+						superOp = OpConstantMul
+					}
+
+					if superOp != 0 {
+						// Emit superinstruction
+						newInstructions = append(newInstructions, byte(superOp))
+						newInstructions = append(newInstructions, byte(idx1>>8), byte(idx1))
+						newInstructions = append(newInstructions, byte(idx2>>8), byte(idx2))
+						i += 7 // Skip OpConstant(3) + OpConstant(3) + BinOp(1)
+						continue
+					}
+				}
+			}
+		}
+
+		// Copy instruction as-is
+		def, err := Lookup(byte(op))
+		if err != nil {
+			i++
+			continue
+		}
+
+		instrLen := 1
+		for _, w := range def.OperandWidths {
+			instrLen += w
+		}
+
+		newInstructions = append(newInstructions, instructions[i:i+instrLen]...)
+		i += instrLen
+	}
+
+	o.bytecode.Instructions = newInstructions
+	return o.bytecode
 }
