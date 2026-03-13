@@ -3,6 +3,7 @@ package compiler
 
 import (
 	"bytes"
+	"io"
 	"testing"
 
 	"github.com/topxeq/xxlang/pkg/lexer"
@@ -1249,4 +1250,295 @@ func TestCompiler_OpcodeVerification(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ============================================
+// Error Case Tests for Export Statement
+// ============================================
+
+func TestExportStatement_UnnamedFunctionError(t *testing.T) {
+	// Test: export func without name should return error
+	input := `export func(a, b) { return a + b; }`
+	program := parse(input)
+	compiler := New()
+	err := compiler.Compile(program)
+	if err == nil {
+		t.Error("expected error for unnamed exported function, got nil")
+	}
+}
+
+// ============================================
+// Method with No Return Tests (for lastInstructionIs coverage)
+// ============================================
+
+func TestMethodWithoutExplicitReturn(t *testing.T) {
+	// Test: method without explicit return should still end with OpReturn
+	// This exercises the lastInstructionIs check in compileMethod
+	input := `
+		class Counter {
+			var count = 0
+			func increment() {
+				this.count = this.count + 1
+			}
+		}
+	`
+	program := parse(input)
+	compiler := New()
+	err := compiler.Compile(program)
+	if err != nil {
+		t.Fatalf("compiler error: %v", err)
+	}
+
+	bytecode := compiler.Bytecode()
+
+	// Check that OpReturn is in method instructions
+	foundReturn := false
+	for _, c := range bytecode.Constants {
+		if fn, ok := c.(*CompiledFunction); ok {
+			if containsOpcode(fn.Instructions, OpReturn) {
+				foundReturn = true
+				break
+			}
+		}
+	}
+
+	if !foundReturn {
+		t.Error("expected OpReturn in method instructions")
+	}
+}
+
+func TestMethodWithParameters(t *testing.T) {
+	// Test: method with multiple parameters
+	// This exercises parameter compilation in compileMethod
+	input := `
+		class Calculator {
+			func add(a, b, c) {
+				return a + b + c
+			}
+		}
+	`
+	program := parse(input)
+	compiler := New()
+	err := compiler.Compile(program)
+	if err != nil {
+		t.Fatalf("compiler error: %v", err)
+	}
+
+	bytecode := compiler.Bytecode()
+
+	// Check that method is compiled with 3 parameters
+	foundMethod := false
+	for _, c := range bytecode.Constants {
+		if fn, ok := c.(*CompiledFunction); ok {
+			if fn.NumParameters == 3 {
+				foundMethod = true
+				break
+			}
+		}
+	}
+
+	if !foundMethod {
+		t.Error("expected method with 3 parameters")
+	}
+}
+
+// ============================================
+// Function Return Statement Tests (for lastInstructionIs coverage)
+// ============================================
+
+func TestFunctionWithoutExplicitReturn(t *testing.T) {
+	// Test: function without explicit return should still end with OpReturn
+	// This exercises the lastInstructionIs check in compileFunction
+	input := `func f() { }`
+	program := parse(input)
+	compiler := New()
+	err := compiler.Compile(program)
+	if err != nil {
+		t.Fatalf("compiler error: %v", err)
+	}
+
+	bytecode := compiler.Bytecode()
+
+	// Check that OpReturn is in function instructions
+	foundReturn := false
+	for _, c := range bytecode.Constants {
+		if fn, ok := c.(*CompiledFunction); ok {
+			if containsOpcode(fn.Instructions, OpReturn) {
+				foundReturn = true
+				break
+			}
+		}
+	}
+
+	if !foundReturn {
+		t.Error("expected OpReturn in a function instructions")
+	}
+}
+
+// ============================================
+// Serialization Tests
+// ============================================
+
+func TestSerializeRoundTrip(t *testing.T) {
+	// Create a simple bytecode
+	compiler := New()
+	program := parse(`var x = 42; func add(a, b) { return a + b; }`)
+	err := compiler.Compile(program)
+	if err != nil {
+		t.Fatalf("compile error: %v", err)
+	}
+
+	original := compiler.Bytecode()
+
+	// Serialize
+	serialized, err := original.Serialize()
+	if err != nil {
+		t.Fatalf("serialize error: %v", err)
+	}
+
+	// Deserialize
+	deserialized, err := Deserialize(serialized)
+	if err != nil {
+		t.Fatalf("deserialize error: %v", err)
+	}
+
+	// Compare instructions
+	if !bytes.Equal(original.Instructions, deserialized.Instructions) {
+		t.Error("instructions don't match after round-trip")
+	}
+
+	// Compare constant counts
+	if len(original.Constants) != len(deserialized.Constants) {
+		t.Error("constant counts don't match")
+	}
+}
+
+func TestSerializeToFile(t *testing.T) {
+	compiler := New()
+	program := parse(`var x = 42;`)
+	err := compiler.Compile(program)
+	if err != nil {
+		t.Fatalf("compile error: %v", err)
+	}
+
+	bytecode := compiler.Bytecode()
+
+	// Serialize to file
+	err = bytecode.SerializeToFile("/tmp/test_bytecode.xxl")
+	if err != nil {
+		t.Fatalf("serialize to file error: %v", err)
+	}
+
+	// Deserialize from file
+	deserialized, err := DeserializeFromFile("/tmp/test_bytecode.xxl")
+	if err != nil {
+		t.Fatalf("deserialize from file error: %v", err)
+	}
+
+	// Verify constants match
+	if len(bytecode.Constants) != len(deserialized.Constants) {
+		t.Error("constants don't match after file round-trip")
+	}
+}
+
+func TestSerializeWithEmptyBytecode(t *testing.T) {
+	// Test serialization of empty bytecode
+	empty := &Bytecode{}
+
+	serialized, err := empty.Serialize()
+	if err != nil {
+		t.Fatalf("serialize error: %v", err)
+	}
+
+	deserialized, err := Deserialize(serialized)
+	if err != nil {
+		t.Fatalf("deserialize error: %v", err)
+	}
+
+	if len(deserialized.Instructions) != 0 {
+		t.Error("expected empty instructions")
+	}
+}
+
+func TestSerializeWithCompiledFunction(t *testing.T) {
+	// Create a CompiledFunction with some instructions
+	fn := &CompiledFunction{
+		Instructions:  []byte{byte(OpConstant), 0, byte(OpReturn)},
+		NumLocals:     0,
+		NumParameters:  0,
+		FreeVariables: []Symbol{},
+	}
+
+	// Create bytecode with compiled function in constants
+	bytecode := &Bytecode{
+		Instructions: []byte{byte(OpConstant), 0, byte(OpCall), 0, byte(OpPop)},
+		Constants:   []objects.Object{fn},
+	}
+
+	serialized, err := bytecode.Serialize()
+	if err != nil {
+		t.Fatalf("serialize error: %v", err)
+	}
+
+	deserialized, err := Deserialize(serialized)
+	if err != nil {
+		t.Fatalf("deserialize error: %v", err)
+	}
+
+	// Verify we got a CompiledFunction back
+	if len(deserialized.Constants) != 1 {
+		t.Fatal("expected 1 constant")
+	}
+
+	deserFn, ok := deserialized.Constants[0].(*CompiledFunction)
+	if !ok {
+		t.Fatal("expected CompiledFunction")
+	}
+
+	if !bytes.Equal(fn.Instructions, deserFn.Instructions) {
+		t.Error("instructions don't match")
+	}
+}
+
+func TestSerializeWithSourceMap(t *testing.T) {
+	compiler := New()
+	program := parse(`var x = 42;`)
+	err := compiler.Compile(program)
+	if err != nil {
+		t.Fatalf("compile error: %v", err)
+	}
+
+	bytecode := compiler.Bytecode()
+
+	// Create a source map
+	sourceMap := NewSourceMap()
+	sourceMap.Add(0, SourceLocation{Line: 1, Column: 1})
+	sourceMap.SourceFile = "test.xxl"
+
+	// Serialize bytecode
+	serialized, err := bytecode.Serialize()
+	if err != nil {
+		t.Fatalf("serialize error: %v", err)
+	}
+
+	// SourceMap should serialize independently
+	var smBuf bytes.Buffer
+	err = sourceMap.Serialize(&smBuf)
+	if err != nil {
+		t.Fatalf("source map serialize error: %v", err)
+	}
+
+	smDeser, err := DeserializeSourceMap(bytes.NewReader(smBuf.Bytes()))
+	if err != nil {
+		t.Fatalf("source map deserialize error: %v", err)
+	}
+
+	if smDeser.SourceFile != "test.xxl" {
+		t.Error("file name doesn't match")
+	}
+
+	// Clean up
+	_, _ = Deserialize(serialized)
+	_, _ = DeserializeSourceMap(bytes.NewReader(smBuf.Bytes()))
+	_ = io.Reader(nil) // Use io to avoid import warning
 }

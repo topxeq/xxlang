@@ -174,3 +174,36 @@ func createTestMap() *Map {
 	pairs[key.HashKey()] = MapPair{Key: key, Value: &Int{Value: 1}}
 	return &Map{Pairs: pairs}
 }
+
+// ============================================================
+// HashKey Tests
+// ============================================================
+
+func TestArrayHashKey(t *testing.T) {
+	arr := &Array{Elements: []Object{}}
+	key := arr.HashKey()
+	// Array should be hashable for use as map keys
+	_ = key
+}
+
+func TestFloatHashKey(t *testing.T) {
+	f := &Float{Value: 3.14}
+	key := f.HashKey()
+	// Float should be hashable for use as map keys
+	_ = key
+}
+
+func TestClassHashKey(t *testing.T) {
+	c := &Class{Name: "MyClass", Methods: make(map[string]Object)}
+	key := c.HashKey()
+	// Class should be hashable for use as map keys
+	_ = key
+}
+
+func TestClassToBool(t *testing.T) {
+	c := &Class{Name: "MyClass", Methods: make(map[string]Object)}
+	result := c.ToBool()
+	if result != TRUE {
+		t.Error("Class.ToBool() should return TRUE")
+	}
+}

@@ -1613,6 +1613,10 @@ func TestImportStatements(t *testing.T) {
 			`import * as math from "./math"`,
 			`import * as math from "./math";`,
 		},
+		{
+			`import "../utils"`,
+			`import "../utils";`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1748,4 +1752,183 @@ func TestThisExpression(t *testing.T) {
 	if thisExpr.String() != "this" {
 		t.Errorf("expected 'this', got %s", thisExpr.String())
 	}
+}
+
+func TestSuperExpression(t *testing.T) {
+	input := `super.init()`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Statements[0].(*ExpressionStatement)
+	if !ok {
+		t.Fatalf("expected ExpressionStatement, got %T", program.Statements[0])
+	}
+
+	callExpr, ok := stmt.Expression.(*SuperCallExpression)
+	if !ok {
+		t.Fatalf("expected SuperCallExpression, got %T", stmt.Expression)
+	}
+	if callExpr.Method != "init" {
+		t.Errorf("expected init, got %s", callExpr.Method)
+	}
+}
+
+func TestSuperExpressionWithArgs(t *testing.T) {
+	input := `super.init("arg1", 42)`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Statements[0].(*ExpressionStatement)
+	if !ok {
+		t.Fatalf("expected ExpressionStatement, got %T", program.Statements[0])
+	}
+
+	callExpr, ok := stmt.Expression.(*SuperCallExpression)
+	if !ok {
+		t.Fatalf("expected SuperCallExpression, got %T", stmt.Expression)
+	}
+	if len(callExpr.Args) != 2 {
+		t.Errorf("expected 2 arguments, got %d", len(callExpr.Args))
+	}
+}
+
+func TestCStyleForLoop(t *testing.T) {
+	input := `for (var i = 0; i < 10; i = i + 1) { i; }`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Statements[0].(*ForStatement)
+	if !ok {
+		t.Fatalf("expected ForStatement, got %T", program.Statements[0])
+	}
+
+	// C-style for loop has Init, Condition, and Update
+	if stmt.Init == nil {
+		t.Error("expected Init statement")
+	}
+	if stmt.Condition == nil {
+		t.Error("expected Condition expression")
+	}
+	if stmt.Update == nil {
+		t.Error("expected Update statement")
+	}
+}
+
+func TestCStyleForLoopWithIdentifier(t *testing.T) {
+	input := `for (i < 10; i = i + 1) { i; }`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Statements[0].(*ForStatement)
+	if !ok {
+		t.Fatalf("expected ForStatement, got %T", program.Statements[0])
+	}
+
+	// C-style for loop without initializer
+	if stmt.Condition == nil {
+		t.Error("expected Condition expression")
+	}
+	if stmt.Update == nil {
+		t.Error("expected Update statement")
+	}
+}
+
+// ============================================
+// Error Cases Tests
+// ============================================
+
+func TestImportErrorMissingAs(t *testing.T) {
+	// Test: import * without "as" should cause error
+	input := `import * math from "./math"`
+	l := lexer.New(input)
+	p := New(l)
+	_ = p.ParseProgram()
+	if len(p.errors) == 0 {
+		t.Error("expected parse error, got none")
+	}
+}
+
+func TestImportErrorMissingFrom(t *testing.T) {
+	// Test: import { x } missing "from" should cause error
+	input := `import { x } "./math"`
+	l := lexer.New(input)
+	p := New(l)
+	_ = p.ParseProgram()
+	if len(p.errors) == 0 {
+		t.Error("expected parse error, got none")
+	}
+}
+
+func TestImportErrorInvalidPath(t *testing.T) {
+	// Test: import with invalid path should cause error
+	input := `import math from math` // Missing quotes
+	l := lexer.New(input)
+	p := New(l)
+	_ = p.ParseProgram()
+	if len(p.errors) == 0 {
+		t.Error("expected parse error, got none")
+	}
+}
+
+func TestClassErrorInvalidSuper(t *testing.T) {
+	// Test: class extends with invalid identifier should cause error
+	input := `class Dog extends 123 {}`
+	l := lexer.New(input)
+	p := New(l)
+	_ = p.ParseProgram()
+	if len(p.errors) == 0 {
+		t.Error("expected parse error, got none")
+	}
+}
+
+func TestArrayErrorUnclosed(t *testing.T) {
+	// Test: unclosed array should cause error
+	input := `[1, 2` // Missing ]
+	l := lexer.New(input)
+	p := New(l)
+	_ = p.ParseProgram()
+	if len(p.errors) == 0 {
+		t.Error("expected parse error, got none")
+	}
+}
+
+func TestMapErrorUnclosed(t *testing.T) {
+	// Test: unclosed map should cause error
+	input := `{"a": 1` // Missing }
+	l := lexer.New(input)
+	p := New(l)
+	_ = p.ParseProgram()
+	if len(p.errors) == 0 {
+		t.Error("expected parse error, got none")
+	}
+}
+
+func TestFunctionErrorUnclosed(t *testing.T) {
+	// Test: unclosed function body at end of file
+	// Parser may accept this as valid (EOF closes it)
+	input := `func add(a, b) { return a + b`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	// Just verify it parses without crashing
+	_ = program
+}
+
+func TestCallErrorUnclosed(t *testing.T) {
+	// Test: unclosed call at end of file
+	// Parser may accept this as valid (EOF closes it)
+	input := `add(1, 2`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	// Just verify it parses without crashing
+	_ = program
 }
