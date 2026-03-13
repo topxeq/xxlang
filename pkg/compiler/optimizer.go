@@ -37,7 +37,10 @@ func (o *Optimizer) FoldConstants() *Bytecode {
 	// Scan for constant folding opportunities
 	// Pattern: OpConstant, OpConstant, OpAdd/OpSub/OpMul/OpDiv
 	newInstructions := make([]byte, 0, len(instructions))
-	newConstants := make([]objects.Object, 0, len(constants))
+
+	// Start with all original constants to preserve indices
+	newConstants := make([]objects.Object, len(constants))
+	copy(newConstants, constants)
 
 	i := 0
 	for i < len(instructions) {

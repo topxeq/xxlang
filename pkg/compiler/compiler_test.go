@@ -200,7 +200,8 @@ func TestArithmeticExpressions(t *testing.T) {
 
 	for _, tt := range tests {
 		program := parse(tt.input)
-		compiler := New()
+		// Disable optimizations to test raw bytecode generation
+		compiler := NewWithOptions(OptimizationFlags{BytecodeOptimizer: false})
 		err := compiler.Compile(program)
 		if err != nil {
 			t.Fatalf("compiler error: %s", err)
@@ -1238,7 +1239,8 @@ func TestCompiler_OpcodeVerification(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			program := parse(tt.input)
-			compiler := New()
+			// Disable optimizations to test raw bytecode generation
+			compiler := NewWithOptions(OptimizationFlags{BytecodeOptimizer: false})
 			err := compiler.Compile(program)
 			if err != nil {
 				t.Fatalf("compiler error: %v", err)
