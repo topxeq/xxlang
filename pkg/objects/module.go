@@ -22,6 +22,9 @@ type Module struct {
 // Type returns the object type.
 func (m *Module) Type() ObjectType { return ModuleType }
 
+// TypeTag returns the type tag for fast type checking.
+func (m *Module) TypeTag() TypeTag { return TagModule }
+
 // Inspect returns a string representation of the module.
 func (m *Module) Inspect() string {
 	return fmt.Sprintf("[module %s]", m.Name)

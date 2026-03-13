@@ -17,6 +17,7 @@ type Builtin struct {
 }
 
 func (b *Builtin) Type() ObjectType { return BuiltinType }
+func (b *Builtin) TypeTag() TypeTag { return TagBuiltin }
 func (b *Builtin) Inspect() string  { return "builtin function" }
 func (b *Builtin) ToBool() *Bool    { return TRUE }
 func (b *Builtin) HashKey() HashKey { return HashKey{Type: BuiltinType, Value: 0} }

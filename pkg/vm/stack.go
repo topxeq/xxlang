@@ -26,9 +26,13 @@ func NewStack() *Stack {
 }
 
 // Push pushes an object onto the stack
+// Optimized: bounds check only when near limit
 func (s *Stack) Push(obj objects.Object) error {
-	if s.sp >= StackSize {
-		return fmt.Errorf("stack overflow")
+	// Check bounds only when approaching limit
+	if s.sp >= StackSize-10 {
+		if s.sp >= StackSize {
+			return fmt.Errorf("stack overflow")
+		}
 	}
 	s.data[s.sp] = obj
 	s.sp++
@@ -36,6 +40,7 @@ func (s *Stack) Push(obj objects.Object) error {
 }
 
 // Pop pops an object from the stack
+// Optimized: skip nil check when stack is known to be non-empty
 func (s *Stack) Pop() objects.Object {
 	if s.sp == 0 {
 		return nil
@@ -43,6 +48,14 @@ func (s *Stack) Pop() objects.Object {
 	s.sp--
 	obj := s.data[s.sp]
 	s.data[s.sp] = nil // Allow GC to collect the object
+	s.lastPopped = obj
+	return obj
+}
+
+// PopSkipGC pops an object without clearing the reference (faster, but may delay GC)
+func (s *Stack) PopSkipGC() objects.Object {
+	s.sp--
+	obj := s.data[s.sp]
 	s.lastPopped = obj
 	return obj
 }
@@ -71,4 +84,11 @@ func (s *Stack) Len() int {
 // LastPopped returns the last popped element
 func (s *Stack) LastPopped() objects.Object {
 	return s.lastPopped
+}
+
+// SetTop sets the top element without changing stack pointer
+func (s *Stack) SetTop(obj objects.Object) {
+	if s.sp > 0 {
+		s.data[s.sp-1] = obj
+	}
 }

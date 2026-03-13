@@ -14,6 +14,9 @@ type Array struct {
 // Type returns the object type
 func (a *Array) Type() ObjectType { return ArrayType }
 
+// TypeTag returns the type tag for fast type checking
+func (a *Array) TypeTag() TypeTag { return TagArray }
+
 // Inspect returns the string representation
 func (a *Array) Inspect() string {
 	var out bytes.Buffer

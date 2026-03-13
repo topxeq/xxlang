@@ -54,6 +54,7 @@ type Function struct {
 }
 
 func (f *Function) Type() ObjectType { return FunctionType }
+func (f *Function) TypeTag() TypeTag { return TagFunction }
 func (f *Function) Inspect() string {
 	var out bytes.Buffer
 	out.WriteString("func(")
@@ -80,7 +81,11 @@ type CompiledFunction struct {
 // CompiledFunctionType is the type for compiled functions
 const CompiledFunctionType ObjectType = "COMPILED_FUNCTION"
 
+// TagCompiledFunction is the type tag for compiled functions
+const TagCompiledFunction TypeTag = TagClosure // Use same tag as Closure
+
 func (cf *CompiledFunction) Type() ObjectType { return CompiledFunctionType }
+func (cf *CompiledFunction) TypeTag() TypeTag { return TagCompiledFunction }
 func (cf *CompiledFunction) Inspect() string {
 	return "compiled function: " + cf.Name
 }

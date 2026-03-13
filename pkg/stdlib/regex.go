@@ -360,6 +360,7 @@ type CompiledRegex struct {
 }
 
 func (cr *CompiledRegex) Type() objects.ObjectType { return objects.ObjectType("COMPILED_REGEX") }
+func (cr *CompiledRegex) TypeTag() objects.TypeTag { return objects.TagUnknown } // Custom type, use Unknown
 func (cr *CompiledRegex) Inspect() string          { return fmt.Sprintf("[compiled regex: %s]", cr.Pattern) }
 func (cr *CompiledRegex) ToBool() *objects.Bool    { return objects.TRUE }
 func (cr *CompiledRegex) HashKey() objects.HashKey {
