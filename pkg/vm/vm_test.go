@@ -1739,3 +1739,46 @@ func TestBooleanOperations(t *testing.T) {
 		testBooleanObject(t, tt.expected, vm.LastPopped())
 	}
 }
+
+// ============================================
+// VM Helper Methods Tests
+// ============================================
+
+func TestSetCurrentModule(t *testing.T) {
+	input := `5`
+	bytecode, err := testCompile(input)
+	if err != nil {
+		t.Fatalf("compiler error: %s", err)
+	}
+
+	vm := New(bytecode)
+	mod := &objects.Module{
+		Name:    "test",
+		Exports: make(map[string]objects.Object),
+	}
+	vm.SetCurrentModule(mod)
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("vm error: %s", err)
+	}
+}
+
+func TestGetCallStack(t *testing.T) {
+	input := `func outer() { func inner() { }; inner() }; outer()`
+	bytecode, err := testCompile(input)
+	if err != nil {
+		t.Fatalf("compiler error: %s", err)
+	}
+
+	vm := New(bytecode)
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("vm error: %s", err)
+	}
+
+	// GetCallStack should return call stack
+	stack := vm.GetCallStack()
+	if len(stack) == 0 {
+		t.Error("expected non-empty call stack")
+	}
+}

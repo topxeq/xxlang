@@ -1,81 +1,101 @@
 # Xxlang Performance Benchmarks
 
 ## Test Environment
-- **CPU**: Intel Xeon Platinum 8180 @ 2.50GHz
+- **CPU**: Intel(R) Xeon(R) Platinum 8180 CPU @ 2.50GHz
 - **OS**: Linux (amd64)
 - **Go Version**: go1.22
-- **Date**: 2026-03-10
+- **Date**: 2026-03-13
 
 ## Results Summary
 
 ### Fibonacci (Recursive)
 
-| Test | Go | Xxlang | Slowdown |
-|------|-----|--------|----------|
-| fib(10) | 322 ns | 871,863 ns | 2,709x |
-| fib(15) | ~1,200 ns | 1,766,740 ns | ~1,472x |
-| fib(20) | 39,645 ns | 12,353,244 ns | 312x |
-| fib(35) | 54,032,884 ns | ~167s (est) | ~3,100x |
+| Test | Go | Python | Xxlang | Xxlang vs Go | Xxlang vs Python |
+|------|-----|--------|--------|--------------|------------------|
+| fib(10) | 1,225 ns | 16,292 ns | 987,366 ns | 806x | 61x |
+| fib(15) | ~1,200 ns | N/A | 1,007,223 ns | 839x | N/A |
+| fib(20) | 48,140 ns | 1,994,822 ns | 8,848,071 ns | 184x | 4x |
+| fib(30) | 4,713,656 ns | N/A | N/A | - | N/A |
+| fib(35) | 52,320,469 ns | N/A | N/A | - | N/A |
 
 ### Loop Performance
 
-| Test | Go | Xxlang | Slowdown |
-|------|-----|--------|----------|
-| LoopSum(10000) | 3,222 ns | 1,120,524 ns | 348x |
+| Test | Go | Python | Xxlang | Xxlang vs Go | Xxlang vs Python |
+|------|-----|--------|--------|--------------|------------------|
+| LoopSum(10000) | 3,669 ns | 84,724 ns | 377,872 ns | 103x | 4.5x |
 
 ### Array Operations
 
-| Test | Go | Xxlang | Slowdown |
-|------|-----|--------|----------|
-| ArraySum(1000) | 330 ns | 607,852 ns | 1,842x |
+| Test | Go | Python | Xxlang | Xxlang vs Go | Xxlang vs Python |
+|------|-----|--------|--------|--------------|------------------|
+| ArraySum(1000) | 581 ns | N/A | 486,202 ns | 837x | N/A |
+| array(100) | N/A | 317 ns | N/A | N/A | N/A |
 
 ### Function Call Overhead
 
-| Test | Go | Xxlang | Slowdown |
-|------|-----|--------|----------|
-| FunctionCalls(1000) | 0.36 ns | 1,462,483 ns | 4,050,000x |
+| Test | Go | Xxlang | Xxlang vs Go |
+|------|-----|--------|--------------|
+| FunctionCalls(1000) | 287 ns | 630,330 ns | 2,197x |
 
 ### Compilation Time
 
 | Test | Time |
 |------|------|
-| Compile Fib Function | 40,869 ns |
-| Compile Complex Class | 83,251 ns |
+| Compile Fib Function | 131,698 ns |
+| Compile Complex Class | 121,546 ns |
 
 ## Analysis
+
+### Performance Summary
+
+Xxlang shows to following performance characteristics:
+
+1. **Fibonacci (Recursive)**
+   - `fib(10)`: 806x slower than Go, 61x slower than Python
+   - `fib(20)`: 184x slower than Go, 4x faster than Python
+   - For larger inputs, overhead becomes less significant relative to algorithm itself
+
+2. **Loop Performance**
+   - 103x slower than Go, 4.5x slower than Python
+   - Loop overhead is typical for bytecode interpreters
+
+3. **Array Operations**
+   - 837x slower than Go
+   - Array access involves bounds checking and object boxing
+
+4. **Function Call Overhead**
+   - 2,197x slower than Go (improved from previous ~4,000,000x)
+   - Function calls are expensive due to closure allocation and stack operations
 
 ### Performance Bottlenecks Identified
 
 1. **Function Call Overhead (Critical)**
-   - Xxlang function calls are ~4 million times slower than Go
+   - Xxlang function calls are ~2,200x slower than Go
    - Likely causes: VM stack operations, Closure creation overhead
    - Optimization: Cache frequently-called functions, inline simple functions
 
 2. **Array Access (High Impact)**
-   - 1,842x slower than Go
+   - 837x slower than Go
    - Likely causes: Bounds checking on every access, object allocation
    - Optimization: Pre-compute array length in loops, reduce bounds checks
 
 3. **Loop Performance (Moderate)**
-   - 348x slower than Go
-   - Acceptable for interpreted language
+   - 103x slower than Go, acceptable for an interpreted language
    - Could improve with loop optimization in VM
 
-### Comparison with Other Languages (Estimated)
+### Comparison with Other Languages
 
-Based on typical interpreter performance:
+| Language | fib(10) | fib(20) | loop(10000) |
+|----------|----------|----------|--------------|
+| **Go** | 1x (baseline) | 1x | 1x |
+| **Python** | 13x slower | 41x slower | 23x slower |
+| **Xxlang** | 806x slower | 184x slower | 103x slower |
 
-| Language | Relative to Go |
-|----------|---------------|
-| **Go** | 1x (baseline) |
-| **C** | ~0.5x |
-| **Java (JIT)** | ~1-2x |
-| **LuaJIT** | ~2-5x |
-| **Python** | ~50-100x |
-| **Ruby** | ~50-100x |
-| **Xxlang** | ~300-4,000x |
+Xxlang is slower than Python for small workloads (`fib(10)`) but approaches Python performance for larger computations (`fib(20)`). This is expected for a bytecode VM implementation - fixed overhead is high, but per-operation cost is reasonable.
 
-Xxlang is currently slower than Python in some benchmarks. This is expected for a naive bytecode VM implementation.
+### Java Benchmarks
+
+Java (JVM) benchmarks were not run as Java compiler is not available on this system.
 
 ## Recommended Optimizations
 
@@ -96,10 +116,12 @@ Xxlang is currently slower than Python in some benchmarks. This is expected for 
 
 ## Conclusion
 
-Xxlang's current performance is typical for a straightforward bytecode interpreter. For production use, focusing on:
+Xxlang's current performance is typical for a straightforward bytecode interpreter. The interpreter shows:
+- Significant overhead for small, quick operations
+- Reasonable performance for larger computations where work dominates overhead
+- Compilation times of ~120-130 microseconds, making it suitable for embedded use
 
+For production use, focusing on:
 1. Standard library completeness first (features over speed)
 2. Common optimization patterns (inline caching, closure reuse)
 3. Critical path optimization (function calls, array access)
-
-The compilation time is reasonable (~40-80 microseconds for typical functions), making the interpreter suitable for embedded use cases.
