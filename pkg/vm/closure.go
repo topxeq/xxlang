@@ -19,6 +19,9 @@ type Closure struct {
 // Type returns the object type
 func (c *Closure) Type() objects.ObjectType { return objects.ClosureType }
 
+// TypeTag returns the type tag for fast type checking
+func (c *Closure) TypeTag() objects.TypeTag { return objects.TagClosure }
+
 // Inspect returns a string representation
 func (c *Closure) Inspect() string {
 	return fmt.Sprintf("closure[%d freeVars]", len(c.FreeVars))

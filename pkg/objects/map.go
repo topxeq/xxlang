@@ -19,6 +19,9 @@ type Map struct {
 // Type returns the object type
 func (m *Map) Type() ObjectType { return MapType }
 
+// TypeTag returns the type tag for fast type checking
+func (m *Map) TypeTag() TypeTag { return TagMap }
+
 // Inspect returns the string representation
 func (m *Map) Inspect() string {
 	var out bytes.Buffer

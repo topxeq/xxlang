@@ -4,6 +4,7 @@ package vm
 import (
 	"fmt"
 	"strings"
+	"unsafe"
 
 	"github.com/topxeq/xxlang/pkg/compiler"
 	"github.com/topxeq/xxlang/pkg/module"
@@ -15,6 +16,15 @@ const (
 	GlobalsSize = 65536
 	MaxFrames   = 1024
 )
+
+// InlineCacheEntry represents a cached method lookup
+type InlineCacheEntry struct {
+	Class  *objects.Class
+	Method objects.Object
+}
+
+// InlineCacheSize is the size of the method cache
+const InlineCacheSize = 256
 
 // VM is the virtual machine that executes bytecode
 type VM struct {
@@ -30,6 +40,11 @@ type VM struct {
 	pendingInstance  *objects.Instance // Instance to push after init returns
 	initFrame        *Frame           // The init frame that should push pendingInstance
 	sourceMap        *compiler.SourceMap // Source map for error reporting
+
+	// Inline cache for method lookups
+	methodCache [InlineCacheSize]InlineCacheEntry
+	cacheHits   int
+	cacheMisses int
 }
 
 // New creates a new VM with the given bytecode
@@ -158,11 +173,15 @@ func (vm *VM) GetCallStack() string {
 }
 
 // Run executes the bytecode
+// Optimized: caches frame pointer in local variable to reduce method calls
 func (vm *VM) Run() error {
-	for vm.currentFrame().IP < len(vm.currentFrame().Instructions())-1 {
-		vm.currentFrame().IP++
+	frame := vm.frames[vm.frameIndex-1]
+	frameIns := frame.Instructions()
 
-		op := compiler.Opcode(vm.currentFrame().Instructions()[vm.currentFrame().IP])
+	for frame.IP < len(frameIns)-1 {
+		frame.IP++
+
+		op := compiler.Opcode(frameIns[frame.IP])
 
 		switch op {
 		case compiler.OpConstant:
@@ -258,6 +277,36 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case compiler.OpGetLocalAdd:
+			if err := vm.executeGetLocalAdd(); err != nil {
+				return err
+			}
+
+		case compiler.OpGetLocalSub:
+			if err := vm.executeGetLocalSub(); err != nil {
+				return err
+			}
+
+		case compiler.OpGetLocalMul:
+			if err := vm.executeGetLocalMul(); err != nil {
+				return err
+			}
+
+		case compiler.OpConstantAdd:
+			if err := vm.executeConstantAdd(); err != nil {
+				return err
+			}
+
+		case compiler.OpConstantSub:
+			if err := vm.executeConstantSub(); err != nil {
+				return err
+			}
+
+		case compiler.OpConstantMul:
+			if err := vm.executeConstantMul(); err != nil {
+				return err
+			}
+
 		case compiler.OpSetLocal:
 			if err := vm.executeSetLocal(); err != nil {
 				return err
@@ -330,6 +379,11 @@ func (vm *VM) Run() error {
 
 		case compiler.OpIndex:
 			if err := vm.executeIndex(); err != nil {
+				return err
+			}
+
+		case compiler.OpIndexSafe:
+			if err := vm.executeIndexSafe(); err != nil {
 				return err
 			}
 
@@ -413,6 +467,12 @@ func (vm *VM) Run() error {
 		default:
 			return fmt.Errorf("unknown opcode: %d", op)
 		}
+
+		// Re-check frame in case it changed (function calls, returns)
+		if vm.frameIndex > 0 {
+			frame = vm.frames[vm.frameIndex-1]
+			frameIns = frame.Instructions()
+		}
 	}
 
 	return nil
@@ -492,7 +552,9 @@ func (vm *VM) executeBinaryOp(op compiler.Opcode) error {
 	if op == compiler.OpAdd {
 		if leftStr, ok := left.(*objects.String); ok {
 			if rightStr, ok := right.(*objects.String); ok {
-				vm.stack.Push(&objects.String{Value: leftStr.Value + rightStr.Value})
+				// Use InternString for commonly used strings
+				concatenated := leftStr.Value + rightStr.Value
+				vm.stack.Push(objects.InternString(concatenated))
 				return nil
 			}
 		}
@@ -530,20 +592,37 @@ func (vm *VM) executeIntBinaryOp(left, right objects.Object, op compiler.Opcode)
 		result = leftVal * rightVal
 	case compiler.OpDiv:
 		if rightVal == 0 {
-			return fmt.Errorf("division by zero")
+			return vm.divByZeroError()
 		}
 		result = leftVal / rightVal
 	case compiler.OpMod:
 		if rightVal == 0 {
-			return fmt.Errorf("modulo by zero")
+			return vm.modByZeroError()
 		}
 		result = leftVal % rightVal
 	default:
-		return fmt.Errorf("unknown integer operator: %d", op)
+		return vm.unknownIntOpError(op)
 	}
 
-	vm.stack.Push(&objects.Int{Value: result})
+	vm.stack.Push(objects.NewInt(result))
 	return nil
+}
+
+// Cold path error handlers (never inlined, kept out of hot path)
+
+//go:noinline
+func (vm *VM) divByZeroError() error {
+	return fmt.Errorf("division by zero")
+}
+
+//go:noinline
+func (vm *VM) modByZeroError() error {
+	return fmt.Errorf("modulo by zero")
+}
+
+//go:noinline
+func (vm *VM) unknownIntOpError(op compiler.Opcode) error {
+	return fmt.Errorf("unknown integer operator: %d", op)
 }
 
 func (vm *VM) executeFloatBinaryOp(left, right objects.Object, op compiler.Opcode) error {
@@ -592,7 +671,7 @@ func (vm *VM) executeNeg() error {
 
 	if isInt(operand) {
 		val := operand.(*objects.Int).Value
-		vm.stack.Push(&objects.Int{Value: -val})
+		vm.stack.Push(objects.NewInt(-val))
 		return nil
 	}
 
@@ -768,6 +847,152 @@ func (vm *VM) executeGetLocal() error {
 		return nil
 	}
 	vm.stack.Push(frame.Locals[localIndex])
+	return nil
+}
+
+// Superinstruction implementations
+
+func (vm *VM) executeGetLocalAdd() error {
+	frame := vm.currentFrame()
+	idx1 := int(frame.Instructions()[frame.IP+1])
+	idx2 := int(frame.Instructions()[frame.IP+2])
+	frame.IP += 2
+
+	var val1, val2 int64
+
+	// Get first local
+	if frame.This != nil {
+		if idx1 == 0 {
+			val1 = 0 // 'this' is not an int, this is an error case
+		} else {
+			val1 = frame.Locals[idx1-1].(*objects.Int).Value
+		}
+	} else {
+		val1 = frame.Locals[idx1].(*objects.Int).Value
+	}
+
+	// Get second local
+	if frame.This != nil {
+		if idx2 == 0 {
+			val2 = 0
+		} else {
+			val2 = frame.Locals[idx2-1].(*objects.Int).Value
+		}
+	} else {
+		val2 = frame.Locals[idx2].(*objects.Int).Value
+	}
+
+	vm.stack.Push(objects.NewInt(val1 + val2))
+	return nil
+}
+
+func (vm *VM) executeGetLocalSub() error {
+	frame := vm.currentFrame()
+	idx1 := int(frame.Instructions()[frame.IP+1])
+	idx2 := int(frame.Instructions()[frame.IP+2])
+	frame.IP += 2
+
+	var val1, val2 int64
+
+	if frame.This != nil {
+		if idx1 == 0 {
+			val1 = 0
+		} else {
+			val1 = frame.Locals[idx1-1].(*objects.Int).Value
+		}
+		if idx2 == 0 {
+			val2 = 0
+		} else {
+			val2 = frame.Locals[idx2-1].(*objects.Int).Value
+		}
+	} else {
+		val1 = frame.Locals[idx1].(*objects.Int).Value
+		val2 = frame.Locals[idx2].(*objects.Int).Value
+	}
+
+	vm.stack.Push(objects.NewInt(val1 - val2))
+	return nil
+}
+
+func (vm *VM) executeGetLocalMul() error {
+	frame := vm.currentFrame()
+	idx1 := int(frame.Instructions()[frame.IP+1])
+	idx2 := int(frame.Instructions()[frame.IP+2])
+	frame.IP += 2
+
+	var val1, val2 int64
+
+	if frame.This != nil {
+		if idx1 == 0 {
+			val1 = 0
+		} else {
+			val1 = frame.Locals[idx1-1].(*objects.Int).Value
+		}
+		if idx2 == 0 {
+			val2 = 0
+		} else {
+			val2 = frame.Locals[idx2-1].(*objects.Int).Value
+		}
+	} else {
+		val1 = frame.Locals[idx1].(*objects.Int).Value
+		val2 = frame.Locals[idx2].(*objects.Int).Value
+	}
+
+	vm.stack.Push(objects.NewInt(val1 * val2))
+	return nil
+}
+
+func (vm *VM) executeConstantAdd() error {
+	frame := vm.currentFrame()
+	idx1 := int(frame.Instructions()[frame.IP+1])<<8 | int(frame.Instructions()[frame.IP+2])
+	idx2 := int(frame.Instructions()[frame.IP+3])<<8 | int(frame.Instructions()[frame.IP+4])
+	frame.IP += 4
+
+	constants := frame.Constants
+	if constants == nil {
+		constants = vm.constants
+	}
+
+	val1 := constants[idx1].(*objects.Int).Value
+	val2 := constants[idx2].(*objects.Int).Value
+
+	vm.stack.Push(objects.NewInt(val1 + val2))
+	return nil
+}
+
+func (vm *VM) executeConstantSub() error {
+	frame := vm.currentFrame()
+	idx1 := int(frame.Instructions()[frame.IP+1])<<8 | int(frame.Instructions()[frame.IP+2])
+	idx2 := int(frame.Instructions()[frame.IP+3])<<8 | int(frame.Instructions()[frame.IP+4])
+	frame.IP += 4
+
+	constants := frame.Constants
+	if constants == nil {
+		constants = vm.constants
+	}
+
+	val1 := constants[idx1].(*objects.Int).Value
+	val2 := constants[idx2].(*objects.Int).Value
+
+	vm.stack.Push(objects.NewInt(val1 - val2))
+	return nil
+}
+
+func (vm *VM) executeConstantMul() error {
+	frame := vm.currentFrame()
+	idx1 := int(frame.Instructions()[frame.IP+1])<<8 | int(frame.Instructions()[frame.IP+2])
+	idx2 := int(frame.Instructions()[frame.IP+3])<<8 | int(frame.Instructions()[frame.IP+4])
+	frame.IP += 4
+
+	constants := frame.Constants
+	if constants == nil {
+		constants = vm.constants
+	}
+
+	val1 := constants[idx1].(*objects.Int).Value
+	val2 := constants[idx2].(*objects.Int).Value
+
+	vm.stack.Push(objects.NewInt(val1 * val2))
 	return nil
 }
 
@@ -992,11 +1217,16 @@ func (vm *VM) executeReturn() error {
 		vm.stack.Push(vm.pendingInstance)
 		vm.pendingInstance = nil
 		vm.initFrame = nil
+		// Don't release init frame yet, may need it for instance
 		return nil
 	}
 
 	// Push the return value
 	vm.stack.Push(result)
+
+	// Release the frame back to the pool for reuse
+	frame.Release()
+
 	return nil
 }
 
@@ -1004,7 +1234,40 @@ func (vm *VM) executeArray() error {
 	numElements := int(vm.readUint16())
 	vm.currentFrame().IP += 2
 
+	// Pre-allocate with capacity for better performance
 	elements := make([]objects.Object, numElements)
+	for i := numElements - 1; i >= 0; i-- {
+		elements[i] = vm.stack.Pop()
+	}
+
+	vm.stack.Push(&objects.Array{Elements: elements})
+	return nil
+}
+
+// arrayCacheSize is the threshold for using pooled arrays
+const arrayCacheSize = 16
+
+// arrayPool holds reusable array slices for small arrays
+var arrayPool = make([][]objects.Object, arrayCacheSize)
+
+func (vm *VM) executeArrayPrealloc() error {
+	numElements := int(vm.readUint16())
+	vm.currentFrame().IP += 2
+
+	var elements []objects.Object
+
+	// Use pooled array for small sizes
+	if numElements > 0 && numElements <= arrayCacheSize {
+		if pooled := arrayPool[numElements-1]; pooled != nil {
+			elements = pooled[:numElements]
+			arrayPool[numElements-1] = nil // Clear from pool
+		}
+	}
+
+	if elements == nil {
+		elements = make([]objects.Object, numElements)
+	}
+
 	for i := numElements - 1; i >= 0; i-- {
 		elements[i] = vm.stack.Pop()
 	}
@@ -1017,7 +1280,9 @@ func (vm *VM) executeMap() error {
 	numPairs := int(vm.readUint16())
 	vm.currentFrame().IP += 2
 
-	pairs := make(map[objects.HashKey]objects.MapPair)
+	// Pre-allocate map with capacity hint for better performance
+	// Go maps can be initialized with a capacity hint
+	pairs := make(map[objects.HashKey]objects.MapPair, numPairs)
 
 	for i := 0; i < numPairs; i++ {
 		value := vm.stack.Pop()
@@ -1045,6 +1310,49 @@ func (vm *VM) executeIndex() error {
 	default:
 		return fmt.Errorf("index operator not supported for type: %s", left.Type())
 	}
+}
+
+// executeIndexSafe performs array indexing without bounds checking
+// Used in contexts where index is known to be valid (e.g., loop iteration)
+func (vm *VM) executeIndexSafe() error {
+	index := vm.stack.Pop()
+	left := vm.stack.Pop()
+
+	switch obj := left.(type) {
+	case *objects.Array:
+		return vm.executeArrayIndexSafe(obj, index)
+	case *objects.String:
+		return vm.executeStringIndexSafe(obj, index)
+	default:
+		// Fall back to regular index for maps and other types
+		return vm.executeIndex()
+	}
+}
+
+// executeArrayIndexSafe performs array indexing without bounds checking
+func (vm *VM) executeArrayIndexSafe(arr *objects.Array, index objects.Object) error {
+	intIndex, ok := index.(*objects.Int)
+	if !ok {
+		return fmt.Errorf("array index must be integer, got: %s", index.Type())
+	}
+
+	// Skip bounds check - assume index is valid
+	idx := int(intIndex.Value)
+	vm.stack.Push(arr.Elements[idx])
+	return nil
+}
+
+// executeStringIndexSafe performs string indexing without bounds checking
+func (vm *VM) executeStringIndexSafe(str *objects.String, index objects.Object) error {
+	intIndex, ok := index.(*objects.Int)
+	if !ok {
+		return fmt.Errorf("string index must be integer, got: %s", index.Type())
+	}
+
+	// Skip bounds check - assume index is valid
+	idx := int(intIndex.Value)
+	vm.stack.Push(&objects.String{Value: string(str.Value[idx])})
+	return nil
 }
 
 func (vm *VM) executeArrayIndex(arr *objects.Array, index objects.Object) error {
@@ -1150,19 +1458,19 @@ func (vm *VM) executeBuiltin() error {
 
 // Helper functions
 
+// isInt checks if an object is an integer using fast type tag
 func isInt(obj objects.Object) bool {
-	_, ok := obj.(*objects.Int)
-	return ok
+	return obj.TypeTag() == objects.TagInt
 }
 
+// isFloat checks if an object is a float using fast type tag
 func isFloat(obj objects.Object) bool {
-	_, ok := obj.(*objects.Float)
-	return ok
+	return obj.TypeTag() == objects.TagFloat
 }
 
+// isString checks if an object is a string using fast type tag
 func isString(obj objects.Object) bool {
-	_, ok := obj.(*objects.String)
-	return ok
+	return obj.TypeTag() == objects.TagString
 }
 
 func objectsEqual(a, b objects.Object) bool {
@@ -1388,20 +1696,51 @@ func (vm *VM) executeGetMethod() error {
 
 	// Handle Instance objects (for method/field access)
 	if instance, ok := obj.(*objects.Instance); ok {
+		// Check inline cache first - use pointer identity for class comparison
+		cacheKey := uint32(uintptr(unsafe.Pointer(instance.Class))) ^ uint32(len(name))
+		cacheIdx := cacheKey % InlineCacheSize
+		cached := &vm.methodCache[cacheIdx]
+
+		if cached.Class == instance.Class {
+			vm.cacheHits++
+			if cached.Method != nil {
+				// Cache hit - method found
+				vm.stack.Push(cached.Method)
+				return nil
+			}
+			// Cache hit - method not found (negative cache)
+			vm.stack.Pop() // pop instance
+			vm.stack.Push(objects.NULL)
+			return nil
+		}
+
+		// Cache miss - perform full lookup
+		vm.cacheMisses++
+
 		// First check for method - leave instance on stack and push method
 		method := vm.findMethod(instance.Class, name)
 		if method != nil {
+			// Update cache
+			cached.Class = instance.Class
+			cached.Method = method
+
 			// Stack: [... instance] -> [... instance, method]
 			// OpCallMethod will pop method, use instance as 'this'
 			vm.stack.Push(method)
 			return nil
 		}
+
 		// Check if it's a field - pop instance, push field value
 		if val, ok := instance.Fields[name]; ok {
 			vm.stack.Pop() // pop instance
 			vm.stack.Push(val)
 			return nil
 		}
+
+		// Cache negative result (method not found)
+		cached.Class = instance.Class
+		cached.Method = nil
+
 		vm.stack.Pop() // pop instance
 		vm.stack.Push(objects.NULL)
 		return nil
@@ -1409,7 +1748,7 @@ func (vm *VM) executeGetMethod() error {
 
 	// Handle Map objects - property access takes precedence over methods
 	if m, ok := obj.(*objects.Map); ok {
-		key := &objects.String{Value: name}
+		key := objects.InternString(name)
 		pair, exists := m.Pairs[key.HashKey()]
 		if exists {
 			// Property exists - pop map and push value

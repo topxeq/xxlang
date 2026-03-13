@@ -15,6 +15,7 @@ type Class struct {
 }
 
 func (c *Class) Type() ObjectType { return ClassType }
+func (c *Class) TypeTag() TypeTag { return TagClass }
 func (c *Class) Inspect() string  { return "class " + c.Name }
 func (c *Class) ToBool() *Bool    { return TRUE }
 func (c *Class) HashKey() HashKey {
@@ -28,6 +29,7 @@ type Instance struct {
 }
 
 func (i *Instance) Type() ObjectType { return InstanceType }
+func (i *Instance) TypeTag() TypeTag { return TagInstance }
 func (i *Instance) Inspect() string  { return i.Class.Name + " instance" }
 func (i *Instance) ToBool() *Bool    { return TRUE }
 func (i *Instance) HashKey() HashKey {

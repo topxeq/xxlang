@@ -155,10 +155,17 @@ type CompiledFunction struct {
 	NumLocals      int
 	NumParameters  int
 	FreeVariables  []Symbol // Free variables captured from outer scope
+
+	// Inlining support
+	IsInlineable   bool     // True if function body is a single return expression
+	InlineBody     []byte   // Inlined bytecode (without return)
 }
 
 // Type returns the object type
 func (cf *CompiledFunction) Type() objects.ObjectType { return objects.FunctionType }
+
+// TypeTag returns the type tag for fast type checking
+func (cf *CompiledFunction) TypeTag() objects.TypeTag { return objects.TagFunction }
 
 // Inspect returns the string representation
 func (cf *CompiledFunction) Inspect() string { return fmt.Sprintf("CompiledFunction[%d]", len(cf.Instructions)) }
@@ -193,27 +200,32 @@ type Compiler struct {
 	sourceMap  *SourceMap
 	sourceFile string
 	sourceCode string
+
+	// Optimization context tracking
+	safeArrayAccess map[string]bool // Track which array accesses are safe (bounds-checked by loop)
 }
 
 // New creates a new compiler
 func New() *Compiler {
 	return &Compiler{
-		constants:   []objects.Object{},
-		symbolTable: NewSymbolTable(),
-		scopes:      []CompilationScope{{instructions: []byte{}}},
-		scopeIndex:  0,
-		sourceMap:   NewSourceMap(),
+		constants:       []objects.Object{},
+		symbolTable:     NewSymbolTable(),
+		scopes:          []CompilationScope{{instructions: []byte{}}},
+		scopeIndex:      0,
+		sourceMap:       NewSourceMap(),
+		safeArrayAccess: make(map[string]bool),
 	}
 }
 
 // NewWithState creates a new compiler with existing state
 func NewWithState(s *SymbolTable, constants []objects.Object) *Compiler {
 	return &Compiler{
-		constants:   constants,
-		symbolTable: s,
-		scopes:      []CompilationScope{{instructions: []byte{}}},
-		scopeIndex:  0,
-		sourceMap:   NewSourceMap(),
+		constants:       constants,
+		symbolTable:     s,
+		scopes:          []CompilationScope{{instructions: []byte{}}},
+		scopeIndex:      0,
+		sourceMap:       NewSourceMap(),
+		safeArrayAccess: make(map[string]bool),
 	}
 }
 
@@ -386,6 +398,10 @@ func (c *Compiler) Compile(node parser.Node) error {
 		// Jump if false
 		jumpNotTruthyPos := c.emit(OpJumpIfFalse, 9999)
 
+		// Analyze loop for safe array access patterns
+		// Pattern: for i := 0; i < len(arr); i++ { ... arr[i] ... }
+		c.analyzeLoopSafety(node)
+
 		// Compile body
 		if err := c.Compile(node.Body); err != nil {
 			return err
@@ -414,6 +430,9 @@ func (c *Compiler) Compile(node parser.Node) error {
 		afterBodyPos := len(c.currentInstructions())
 		c.changeOperand(jumpNotTruthyPos, afterBodyPos)
 
+		// Clear safe array access tracking after loop
+		c.safeArrayAccess = make(map[string]bool)
+
 	case *parser.ForInStatement:
 		// for (key, value in iterable) { body }
 		// for (value in iterable) { body }
@@ -424,7 +443,7 @@ func (c *Compiler) Compile(node parser.Node) error {
 		}
 
 		// Initialize index to 0
-		indexConst := c.addConstant(&objects.Int{Value: 0})
+		indexConst := c.addConstant(objects.NewInt(0))
 		c.emit(OpConstant, indexConst)
 
 		// Initialize iterator to null
@@ -469,7 +488,7 @@ func (c *Compiler) Compile(node parser.Node) error {
 		c.emit(OpContinue)
 
 	case *parser.IntegerLiteral:
-		integer := &objects.Int{Value: node.Value}
+		integer := objects.NewInt(node.Value)
 		c.emit(OpConstant, c.addConstant(integer))
 
 	case *parser.FloatLiteral:
@@ -477,7 +496,7 @@ func (c *Compiler) Compile(node parser.Node) error {
 		c.emit(OpConstant, c.addConstant(float))
 
 	case *parser.StringLiteral:
-		str := &objects.String{Value: node.Value}
+		str := objects.InternString(node.Value)
 		c.emit(OpConstant, c.addConstant(str))
 
 	case *parser.BooleanLiteral:
@@ -592,7 +611,22 @@ func (c *Compiler) Compile(node parser.Node) error {
 		if err := c.Compile(node.Index); err != nil {
 			return err
 		}
-		c.emit(OpIndex)
+
+		// Check if this is a safe array access (bounds-checked by loop)
+		// Pattern: arr[i] where i is the loop variable and arr is the array being iterated
+		if arr, ok := node.Left.(*parser.Identifier); ok {
+			if idx, ok := node.Index.(*parser.Identifier); ok {
+				if c.isArrayAccessSafe(arr.Value, idx.Value) {
+					c.emit(OpIndexSafe)
+				} else {
+					c.emit(OpIndex)
+				}
+			} else {
+				c.emit(OpIndex)
+			}
+		} else {
+			c.emit(OpIndex)
+		}
 
 	case *parser.AssignmentExpression:
 		// Compile the value first
@@ -638,7 +672,7 @@ func (c *Compiler) Compile(node parser.Node) error {
 			}
 			// Stack is now: [value, object]
 			// Add field name constant
-			nameIdx := c.addConstant(&objects.String{Value: left.Property.Value})
+			nameIdx := c.addConstant(objects.InternString(left.Property.Value))
 			c.emit(OpSetField, nameIdx)
 		default:
 			return fmt.Errorf("cannot assign to %T", left)
@@ -714,7 +748,7 @@ func (c *Compiler) Compile(node parser.Node) error {
 				return err
 			}
 			// Get the method name
-			nameConst := c.addConstant(&objects.String{Value: dot.Property.Value})
+			nameConst := c.addConstant(objects.InternString(dot.Property.Value))
 			c.emit(OpGetMethod, nameConst)
 			// Compile arguments
 			for _, arg := range node.Arguments {
@@ -726,6 +760,7 @@ func (c *Compiler) Compile(node parser.Node) error {
 			c.emit(OpCallMethod, len(node.Arguments))
 		} else {
 			// Regular function call
+			// Note: Function inlining is disabled due to complexity with closure semantics
 			// Compile function
 			if err := c.Compile(node.Function); err != nil {
 				return err
@@ -747,7 +782,7 @@ func (c *Compiler) Compile(node parser.Node) error {
 			return err
 		}
 		// Add property name to constants
-		nameConst := c.addConstant(&objects.String{Value: node.Property.Value})
+		nameConst := c.addConstant(objects.InternString(node.Property.Value))
 		c.emit(OpGetMethod, nameConst)
 
 	case *parser.TernaryExpression:
@@ -845,7 +880,7 @@ func (c *Compiler) Compile(node parser.Node) error {
 			c.emit(OpDup)
 
 			// Add 1 or subtract 1
-			one := c.addConstant(&objects.Int{Value: 1})
+			one := c.addConstant(objects.NewInt(1))
 			c.emit(OpConstant, one)
 
 			switch node.Operator {
@@ -915,7 +950,7 @@ func (c *Compiler) compileTailCall(node *parser.CallExpression) error {
 // compileImportStatement compiles an import statement
 func (c *Compiler) compileImportStatement(node *parser.ImportStatement) error {
 	// Load the module path constant
-	pathIdx := c.addConstant(&objects.String{Value: node.Path.Value})
+	pathIdx := c.addConstant(objects.InternString(node.Path.Value))
 
 	// Emit OpLoadModule to load the module and push it onto the stack
 	c.emit(OpLoadModule, pathIdx)
@@ -940,7 +975,7 @@ func (c *Compiler) compileImportStatement(node *parser.ImportStatement) error {
 			// Duplicate module reference for each name
 			c.emit(OpDup)
 			// Get the export by name
-			nameIdx := c.addConstant(&objects.String{Value: name.Value})
+			nameIdx := c.addConstant(objects.InternString(name.Value))
 			c.emit(OpGetExport, nameIdx)
 			// Store in global
 			symbol := c.symbolTable.Define(name.Value)
@@ -973,7 +1008,7 @@ func (c *Compiler) compileExportStatement(node *parser.ExportStatement) error {
 		// Store in global (OpSetGlobal pushes the value back)
 		c.emit(OpSetGlobal, symbol.Index)
 		// Export the variable (value is already on stack from OpSetGlobal)
-		nameIdx := c.addConstant(&objects.String{Value: stmt.Name.Value})
+		nameIdx := c.addConstant(objects.InternString(stmt.Name.Value))
 		c.emit(OpSetExport, nameIdx)
 		// Pop the pushed-back value from OpSetExport
 		c.emit(OpPop)
@@ -988,7 +1023,7 @@ func (c *Compiler) compileExportStatement(node *parser.ExportStatement) error {
 		// Store in global (OpSetGlobal pushes the value back)
 		c.emit(OpSetGlobal, symbol.Index)
 		// Export the constant (value is already on stack from OpSetGlobal)
-		nameIdx := c.addConstant(&objects.String{Value: stmt.Name.Value})
+		nameIdx := c.addConstant(objects.InternString(stmt.Name.Value))
 		c.emit(OpSetExport, nameIdx)
 		// Pop the pushed-back value from OpSetExport
 		c.emit(OpPop)
@@ -1006,7 +1041,7 @@ func (c *Compiler) compileExportStatement(node *parser.ExportStatement) error {
 			// The function is now stored in the global by FunctionLiteral compilation
 			// OpSetGlobal pushed the value back, so it's on stack
 			// Export the function (value is already on stack from OpSetGlobal)
-			nameIdx := c.addConstant(&objects.String{Value: fn.Name})
+			nameIdx := c.addConstant(objects.InternString(fn.Name))
 			c.emit(OpSetExport, nameIdx)
 			// Pop the pushed-back value from OpSetExport
 			c.emit(OpPop)
@@ -1117,11 +1152,81 @@ func (c *Compiler) leaveScope() *CompiledFunction {
 
 	c.symbolTable = c.symbolTable.Outer
 
+	// Analyze if function is inlineable (single return expression)
+	isInlineable, inlineBody := c.analyzeInlineable(instructions)
+
 	return &CompiledFunction{
 		Instructions:  instructions,
 		NumLocals:     numLocals,
 		FreeVariables: freeVars,
+		IsInlineable:  isInlineable,
+		InlineBody:    inlineBody,
 	}
+}
+
+// analyzeInlineable checks if a function body is a single return expression
+// that can be inlined at call sites
+// Returns true and the inlinable body (without return) if the function is inlineable
+func (c *Compiler) analyzeInlineable(instructions []byte) (bool, []byte) {
+	if len(instructions) < 2 {
+		return false, nil
+	}
+
+	// Function is inlineable if it ends with a single value return
+	// and doesn't contain side effects (function calls, assignments)
+
+	// Check if ends with OpReturn preceded by value-producing instructions
+	lastIP := len(instructions) - 1
+	if Opcode(instructions[lastIP]) != OpReturn {
+		return false, nil
+	}
+
+	// Simple heuristic: if function body is just a few instructions without
+	// side effects, it's inlineable
+	// Count instructions and check for side effects
+	sideEffectOpcodes := map[Opcode]bool{
+		OpSetGlobal: true,
+		OpSetLocal:  true,
+		OpSetFree:   true,
+		OpSetIndex:  true,
+		OpSetField:  true,
+		OpCall:      true,
+		OpTailCall:  true,
+		OpCallMethod: true,
+		OpPop:       true,
+	}
+
+	numInstructions := 0
+	i := 0
+	for i < len(instructions)-1 { // Exclude return
+		op := Opcode(instructions[i])
+
+		if sideEffectOpcodes[op] {
+			return false, nil
+		}
+
+		// Count instruction
+		numInstructions++
+		i++
+
+		// Skip operands
+		def, err := Lookup(byte(op))
+		if err != nil {
+			return false, nil
+		}
+		for _, w := range def.OperandWidths {
+			i += w
+		}
+	}
+
+	// Only inline very simple functions (up to 10 instructions)
+	// to avoid code bloat
+	if numInstructions > 10 {
+		return false, nil
+	}
+
+	// Return body without the OpReturn
+	return true, instructions[:lastIP]
 }
 
 // compileMethod compiles a method without binding it to a global variable.
@@ -1198,7 +1303,7 @@ func (c *Compiler) compileClassStatement(node *parser.ClassStatement) error {
 	// Compile default fields as key-value pairs
 	for _, field := range node.Fields {
 		// Key
-		nameIdx := c.addConstant(&objects.String{Value: field.Name.Value})
+		nameIdx := c.addConstant(objects.InternString(field.Name.Value))
 		c.emit(OpConstant, nameIdx)
 		// Value
 		if err := c.Compile(field.Value); err != nil {
@@ -1211,7 +1316,7 @@ func (c *Compiler) compileClassStatement(node *parser.ClassStatement) error {
 	// Compile methods as key-value pairs
 	for _, method := range node.Methods {
 		// Key (method name)
-		nameIdx := c.addConstant(&objects.String{Value: method.Name})
+		nameIdx := c.addConstant(objects.InternString(method.Name))
 		c.emit(OpConstant, nameIdx)
 		// Compile method as function (with 'this' at local 0)
 		if err := c.compileMethod(method); err != nil {
@@ -1222,7 +1327,7 @@ func (c *Compiler) compileClassStatement(node *parser.ClassStatement) error {
 	c.emit(OpMap, len(node.Methods))
 
 	// Create class
-	nameIdx := c.addConstant(&objects.String{Value: node.Name.Value})
+	nameIdx := c.addConstant(objects.InternString(node.Name.Value))
 	c.emit(OpClass, nameIdx)
 
 	// Store class in global
@@ -1268,7 +1373,7 @@ func (c *Compiler) compileSuperCallExpression(node *parser.SuperCallExpression) 
 	c.emit(OpGetLocal, 0)
 
 	// Get super method
-	nameIdx := c.addConstant(&objects.String{Value: node.Method})
+	nameIdx := c.addConstant(objects.InternString(node.Method))
 	c.emit(OpSuper, nameIdx)
 
 	// Compile arguments (not including this)
@@ -1282,4 +1387,144 @@ func (c *Compiler) compileSuperCallExpression(node *parser.SuperCallExpression) 
 	c.emit(OpCallMethod, len(node.Args))
 
 	return nil
+}
+
+// getCompiledFunction retrieves a compiled function by symbol index
+// This is used for inlining analysis
+func (c *Compiler) getCompiledFunction(symbol Symbol) (*CompiledFunction, bool) {
+	// For local variables, we can't easily get the function at compile time
+	// For globals, check if the symbol is defined and retrieve from constants
+	if symbol.Scope == GlobalScope {
+		// Look up in constants if it's a compiled function
+		if symbol.Index < len(c.constants) {
+			if fn, ok := c.constants[symbol.Index].(*CompiledFunction); ok {
+				return fn, true
+			}
+		}
+	}
+	return nil, false
+}
+
+// inlineFunction inlines a function body at the call site
+func (c *Compiler) inlineFunction(fn *CompiledFunction, args []parser.Expression, symbolIndex int) error {
+	// For inlineable functions, we need to:
+	// 1. Evaluate arguments
+	// 2. Map parameter references to argument values
+	// 3. Emit inlined body with adjusted local references
+
+	// Compile all arguments first
+	argLocals := make([]int, len(args))
+	for i, arg := range args {
+		if err := c.Compile(arg); err != nil {
+			return err
+		}
+		// Store argument in a temporary local
+		tempLocal := c.symbolTable.NumDefinitions + i
+		c.emit(OpSetLocal, tempLocal)
+		argLocals[i] = tempLocal
+	}
+
+	// Emit inlined body
+	// The inline body expects parameters to be in locals 0, 1, 2, ...
+	// We need to adjust these to reference the argument locals
+
+	// For simplicity, we emit a simpler inlining strategy:
+	// Just emit the inline body and let the function's locals be used
+	// This works for pure functions without side effects
+
+	for i := 0; i < len(fn.InlineBody); {
+		op := Opcode(fn.InlineBody[i])
+
+		// Check if this is a local access that needs remapping
+		if op == OpGetLocal {
+			// Remap parameter index to argument local
+			paramIndex := int(fn.InlineBody[i+1])
+			if paramIndex < len(argLocals) {
+				// Emit GetLocal for the argument
+				c.emit(OpGetLocal, argLocals[paramIndex])
+			} else {
+				// Non-parameter local, emit as-is
+				c.emit(OpGetLocal, paramIndex)
+			}
+			i += 2
+		} else {
+			// Copy instruction as-is
+			def, err := Lookup(byte(op))
+			if err != nil {
+				i++
+				continue
+			}
+			instrLen := 1
+			operands := make([]int, len(def.OperandWidths))
+			for j, w := range def.OperandWidths {
+				switch w {
+				case 1:
+					operands[j] = int(fn.InlineBody[i+1])
+				case 2:
+					operands[j] = int(fn.InlineBody[i+1])<<8 | int(fn.InlineBody[i+2])
+				}
+				instrLen += w
+			}
+			c.emit(op, operands...)
+			i += instrLen
+		}
+	}
+
+	return nil
+}
+
+// analyzeLoopSafety detects safe array access patterns in loops
+// Pattern: for i := 0; i < len(arr); i++ { ... arr[i] ... }
+func (c *Compiler) analyzeLoopSafety(node *parser.ForStatement) {
+	// Check for pattern: for i := 0; i < len(arr); i++
+	// where i is an identifier and arr is an identifier
+
+	// 1. Check init: i := 0
+	var loopVar string
+	var arrayVar string
+
+	if init, ok := node.Init.(*parser.VarStatement); ok {
+		if _, ok := init.Value.(*parser.IntegerLiteral); ok {
+			loopVar = init.Name.Value
+		}
+	}
+
+	// 2. Check condition: i < len(arr)
+	if node.Condition != nil {
+		if less, ok := node.Condition.(*parser.InfixExpression); ok && less.Operator == "<" {
+			if left, ok := less.Left.(*parser.Identifier); ok && left.Value == loopVar {
+				// Check if right side is len(arrayVar)
+				if call, ok := less.Right.(*parser.CallExpression); ok {
+					if fn, ok := call.Function.(*parser.Identifier); ok && fn.Value == "len" {
+						if len(call.Arguments) == 1 {
+							if arg, ok := call.Arguments[0].(*parser.Identifier); ok {
+								arrayVar = arg.Value
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 3. Check update: i++ (could be ExpressionStatement containing PostfixExpression)
+	if node.Update != nil {
+		// Check for ExpressionStatement containing PostfixExpression
+		if exprStmt, ok := node.Update.(*parser.ExpressionStatement); ok {
+			if postfix, ok := exprStmt.Expression.(*parser.PostfixExpression); ok && postfix.Operator == "++" {
+				if left, ok := postfix.Left.(*parser.Identifier); ok && left.Value == loopVar {
+					// Pattern matched! Mark arrayVar[loopVar] as safe
+					if loopVar != "" && arrayVar != "" {
+						c.safeArrayAccess[fmt.Sprintf("%s[%s]", arrayVar, loopVar)] = true
+					}
+				}
+			}
+		}
+	}
+}
+
+// isArrayAccessSafe checks if an array access is safe (bounds-checked by loop context)
+func (c *Compiler) isArrayAccessSafe(arrayName, indexName string) bool {
+	key := fmt.Sprintf("%s[%s]", arrayName, indexName)
+	return c.safeArrayAccess[key]
 }

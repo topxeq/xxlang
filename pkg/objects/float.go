@@ -15,6 +15,9 @@ type Float struct {
 // Type returns the object type
 func (f *Float) Type() ObjectType { return FloatType }
 
+// TypeTag returns the type tag for fast type checking
+func (f *Float) TypeTag() TypeTag { return TagFloat }
+
 // Inspect returns the string representation
 func (f *Float) Inspect() string { return strconv.FormatFloat(f.Value, 'f', -1, 64) }
 

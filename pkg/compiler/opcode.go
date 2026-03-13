@@ -49,6 +49,14 @@ const (
 	OpPushScope // Push new scope
 	OpPopScope  // Pop scope
 
+	// Superinstructions (combined operations for performance)
+	OpGetLocalAdd    // Get two locals and add
+	OpGetLocalSub    // Get two locals and subtract
+	OpGetLocalMul    // Get two locals and multiply
+	OpConstantAdd    // Load two constants and add
+	OpConstantSub    // Load two constants and subtract
+	OpConstantMul    // Load two constants and multiply
+
 	// Control flow operations
 	OpJump        // Unconditional jump
 	OpJumpIfFalse // Jump if top of stack is false
@@ -63,6 +71,7 @@ const (
 	OpMap     // Create map from stack elements
 	OpIndex   // Index into array/map
 	OpSetIndex // Set index in array/map
+	OpIndexSafe // Index into array without bounds check (safe context)
 
 	// Method/Field operations
 	OpGetMethod  // Get method from object
@@ -151,10 +160,11 @@ var definitions = map[Opcode]*Definition{
 	OpClosure:     {"OpClosure", []int{2, 1}},  // 2-byte constant index, 1-byte num free
 
 	// Collection operations
-	OpArray:    {"OpArray", []int{2}},    // 2-byte element count
-	OpMap:      {"OpMap", []int{2}},      // 2-byte pair count
-	OpIndex:    {"OpIndex", []int{}},
-	OpSetIndex: {"OpSetIndex", []int{}},
+	OpArray:     {"OpArray", []int{2}},    // 2-byte element count
+	OpMap:       {"OpMap", []int{2}},      // 2-byte pair count
+	OpIndex:     {"OpIndex", []int{}},
+	OpSetIndex:  {"OpSetIndex", []int{}},
+	OpIndexSafe: {"OpIndexSafe", []int{}}, // No bounds check
 
 	// Method/Field operations
 	OpGetMethod:  {"OpGetMethod", []int{2}},  // 2-byte constant index for name
@@ -184,6 +194,14 @@ var definitions = map[Opcode]*Definition{
 	OpGetField: {"OpGetField", []int{2}}, // 2-byte: field name constant index
 	OpSetField: {"OpSetField", []int{2}}, // 2-byte: field name constant index
 	OpSuper:    {"OpSuper", []int{2}},    // 2-byte: method name constant index
+
+	// Superinstructions
+	OpGetLocalAdd: {"OpGetLocalAdd", []int{1, 1}}, // 2x 1-byte local indices
+	OpGetLocalSub: {"OpGetLocalSub", []int{1, 1}},
+	OpGetLocalMul: {"OpGetLocalMul", []int{1, 1}},
+	OpConstantAdd: {"OpConstantAdd", []int{2, 2}}, // 2x 2-byte constant indices
+	OpConstantSub: {"OpConstantSub", []int{2, 2}},
+	OpConstantMul: {"OpConstantMul", []int{2, 2}},
 }
 
 // Lookup finds an opcode's definition
