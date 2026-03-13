@@ -307,6 +307,22 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		// Type-specialized instructions
+		case compiler.OpIncLocal:
+			if err := vm.executeIncLocal(); err != nil {
+				return err
+			}
+
+		case compiler.OpDecLocal:
+			if err := vm.executeDecLocal(); err != nil {
+				return err
+			}
+
+		case compiler.OpAddLocalConst:
+			if err := vm.executeAddLocalConst(); err != nil {
+				return err
+			}
+
 		case compiler.OpSetLocal:
 			if err := vm.executeSetLocal(); err != nil {
 				return err
@@ -993,6 +1009,82 @@ func (vm *VM) executeConstantMul() error {
 	val2 := constants[idx2].(*objects.Int).Value
 
 	vm.stack.Push(objects.NewInt(val1 * val2))
+	return nil
+}
+
+// Type-specialized instruction implementations
+
+// executeIncLocal increments a local variable by 1
+// Optimized for loop counters - avoids push/pop overhead
+func (vm *VM) executeIncLocal() error {
+	frame := vm.currentFrame()
+	localIndex := int(frame.Instructions()[frame.IP+1])
+	frame.IP++
+
+	// Adjust index if 'this' is present
+	var val *objects.Int
+	if frame.This != nil && localIndex > 0 {
+		val = frame.Locals[localIndex-1].(*objects.Int)
+	} else if frame.This == nil {
+		val = frame.Locals[localIndex].(*objects.Int)
+	} else {
+		// localIndex == 0 with 'this' - this is an error
+		return fmt.Errorf("cannot increment 'this'")
+	}
+
+	val.Value++
+	vm.stack.Push(val)
+	return nil
+}
+
+// executeDecLocal decrements a local variable by 1
+func (vm *VM) executeDecLocal() error {
+	frame := vm.currentFrame()
+	localIndex := int(frame.Instructions()[frame.IP+1])
+	frame.IP++
+
+	var val *objects.Int
+	if frame.This != nil && localIndex > 0 {
+		val = frame.Locals[localIndex-1].(*objects.Int)
+	} else if frame.This == nil {
+		val = frame.Locals[localIndex].(*objects.Int)
+	} else {
+		return fmt.Errorf("cannot decrement 'this'")
+	}
+
+	val.Value--
+	vm.stack.Push(val)
+	return nil
+}
+
+// executeAddLocalConst adds a constant to a local variable
+func (vm *VM) executeAddLocalConst() error {
+	frame := vm.currentFrame()
+	localIndex := int(frame.Instructions()[frame.IP+1])
+	constIndex := int(frame.Instructions()[frame.IP+2])<<8 | int(frame.Instructions()[frame.IP+3])
+	frame.IP += 3
+
+	// Get constants
+	constants := frame.Constants
+	if constants == nil {
+		constants = vm.constants
+	}
+
+	// Get local value
+	var localVal *objects.Int
+	if frame.This != nil && localIndex > 0 {
+		localVal = frame.Locals[localIndex-1].(*objects.Int)
+	} else if frame.This == nil {
+		localVal = frame.Locals[localIndex].(*objects.Int)
+	} else {
+		return fmt.Errorf("cannot add to 'this'")
+	}
+
+	// Get constant value
+	constVal := constants[constIndex].(*objects.Int).Value
+
+	localVal.Value += constVal
+	vm.stack.Push(localVal)
 	return nil
 }
 

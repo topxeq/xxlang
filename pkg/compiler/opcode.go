@@ -57,6 +57,11 @@ const (
 	OpConstantSub    // Load two constants and subtract
 	OpConstantMul    // Load two constants and multiply
 
+	// Type-specialized instructions (for hot path optimization)
+	OpIncLocal       // Increment local variable by 1 (optimized for loop counters)
+	OpDecLocal       // Decrement local variable by 1
+	OpAddLocalConst  // Add constant to local variable
+
 	// Control flow operations
 	OpJump        // Unconditional jump
 	OpJumpIfFalse // Jump if top of stack is false
@@ -202,6 +207,11 @@ var definitions = map[Opcode]*Definition{
 	OpConstantAdd: {"OpConstantAdd", []int{2, 2}}, // 2x 2-byte constant indices
 	OpConstantSub: {"OpConstantSub", []int{2, 2}},
 	OpConstantMul: {"OpConstantMul", []int{2, 2}},
+
+	// Type-specialized instructions
+	OpIncLocal:      {"OpIncLocal", []int{1}},      // 1-byte: local index
+	OpDecLocal:      {"OpDecLocal", []int{1}},      // 1-byte: local index
+	OpAddLocalConst: {"OpAddLocalConst", []int{1, 2}}, // 1-byte local index, 2-byte constant index
 }
 
 // Lookup finds an opcode's definition
