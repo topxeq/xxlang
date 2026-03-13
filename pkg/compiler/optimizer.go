@@ -21,6 +21,7 @@ func NewOptimizer(bytecode *Bytecode) *Optimizer {
 func (o *Optimizer) Optimize() *Bytecode {
 	result := o.FoldConstants()
 	result = o.GenerateSuperinstructions()
+	result = o.GenerateTypeSpecializations()
 	return result
 }
 
@@ -225,6 +226,88 @@ func (o *Optimizer) GenerateSuperinstructions() *Bytecode {
 						newInstructions = append(newInstructions, byte(idx1>>8), byte(idx1))
 						newInstructions = append(newInstructions, byte(idx2>>8), byte(idx2))
 						i += 7 // Skip OpConstant(3) + OpConstant(3) + BinOp(1)
+						continue
+					}
+				}
+			}
+		}
+
+		// Copy instruction as-is
+		def, err := Lookup(byte(op))
+		if err != nil {
+			i++
+			continue
+		}
+
+		instrLen := 1
+		for _, w := range def.OperandWidths {
+			instrLen += w
+		}
+
+		newInstructions = append(newInstructions, instructions[i:i+instrLen]...)
+		i += instrLen
+	}
+
+	o.bytecode.Instructions = newInstructions
+	return o.bytecode
+}
+
+// GenerateTypeSpecializations creates type-specialized instructions
+// for common patterns that can be optimized
+func (o *Optimizer) GenerateTypeSpecializations() *Bytecode {
+	instructions := o.bytecode.Instructions
+
+	if len(instructions) < 5 {
+		return o.bytecode
+	}
+
+	newInstructions := make([]byte, 0, len(instructions))
+	constants := o.bytecode.Constants
+
+	i := 0
+	for i < len(instructions) {
+		op := Opcode(instructions[i])
+
+		// Pattern: OpGetLocal + OpConstant(1) + OpAdd + OpSetLocal
+		// This is "local = local + constant" pattern (like loop counters)
+		// Can be optimized to OpAddLocalConst
+		if op == OpGetLocal && i+10 < len(instructions) {
+			localIdx := int(instructions[i+1])
+
+			// Check for OpConstant
+			if Opcode(instructions[i+2]) == OpConstant {
+				constIdx := int(instructions[i+3])<<8 | int(instructions[i+4])
+
+				// Check if constant is integer
+				if _, ok := constants[constIdx].(*objects.Int); ok {
+					// Check for OpAdd
+					if Opcode(instructions[i+5]) == OpAdd {
+						// Check for OpSetLocal with same index
+						if Opcode(instructions[i+6]) == OpSetLocal && int(instructions[i+7]) == localIdx {
+							// Found pattern! Use OpAddLocalConst
+							newInstructions = append(newInstructions, byte(OpAddLocalConst), byte(localIdx))
+							newInstructions = append(newInstructions, byte(constIdx>>8), byte(constIdx))
+							i += 8 // Skip the whole sequence
+							continue
+						}
+					}
+				}
+			}
+		}
+
+		// Pattern: OpGetLocal + OpConstant(1) + OpAdd -> OpIncLocal (if constant is 1)
+		// This is for expressions like "i + 1" without assignment
+		if op == OpGetLocal && i+5 < len(instructions) {
+			localIdx := int(instructions[i+1])
+
+			if Opcode(instructions[i+2]) == OpConstant {
+				constIdx := int(instructions[i+3])<<8 | int(instructions[i+4])
+
+				if c, ok := constants[constIdx].(*objects.Int); ok && c.Value == 1 {
+					if Opcode(instructions[i+5]) == OpAdd {
+						// OpIncLocal increments and pushes the result
+						newInstructions = append(newInstructions, byte(OpIncLocal), byte(localIdx))
+						i += 6
 						continue
 					}
 				}
