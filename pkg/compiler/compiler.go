@@ -203,9 +203,12 @@ type Compiler struct {
 
 	// Optimization context tracking
 	safeArrayAccess map[string]bool // Track which array accesses are safe (bounds-checked by loop)
+
+	// Optimization options
+	options OptimizationFlags
 }
 
-// New creates a new compiler
+// New creates a new compiler with default optimizations
 func New() *Compiler {
 	return &Compiler{
 		constants:       []objects.Object{},
@@ -214,6 +217,20 @@ func New() *Compiler {
 		scopeIndex:      0,
 		sourceMap:       NewSourceMap(),
 		safeArrayAccess: make(map[string]bool),
+		options:         DefaultOptimizations(),
+	}
+}
+
+// NewWithOptions creates a new compiler with custom optimization settings
+func NewWithOptions(opts OptimizationFlags) *Compiler {
+	return &Compiler{
+		constants:       []objects.Object{},
+		symbolTable:     NewSymbolTable(),
+		scopes:          []CompilationScope{{instructions: []byte{}}},
+		scopeIndex:      0,
+		sourceMap:       NewSourceMap(),
+		safeArrayAccess: make(map[string]bool),
+		options:         opts,
 	}
 }
 
@@ -226,6 +243,7 @@ func NewWithState(s *SymbolTable, constants []objects.Object) *Compiler {
 		scopeIndex:      0,
 		sourceMap:       NewSourceMap(),
 		safeArrayAccess: make(map[string]bool),
+		options:         DefaultOptimizations(),
 	}
 }
 
@@ -1058,11 +1076,19 @@ func (c *Compiler) compileExportStatement(node *parser.ExportStatement) error {
 
 // Bytecode returns the compiled bytecode
 func (c *Compiler) Bytecode() *Bytecode {
-	return &Bytecode{
+	bytecode := &Bytecode{
 		Instructions: c.currentInstructions(),
 		Constants:    c.constants,
 		SourceMap:    c.sourceMap,
 	}
+
+	// Apply optimizations if enabled
+	if c.options.BytecodeOptimizer {
+		optimizer := NewOptimizer(bytecode)
+		return optimizer.Optimize()
+	}
+
+	return bytecode
 }
 
 // emit adds an instruction to the bytecode
