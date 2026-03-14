@@ -3,6 +3,7 @@ package objects
 
 import (
 	"bytes"
+	"sort"
 )
 
 // MapPair represents a key-value pair in a map
@@ -26,12 +27,24 @@ func (m *Map) TypeTag() TypeTag { return TagMap }
 func (m *Map) Inspect() string {
 	var out bytes.Buffer
 	out.WriteString("{")
-	first := true
+
+	// Collect and sort keys for deterministic output
+	keys := make([]string, 0, len(m.Pairs))
+	pairByKey := make(map[string]MapPair, len(m.Pairs))
 	for _, pair := range m.Pairs {
+		keyStr := pair.Key.Inspect()
+		keys = append(keys, keyStr)
+		pairByKey[keyStr] = pair
+	}
+	sort.Strings(keys)
+
+	first := true
+	for _, keyStr := range keys {
 		if !first {
 			out.WriteString(", ")
 		}
 		first = false
+		pair := pairByKey[keyStr]
 		out.WriteString(pair.Key.Inspect())
 		out.WriteString(": ")
 		out.WriteString(pair.Value.Inspect())
