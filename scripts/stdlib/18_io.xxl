@@ -1,0 +1,342 @@
+// 18_io.xxl
+// Input/Output operations and file handling
+
+// === Basic Output ===
+println("=== Basic Output ===")
+
+// print adds no newline
+print("Hello ")
+print("World\n")
+
+// println adds newline
+println("This is a complete line")
+
+// Print multiple values
+println("Name: ", "Alice", ", Age: ", 30)
+
+// === Formatted Output ===
+println("\n=== Formatted Output ===")
+
+func printf(format, args) {
+    var result = ""
+    var argIdx = 0
+    var i = 0
+
+    while (i < len(format)) {
+        var ch = format[i]
+        if (ch == "%") {
+            if (i + 1 < len(format)) {
+                var next = format[i + 1]
+                if (next == "s" || next == "d" || next == "f") {
+                    if (argIdx < len(args)) {
+                        result = result + string(args[argIdx])
+                        argIdx = argIdx + 1
+                    }
+                    i = i + 2
+                    continue
+                }
+            }
+        }
+        result = result + ch
+        i = i + 1
+    }
+
+    print(result)
+}
+
+printf("Name: %s, Age: %d\n", ["Alice", 30])
+printf("Score: %f, Grade: %s\n", [95.5, "A"])
+
+// === Reading Input (via built-in) ===
+println("\n=== Reading Input ===")
+
+// Note: input() reads from stdin
+// This is demonstrated but not executed to avoid blocking
+
+// println("Enter your name: ")
+// var name = input()
+// println("Hello, ", name, "!")
+
+// For demonstration, simulate input
+var simulatedInput = "Alice"
+println("Simulated input: ", simulatedInput)
+
+// === File Operations ===
+println("\n=== File Operations ===")
+
+// Note: File operations require the actual file to exist
+// These demonstrate the API usage
+
+// Write to file
+/*
+var content = "Hello, File!\nThis is line 2.\n"
+fileWrite("test_output.txt", content)
+println("File written successfully")
+*/
+
+// Read from file
+/*
+var fileContent = fileRead("test_output.txt")
+println("File content:\n", fileContent)
+*/
+
+// Append to file
+/*
+fileAppend("test_output.txt", "Appended line.\n")
+println("Content appended")
+*/
+
+// Check if file exists
+/*
+if (fileExists("test_output.txt")) {
+    println("File exists")
+}
+*/
+
+// Delete file
+/*
+fileDelete("test_output.txt")
+println("File deleted")
+*/
+
+println("File operation APIs demonstrated above.")
+println("Uncomment and provide actual file paths to test.")
+
+// === Working with Paths ===
+println("\n=== Working with Paths ===")
+
+func getFilename(path) {
+    // Extract filename from path
+    var idx = path.indexOf("/")
+    if (idx < 0) {
+        idx = path.indexOf("\\")
+    }
+
+    while (idx >= 0) {
+        path = substr(path, idx + 1, len(path))
+        idx = path.indexOf("/")
+        if (idx < 0) { idx = path.indexOf("\\") }
+    }
+
+    return path
+}
+
+func getExtension(filename) {
+    var idx = filename.indexOf(".")
+    if (idx < 0) {
+        return ""
+    }
+    return substr(filename, idx, len(filename))
+}
+
+func getBasename(filename) {
+    var idx = filename.indexOf(".")
+    if (idx < 0) {
+        return filename
+    }
+    return substr(filename, 0, idx)
+}
+
+var testPath = "/home/user/documents/report.pdf"
+println("Path: ", testPath)
+println("Filename: ", getFilename(testPath))
+println("Extension: ", getExtension(getFilename(testPath)))
+println("Basename: ", getBasename(getFilename(testPath)))
+
+// === CSV Processing ===
+println("\n=== CSV Processing ===")
+
+func parseCSV(line, delimiter) {
+    var fields = []
+    var current = ""
+    var inQuotes = false
+
+    for (var i = 0; i < len(line); i++) {
+        var ch = line[i]
+
+        if (ch == "\"") {
+            inQuotes = !inQuotes
+        } else if (ch == delimiter && !inQuotes) {
+            push(fields, current)
+            current = ""
+        } else {
+            current = current + ch
+        }
+    }
+    push(fields, current)
+
+    return fields
+}
+
+func toCSV(fields, delimiter) {
+    var result = ""
+    for (var i = 0; i < len(fields); i++) {
+        var field = string(fields[i])
+        // Quote if contains delimiter or newline
+        if (field.contains(delimiter) || field.contains("\n")) {
+            field = "\"" + field + "\""
+        }
+        if (i > 0) { result = result + delimiter }
+        result = result + field
+    }
+    return result
+}
+
+var csvLine = "Alice,30,Beijing"
+var parsed = parseCSV(csvLine, ",")
+println("CSV line: ", csvLine)
+println("Parsed: ", parsed)
+println("Reconstructed: ", toCSV(parsed, ","))
+
+// === JSON-like Processing ===
+println("\n=== JSON-like Processing ===")
+
+func simpleStringify(obj) {
+    var t = typeOf(obj)
+
+    if (t == "NULL") {
+        return "null"
+    }
+    if (t == "BOOL") {
+        return string(obj)
+    }
+    if (t == "INT" || t == "FLOAT") {
+        return string(obj)
+    }
+    if (t == "STRING") {
+        return "\"" + obj + "\""
+    }
+    if (t == "ARRAY") {
+        var parts = []
+        for (item in obj) {
+            push(parts, simpleStringify(item))
+        }
+        return "[" + join(parts, ", ") + "]"
+    }
+    if (t == "MAP") {
+        var pairs = []
+        for (k, v in obj) {
+            push(pairs, "\"" + k + "\": " + simpleStringify(v))
+        }
+        return "{" + join(pairs, ", ") + "}"
+    }
+
+    return string(obj)
+}
+
+var testData = {
+    "name": "Alice",
+    "age": 30,
+    "active": true,
+    "tags": ["developer", "golang"],
+    "address": {
+        "city": "Beijing",
+        "country": "China"
+    }
+}
+
+println("Object: ", testData)
+println("JSON-like: ", simpleStringify(testData))
+
+// === Logging ===
+println("\n=== Logging ===")
+
+func createLogger(name) {
+    return {
+        "name": name,
+        "log": func(level, message) {
+            println("[", level, "] ", name, ": ", message)
+        },
+        "debug": func(msg) {
+            println("[DEBUG] ", name, ": ", msg)
+        },
+        "info": func(msg) {
+            println("[INFO] ", name, ": ", msg)
+        },
+        "warn": func(msg) {
+            println("[WARN] ", name, ": ", msg)
+        },
+        "error": func(msg) {
+            println("[ERROR] ", name, ": ", msg)
+        }
+    }
+}
+
+var logger = createLogger("App")
+logger["debug"]("Debug message")
+logger["info"]("Application started")
+logger["warn"]("Low memory")
+logger["error"]("Connection failed")
+
+// === Output Formatting ===
+println("\n=== Output Formatting ===")
+
+// Table formatting
+func printTable(headers, rows) {
+    // Calculate column widths
+    var widths = []
+    for (var i = 0; i < len(headers); i++) {
+        var maxW = len(headers[i])
+        for (row in rows) {
+            if (len(string(row[i])) > maxW) {
+                maxW = len(string(row[i]))
+            }
+        }
+        push(widths, maxW)
+    }
+
+    // Print header
+    var headerLine = "|"
+    var separator = "+"
+    for (var i = 0; i < len(headers); i++) {
+        headerLine = headerLine + " " + padRight(headers[i], widths[i], " ") + " |"
+        separator = separator + "-" + padRight("", widths[i], "-") + "-+"
+    }
+
+    println(separator)
+    println(headerLine)
+    println(separator)
+
+    // Print rows
+    for (row in rows) {
+        var rowLine = "|"
+        for (var i = 0; i < len(row); i++) {
+            rowLine = rowLine + " " + padRight(string(row[i]), widths[i], " ") + " |"
+        }
+        println(rowLine)
+    }
+    println(separator)
+}
+
+var headers = ["Name", "Age", "City"]
+var rows = [
+    ["Alice", "25", "Beijing"],
+    ["Bob", "30", "Shanghai"],
+    ["Charlie", "28", "Shenzhen"]
+]
+
+println("")
+printTable(headers, rows)
+
+// === Progress Indicator ===
+println("\n=== Progress Indicator ===")
+
+func printProgress(current, total, width) {
+    var percent = current * 100 / total
+    var filled = current * width / total
+    var empty = width - filled
+
+    var bar = "["
+    for (var i = 0; i < filled; i++) { bar = bar + "=" }
+    for (var i = 0; i < empty; i++) { bar = bar + " " }
+    bar = bar + "] " + percent + "%"
+
+    print("\r" + bar)
+}
+
+println("Progress simulation:")
+for (var i = 0; i <= 10; i++) {
+    printProgress(i, 10, 20)
+    // In real code, would have delay here
+}
+println("")

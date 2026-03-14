@@ -1,0 +1,475 @@
+// 20_utilities.xxl
+// Utility functions and practical patterns
+
+// === Deep Clone ===
+println("=== Deep Clone ===")
+
+func deepClone(obj) {
+    var t = typeOf(obj)
+
+    if (t == "ARRAY") {
+        var result = []
+        for (item in obj) {
+            push(result, deepClone(item))
+        }
+        return result
+    }
+
+    if (t == "MAP") {
+        var result = {}
+        for (k, v in obj) {
+            result[k] = deepClone(v)
+        }
+        return result
+    }
+
+    return obj
+}
+
+var original2 = {"a": 1, "b": [1, 2, 3], "c": {"x": 10}}
+var cloned = deepClone(original2)
+cloned["a"] = 100
+cloned["b"][0] = 999
+
+println("Original: ", original2)
+println("Cloned (modified): ", cloned)
+
+// === Deep Equality ===
+println("\n=== Deep Equality ===")
+
+func deepEqual(a, b) {
+    var ta = typeOf(a)
+    var tb = typeOf(b)
+
+    if (ta != tb) { return false }
+
+    if (ta == "ARRAY") {
+        if (len(a) != len(b)) { return false }
+        for (var i = 0; i < len(a); i++) {
+            if (!deepEqual(a[i], b[i])) { return false }
+        }
+        return true
+    }
+
+    if (ta == "MAP") {
+        var keysA = keys(a)
+        var keysB = keys(b)
+        if (len(keysA) != len(keysB)) { return false }
+
+        for (k in keysA) {
+            if (!hasKey(b, k)) { return false }
+            if (!deepEqual(a[k], b[k])) { return false }
+        }
+        return true
+    }
+
+    return a == b
+}
+
+var obj1 = {"a": 1, "b": [1, 2, 3]}
+var obj2 = {"a": 1, "b": [1, 2, 3]}
+var obj3 = {"a": 1, "b": [1, 2, 4]}
+
+println("obj1 == obj2: ", deepEqual(obj1, obj2))
+println("obj1 == obj3: ", deepEqual(obj1, obj3))
+
+// === Object Merge ===
+println("\n=== Object Merge ===")
+
+func merge(target, source) {
+    var result = deepClone(target)
+
+    for (k, v in source) {
+        if (hasKey(result, k) && typeOf(result[k]) == "MAP" && typeOf(v) == "MAP") {
+            result[k] = merge(result[k], v)
+        } else {
+            result[k] = deepClone(v)
+        }
+    }
+
+    return result
+}
+
+var base = {"a": 1, "b": {"x": 10, "y": 20}}
+var override = {"b": {"y": 999, "z": 30}, "c": 3}
+var merged2 = merge(base, override)
+
+println("Base: ", base)
+println("Override: ", override)
+println("Merged: ", merged2)
+
+// === Pick and Omit ===
+println("\n=== Pick and Omit ===")
+
+func pick(obj, keysList) {
+    var result = {}
+    for (k in keysList) {
+        if (hasKey(obj, k)) {
+            result[k] = obj[k]
+        }
+    }
+    return result
+}
+
+func omit(obj, keysList) {
+    var result = {}
+    var exclude = {}
+    for (k in keysList) {
+        exclude[k] = true
+    }
+
+    for (k, v in obj) {
+        if (!hasKey(exclude, k)) {
+            result[k] = v
+        }
+    }
+    return result
+}
+
+var user2 = {"name": "Alice", "age": 30, "email": "alice@example.com", "password": "secret"}
+println("User: ", user2)
+println("Pick name, age: ", pick(user2, ["name", "age"]))
+println("Omit password: ", omit(user2, ["password"]))
+
+// === Range Generation ===
+println("\n=== Range Generation ===")
+
+// Use built-in range function
+println("range(0, 10, 1): ", range(0, 10, 1))
+println("range(0, 10, 2): ", range(0, 10, 2))
+println("range(10, 0, -1): ", range(10, 0, -1))
+
+// === Chunk Array ===
+println("\n=== Chunk Array ===")
+
+func chunk(arr, size) {
+    var result = []
+    var current = []
+
+    for (item in arr) {
+        push(current, item)
+        if (len(current) == size) {
+            push(result, current)
+            current = []
+        }
+    }
+
+    if (len(current) > 0) {
+        push(result, current)
+    }
+
+    return result
+}
+
+var numbers2 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+println("Chunk([1..10], 3): ", chunk(numbers2, 3))
+
+// === Flatten Array ===
+println("\n=== Flatten Array ===")
+
+func flatten(arr, depth) {
+    if (depth == 0) { return arr }
+
+    var result = []
+    for (item in arr) {
+        if (typeOf(item) == "ARRAY" && depth > 0) {
+            var flat = flatten(item, depth - 1)
+            for (sub in flat) {
+                push(result, sub)
+            }
+        } else {
+            push(result, item)
+        }
+    }
+    return result
+}
+
+func flattenDeep(arr) {
+    return flatten(arr, 999)
+}
+
+var nested2 = [1, [2, 3], [[4, 5], 6], [[[7]]]]
+println("Original: ", nested2)
+println("Flatten depth 1: ", flatten(nested2, 1))
+println("Flatten deep: ", flattenDeep(nested2))
+
+// === Unique Values ===
+println("\n=== Unique Values ===")
+
+func unique(arr) {
+    var seen = {}
+    var result = []
+
+    for (item in arr) {
+        var key = string(item)
+        if (!hasKey(seen, key)) {
+            seen[key] = true
+            push(result, item)
+        }
+    }
+
+    return result
+}
+
+var withDupes = [1, 2, 2, 3, 3, 3, 4, 4, 4, 4]
+println("With duplicates: ", withDupes)
+println("Unique: ", unique(withDupes))
+
+// === Group By ===
+println("\n=== Group By ===")
+
+func groupBy(arr, keyFn) {
+    var groups = {}
+
+    for (item in arr) {
+        var key = string(keyFn(item))
+        if (!hasKey(groups, key)) {
+            groups[key] = []
+        }
+        push(groups[key], item)
+    }
+
+    return groups
+}
+
+var people2 = [
+    {"name": "Alice", "dept": "Engineering"},
+    {"name": "Bob", "dept": "Marketing"},
+    {"name": "Charlie", "dept": "Engineering"},
+    {"name": "Diana", "dept": "Marketing"}
+]
+
+var byDept = groupBy(people2, func(p) { return p["dept"] })
+println("Grouped by department:")
+for (dept, members in byDept) {
+    println("  ", dept, ": ", members)
+}
+
+// === Intersection and Difference ===
+println("\n=== Set Operations ===")
+
+func intersection(arr1, arr2) {
+    var set2 = {}
+    for (item in arr2) {
+        set2[string(item)] = true
+    }
+
+    var result = []
+    for (item in arr1) {
+        if (hasKey(set2, string(item))) {
+            push(result, item)
+        }
+    }
+    return result
+}
+
+func difference(arr1, arr2) {
+    var set2 = {}
+    for (item in arr2) {
+        set2[string(item)] = true
+    }
+
+    var result = []
+    for (item in arr1) {
+        if (!hasKey(set2, string(item))) {
+            push(result, item)
+        }
+    }
+    return result
+}
+
+var setA = [1, 2, 3, 4, 5]
+var setB = [3, 4, 5, 6, 7]
+
+println("Set A: ", setA)
+println("Set B: ", setB)
+println("Intersection: ", intersection(setA, setB))
+println("Difference (A - B): ", difference(setA, setB))
+
+// === Find and FindIndex ===
+println("\n=== Find and FindIndex ===")
+
+func find(arr, predicate) {
+    for (item in arr) {
+        if (predicate(item)) {
+            return item
+        }
+    }
+    return null
+}
+
+func findIndex(arr, predicate) {
+    for (var i = 0; i < len(arr); i++) {
+        if (predicate(arr[i])) {
+            return i
+        }
+    }
+    return -1
+}
+
+var users = [
+    {"name": "Alice", "age": 25},
+    {"name": "Bob", "age": 30},
+    {"name": "Charlie", "age": 35}
+]
+
+var found = find(users, func(u) { return u["age"] > 28 })
+println("Found user with age > 28: ", found)
+
+var idx = findIndex(users, func(u) { return u["name"] == "Bob" })
+println("Index of Bob: ", idx)
+
+// === Some and Every ===
+println("\n=== Some and Every ===")
+
+func some(arr, predicate) {
+    for (item in arr) {
+        if (predicate(item)) {
+            return true
+        }
+    }
+    return false
+}
+
+func every(arr, predicate) {
+    for (item in arr) {
+        if (!predicate(item)) {
+            return false
+        }
+    }
+    return true
+}
+
+var testArr = [2, 4, 6, 8, 10]
+println("Array: ", testArr)
+println("Has odd number: ", some(testArr, func(x) { return x % 2 != 0 }))
+println("All even: ", every(testArr, func(x) { return x % 2 == 0 }))
+
+// === Zip ===
+println("\n=== Zip ===")
+
+func zip(arr1, arr2) {
+    var result = []
+    var minLen = len(arr1)
+    if (len(arr2) < minLen) { minLen = len(arr2) }
+
+    for (var i = 0; i < minLen; i++) {
+        push(result, [arr1[i], arr2[i]])
+    }
+    return result
+}
+
+var names = ["Alice", "Bob", "Charlie"]
+var ages = [25, 30, 35]
+var pairs = zip(names, ages)
+println("Zipped: ", pairs)
+
+// === Object Path Access ===
+println("\n=== Object Path Access ===")
+
+func getAtPath(obj, path) {
+    var current = obj
+
+    for (key in path) {
+        if (typeOf(current) == "MAP" && hasKey(current, key)) {
+            current = current[key]
+        } else if (typeOf(current) == "ARRAY" && typeOf(key) == "INT") {
+            current = current[key]
+        } else {
+            return null
+        }
+    }
+
+    return current
+}
+
+func setAtPath(obj, path, value) {
+    var current = obj
+
+    for (var i = 0; i < len(path) - 1; i++) {
+        var key = path[i]
+        if (typeOf(current) == "MAP") {
+            if (!hasKey(current, key)) {
+                current[key] = {}
+            }
+            current = current[key]
+        }
+    }
+
+    current[path[len(path) - 1]] = value
+}
+
+var deep = {"a": {"b": {"c": 42}}}
+println("getAtPath(deep, ['a','b','c']): ", getAtPath(deep, ["a", "b", "c"]))
+println("getAtPath(deep, ['a','x']): ", getAtPath(deep, ["a", "x"]))
+
+// === Count Occurrences ===
+println("\n=== Count Occurrences ===")
+
+func countOccurrences(arr) {
+    var counts = {}
+    for (item in arr) {
+        var key = string(item)
+        if (hasKey(counts, key)) {
+            counts[key] = counts[key] + 1
+        } else {
+            counts[key] = 1
+        }
+    }
+    return counts
+}
+
+var fruits = ["apple", "banana", "apple", "cherry", "banana", "apple"]
+println("Fruits: ", fruits)
+println("Counts: ", countOccurrences(fruits))
+
+// === Partition ===
+println("\n=== Partition ===")
+
+func partition(arr, predicate) {
+    var pass = []
+    var fail = []
+
+    for (item in arr) {
+        if (predicate(item)) {
+            push(pass, item)
+        } else {
+            push(fail, item)
+        }
+    }
+
+    return [pass, fail]
+}
+
+var nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+var parts = partition(nums, func(x) { return x % 2 == 0 })
+println("Numbers: ", nums)
+println("Evens: ", parts[0])
+println("Odds: ", parts[1])
+
+// === Object Transformation ===
+println("\n=== Object Transformation ===")
+
+func mapValues(obj, fn) {
+    var result = {}
+    for (k, v in obj) {
+        result[k] = fn(v)
+    }
+    return result
+}
+
+func mapKeys(obj, fn) {
+    var result = {}
+    for (k, v in obj) {
+        result[fn(k)] = v
+    }
+    return result
+}
+
+var prices = {"apple": 1.5, "banana": 0.75, "cherry": 2.0}
+var withTax = mapValues(prices, func(v) { return v * 1.1 })
+var upperKeys = mapKeys(prices, func(k) { return upper(k) })
+
+println("Original prices: ", prices)
+println("With 10% tax: ", withTax)
+println("Upper case keys: ", upperKeys)

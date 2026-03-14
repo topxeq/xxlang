@@ -1,0 +1,271 @@
+// 19_encoding.xxl
+// Encoding patterns and simple cipher demonstrations
+// Note: This demonstrates concepts, not production cryptography
+
+// === Base Encoding Concepts ===
+println("=== Base Encoding Concepts ===")
+
+// Hex-like encoding (simplified)
+func toHexDigit(n) {
+    if (n < 10) { return string(n) }
+    if (n == 10) { return "a" }
+    if (n == 11) { return "b" }
+    if (n == 12) { return "c" }
+    if (n == 13) { return "d" }
+    if (n == 14) { return "e" }
+    return "f"
+}
+
+func simpleHex(n) {
+    if (n < 0) { return "-" + simpleHex(-n) }
+    if (n < 16) { return toHexDigit(n) }
+    return simpleHex(n / 16) + toHexDigit(n % 16)
+}
+
+println("Hex encoding:")
+println("  10 -> ", simpleHex(10))
+println("  255 -> ", simpleHex(255))
+println("  4096 -> ", simpleHex(4096))
+
+// === Simple XOR Cipher Concept ===
+println("\n=== XOR Cipher Concept ===")
+
+// Simulated XOR (conceptual - actual XOR not available)
+func simpleEncrypt(text, key) {
+    var result = ""
+    var keyLen = len(key)
+
+    for (var i = 0; i < len(text); i++) {
+        var ch = text[i]
+        var keyCh = key[i % keyLen]
+        // Simulated transformation (shift by key char position)
+        var shift = (string(keyCh) == "a") ? 1 : 2
+        if (string(keyCh) == "b") { shift = 2 }
+        if (string(keyCh) == "c") { shift = 3 }
+        result = result + ch
+    }
+
+    return result
+}
+
+println("Simple cipher demonstration:")
+println("  Original: hello")
+println("  Key: abc")
+println("  (Conceptual - actual encryption requires crypto modules)")
+
+// === Caesar Cipher ===
+println("\n=== Caesar Cipher ===")
+
+func caesarEncrypt(text, shift) {
+    var result = ""
+    for (var i = 0; i < len(text); i++) {
+        var ch = text[i]
+        if (ch >= "a" && ch <= "z") {
+            // Calculate shifted position
+            var pos = 0
+            for (var j = 0; j < 26; j++) {
+                if (string(text[i]) == string("abcdefghijklmnopqrstuvwxyz"[j])) {
+                    pos = j
+                }
+            }
+            var newPos = (pos + shift) % 26
+            if (newPos < 0) { newPos = newPos + 26 }
+            // Build result character
+            var alphabet = "abcdefghijklmnopqrstuvwxyz"
+            result = result + alphabet[newPos]
+        } else if (ch >= "A" && ch <= "Z") {
+            var pos = 0
+            var alphabet2 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            for (var j = 0; j < 26; j++) {
+                if (string(ch) == string(alphabet2[j])) {
+                    pos = j
+                }
+            }
+            var newPos = (pos + shift) % 26
+            if (newPos < 0) { newPos = newPos + 26 }
+            result = result + alphabet2[newPos]
+        } else {
+            result = result + ch
+        }
+    }
+    return result
+}
+
+func caesarDecrypt(text, shift) {
+    return caesarEncrypt(text, -shift)
+}
+
+var caesarPlain = "Hello World"
+var caesarEncrypted = caesarEncrypt(caesarPlain, 3)
+var caesarDecrypted = caesarDecrypt(caesarEncrypted, 3)
+
+println("Caesar plaintext: ", caesarPlain)
+println("Caesar encrypted (shift 3): ", caesarEncrypted)
+println("Caesar decrypted: ", caesarDecrypted)
+
+// === Simple Hash Concept ===
+println("\n=== Simple Hash Concept ===")
+
+// Simple checksum (not cryptographic)
+func simpleChecksum(text) {
+    var sum = 0
+    for (var i = 0; i < len(text); i++) {
+        // Simple transformation
+        sum = sum + (text[i].len())
+    }
+    return sum % 256
+}
+
+// Better simple hash
+func simpleHash(text) {
+    var hash = 0
+    for (var i = 0; i < len(text); i++) {
+        var ch = text[i]
+        // Simulate character code with string comparison
+        var code = 0
+        var alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 "
+        for (var j = 0; j < len(alphabet); j++) {
+            if (ch == alphabet[j]) {
+                code = j + 1
+                break
+            }
+        }
+        hash = (hash * 31 + code) % 1000000
+    }
+    return hash
+}
+
+println("Simple hash demonstration:")
+println("  hash('hello') = ", simpleHash("hello"))
+println("  hash('world') = ", simpleHash("world"))
+println("  hash('hello world') = ", simpleHash("hello world"))
+
+// === Password Hashing Pattern ===
+println("\n=== Password Hashing Pattern ===")
+
+func hashPassword(password, salt) {
+    // Combine password and salt
+    var combined = password + salt
+    return simpleHash(combined)
+}
+
+func verifyPassword(password, salt, hash) {
+    return hashPassword(password, salt) == hash
+}
+
+var password = "mySecretPassword"
+var salt = "randomSalt123"
+var hashedPw = hashPassword(password, salt)
+
+println("Password: ", password)
+println("Salt: ", salt)
+println("Hash: ", hashedPw)
+println("Verify correct: ", verifyPassword(password, salt, hashedPw))
+println("Verify wrong: ", verifyPassword("wrongPassword", salt, hashedPw))
+
+// === Token Generation Pattern ===
+println("\n=== Token Generation Pattern ===")
+
+var tokenCounter = 1000
+
+func generateSimpleToken() {
+    tokenCounter = tokenCounter + 1
+    return "TK" + simpleHex(tokenCounter) + "-" + simpleHash(string(tokenCounter))
+}
+
+println("Generated tokens:")
+for (var i = 0; i < 3; i++) {
+    println("  ", generateSimpleToken())
+}
+
+// === Encoding/Decoding Pattern ===
+println("\n=== Encoding/Decoding Pattern ===")
+
+// Simple substitution cipher
+func substitute(text, alphabet, key) {
+    var result = ""
+    for (var i = 0; i < len(text); i++) {
+        var ch = text[i]
+        var found = false
+        for (var j = 0; j < len(alphabet); j++) {
+            if (ch == alphabet[j]) {
+                result = result + key[j]
+                found = true
+                break
+            }
+        }
+        if (!found) {
+            result = result + ch
+        }
+    }
+    return result
+}
+
+var alphabet = "abcdefghijklmnopqrstuvwxyz"
+var key = "zyxwvutsrqponmlkjihgfedcba"
+
+var original = "hello world"
+var encoded = substitute(original, alphabet, key)
+var decoded = substitute(encoded, key, alphabet)
+
+println("Original: ", original)
+println("Substituted: ", encoded)
+println("Decoded: ", decoded)
+
+// === Checksum Verification ===
+println("\n=== Checksum Verification ===")
+
+func createChecksum(text) {
+    var sum = 0
+    for (var i = 0; i < len(text); i++) {
+        sum = sum + simpleHash(text[i])
+    }
+    return sum % 10000
+}
+
+func verifyChecksum(text, checksum) {
+    return createChecksum(text) == checksum
+}
+
+var data = "Important data to verify"
+var cs = createChecksum(data)
+println("Data: ", data)
+println("Checksum: ", cs)
+println("Verify: ", verifyChecksum(data, cs))
+
+// === Message Authentication Pattern ===
+println("\n=== Message Authentication Pattern ===")
+
+func signMessage(message, secret) {
+    return simpleHash(message + secret)
+}
+
+func verifySignature(message, signature, secret) {
+    return signMessage(message, secret) == signature
+}
+
+var msg = "Hello from Alice"
+var secret = "sharedSecret123"
+var signature = signMessage(msg, secret)
+
+println("Message: ", msg)
+println("Signature: ", signature)
+println("Verify with correct secret: ", verifySignature(msg, signature, secret))
+println("Verify with wrong secret: ", verifySignature(msg, signature, "wrongSecret"))
+
+// === Security Best Practices ===
+println("\n=== Security Best Practices ===")
+
+// 1. Never store plain text passwords
+// 2. Always use salt for password hashing
+// 3. Use appropriate key lengths
+// 4. Don't roll your own crypto for production
+
+println("Key security principles:")
+println("  1. Use proven cryptographic libraries for production")
+println("  2. Always salt password hashes")
+println("  3. Use appropriate key derivation functions")
+println("  4. Never store passwords in plain text")
+println("")
+println("This script demonstrates patterns only.")
+println("For real cryptography, use the std/crypto module.")

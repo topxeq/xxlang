@@ -1,0 +1,91 @@
+// 02_operators.xxl
+// Arithmetic, comparison, logical, and assignment operators
+
+// === Arithmetic Operators ===
+var a = 10
+var b = 3
+
+println("Arithmetic Operators:")
+println("a = ", a, ", b = ", b)
+println("a + b = ", a + b)   // Addition: 13
+println("a - b = ", a - b)   // Subtraction: 7
+println("a * b = ", a * b)   // Multiplication: 30
+println("a / b = ", a / b)   // Division: 3 (integer division)
+println("a % b = ", a % b)   // Modulo: 1
+
+// === Floating Point ===
+var x = 10.0
+var y = 3.0
+println("x / y = ", x / y)   // 3.333... (float division)
+
+// === Comparison Operators ===
+println("\nComparison Operators:")
+println("a == b: ", a == b)   // false
+println("a != b: ", a != b)   // true
+println("a < b: ", a < b)     // false
+println("a > b: ", a > b)     // true
+println("a <= b: ", a <= b)   // false
+println("a >= b: ", a >= b)   // true
+
+// === Logical Operators ===
+var t = true
+var f = false
+
+println("\nLogical Operators:")
+println("t && f: ", t && f)   // AND: false
+println("t || f: ", t || f)   // OR: true
+println("!t: ", !t)           // NOT: false
+println("!f: ", !f)           // NOT: true
+
+// Short-circuit evaluation
+var counter = 0
+func increment() {
+    counter = counter + 1
+    return true
+}
+
+// In &&, if left is false, right is not evaluated
+var result1 = false && increment()
+println("After false && increment(), counter = ", counter)  // 0
+
+// In ||, if left is true, right is not evaluated
+var result2 = true || increment()
+println("After true || increment(), counter = ", counter)  // 0
+
+// === Assignment Operators ===
+var n = 10
+println("\nAssignment Operators:")
+println("Initial n = ", n)
+
+n += 5
+println("n += 5: ", n)   // 15
+
+n -= 3
+println("n -= 3: ", n)   // 12
+
+n *= 2
+println("n *= 2: ", n)   // 24
+
+n /= 4
+println("n /= 4: ", n)   // 6
+
+n %= 4
+println("n %= 4: ", n)   // 2
+
+// === Increment/Decrement ===
+var i = 5
+println("\nIncrement/Decrement:")
+println("Initial i = ", i)
+
+i++
+println("After i++: ", i)   // 6
+
+i--
+println("After i--: ", i)   // 5
+
+// === String Concatenation ===
+var firstName = "John"
+var lastName = "Doe"
+var fullName = firstName + " " + lastName
+println("\nString Concatenation:")
+println("Full name: ", fullName)

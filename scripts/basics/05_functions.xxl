@@ -1,0 +1,156 @@
+// 05_functions.xxl
+// Function definitions, parameters, return values, and recursion
+
+// === Basic Function ===
+println("=== Basic Function ===")
+
+func greet() {
+    println("Hello, World!")
+}
+
+greet()
+
+// === Function with Parameters ===
+println("\n=== Function with Parameters ===")
+
+func greetPerson(name) {
+    println("Hello, ", name, "!")
+}
+
+greetPerson("Alice")
+greetPerson("Bob")
+
+// === Function with Return Value ===
+println("\n=== Function with Return Value ===")
+
+func add(a, b) {
+    return a + b
+}
+
+var result = add(3, 4)
+println("3 + 4 = ", result)
+
+// === Multiple Return Points ===
+println("\n=== Multiple Return Points ===")
+
+func abs(x) {
+    if (x < 0) {
+        return -x
+    }
+    return x
+}
+
+println("abs(-5) = ", abs(-5))
+println("abs(5) = ", abs(5))
+
+// === Early Return ===
+println("\n=== Early Return ===")
+
+func divide(a, b) {
+    if (b == 0) {
+        println("Error: Division by zero")
+        return null
+    }
+    return a / b
+}
+
+println("divide(10, 2) = ", divide(10, 2))
+println("divide(10, 0) = ", divide(10, 0))
+
+// === Function Calling Function ===
+println("\n=== Function Calling Function ===")
+
+func square(x) {
+    return x * x
+}
+
+func sumOfSquares(a, b) {
+    return square(a) + square(b)
+}
+
+println("sumOfSquares(3, 4) = ", sumOfSquares(3, 4))
+
+// === Recursion ===
+println("\n=== Recursion ===")
+
+func factorial(n) {
+    if (n <= 1) {
+        return 1
+    }
+    return n * factorial(n - 1)
+}
+
+println("factorial(5) = ", factorial(5))
+println("factorial(10) = ", factorial(10))
+
+// === Fibonacci (Recursive) ===
+println("\n=== Fibonacci (Recursive) ===")
+
+func fib(n) {
+    if (n <= 1) {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+println("fib(10) = ", fib(10))
+println("fib(15) = ", fib(15))
+
+// === Iterative Factorial ===
+println("\n=== Iterative Factorial ===")
+
+func factorialIterative(n) {
+    var result = 1
+    for (var i = 2; i <= n; i++) {
+        result = result * i
+    }
+    return result
+}
+
+println("factorialIterative(5) = ", factorialIterative(5))
+println("factorialIterative(10) = ", factorialIterative(10))
+
+// === Function as Value ===
+println("\n=== Function as Value ===")
+
+var multiply = func(a, b) {
+    return a * b
+}
+
+println("multiply(4, 5) = ", multiply(4, 5))
+
+// === Higher-Order Function ===
+println("\n=== Higher-Order Function ===")
+
+func applyTwice(f, x) {
+    return f(f(x))
+}
+
+var double = func(x) {
+    return x * 2
+}
+
+println("applyTwice(double, 3) = ", applyTwice(double, 3))
+
+// === IIFE (Immediately Invoked Function Expression) ===
+println("\n=== IIFE ===")
+
+var immediate = func(x) {
+    return x * x
+}(5)
+
+println("IIFE result: ", immediate)
+
+// === Function with Default Behavior ===
+println("\n=== Function with Null Check ===")
+
+func safeGet(map, key) {
+    if (hasKey(map, key)) {
+        return map[key]
+    }
+    return null
+}
+
+var data = {"name": "Alice", "age": 30}
+println("safeGet(data, 'name') = ", safeGet(data, "name"))
+println("safeGet(data, 'phone') = ", safeGet(data, "phone"))

@@ -1,0 +1,321 @@
+// 17_string_funcs.xxl
+// String manipulation functions
+
+// === Basic String Operations ===
+println("=== Basic String Operations ===")
+
+var greeting = "Hello, World!"
+println("String: ", greeting)
+println("Length: ", len(greeting))
+println("Type: ", typeOf(greeting))
+
+// === String Concatenation ===
+println("\n=== String Concatenation ===")
+
+var first = "Hello"
+var last = "World"
+var full = first + " " + last
+println("Concatenated: ", full)
+
+// Multiple concatenation
+var parts = ["The", "quick", "brown", "fox"]
+var sentence = ""
+for (var i = 0; i < len(parts); i++) {
+    if (i > 0) { sentence = sentence + " " }
+    sentence = sentence + parts[i]
+}
+println("Sentence: ", sentence)
+
+// === Character Access ===
+println("\n=== Character Access ===")
+
+var text = "Hello"
+println("String: ", text)
+
+for (var i = 0; i < len(text); i++) {
+    println("  "[i, "] = ", text[i])
+}
+
+// === Substring ===
+println("\n=== Substring ===")
+
+var long = "Hello, World!"
+println("Original: ", long)
+println("subStr(0, 5) = ", longsubstr(0, 5))
+println("subStr(7, 12) = ", longsubstr(7, 12))
+
+// === String Searching ===
+println("\n=== String Searching ===")
+
+var sentence2 = "The quick brown fox jumps over the lazy dog"
+println("Sentence: ", sentence2)
+println("contains('fox'): ", sentence2.contains("fox"))
+println("contains('cat'): ", sentence2.contains("cat"))
+println("index('quick'): ", sentence2.indexOf("quick"))
+println("index('slow'): ", sentence2.indexOf("slow"))
+
+// === Case Conversion ===
+println("\n=== Case Conversion ===")
+
+var mixed = "HeLLo WoRLD"
+println("Original: ", mixed)
+println("upper(): ", upper(mixed))
+println("lower(): ", lower(mixed))
+
+// Capitalize first letter
+func capitalize(s) {
+    if (len(s) == 0) { return s }
+    return upper(s[0]) + lower(substr(s, 1, len(s)))
+}
+
+println("capitalize: ", capitalize("hello world"))
+
+// === Trimming ===
+println("\n=== Trimming ===")
+
+var padded = "   hello world   "
+println("Original: '", padded, "'")
+println("trim(): '", trim(padded), "'")
+
+// === Split and Join ===
+println("\n=== Split and Join ===")
+
+// Split by delimiter
+func split(s, delimiter) {
+    var parts = []
+    var current = ""
+    var i = 0
+
+    while (i < len(s)) {
+        var match = true
+        for (var j = 0; j < len(delimiter) && i + j < len(s); j++) {
+            if (s[i + j] != delimiter[j]) {
+                match = false
+                break
+            }
+        }
+
+        if (match && len(delimiter) > 0) {
+            if (len(current) > 0) {
+                push(parts, current)
+            }
+            current = ""
+            i = i + len(delimiter)
+        } else {
+            current = current + s[i]
+            i = i + 1
+        }
+    }
+
+    if (len(current) > 0) {
+        push(parts, current)
+    }
+
+    return parts
+}
+
+// Join array with delimiter
+func join(arr, delimiter) {
+    if (len(arr) == 0) { return "" }
+    var result = arr[0]
+    for (var i = 1; i < len(arr); i++) {
+        result = result + delimiter + arr[i]
+    }
+    return result
+}
+
+var csv = "apple,banana,cherry,date"
+var items = split(csv, ",")
+println("Split: ", items)
+println("Join: ", join(items, " | "))
+
+// === String Replace ===
+println("\n=== String Replace ===")
+
+func replace(s, old, newStr) {
+    var idx = s.indexOf(old)
+    if (idx < 0) { return s }
+    return substr(s, 0, idx) + newStr + substr(s, idx + len(old), len(s))
+}
+
+var original = "Hello World"
+var replaced = replace(original, "World", "Xxlang")
+println("Original: ", original)
+println("Replaced: ", replaced)
+
+// === String Reverse ===
+println("\n=== String Reverse ===")
+
+func reverseStr(s) {
+    var result = ""
+    for (var i = len(s) - 1; i >= 0; i--) {
+        result = result + s[i]
+    }
+    return result
+}
+
+println("reverseStr('hello') = ", reverseStr("hello"))
+println("reverseStr('Xxlang') = ", reverseStr("Xxlang"))
+
+// === Palindrome Check ===
+println("\n=== Palindrome Check ===")
+
+func isPalindrome(s) {
+    var cleaned = lower(s)
+    return cleaned == reverseStr(cleaned)
+}
+
+println("isPalindrome('racecar'): ", isPalindrome("racecar"))
+println("isPalindrome('Level'): ", isPalindrome("Level"))
+println("isPalindrome('hello'): ", isPalindrome("hello"))
+
+// === String Starts/Ends With ===
+println("\n=== String Starts/Ends With ===")
+
+func startsWith(s, prefix) {
+    if (len(prefix) > len(s)) { return false }
+    return substr(s, 0, len(prefix)) == prefix
+}
+
+func endsWith(s, suffix) {
+    if (len(suffix) > len(s)) { return false }
+    return substr(s, len(s) - len(suffix), len(s)) == suffix
+}
+
+var filename = "document.pdf"
+println("Filename: ", filename)
+println("startsWith('doc'): ", startsWith(filename, "doc"))
+println("endsWith('.pdf'): ", endsWith(filename, ".pdf"))
+println("endsWith('.txt'): ", endsWith(filename, ".txt"))
+
+// === String Padding ===
+println("\n=== String Padding ===")
+
+func padLeft(s, width, padChar) {
+    if (len(padChar) == 0) { padChar = " " }
+    while (len(s) < width) {
+        s = padChar + s
+    }
+    return s
+}
+
+func padRight(s, width, padChar) {
+    if (len(padChar) == 0) { padChar = " " }
+    while (len(s) < width) {
+        s = s + padChar
+    }
+    return s
+}
+
+var num = "42"
+println("padLeft('42', 5, '0') = ", padLeft(num, 5, "0"))
+println("padRight('42', 5, '_') = ", padRight(num, 5, "_"))
+
+// === Word Count ===
+println("\n=== Word Count ===")
+
+func wordCount(s) {
+    if (len(trim(s)) == 0) { return 0 }
+    var words = split(trim(s), " ")
+    return len(words)
+}
+
+var text2 = "The quick brown fox jumps"
+println("Text: ", text2)
+println("Word count: ", wordCount(text2))
+
+// === String to Number Conversion ===
+println("\n=== String to Number Conversion ===")
+
+var numStr = "42"
+var num = int(numStr)
+println("int('42') = ", num, " (type: ", typeOf(num), ")")
+
+var floatStr = "3.14159"
+var floatVal = float(floatStr)
+println("float('3.14159') = ", floatVal, " (type: ", typeOf(floatVal), ")")
+
+// Invalid conversion
+var invalidStr = "not a number"
+var invalidNum = int(invalidStr)
+println("int('not a number') = ", invalidNum)
+
+// === Character Code Operations ===
+println("\n=== Character Operations ===")
+
+// Check if character is digit
+func isDigit(ch) {
+    return ch >= "0" && ch <= "9"
+}
+
+// Check if character is letter
+func isLetter(ch) {
+    return (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z")
+}
+
+// Check if character is whitespace
+func isWhitespace(ch) {
+    return ch == " " || ch == "\t" || ch == "\n" || ch == "\r"
+}
+
+println("isDigit('5'): ", isDigit("5"))
+println("isLetter('A'): ", isLetter("A"))
+println("isWhitespace(' '): ", isWhitespace(" "))
+
+// === String Formatting ===
+println("\n=== String Formatting ===")
+
+func format(template, values) {
+    var result = ""
+    var valIdx = 0
+    var i = 0
+
+    while (i < len(template)) {
+        var ch = template[i]
+        if (ch == "{" && i + 1 < len(template) && template[i + 1] == "}") {
+            if (valIdx < len(values)) {
+                result = result + toStr(values[valIdx])
+                valIdx = valIdx + 1
+            }
+            i = i + 2
+        } else {
+            result = result + ch
+            i = i + 1
+        }
+    }
+
+    return result
+}
+
+var formatted = format("Name: {}, Age: {}, City: {}", ["Alice", 30, "Beijing"])
+println("Formatted: ", formatted)
+
+// === Template Engine ===
+println("\n=== Simple Template Engine ===")
+
+func renderTemplate(template, data) {
+    var result = template
+
+    for (key, value in data) {
+        var placeholder = "{{" + key + "}}"
+        result = replace(result, placeholder, toStr(value))
+    }
+
+    return result
+}
+
+var template = "Hello, {{name}}! Welcome to {{city}}."
+var data = {"name": "Alice", "city": "Beijing"}
+println("Template: ", template)
+println("Rendered: ", renderTemplate(template, data))
+
+// === Escape/Unescape ===
+println("\n=== Escape Sequences ===")
+
+var withNewline = "Line 1\nLine 2"
+var withTab = "Col1\tCol2"
+var withQuotes = "She said \"Hello\""
+
+println("With newline: ", withNewline)
+println("With tab: ", withTab)
+println("With quotes: ", withQuotes)
