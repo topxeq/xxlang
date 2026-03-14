@@ -317,6 +317,25 @@ if err != nil {
 
 WASM plugins work on all platforms including Windows, without CGO.
 
+**Important**: WASM plugins require **TinyGo** (not standard Go) because:
+- Standard Go's `GOOS=wasip1` only exports the `_start` function (main)
+- TinyGo supports `//export` directive to export individual functions
+- TinyGo versions 0.31-0.36 support Go 1.19-1.24
+
+### Installing TinyGo
+
+```bash
+# macOS
+brew install tinygo
+
+# Linux (Ubuntu/Debian)
+wget https://github.com/tinygo-org/tinygo/releases/download/v0.36.0/tinygo_0.36.0_amd64.deb
+sudo dpkg -i tinygo_0.36.0_amd64.deb
+
+# Windows
+# Download from https://tinygo.org/getting-started/install/windows/
+```
+
 ### Creating a WASM Plugin
 
 ```go
