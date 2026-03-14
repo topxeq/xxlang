@@ -10,6 +10,7 @@ Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language impleme
 - **Closures** - First-class functions with proper closure support
 - **Classes & OOP** - Object-oriented programming with inheritance
 - **Module System** - Import/export with standard library
+- **Plugin System** - Write native Go plugins for high-performance operations
 - **Rich Built-ins** - 41+ built-in functions for string, math, array, and map operations
 - **REPL** - Interactive REPL with multi-line support and persistent state
 - **Embeddable** - Can be used as a library in other Go projects
@@ -20,6 +21,7 @@ Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language impleme
 - [Language Reference](docs/LANGUAGE.md) - Complete language syntax and features
 - [Standard Library](docs/STDLIB.md) - Built-in modules and functions
 - [Embedding Guide](docs/EMBEDDING.md) - Using Xxlang in Go applications
+- [Plugin System](docs/PLUGIN.md) - Writing native Go plugins for high performance
 - [Performance Benchmarks](benchmarks/RESULTS.md) - Performance analysis
 
 ## Installation
@@ -123,6 +125,27 @@ println(math.sqrt(16))
 // Import specific functions
 import "std/io" { readFile, writeFile }
 ```
+
+### Plugin System
+
+Write native Go plugins for high-performance operations:
+
+```xxl
+// Import a Go plugin
+import "plugin/fib"
+
+// Call Go functions from Xxlang
+println(fib.fast(50))      // 12586269025
+println(fib.matrix(92))    // Largest Fibonacci in int64 range
+```
+
+| Method | fib(35) Time | Speedup |
+|--------|--------------|---------|
+| Xxlang naive recursion | 6.5 seconds | baseline |
+| Xxlang tail recursion | 136 µs | 47,000x |
+| Go plugin | **35 µs** | **180,000x** |
+
+See [Plugin System](docs/PLUGIN.md) for details.
 
 ## Built-in Functions
 
