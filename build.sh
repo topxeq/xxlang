@@ -19,7 +19,7 @@ fi
 echo "Building $OUTPUT..."
 
 # Build with optimizations
-go build -ldflags="-s -w" -o "$OUTPUT" ./cmd/xxlang
+go build -ldflags="-s -w" -o "$OUTPUT" ./cmd/xxl
 
 echo "Build complete: $OUTPUT"
 echo "Version: $(./$OUTPUT version)"
