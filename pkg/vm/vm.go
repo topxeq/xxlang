@@ -26,6 +26,14 @@ type InlineCacheEntry struct {
 // InlineCacheSize is the size of the method cache
 const InlineCacheSize = 256
 
+// ExceptionHandler represents a try-catch-finally handler
+type ExceptionHandler struct {
+	catchAddr   int // Address to jump to for catch (0 if no catch)
+	finallyAddr int // Address to jump to for finally (0 if no finally)
+	frameIndex  int // Frame index when handler was pushed
+	stackSize   int // Stack size when handler was pushed
+}
+
 // VM is the virtual machine that executes bytecode
 type VM struct {
 	constants        []objects.Object
@@ -40,6 +48,9 @@ type VM struct {
 	pendingInstance  *objects.Instance // Instance to push after init returns
 	initFrame        *Frame           // The init frame that should push pendingInstance
 	sourceMap        *compiler.SourceMap // Source map for error reporting
+
+	// Exception handling
+	handlers []ExceptionHandler
 
 	// Inline cache for method lookups
 	methodCache [InlineCacheSize]InlineCacheEntry
@@ -477,6 +488,17 @@ func (vm *VM) Run() error {
 
 		case compiler.OpSuper:
 			if err := vm.executeOpSuper(); err != nil {
+				return err
+			}
+
+		case compiler.OpPushHandler:
+			vm.executeOpPushHandler()
+
+		case compiler.OpPopHandler:
+			vm.executeOpPopHandler()
+
+		case compiler.OpThrow:
+			if err := vm.executeOpThrow(); err != nil {
 				return err
 			}
 
@@ -2324,4 +2346,66 @@ func (vm *VM) findInitMethod(class *objects.Class) objects.Object {
 		}
 	}
 	return nil
+}
+
+// executeOpPushHandler pushes an exception handler onto the handler stack
+func (vm *VM) executeOpPushHandler() {
+	catchAddr := int(vm.readUint16())
+	vm.currentFrame().IP += 2
+	finallyAddr := int(vm.readUint16())
+	vm.currentFrame().IP += 2
+
+	handler := ExceptionHandler{
+		catchAddr:   catchAddr,
+		finallyAddr: finallyAddr,
+		frameIndex:  vm.frameIndex,
+		stackSize:   vm.stack.Len(),
+	}
+	vm.handlers = append(vm.handlers, handler)
+}
+
+// executeOpPopHandler pops an exception handler from the handler stack
+func (vm *VM) executeOpPopHandler() {
+	if len(vm.handlers) > 0 {
+		vm.handlers = vm.handlers[:len(vm.handlers)-1]
+	}
+}
+
+// executeOpThrow handles throwing an exception
+func (vm *VM) executeOpThrow() error {
+	// Get the exception value from the stack
+	err := vm.stack.Pop()
+
+	// Find a handler
+	for len(vm.handlers) > 0 {
+		handler := vm.handlers[len(vm.handlers)-1]
+
+		// Pop this handler since we're using it
+		vm.handlers = vm.handlers[:len(vm.handlers)-1]
+
+		// If we need to unwind frames
+		for vm.frameIndex > handler.frameIndex {
+			vm.popFrame()
+		}
+
+		// Restore stack size
+		for vm.stack.Len() > handler.stackSize {
+			vm.stack.Pop()
+		}
+
+		// Push the error value for catch block
+		vm.stack.Push(err)
+
+		// Jump to catch if available, otherwise finally
+		if handler.catchAddr > 0 {
+			vm.currentFrame().IP = handler.catchAddr - 1 // -1 because main loop will increment
+			return nil
+		} else if handler.finallyAddr > 0 {
+			vm.currentFrame().IP = handler.finallyAddr - 1
+			return nil
+		}
+	}
+
+	// No handler found, return as error
+	return fmt.Errorf("unhandled exception: %s", err.Inspect())
 }

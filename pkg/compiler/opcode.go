@@ -106,6 +106,11 @@ const (
 	OpGetField // Get instance field
 	OpSetField // Set instance field
 	OpSuper    // Get superclass method
+
+	// Exception handling
+	OpThrow       // Throw exception (value on stack)
+	OpPushHandler // Push exception handler (catchAddr, finallyAddr)
+	OpPopHandler  // Pop exception handler
 )
 
 // Definition describes an opcode's format
@@ -199,6 +204,11 @@ var definitions = map[Opcode]*Definition{
 	OpGetField: {"OpGetField", []int{2}}, // 2-byte: field name constant index
 	OpSetField: {"OpSetField", []int{2}}, // 2-byte: field name constant index
 	OpSuper:    {"OpSuper", []int{2}},    // 2-byte: method name constant index
+
+	// Exception handling
+	OpThrow:       {"OpThrow", []int{}},           // No operands, value on stack
+	OpPushHandler: {"OpPushHandler", []int{2, 2}}, // 2-byte catchAddr, 2-byte finallyAddr
+	OpPopHandler:  {"OpPopHandler", []int{}},      // No operands
 
 	// Superinstructions
 	OpGetLocalAdd: {"OpGetLocalAdd", []int{1, 1}}, // 2x 1-byte local indices
