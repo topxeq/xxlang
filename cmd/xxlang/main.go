@@ -43,10 +43,10 @@ func NewREPL() *REPL {
 }
 
 func main() {
-	// Handle subcommands
+	// No arguments - start REPL
 	if len(os.Args) < 2 {
-		printUsage()
-		os.Exit(1)
+		startREPL()
+		return
 	}
 
 	// Check for help or version flags
@@ -69,7 +69,7 @@ func main() {
 		}
 	case "run":
 		if len(os.Args) < 3 {
-			fmt.Println("Usage: xxlang run <file>")
+			fmt.Println("Usage: xx run <file>")
 			os.Exit(1)
 		}
 		runFile(os.Args[2])
@@ -78,8 +78,10 @@ func main() {
 	case "help":
 		printUsage()
 	default:
-		// No subcommand - start REPL
-		startREPL()
+		// Unknown subcommand - show error
+		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", os.Args[1])
+		printUsage()
+		os.Exit(1)
 	}
 }
 
@@ -87,23 +89,23 @@ func printUsage() {
     fmt.Printf("Xxlang v%s\n", Version)
     fmt.Println()
     fmt.Println("Usage:")
-    fmt.Println("  xxlang                    Start interactive REPL")
-    fmt.Println("  xxlang run <file>       Execute a .xxl file")
-    fmt.Println("  xxlang compile <file>  Compile file to bytecode")
-    fmt.Println("  xxlang version             Print version information")
-    fmt.Println("  xxlang help             Print this help message")
+    fmt.Println("  xx                    Start interactive REPL")
+    fmt.Println("  xx run <file>         Execute a .xxl file")
+    fmt.Println("  xx compile <file>     Compile file to bytecode")
+    fmt.Println("  xx version            Print version information")
+    fmt.Println("  xx help               Print this help message")
     fmt.Println()
     fmt.Println("Options:")
-    fmt.Println("  -o, --output path   Output path for compiled file")
+    fmt.Println("  -o, --output path     Output path for compiled file")
     fmt.Println("      --target os/arch  Cross-compile for target OS/architecture")
-    fmt.Println("      --bytecode         Output as bytecode (.xxb) instead of executable")
+    fmt.Println("      --bytecode        Output as bytecode (.xxb) instead of executable")
     fmt.Println()
     fmt.Println("Examples:")
-    fmt.Println("  xxlang")
-    fmt.Println("  xxlang run script.xxl")
-    fmt.Println("  xxlang compile -o program script.xxl")
-    fmt.Println("  xxlang compile -o program.exe --target windows/amd64 script.xxl")
-    fmt.Println("  xxlang compile --bytecode script.xxl")
+    fmt.Println("  xx")
+    fmt.Println("  xx run script.xxl")
+    fmt.Println("  xx compile -o program script.xxl")
+    fmt.Println("  xx compile -o program.exe --target windows/amd64 script.xxl")
+    fmt.Println("  xx compile --bytecode script.xxl")
 }
 
 func printVersion() {

@@ -1597,6 +1597,11 @@ func isString(obj objects.Object) bool {
 }
 
 func objectsEqual(a, b objects.Object) bool {
+	// Handle nil cases
+	if a == nil || b == nil {
+		return a == b
+	}
+
 	// Direct equality check (for NULL, TRUE, FALSE singletons)
 	if a == b {
 		return true
