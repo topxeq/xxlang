@@ -1829,6 +1829,9 @@ func (c *Compiler) compileTryStatement(node *parser.TryStatement) error {
 			c.emit(OpSetLocal, symbol.Index)
 		}
 
+		// Pop the exception value that was pushed back by SetGlobal/SetLocal
+		c.emit(OpPop)
+
 		// Compile catch body
 		if err := c.Compile(node.Catch.Block); err != nil {
 			return err
@@ -1839,17 +1842,8 @@ func (c *Compiler) compileTryStatement(node *parser.TryStatement) error {
 			c.removeLastInstruction()
 		}
 
-		// After catch, if there's a finally, fall through to it
-		// Otherwise, jump to end
-		if node.Finally == nil {
-			// Jump to end after catch (will be patched below)
-			jumpEndPos := c.emit(OpJump, 9999)
-			// We'll patch this below
-			defer func() {
-				endPos := len(c.currentInstructions())
-				c.changeOperand(jumpEndPos, endPos)
-			}()
-		}
+		// After catch, fall through to the end (or to finally if present)
+		// No jump needed here - we'll naturally fall through to finally/end
 	}
 
 	// Record finally address (0 if no finally)

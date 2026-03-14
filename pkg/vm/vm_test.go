@@ -1830,3 +1830,295 @@ func TestTailCallRecursiveWithLocals(t *testing.T) {
 	vm := runVM(t, input)
 	testIntegerObject(t, 120, vm.LastPopped())
 }
+
+// ============================================
+// Try-Catch-Finally Tests
+// ============================================
+
+func TestTryCatchBasic(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		{
+			`try { 42 } catch (e) { 0 }`,
+			int64(42),
+		},
+		{
+			`try { throw "error"; 0 } catch (e) { 42 }`,
+			int64(42),
+		},
+		{
+			`try { throw 100 } catch (e) { e }`,
+			int64(100),
+		},
+		{
+			`try { throw "test" } catch (e) { e }`,
+			"test",
+		},
+		{
+			`try { throw true } catch (e) { e }`,
+			true,
+		},
+		{
+			`try { throw } catch (e) { e }`,
+			objects.NULL,
+		},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		switch expected := tt.expected.(type) {
+		case int64:
+			testIntegerObject(t, expected, vm.LastPopped())
+		case string:
+			testStringObject(t, expected, vm.LastPopped())
+		case bool:
+			testBooleanObject(t, expected, vm.LastPopped())
+		default:
+			if expected == objects.NULL {
+				testNullObject(t, vm.LastPopped())
+			}
+		}
+	}
+}
+
+func TestTryFinally(t *testing.T) {
+	// Test that finally block executes
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		// Finally block's value becomes the result (simplified behavior)
+		{
+			`try { 42 } finally { 100 }`,
+			int64(100),
+		},
+		{
+			// Note: can't use semicolon after block, use newline
+			`var x = 0
+			try { x = 1 } finally { x = 2 }
+			x`,
+			int64(2),
+		},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		switch expected := tt.expected.(type) {
+		case int64:
+			testIntegerObject(t, expected, vm.LastPopped())
+		}
+	}
+}
+
+func TestTryCatchFinally(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		// Finally block's value becomes the result
+		{
+			`try { throw "err" } catch (e) { 42 } finally { 100 }`,
+			int64(100),
+		},
+		{
+			`try { 1 } catch (e) { 0 } finally { 42 }`,
+			int64(42),
+		},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		switch expected := tt.expected.(type) {
+		case int64:
+			testIntegerObject(t, expected, vm.LastPopped())
+		}
+	}
+}
+
+func TestNestedTryCatch(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		{
+			`try {
+				try {
+					throw "inner"
+				} catch (e) {
+					e
+				}
+			} catch (e) {
+				"outer"
+			}`,
+			"inner",
+		},
+		{
+			`try {
+				try {
+					throw "inner"
+				} catch (e) {
+					throw "re-" + e
+				}
+			} catch (e) {
+				e
+			}`,
+			"re-inner",
+		},
+		{
+			`try {
+				try {
+					throw 1
+				} finally {
+					throw 2
+				}
+			} catch (e) {
+				e
+			}`,
+			int64(2),
+		},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		switch expected := tt.expected.(type) {
+		case int64:
+			testIntegerObject(t, expected, vm.LastPopped())
+		case string:
+			testStringObject(t, expected, vm.LastPopped())
+		}
+	}
+}
+
+func TestThrowInFunction(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		{
+			`func mightThrow(should) {
+				if (should) { throw "error" }
+				return "ok"
+			}
+			try { mightThrow(true) } catch (e) { e }`,
+			"error",
+		},
+		{
+			`func inner() { throw 42 }
+			func outer() {
+				var result = 0
+				try { inner() } catch (e) { result = e + 1 }
+				return result
+			}
+			outer()`,
+			int64(43),
+		},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		switch expected := tt.expected.(type) {
+		case int64:
+			testIntegerObject(t, expected, vm.LastPopped())
+		case string:
+			testStringObject(t, expected, vm.LastPopped())
+		}
+	}
+}
+
+func TestUnhandledException(t *testing.T) {
+	tests := []string{
+		`throw "unhandled"`,
+		`func f() { throw "error" }; f()`,
+	}
+
+	for _, input := range tests {
+		bytecode, err := testCompile(input)
+		if err != nil {
+			t.Fatalf("compiler error: %s", err)
+		}
+
+		vm := New(bytecode)
+		err = vm.Run()
+		if err == nil {
+			t.Errorf("expected error for input: %s", input)
+		}
+	}
+}
+
+func TestTryCatchInLoop(t *testing.T) {
+	// Test try-catch inside a while loop
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		{
+			`var count = 0
+			var i = 0
+			while (i < 3) {
+				try {
+					throw i
+				} catch (e) {
+					count = count + 1
+				}
+				i = i + 1
+			}
+			count`,
+			int64(3),
+		},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		switch expected := tt.expected.(type) {
+		case int64:
+			testIntegerObject(t, expected, vm.LastPopped())
+		}
+	}
+}
+
+func TestExceptionUnwinding(t *testing.T) {
+	input := `
+		var reached = ""
+		func level3() {
+			reached = reached + "3"
+			throw "error"
+			reached = reached + "X"
+		}
+		func level2() {
+			reached = reached + "2"
+			level3()
+			reached = reached + "Y"
+		}
+		func level1() {
+			reached = reached + "1"
+			try {
+				level2()
+			} catch (e) {
+				reached = reached + "C"
+			}
+			reached = reached + "E"
+		}
+		level1()
+		reached
+	`
+
+	vm := runVM(t, input)
+	testStringObject(t, "123CE", vm.LastPopped())
+}
+
+func TestFinallyRunsOnException(t *testing.T) {
+	// Note: Current implementation doesn't re-throw after finally
+	// This tests that finally runs and the value is from finally
+	input := `
+		try {
+			throw "error"
+		} finally {
+			42
+		}
+	`
+
+	vm := runVM(t, input)
+	testIntegerObject(t, 42, vm.LastPopped())
+}

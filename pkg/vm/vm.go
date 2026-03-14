@@ -350,9 +350,8 @@ func (vm *VM) Run() error {
 			}
 
 		case compiler.OpJump:
-			if err := vm.executeJump(); err != nil {
-				return err
-			}
+			pos := int(vm.readUint16())
+			frame.IP = pos - 1 // -1 because loop will increment
 
 		case compiler.OpJumpIfFalse:
 			if err := vm.executeJumpIfFalse(); err != nil {

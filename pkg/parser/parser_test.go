@@ -1932,3 +1932,242 @@ func TestCallErrorUnclosed(t *testing.T) {
 	// Just verify it parses without crashing
 	_ = program
 }
+
+// ============================================
+// Try-Catch-Finally Statement Tests
+// ============================================
+
+func TestTryCatchStatement(t *testing.T) {
+	input := `try { throw "error" } catch (e) { print(e) }`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	testProgramStatements(t, program, 1)
+
+	stmt, ok := program.Statements[0].(*TryStatement)
+	if !ok {
+		t.Fatalf("stmt not *TryStatement. got=%T", program.Statements[0])
+	}
+
+	// Check try block exists
+	if stmt.Block == nil {
+		t.Fatal("try block is nil")
+	}
+	if len(stmt.Block.Statements) != 1 {
+		t.Errorf("try block should have 1 statement, got=%d", len(stmt.Block.Statements))
+	}
+
+	// Check catch exists
+	if stmt.Catch == nil {
+		t.Fatal("catch clause is nil")
+	}
+	if stmt.Catch.Exception.Value != "e" {
+		t.Errorf("catch exception variable should be 'e', got=%s", stmt.Catch.Exception.Value)
+	}
+	if stmt.Catch.Block == nil {
+		t.Fatal("catch block is nil")
+	}
+
+	// Check finally is nil
+	if stmt.Finally != nil {
+		t.Error("finally clause should be nil")
+	}
+}
+
+func TestTryFinallyStatement(t *testing.T) {
+	input := `try { x = 1 } finally { print("done") }`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	testProgramStatements(t, program, 1)
+
+	stmt, ok := program.Statements[0].(*TryStatement)
+	if !ok {
+		t.Fatalf("stmt not *TryStatement. got=%T", program.Statements[0])
+	}
+
+	// Check try block exists
+	if stmt.Block == nil {
+		t.Fatal("try block is nil")
+	}
+
+	// Check catch is nil
+	if stmt.Catch != nil {
+		t.Error("catch clause should be nil")
+	}
+
+	// Check finally exists
+	if stmt.Finally == nil {
+		t.Fatal("finally clause is nil")
+	}
+	if stmt.Finally.Block == nil {
+		t.Fatal("finally block is nil")
+	}
+}
+
+func TestTryCatchFinallyStatement(t *testing.T) {
+	input := `try { throw "err" } catch (e) { print(e) } finally { print("cleanup") }`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	testProgramStatements(t, program, 1)
+
+	stmt, ok := program.Statements[0].(*TryStatement)
+	if !ok {
+		t.Fatalf("stmt not *TryStatement. got=%T", program.Statements[0])
+	}
+
+	// Check try block exists
+	if stmt.Block == nil {
+		t.Fatal("try block is nil")
+	}
+
+	// Check catch exists
+	if stmt.Catch == nil {
+		t.Fatal("catch clause is nil")
+	}
+	if stmt.Catch.Exception.Value != "e" {
+		t.Errorf("catch exception variable should be 'e', got=%s", stmt.Catch.Exception.Value)
+	}
+
+	// Check finally exists
+	if stmt.Finally == nil {
+		t.Fatal("finally clause is nil")
+	}
+}
+
+func TestThrowStatement(t *testing.T) {
+	input := `throw "error message"`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	testProgramStatements(t, program, 1)
+
+	stmt, ok := program.Statements[0].(*ThrowStatement)
+	if !ok {
+		t.Fatalf("stmt not *ThrowStatement. got=%T", program.Statements[0])
+	}
+
+	if stmt.ErrExpr == nil {
+		t.Fatal("throw expression is nil")
+	}
+
+	// Check the expression is a string literal
+	strLit, ok := stmt.ErrExpr.(*StringLiteral)
+	if !ok {
+		t.Fatalf("throw expression not *StringLiteral. got=%T", stmt.ErrExpr)
+	}
+	if strLit.Value != "error message" {
+		t.Errorf("throw message should be 'error message', got=%s", strLit.Value)
+	}
+}
+
+func TestThrowWithoutValue(t *testing.T) {
+	// Throw without value is valid when followed by semicolon
+	input := `throw;`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	testProgramStatements(t, program, 1)
+
+	stmt, ok := program.Statements[0].(*ThrowStatement)
+	if !ok {
+		t.Fatalf("stmt not *ThrowStatement. got=%T", program.Statements[0])
+	}
+
+	// Throw without value should have nil ErrExpr
+	if stmt.ErrExpr != nil {
+		t.Errorf("throw without value should have nil ErrExpr, got=%T", stmt.ErrExpr)
+	}
+}
+
+func TestThrowAtEndOfBlock(t *testing.T) {
+	input := `try { throw } catch (e) { }`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	testProgramStatements(t, program, 1)
+
+	tryStmt, ok := program.Statements[0].(*TryStatement)
+	if !ok {
+		t.Fatalf("stmt not *TryStatement. got=%T", program.Statements[0])
+	}
+
+	throwStmt, ok := tryStmt.Block.Statements[0].(*ThrowStatement)
+	if !ok {
+		t.Fatalf("statement in try block not *ThrowStatement. got=%T", tryStmt.Block.Statements[0])
+	}
+
+	// Throw without value should have nil ErrExpr
+	if throwStmt.ErrExpr != nil {
+		t.Errorf("throw without value should have nil ErrExpr, got=%T", throwStmt.ErrExpr)
+	}
+}
+
+func TestTryStatementWithoutCatchOrFinally(t *testing.T) {
+	input := `try { x = 1 }`
+
+	l := lexer.New(input)
+	p := New(l)
+	_ = p.ParseProgram()
+
+	// Should have errors because try needs catch or finally
+	if len(p.errors) == 0 {
+		t.Error("expected parse error for try without catch or finally")
+	}
+}
+
+func TestNestedTryCatchStatement(t *testing.T) {
+	input := `
+try {
+	try {
+		throw "inner"
+	} catch (e) {
+		print(e)
+	}
+} catch (e) {
+	print(e)
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	testProgramStatements(t, program, 1)
+
+	outerTry, ok := program.Statements[0].(*TryStatement)
+	if !ok {
+		t.Fatalf("stmt not *TryStatement. got=%T", program.Statements[0])
+	}
+
+	// Inner try should be the first statement in outer try block
+	innerTry, ok := outerTry.Block.Statements[0].(*TryStatement)
+	if !ok {
+		t.Fatalf("inner stmt not *TryStatement. got=%T", outerTry.Block.Statements[0])
+	}
+
+	// Verify inner try has catch
+	if innerTry.Catch == nil {
+		t.Fatal("inner try should have catch clause")
+	}
+}
