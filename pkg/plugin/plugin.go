@@ -1,22 +1,28 @@
 // pkg/plugin/plugin.go
-// Plugin system for loading native Go plugins at runtime.
+// Plugin system for loading plugins at runtime.
 //
-// Plugins are Go shared libraries (.so on Linux/macOS) that implement
-// the Plugin interface. They can export functions, variables, and other
-// values to xxlang code.
+// Two plugin formats are supported:
+//
+// 1. Native plugins (.so) - Go shared libraries using CGO (Linux/macOS/FreeBSD only)
+// 2. WebAssembly plugins (.wasm) - WASM modules using wazero (all platforms, no CGO)
 //
 // Usage from xxlang:
 //
 //	import "plugin/myplugin"
 //	myplugin.hello()
 //
-// Building a plugin:
+// Building a native plugin (Linux/macOS only):
 //
 //	go build -buildmode=plugin -o myplugin.so myplugin.go
+//
+// Building a WASM plugin (all platforms):
+//
+//	tinygo build -o myplugin.wasm -target=wasi myplugin.go
 package plugin
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -161,7 +167,7 @@ func (l *Loader) Load(name string) (Plugin, error) {
 	return plugin, nil
 }
 
-// loadFromFile attempts to load a plugin from a .so file.
+// loadFromFile attempts to load a plugin from a .so or .wasm file.
 func (l *Loader) loadFromFile(name string) (Plugin, error) {
 	// Get search paths
 	l.mu.RLock()
@@ -169,18 +175,35 @@ func (l *Loader) loadFromFile(name string) (Plugin, error) {
 	copy(paths, l.paths)
 	l.mu.RUnlock()
 
+	// Extensions to try in order
+	extensions := []string{".wasm", ".so"}
+
 	// Search for plugin file
 	for _, searchPath := range paths {
-		soPath := filepath.Join(searchPath, name+".so")
+		for _, ext := range extensions {
+			pluginPath := filepath.Join(searchPath, name+ext)
 
-		// Try to load the plugin
-		plugin, err := loadPluginSO(soPath)
-		if err == nil {
-			return plugin, nil
-		}
-		// Continue to next path if file not found
-		if !isNotExist(err) {
-			return nil, fmt.Errorf("error loading plugin %s from %s: %v", name, soPath, err)
+			// Check if file exists
+			if _, err := os.Stat(pluginPath); os.IsNotExist(err) {
+				continue
+			}
+
+			// Try to load based on extension
+			var plugin Plugin
+			var err error
+
+			switch ext {
+			case ".wasm":
+				plugin, err = loadPluginWASM(pluginPath)
+			case ".so":
+				plugin, err = loadPluginSO(pluginPath)
+			}
+
+			if err == nil {
+				return plugin, nil
+			}
+			// Continue to next path/extension if this one failed
+			return nil, fmt.Errorf("error loading plugin %s from %s: %v", name, pluginPath, err)
 		}
 	}
 

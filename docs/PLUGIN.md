@@ -1,6 +1,22 @@
 # Plugin System
 
-Xxlang supports a plugin system that allows you to write native Go plugins for high-performance operations. Plugins are loaded at runtime and can export functions, variables, and other values to Xxlang code.
+Xxlang supports two types of plugins for high-performance operations:
+
+1. **Static Plugins** - Compile into your Go application (all platforms)
+2. **WebAssembly Plugins** - Load `.wasm` files at runtime (all platforms, no CGO)
+
+## Plugin Types Comparison
+
+| Feature | Static Plugin | WASM Plugin | Native .so Plugin |
+|---------|---------------|-------------|-------------------|
+| Windows Support | ✅ Yes | ✅ Yes | ❌ No |
+| Linux Support | ✅ Yes | ✅ Yes | ✅ Yes |
+| macOS Support | ✅ Yes | ✅ Yes | ✅ Yes |
+| Requires CGO | ❌ No | ❌ No | ✅ Yes |
+| Runtime Loading | ❌ No | ✅ Yes | ✅ Yes |
+| Performance | Fastest | Fast (~10-20% overhead) | Fastest |
+| Security | Host process | Sandboxed | Host process |
+| Distribution | Compiled in | Single .wasm file | .so file |
 
 ## Overview
 
@@ -10,8 +26,6 @@ Plugins provide:
 - **Complex algorithms** - Implement sophisticated algorithms in Go (e.g., matrix operations)
 - **Extended functionality** - Add new capabilities not available in standard library
 - **Batch processing** - Process multiple values efficiently in a single call
-
-## Plugin Architecture
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
@@ -288,13 +302,122 @@ if err != nil {
 
 ## Static vs Dynamic Plugins
 
-| Aspect | Static (import) | Dynamic (.so) |
-|--------|-----------------|---------------|
-| Platform | All platforms | Linux/macOS only |
-| Distribution | Compiled in | Separate file |
-| Updates | Recompile required | Replace .so file |
-| Debugging | Easier | Harder |
-| Recommended | Yes | For hot-reload scenarios |
+| Aspect | Static (import) | WASM (.wasm) | Native (.so) |
+|--------|-----------------|--------------|--------------|
+| Platform | All platforms | **All platforms** | Linux/macOS only |
+| Windows | ✅ Yes | ✅ **Yes** | ❌ No |
+| Requires CGO | ❌ No | ❌ **No** | ✅ Yes |
+| Distribution | Compiled in | Single .wasm file | .so file |
+| Updates | Recompile required | Replace .wasm file | Replace .so file |
+| Debugging | Easier | Medium | Harder |
+| Performance | Fastest | ~10-20% overhead | Fastest |
+| Recommended | Yes | **Yes for Windows** | No |
+
+## WebAssembly Plugins
+
+WASM plugins work on all platforms including Windows, without CGO.
+
+### Creating a WASM Plugin
+
+```go
+// plugin/fib.go
+package main
+
+import (
+	"unsafe"
+)
+
+// Plugin name - exported for the host
+//export plugin_name
+func pluginName() (ptr uint32, size uint32) {
+	name := "fib"
+	return stringToPtr(name)
+}
+
+// Plugin version
+//export plugin_version
+func pluginVersion() (ptr uint32, size uint32) {
+	return stringToPtr("1.0.0-wasm")
+}
+
+// Fast Fibonacci - O(n) time complexity
+//export call_fast
+func fibFast(n int64) int64 {
+	if n <= 1 {
+		return n
+	}
+	a, b := int64(0), int64(1)
+	for i := int64(2); i <= n; i++ {
+		a, b = b, a+b
+	}
+	return b
+}
+
+// Memory allocation for WASM
+var memory []byte
+
+//export alloc
+func alloc(size uint32) uint32 {
+	offset := uint32(len(memory))
+	memory = append(memory, make([]byte, size)...)
+	return offset
+}
+
+func stringToPtr(s string) (uint32, uint32) {
+	ptr := alloc(uint32(len(s)))
+	copy(memory[ptr:], s)
+	return ptr, uint32(len(s))
+}
+
+func main() {}
+```
+
+### Building WASM Plugins
+
+```bash
+# Install TinyGo (required for WASM plugins)
+# See: https://tinygo.org/getting-started/
+
+# Build the plugin
+tinygo build -o fib.wasm -target=wasi plugin/fib.go
+```
+
+### Loading WASM Plugins
+
+```go
+import "github.com/topxeq/xxlang/pkg/plugin"
+
+loader := plugin.NewLoader()
+loader.AddPath("./plugins")
+
+// Loads fib.wasm from ./plugins/
+p, err := loader.Load("fib")
+if err != nil {
+    panic(err)
+}
+
+// Register for use in Xxlang
+plugin.Register(p)
+```
+
+### WASM Plugin Conventions
+
+| Export Name | Purpose |
+|-------------|---------|
+| `plugin_name` | Returns (ptr, size) for plugin name |
+| `plugin_version` | Returns (ptr, size) for version string |
+| `call_<name>` | Callable function from Xxlang (e.g., `call_fast` → `fib.fast`) |
+| `alloc` | Memory allocation function |
+
+### WASM Function Signatures
+
+WASM plugins support these function types:
+
+| Signature | Example |
+|-----------|---------|
+| `int64 → int64` | `call_fast(n int64) int64` |
+| `int64 → int32` | `call_isFib(n int64) int32` (boolean result: 0 or 1) |
+| `int64 → (ptr, count)` | `call_range_(n int64) (uint32, uint32)` (returns array) |
 
 ## Complete Example
 
