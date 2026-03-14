@@ -20,15 +20,15 @@ func buildXxlang(t *testing.T) string {
 
 	// Create temp directory for binary
 	binDir := t.TempDir()
-	binPath := filepath.Join(binDir, "xxlang")
+	binPath := filepath.Join(binDir, "xxl")
 
 	// Build the binary
-	cmd := exec.Command("go", "build", "-o", binPath, "./cmd/xxlang")
+	cmd := exec.Command("go", "build", "-o", binPath, "./cmd/xxl")
 	cmd.Dir = getProjectRoot()
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("failed to build xxlang: %v\n%s", err, output)
+		t.Fatalf("failed to build xxl: %v\n%s", err, output)
 	}
 
 	return binPath
