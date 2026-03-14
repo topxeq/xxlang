@@ -1,56 +1,228 @@
 // 14_error_handling.xxl
-// Error handling patterns: validation, null checks, and defensive programming
+// Error handling patterns: try-catch-finally, validation, and defensive programming
 
-// === Basic Validation ===
-println("=== Basic Validation ===")
+// === Basic Try-Catch ===
+println("=== Basic Try-Catch ===")
 
 func divide(a, b) {
     if (b == 0) {
-        println("  Error: Division by zero")
-        return null
+        throw "Division by zero"
     }
     return a / b
 }
 
-println("divide(10, 2) = ", divide(10, 2))
-println("divide(10, 0) = ", divide(10, 0))
-
-// === Result Pattern ===
-println("\n=== Result Pattern ===")
-
-func createResult(success, value, error) {
-    return {
-        "success": success,
-        "value": value,
-        "error": error
-    }
+// Using try-catch for error handling
+try {
+    println("  divide(10, 2) = " + divide(10, 2))
+} catch (e) {
+    println("  Error: " + e)
 }
+
+try {
+    println("  divide(10, 0) = " + divide(10, 0))
+} catch (e) {
+    println("  Error: " + e)
+}
+
+// === Safe Operations with Try-Catch ===
+println("\n=== Safe Operations with Try-Catch ===")
 
 func safeDivide(a, b) {
-    if (b == 0) {
-        return createResult(false, null, "Division by zero")
+    var result = null
+    try {
+        result = divide(a, b)
+    } catch (e) {
+        println("  Caught error: " + e)
     }
-    return createResult(true, a / b, null)
+    return result
 }
 
-var r1 = safeDivide(10, 2)
-var r2 = safeDivide(10, 0)
+println("  safeDivide(10, 2) = " + safeDivide(10, 2))
+println("  safeDivide(10, 0) = " + safeDivide(10, 0))
 
-println("Result 1: success=", r1["success"], ", value=", r1["value"])
-println("Result 2: success=", r2["success"], ", error=", r2["error"])
+// === Try-Catch-Finally for Cleanup ===
+println("\n=== Try-Catch-Finally for Cleanup ===")
 
-// Using result
-func processResult(result) {
-    if (result["success"]) {
-        println("  Got value: ", result["value"])
-    } else {
-        println("  Error: ", result["error"])
+func processFile(filename) {
+    println("  Opening file: " + filename)
+    var error = null
+
+    try {
+        // Simulate an error during processing
+        if (filename == "missing.txt") {
+            throw "file not found"
+        }
+        println("  Processing file...")
+    } catch (e) {
+        error = e
+    } finally {
+        // Cleanup always happens
+        println("  Closing file (cleanup)")
+    }
+
+    if (error != null) {
+        println("  Had error: " + error)
     }
 }
 
-println("\nProcessing results:")
-processResult(r1)
-processResult(r2)
+processFile("data.txt")
+processFile("missing.txt")
+
+// === Validation with Exceptions ===
+println("\n=== Validation with Exceptions ===")
+
+func validateUser(user) {
+    // Check name
+    if (!hasKey(user, "name") || len(user["name"]) == 0) {
+        throw "Name is required"
+    }
+
+    // Check age
+    if (!hasKey(user, "age")) {
+        throw "Age is required"
+    }
+    if (user["age"] < 0 || user["age"] > 150) {
+        throw "Age must be between 0 and 150"
+    }
+
+    // Check email format
+    if (hasKey(user, "email") && len(user["email"]) > 0) {
+        if (!user["email"].contains("@")) {
+            throw "Invalid email format"
+        }
+    }
+
+    return true
+}
+
+func processUser(user) {
+    try {
+        validateUser(user)
+        println("  User is valid: " + user["name"])
+        return true
+    } catch (e) {
+        println("  Validation failed: " + e)
+        return false
+    }
+}
+
+var validUser = {"name": "Alice", "age": 30, "email": "alice@example.com"}
+var invalidUser = {"name": "", "age": -5, "email": "invalid"}
+
+println("Validating users:")
+processUser(validUser)
+processUser(invalidUser)
+
+// === Exception Propagation ===
+println("\n=== Exception Propagation ===")
+
+func validateInput(input) {
+    if (len(input) == 0) {
+        throw "input cannot be empty"
+    }
+    return true
+}
+
+func processData(input) {
+    validateInput(input)  // Exception propagates if thrown
+    println("  Processing: " + input)
+    return "processed: " + input
+}
+
+func handleRequest(input) {
+    var result = "error"
+    try {
+        result = processData(input)
+    } catch (e) {
+        println("  Request failed: " + e)
+    }
+    return result
+}
+
+println("Handling requests:")
+println("  Result: " + handleRequest("hello"))
+println("  Result: " + handleRequest(""))
+
+// === Nested Try-Catch ===
+println("\n=== Nested Try-Catch ===")
+
+func innerOperation() {
+    println("  Starting inner operation")
+    try {
+        throw "inner failure"
+    } catch (e) {
+        println("  Inner caught: " + e)
+        throw e  // Re-throw
+    }
+}
+
+func outerOperation() {
+    println("  Starting outer operation")
+    try {
+        innerOperation()
+    } catch (e) {
+        println("  Outer caught: " + e)
+        throw "outer error: " + e
+    }
+}
+
+try {
+    outerOperation()
+} catch (e) {
+    println("  Final caught: " + e)
+}
+
+// === Assertions with Exceptions ===
+println("\n=== Assertions with Exceptions ===")
+
+func assert(condition, message) {
+    if (!condition) {
+        throw "Assertion failed: " + message
+    }
+}
+
+func assertEquals(actual, expected, name) {
+    if (actual != expected) {
+        throw name + ": expected " + expected + ", got " + actual
+    }
+    println("  PASS: " + name)
+}
+
+func runTests() {
+    try {
+        assertEquals(1 + 1, 2, "basic math")
+        assertEquals("hello".upper(), "HELLO", "upper()")
+        assertEquals(2 * 3, 5, "multiplication")  // This will fail
+    } catch (e) {
+        println("  FAIL: " + e)
+    }
+}
+
+println("Running tests:")
+runTests()
+
+// === Resource Management ===
+println("\n=== Resource Management ===")
+
+func withResource(resource, operation) {
+    println("  Acquiring: " + resource)
+    var result = null
+    try {
+        result = operation(resource)
+    } finally {
+        println("  Releasing: " + resource)
+    }
+    return result
+}
+
+try {
+    withResource("database", func(db) {
+        println("  Using: " + db)
+        throw "connection error"
+    })
+} catch (e) {
+    println("  Error: " + e)
+}
 
 // === Option/Nullable Pattern ===
 println("\n=== Option/Nullable Pattern ===")
@@ -72,185 +244,85 @@ func getOrElse(value, defaultVal) {
 var user = {"name": "Alice", "age": 30}
 var email = safeGet(user, "email")
 
-println("Email: ", getOrElse(email, "not provided"))
+println("Email: " + getOrElse(email, "not provided"))
 
-// === Validation Chain ===
-println("\n=== Validation Chain ===")
+// === Retry Pattern with Try-Catch ===
+println("\n=== Retry Pattern with Try-Catch ===")
 
-func validateUser(user) {
-    var errors = []
+var retryCount = 0
 
-    // Check name
-    if (!hasKey(user, "name") || len(user["name"]) == 0) {
-        push(errors, "Name is required")
+func unreliableOperation() {
+    retryCount = retryCount + 1
+    println("  Attempt " + retryCount)
+    if (retryCount < 3) {
+        throw "temporary failure"
     }
+    return "success"
+}
 
-    // Check age
-    if (!hasKey(user, "age")) {
-        push(errors, "Age is required")
-    } else if (user["age"] < 0 || user["age"] > 150) {
-        push(errors, "Age must be between 0 and 150")
-    }
+func withRetry(operation, maxAttempts) {
+    var attempts = 0
+    var result = null
 
-    // Check email format (simple check)
-    if (hasKey(user, "email") && len(user["email"]) > 0) {
-        if (!user["email"].contains("@")) {
-            push(errors, "Invalid email format")
+    while (attempts < maxAttempts) {
+        attempts = attempts + 1
+        try {
+            result = operation()
+            return result
+        } catch (e) {
+            println("    Failed: " + e)
+            if (attempts >= maxAttempts) {
+                throw "failed after " + maxAttempts + " attempts"
+            }
         }
     }
+}
 
-    return {
-        "valid": len(errors) == 0,
-        "errors": errors
+try {
+    var result = withRetry(unreliableOperation, 5)
+    println("  Final result: " + result)
+} catch (e) {
+    println("  Error: " + e)
+}
+
+// === Guard Clause Pattern ===
+println("\n=== Guard Clause Pattern ===")
+
+func processPayment(amount, currency, account) {
+    // Guard clauses - throw early for error conditions
+    if (amount <= 0) {
+        throw "Invalid amount"
+    }
+    if (currency != "USD" && currency != "EUR") {
+        throw "Unsupported currency: " + currency
+    }
+    if (account == null) {
+        throw "Account required"
+    }
+    if (!account["active"]) {
+        throw "Account is not active"
+    }
+
+    // Main logic
+    return "Payment processed: " + amount + " " + currency
+}
+
+func handlePayment(amount, currency, account) {
+    try {
+        println("  " + processPayment(amount, currency, account))
+    } catch (e) {
+        println("  Payment failed: " + e)
     }
 }
 
-var validUser = {"name": "Alice", "age": 30, "email": "alice@example.com"}
-var invalidUser = {"name": "", "age": -5, "email": "invalid"}
+var account1 = {"id": "A001", "active": true}
+var account2 = {"id": "A002", "active": false}
 
-println("Validating users:")
-var v1 = validateUser(validUser)
-println("  User 1 valid: ", v1["valid"])
-
-var v2 = validateUser(invalidUser)
-println("  User 2 valid: ", v2["valid"])
-println("  Errors: ", v2["errors"])
-
-// === Error Accumulation ===
-println("\n=== Error Accumulation ===")
-
-func validateField(value, name, validators) {
-    var errors = []
-    for (validator in validators) {
-        var result = validator(value)
-        if (result != null) {
-            push(errors, name + ": " + result)
-        }
-    }
-    return errors
-}
-
-func required(value) {
-    if (value == null || value == "") {
-        return "is required"
-    }
-    return null
-}
-
-func minLength(minLen) {
-    return func(value) {
-        if (value != null && len(toStr(value)) < minLen) {
-            return "must be at least " + minLen + " characters"
-        }
-        return null
-    }
-}
-
-func isPositive(value) {
-    if (typeOf(value) != "INT" && typeOf(value) != "FLOAT") {
-        return "must be a number"
-    }
-    if (value <= 0) {
-        return "must be positive"
-    }
-    return null
-}
-
-// Validate a form
-var form = {"username": "ab", "age": -5}
-var allErrors = []
-
-allErrors = concat(allErrors, validateField(form["username"], "Username", [required, minLength(3)]))
-allErrors = concat(allErrors, validateField(form["age"], "Age", [required, isPositive]))
-
-println("Form validation errors: ", allErrors)
-
-// === Default Values Pattern ===
-println("\n=== Default Values Pattern ===")
-
-func withDefaults(config, defaults) {
-    var result = {}
-    // Copy defaults first
-    for (k, v in defaults) {
-        result[k] = v
-    }
-    // Override with config values
-    for (k, v in config) {
-        result[k] = v
-    }
-    return result
-}
-
-var defaultConfig = {"timeout": 30, "retries": 3, "debug": false}
-var userConfig = {"timeout": 60, "debug": true}
-
-var merged = withDefaults(userConfig, defaultConfig)
-println("Merged config: ", merged)
-
-// === Safe Operations ===
-println("\n=== Safe Operations ===")
-
-func safeArrayGet(arr, index) {
-    if (index < 0 || index >= len(arr)) {
-        return null
-    }
-    return arr[index]
-}
-
-func safeMapGet(map, key) {
-    if (!hasKey(map, key)) {
-        return null
-    }
-    return map[key]
-}
-
-func safeOperation(op) {
-    // Wrap an operation that might fail
-    return func(args) {
-        // Simplified - would catch errors in real implementation
-        return op(args)
-    }
-}
-
-var arr = [1, 2, 3]
-println("safeArrayGet(arr, 1) = ", safeArrayGet(arr, 1))
-println("safeArrayGet(arr, 10) = ", safeArrayGet(arr, 10))
-
-// === Assertion Pattern ===
-println("\n=== Assertion Pattern ===")
-
-func assert(condition, message) {
-    if (!condition) {
-        println("  Assertion failed: ", message)
-        return false
-    }
-    return true
-}
-
-func assertEquals(actual, expected, name) {
-    if (actual == expected) {
-        println("  PASS: ", name)
-        return true
-    } else {
-        println("  FAIL: ", name, " - expected ", expected, ", got ", actual)
-        return false
-    }
-}
-
-func assertNotEquals(a, b, name) {
-    if (a != b) {
-        println("  PASS: ", name)
-        return true
-    } else {
-        println("  FAIL: ", name, " - values should be different")
-        return false
-    }
-}
-
-println("Running assertions:")
-assert(1 + 1 == 2, "Math works")
-assertEquals("hello".upper(), "HELLO", "upper() works")
-assertNotEquals(1, 2, "1 != 2")
+println("Processing payments:")
+handlePayment(100, "USD", account1)
+handlePayment(-50, "USD", account1)
+handlePayment(100, "JPY", account1)
+handlePayment(100, "EUR", account2)
 
 // === Error Handler Pattern ===
 println("\n=== Error Handler Pattern ===")
@@ -262,97 +334,57 @@ func createErrorHandler() {
         "onError": func(errorType, handler) {
             handlers[errorType] = handler
         },
-        "handle": func(errorType, context) {
+        "handle": func(errorType, error) {
             if (hasKey(handlers, errorType)) {
-                return handlers[errorType](context)
+                handlers[errorType](error)
+            } else {
+                throw error
             }
-            println("  Unhandled error type: ", errorType)
-            return null
         }
     }
 }
 
 var errorHandler = createErrorHandler()
-errorHandler["onError"]("validation", func(ctx) {
-    println("  Validation error: ", ctx["message"])
-    return false
+errorHandler["onError"]("validation", func(e) {
+    println("  Validation error: " + e)
 })
-errorHandler["onError"]("network", func(ctx) {
-    println("  Network error: ", ctx["message"])
-    println("  Retrying...")
-    return true
+errorHandler["onError"]("network", func(e) {
+    println("  Network error: " + e + " - retrying...")
 })
 
 println("Handling errors:")
-errorHandler["handle"]("validation", {"message": "Invalid input"})
-errorHandler["handle"]("network", {"message": "Connection timeout"})
-
-// === Retry Pattern ===
-println("\n=== Retry Pattern ===")
-
-func withRetry(operation, maxAttempts, delay) {
-    var attempts = 0
-    var success = false
-    var lastError = null
-
-    while (attempts < maxAttempts && !success) {
-        attempts = attempts + 1
-        println("  Attempt ", attempts, "/", maxAttempts)
-
-        var result = operation()
-        if (result["success"]) {
-            success = true
-            return result
-        }
-        lastError = result["error"]
-
-        // In real code, would sleep here
-    }
-
-    return createResult(false, null, "Failed after " + maxAttempts + " attempts: " + lastError)
+try {
+    errorHandler["handle"]("validation", "Invalid input")
+} catch (e) {
+    println("  Unhandled: " + e)
 }
 
-// Simulate an operation that might fail
-var callCount = 0
-func unreliableOperation() {
-    callCount = callCount + 1
-    if (callCount < 3) {
-        return createResult(false, null, "Simulated failure")
-    }
-    return createResult(true, "Success!", null)
+try {
+    errorHandler["handle"]("unknown", "Something went wrong")
+} catch (e) {
+    println("  Unhandled: " + e)
 }
 
-println("Running with retry:")
-var retryResult = withRetry(unreliableOperation, 5, 0)
-println("Final result: ", retryResult)
+// === Default Values Pattern ===
+println("\n=== Default Values Pattern ===")
 
-// === Guard Clause Pattern ===
-println("\n=== Guard Clause Pattern ===")
-
-func processPayment(amount, currency, account) {
-    // Guard clauses - early returns for error conditions
-    if (amount <= 0) {
-        return createResult(false, null, "Invalid amount")
-    }
-    if (currency != "USD" && currency != "EUR") {
-        return createResult(false, null, "Unsupported currency")
-    }
-    if (account == null) {
-        return createResult(false, null, "Account required")
-    }
-    if (!account["active"]) {
-        return createResult(false, null, "Account is not active")
-    }
-
-    // Main logic (simplified)
-    return createResult(true, "Payment processed: " + amount + " " + currency, null)
+func withDefaults(config, defaults) {
+    var result = {}
+    // Copy defaults - simplified version
+    result["timeout"] = defaults["timeout"]
+    result["retries"] = defaults["retries"]
+    result["debug"] = defaults["debug"]
+    // Override with config values
+    if (hasKey(config, "timeout")) { result["timeout"] = config["timeout"] }
+    if (hasKey(config, "retries")) { result["retries"] = config["retries"] }
+    if (hasKey(config, "debug")) { result["debug"] = config["debug"] }
+    return result
 }
 
-var account1 = {"id": "A001", "active": true}
-var account2 = {"id": "A002", "active": false}
+var defaultConfig = {"timeout": 30, "retries": 3, "debug": false}
+var userConfig = {"timeout": 60, "debug": true}
 
-println("Processing payments:")
-println("  ", processPayment(100, "USD", account1))
-println("  ", processPayment(-50, "USD", account1))
-println("  ", processPayment(100, "JPY", account1))
-println("  ", processPayment(100, "EUR", account2))
+var merged = withDefaults(userConfig, defaultConfig)
+println("Merged config: timeout=" + merged["timeout"] + ", retries=" + merged["retries"] + ", debug=" + merged["debug"])
+
+println("\n=== Done ===")
