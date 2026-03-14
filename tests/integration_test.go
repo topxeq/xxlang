@@ -743,3 +743,80 @@ func TestSwitchStatementWithReturn(t *testing.T) {
 	result := v.LastPopped()
 	assertString(t, result, "one")
 }
+
+// ============================================
+// Ternary Expression
+// ============================================
+
+func TestTernaryExpression(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected int64
+	}{
+		{
+			name:     "basic ternary true",
+			input:    "true ? 1 : 2",
+			expected: 1,
+		},
+		{
+			name:     "basic ternary false",
+			input:    "false ? 1 : 2",
+			expected: 2,
+		},
+		{
+			name:     "ternary with comparison",
+			input:    "5 > 3 ? 10 : 20",
+			expected: 10,
+		},
+		{
+			name:     "ternary with variable",
+			input:    "var x = 5; x > 3 ? 100 : 200",
+			expected: 100,
+		},
+		{
+			name:     "nested ternary",
+			input:    "var x = 2; x == 1 ? 10 : (x == 2 ? 20 : 30)",
+			expected: 20,
+		},
+		{
+			name:     "ternary in expression",
+			input:    "10 + (true ? 5 : 3)",
+			expected: 15,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := runCode(t, tt.input)
+			assertInt(t, result, tt.expected)
+		})
+	}
+}
+
+func TestTernaryExpressionWithString(t *testing.T) {
+	input := `var x = 5; x > 3 ? "big" : "small"`
+
+	l := lexer.New(input)
+	p := parser.New(l)
+	program := p.ParseProgram()
+
+	if len(p.Errors()) > 0 {
+		t.Fatalf("parser errors: %v", p.Errors())
+	}
+
+	c := compiler.New()
+	if err := c.Compile(program); err != nil {
+		t.Fatalf("compiler error: %v", err)
+	}
+
+	bytecode := c.Bytecode()
+	v := vm.New(bytecode)
+
+	if err := v.Run(); err != nil {
+		t.Fatalf("vm error: %v", err)
+	}
+
+	result := v.LastPopped()
+	assertString(t, result, "big")
+}

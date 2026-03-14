@@ -202,6 +202,8 @@ func (l *Lexer) NextToken() Token {
 		tok = newToken(TokenRBracket, l.ch, line, column)
 	case '.':
 		tok = newToken(TokenDot, l.ch, line, column)
+	case '?':
+		tok = newToken(TokenQuestion, l.ch, line, column)
 	case '"':
 		tok.Type = TokenString
 		tok.Literal = l.readString()
