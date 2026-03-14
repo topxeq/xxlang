@@ -193,6 +193,30 @@ xxlang run script.xxb
 | Startup | ~5ms overhead | ~1ms overhead |
 | Distribution | Source code visible | Obfuscated bytecode |
 | Size | Smaller | ~5-10x larger |
+| Cross-platform | Yes | **Yes - identical bytecode runs everywhere** |
+
+### Cross-Platform Compatibility
+
+Xxlang bytecode files are **platform-independent**:
+
+- Same `.xxb` file runs on Windows, Linux, macOS
+- Supports different CPU architectures (amd64, arm64)
+- No recompilation needed when moving between platforms
+
+```bash
+# Compile on Windows
+xxlang compile --bytecode script.xxl
+
+# Copy script.xxb to Linux and run
+xxlang run script.xxb  # Works without modification!
+```
+
+This is possible because:
+- Fixed byte order (Big Endian) for version number
+- Go's gob encoding (platform-neutral serialization)
+- IEEE 754 floating point (standard format)
+- UTF-8 strings (universal encoding)
+- No embedded file paths or platform-specific data
 
 ### Use Cases
 
