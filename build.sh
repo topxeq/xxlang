@@ -1,14 +1,14 @@
 #!/bin/bash
 # Build script for xxlang
-# Produces 'xx' executable on Linux/macOS, 'xx.exe' on Windows
+# Produces 'xxl' executable on Linux/macOS, 'xxl.exe' on Windows
 
 set -e
 
 # Determine output name based on OS
 if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-    OUTPUT="xx.exe"
+    OUTPUT="xxl.exe"
 else
-    OUTPUT="xx"
+    OUTPUT="xxl"
 fi
 
 # Allow overriding output name
