@@ -1107,7 +1107,7 @@ func (c *Compiler) Bytecode() *Bytecode {
 
 	// Apply optimizations if enabled
 	if c.options.BytecodeOptimizer {
-		optimizer := NewOptimizer(bytecode)
+		optimizer := NewOptimizerWithFlags(bytecode, c.options)
 		return optimizer.Optimize()
 	}
 
