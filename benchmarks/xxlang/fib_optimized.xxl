@@ -1,0 +1,46 @@
+// benchmarks/xxlang/fib_optimized.xxl
+// Fibonacci benchmark using tail call optimization
+// This version uses an iterative approach that can benefit from TCO
+
+// Tail-recursive helper function
+func fibHelper(n, a, b) {
+    if (n == 0) {
+        return a
+    }
+    if (n == 1) {
+        return b
+    }
+    return fibHelper(n - 1, b, a + b)
+}
+
+// Main fibonacci function using tail recursion
+func fib(n) {
+    return fibHelper(n, 0, 1)
+}
+
+// Test with timing
+import "std/time"
+
+// Warmup
+var _ = fib(10)
+
+// Run tests
+print("fib(10) = " + fib(10).toStr())
+print("fib(20) = " + fib(20).toStr())
+print("fib(30) = " + fib(30).toStr())
+
+// Time fib(35)
+var start = time.unixMs()
+var result = fib(35)
+var elapsed = time.unixMs() - start
+print("fib(35) = " + result.toStr() + " (took " + elapsed.toStr() + " ms)")
+
+// Run multiple iterations for better measurement
+var iterations = 3
+var total = 0
+for (var i = 0; i < iterations; i++) {
+    var s = time.unixMs()
+    var r = fib(35)
+    total = total + (time.unixMs() - s)
+}
+print("Average over " + iterations.toStr() + " runs: " + (total / iterations).toStr() + " ms")
