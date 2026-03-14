@@ -12,6 +12,7 @@ import (
 const (
 	_ int = iota
 	LOWEST      // lowest precedence for expression parsing
+	TERNARY     // ? : (right-associative)
 	ASSIGN      // =, +=, -= (right-associative, binds after LOWEST)
 	OR          // ||
 	AND         // &&
@@ -51,6 +52,7 @@ var precedence = map[lexer.TokenType]int{
 	lexer.TokenPercentAssign: ASSIGN,
 	lexer.TokenIncrement:   CALL, // Postfix ++ has high precedence
 	lexer.TokenDecrement:   CALL, // Postfix -- has high precedence
+	lexer.TokenQuestion:    TERNARY, // Ternary operator ?:
 }
 
 // Parser parses tokens into an AST
@@ -123,6 +125,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerInfix(lexer.TokenPercentAssign, p.parseCompoundAssignmentExpression)
 	p.registerInfix(lexer.TokenIncrement, p.parsePostfixExpression)
 	p.registerInfix(lexer.TokenDecrement, p.parsePostfixExpression)
+	p.registerInfix(lexer.TokenQuestion, p.parseTernaryExpression)
 
 	// Read two tokens, so curToken and peekToken are both set
 	p.nextToken()
@@ -1214,6 +1217,33 @@ func (p *Parser) parsePostfixExpression(left Expression) Expression {
 		Left:     left,
 		Operator: p.curToken.Literal,
 	}
+}
+
+// parseTernaryExpression parses a ternary expression (condition ? consequent : alternative)
+func (p *Parser) parseTernaryExpression(condition Expression) Expression {
+	expression := &TernaryExpression{
+		Token:     p.curToken,
+		Condition: condition,
+	}
+
+	// Skip '?' token
+	p.nextToken()
+
+	// Parse consequent (use TERNARY-1 for right associativity)
+	expression.Consequent = p.parseExpression(TERNARY - 1)
+
+	// Expect ':'
+	if !p.expectPeek(lexer.TokenColon) {
+		return nil
+	}
+
+	// Skip ':' token
+	p.nextToken()
+
+	// Parse alternative (right associative, so use TERNARY-1)
+	expression.Alternative = p.parseExpression(TERNARY - 1)
+
+	return expression
 }
 
 // parseCallExpression parses a function call expression

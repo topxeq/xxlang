@@ -50,6 +50,7 @@ const (
 	TokenRBracket  TokenType = "]"
 	TokenDot       TokenType = "."
 	TokenArrow     TokenType = "=>"
+	TokenQuestion  TokenType = "?"
 
 	// Keywords
 	TokenVar      TokenType = "VAR"
