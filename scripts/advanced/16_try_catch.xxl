@@ -1,0 +1,222 @@
+// 16_try_catch.xxl
+// Exception handling with try-catch-finally
+
+// === Basic Try-Catch ===
+println("=== Basic Try-Catch ===")
+
+try {
+    println("  In try block")
+    throw "something went wrong"
+    println("  This won't execute")
+} catch (e) {
+    println("  Caught: " + e)
+}
+
+// === Try-Catch with Different Types ===
+println("\n=== Try-Catch with Different Types ===")
+
+// Throw a number
+try {
+    throw 42
+} catch (e) {
+    println("  Caught number: " + e)
+}
+
+// Throw a string
+try {
+    throw "error message"
+} catch (e) {
+    println("  Caught string: " + e)
+}
+
+// Throw without value (throws null)
+try {
+    throw
+} catch (e) {
+    println("  Caught null: " + e)
+}
+
+// === Try-Finally ===
+println("\n=== Try-Finally ===")
+
+try {
+    println("  In try block")
+} finally {
+    println("  Finally always runs")
+}
+
+// === Try-Catch-Finally ===
+println("\n=== Try-Catch-Finally ===")
+
+try {
+    println("  In try block")
+    throw "error"
+} catch (e) {
+    println("  Caught: " + e)
+} finally {
+    println("  Cleanup in finally")
+}
+
+// === Exception in Functions ===
+println("\n=== Exception in Functions ===")
+
+func mightFail(shouldFail) {
+    if (shouldFail) {
+        throw "function failed"
+    }
+    return "success"
+}
+
+try {
+    println("  Calling mightFail(false): " + mightFail(false))
+} catch (e) {
+    println("  Caught: " + e)
+}
+
+try {
+    println("  Calling mightFail(true):")
+    println("  Result: " + mightFail(true))
+} catch (e) {
+    println("  Caught: " + e)
+}
+
+// === Nested Try-Catch ===
+println("\n=== Nested Try-Catch ===")
+
+try {
+    println("  Outer try")
+    try {
+        println("    Inner try")
+        throw "inner error"
+    } catch (e) {
+        println("    Inner caught: " + e)
+    }
+    println("  After inner try-catch")
+} catch (e) {
+    println("  Outer caught: " + e)
+}
+
+// === Re-throwing Exceptions ===
+println("\n=== Re-throwing Exceptions ===")
+
+func validate(input) {
+    if (len(input) == 0) {
+        throw "input cannot be empty"
+    }
+    return true
+}
+
+func process(input) {
+    try {
+        return validate(input)
+    } catch (e) {
+        // Wrap the error and re-throw
+        throw "processing error: " + e
+    }
+}
+
+try {
+    process("")
+} catch (e) {
+    println("  Final catch: " + e)
+}
+
+// === Resource Cleanup Pattern ===
+println("\n=== Resource Cleanup Pattern ===")
+
+func readFile(filename) {
+    // Simulate file operations
+    var opened = true
+    println("  Opening file: " + filename)
+
+    try {
+        // Simulate an error
+        throw "file not found"
+    } finally {
+        // Cleanup always happens
+        if (opened) {
+            println("  Closing file (cleanup)")
+        }
+    }
+}
+
+try {
+    readFile("test.txt")
+} catch (e) {
+    println("  Error: " + e)
+}
+
+// === Validation with Exceptions ===
+println("\n=== Validation with Exceptions ===")
+
+func assertPositive(value, name) {
+    if (value < 0) {
+        throw name + " must be positive, got " + value
+    }
+}
+
+func divide(a, b) {
+    if (b == 0) {
+        throw "division by zero"
+    }
+    return a / b
+}
+
+try {
+    assertPositive(-5, "age")
+} catch (e) {
+    println("  Validation error: " + e)
+}
+
+try {
+    divide(10, 0)
+} catch (e) {
+    println("  Math error: " + e)
+}
+
+// === Exception for Flow Control ===
+println("\n=== Exception for Flow Control ===")
+
+func findValue(arr, target) {
+    var i = 0
+    while (i < len(arr)) {
+        if (arr[i] == target) {
+            return i
+        }
+        i = i + 1
+    }
+    throw "value not found"
+}
+
+var numbers = [10, 20, 30, 40, 50]
+
+try {
+    var idx = findValue(numbers, 30)
+    println("  Found 30 at index: " + idx)
+} catch (e) {
+    println("  Error: " + e)
+}
+
+try {
+    findValue(numbers, 99)
+} catch (e) {
+    println("  Error: " + e)
+}
+
+// === Multiple Operations with Error Handling ===
+println("\n=== Multiple Operations with Error Handling ===")
+
+func safeDivide(a, b) {
+    try {
+        if (b == 0) { throw "division by zero" }
+        return a / b
+    } catch (e) {
+        println("  Operation failed: " + e)
+        return null
+    }
+}
+
+println("  safeDivide(10, 2) = " + safeDivide(10, 2))
+println("  safeDivide(10, 0) = " + safeDivide(10, 0))
+
+println("\n=== Done ===")
