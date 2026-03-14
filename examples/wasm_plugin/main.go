@@ -1,17 +1,17 @@
 // examples/wasm_plugin/main.go
 // Demonstrates using WebAssembly plugins in Xxlang.
 //
-// Unlike native .so plugins, WASM plugins work on all platforms including Windows,
-// and don't require CGO.
+// WASM plugins work on all platforms including Windows, without CGO.
 //
 // Prerequisites:
 //   1. Install TinyGo: https://tinygo.org/getting-started/
-//      Note: TinyGo requires Go 1.19-1.24 (check tinygo.org for latest compatibility)
+//      Note: TinyGo 0.36 supports Go 1.19-1.24 (check tinygo.org for latest)
 //   2. Build the plugin: cd plugin && tinygo build -o fib.wasm -target=wasi fib.go
 //   3. Run this example: go run main.go
 //
-// Note: Standard Go's GOOS=wasip1 does NOT support exporting individual functions.
-// You must use TinyGo for WASM plugins.
+// IMPORTANT: Standard Go's GOOS=wasip1 does NOT work for plugins!
+// The wasip1 target runs _start (main) and then exits, closing the module.
+// TinyGo's architecture allows exported functions to remain callable.
 package main
 
 import (
@@ -41,8 +41,11 @@ func main() {
 	if err != nil {
 		fmt.Printf("Failed to load plugin: %v\n", err)
 		fmt.Println()
-		fmt.Println("To build the plugin, run:")
+		fmt.Println("To build the plugin with TinyGo:")
 		fmt.Println("  cd plugin && tinygo build -o fib.wasm -target=wasi fib.go")
+		fmt.Println()
+		fmt.Println("Note: Standard Go's GOOS=wasip1 does NOT work for WASM plugins.")
+		fmt.Println("You must use TinyGo: https://tinygo.org/getting-started/")
 		return
 	}
 	fmt.Printf("Loaded plugin: %s\n", p.Name())
@@ -51,8 +54,7 @@ func main() {
 	// Create interpreter
 	interp := interpreter.New(interpreter.WithStdlib())
 
-	// Register plugin as a module
-	// In a real implementation, this would be done automatically by the import system
+	// Register plugin for use in Xxlang
 	plugin.Register(p)
 
 	// Test the plugin
@@ -150,6 +152,6 @@ func fibTail(n, a, b) {
 	fmt.Println("3. Cross-platform plugin files")
 	fmt.Println("4. Sandboxed execution")
 	fmt.Println()
-	fmt.Println("Building WASM Plugins:")
+	fmt.Println("Building WASM Plugins (requires TinyGo):")
 	fmt.Println("  tinygo build -o plugin.wasm -target=wasi plugin.go")
 }
