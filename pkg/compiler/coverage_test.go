@@ -276,8 +276,9 @@ func TestBreakStatement(t *testing.T) {
 
 	bytecode := compiler.Bytecode()
 
-	if !containsOpcode(bytecode.Instructions, OpBreak) {
-		t.Error("expected OpBreak in instructions")
+	// Break is now implemented as OpJump
+	if !containsOpcode(bytecode.Instructions, OpJump) {
+		t.Error("expected OpJump in instructions (break is now a jump)")
 	}
 }
 
@@ -293,8 +294,9 @@ func TestContinueStatement(t *testing.T) {
 
 	bytecode := compiler.Bytecode()
 
-	if !containsOpcode(bytecode.Instructions, OpContinue) {
-		t.Error("expected OpContinue in instructions")
+	// Continue is now implemented as OpJump
+	if !containsOpcode(bytecode.Instructions, OpJump) {
+		t.Error("expected OpJump in instructions (continue is now a jump)")
 	}
 }
 

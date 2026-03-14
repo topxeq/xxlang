@@ -232,6 +232,8 @@ func (p *Parser) parseStatement() Statement {
 		return p.parseWhileStatement()
 	case lexer.TokenFor:
 		return p.parseForStatement()
+	case lexer.TokenSwitch:
+		return p.parseSwitchStatement()
 	case lexer.TokenBreak:
 		return p.parseBreakStatement()
 	case lexer.TokenContinue:
@@ -399,11 +401,26 @@ func (p *Parser) parseIfStatement() *IfStatement {
 	if p.peekTokenIs(lexer.TokenElse) {
 		p.nextToken()
 
-		if !p.expectPeek(lexer.TokenLBrace) {
-			return nil
-		}
+		// Check if this is "else if" - if followed by 'if' keyword
+		if p.peekTokenIs(lexer.TokenIf) {
+			p.nextToken()
+			// Create a block statement containing the if statement
+			elseIfStmt := p.parseIfStatement()
+			if elseIfStmt == nil {
+				return nil
+			}
+			stmt.Alternative = &BlockStatement{
+				Token:      p.curToken,
+				Statements: []Statement{elseIfStmt},
+			}
+		} else {
+			// Regular "else { ... }"
+			if !p.expectPeek(lexer.TokenLBrace) {
+				return nil
+			}
 
-		stmt.Alternative = p.parseBlockStatement()
+			stmt.Alternative = p.parseBlockStatement()
+		}
 	}
 
 	return stmt
@@ -951,6 +968,122 @@ func (p *Parser) parseClassStatement() *ClassStatement {
 
 	return stmt
 }
+
+// parseSwitchStatement parses a switch statement
+// switch (expression) {
+//     case value1:
+//         statements
+//     case value2:
+//         statements
+//     default:
+//         statements
+// }
+func (p *Parser) parseSwitchStatement() *SwitchStatement {
+	stmt := &SwitchStatement{Token: p.curToken}
+
+	// Expect opening parenthesis for switch expression
+	if !p.expectPeek(lexer.TokenLParen) {
+		return nil
+	}
+
+	p.nextToken()
+	stmt.Expression = p.parseExpression(LOWEST)
+
+	if !p.expectPeek(lexer.TokenRParen) {
+		return nil
+	}
+
+	if !p.expectPeek(lexer.TokenLBrace) {
+		return nil
+	}
+
+	p.nextToken()
+
+	// Parse cases and default
+	stmt.Cases = []*CaseStatement{}
+
+	for !p.curTokenIs(lexer.TokenRBrace) && !p.curTokenIs(lexer.TokenEOF) {
+		if p.curTokenIs(lexer.TokenCase) {
+			caseStmt := p.parseCaseStatement()
+			if caseStmt != nil {
+				stmt.Cases = append(stmt.Cases, caseStmt)
+			}
+			// After parsing, curToken is at next case/default or }
+		} else if p.curTokenIs(lexer.TokenDefault) {
+			if stmt.Default != nil {
+				p.addError(fmt.Sprintf("line %d:%d: multiple default clauses in switch statement",
+					p.curToken.Line, p.curToken.Column))
+				return nil
+			}
+			stmt.Default = p.parseDefaultStatement()
+			// After parsing, curToken is at next case or }
+			// If we see another case after default, that's an error
+			if p.curTokenIs(lexer.TokenCase) {
+				p.addError(fmt.Sprintf("line %d:%d: 'case' cannot appear after 'default'",
+					p.curToken.Line, p.curToken.Column))
+				return nil
+			}
+		} else {
+			p.addError(fmt.Sprintf("line %d:%d: expected 'case' or 'default', got %s",
+				p.curToken.Line, p.curToken.Column, p.curToken.Type))
+			return nil
+		}
+	}
+
+	return stmt
+}
+
+// parseCaseStatement parses a case statement in a switch
+func (p *Parser) parseCaseStatement() *CaseStatement {
+	stmt := &CaseStatement{Token: p.curToken}
+
+	p.nextToken()
+	stmt.Expression = p.parseExpression(LOWEST)
+
+	if !p.expectPeek(lexer.TokenColon) {
+		return nil
+	}
+
+	// Parse case body - statements until we hit case, default, or }
+	stmt.Consequence = p.parseCaseBody()
+
+	return stmt
+}
+
+// parseDefaultStatement parses a default statement in a switch
+func (p *Parser) parseDefaultStatement() *DefaultStatement {
+	stmt := &DefaultStatement{Token: p.curToken}
+
+	if !p.expectPeek(lexer.TokenColon) {
+		return nil
+	}
+
+	// Parse default body - statements until we hit case (error) or }
+	stmt.Consequence = p.parseCaseBody()
+
+	return stmt
+}
+
+// parseCaseBody parses statements inside a case/default until hitting case, default, or }
+func (p *Parser) parseCaseBody() *BlockStatement {
+	block := &BlockStatement{Token: p.curToken}
+	block.Statements = []Statement{}
+
+	// Advance to first statement in the case body
+	p.nextToken()
+
+	for !p.curTokenIs(lexer.TokenCase) && !p.curTokenIs(lexer.TokenDefault) &&
+		!p.curTokenIs(lexer.TokenRBrace) && !p.curTokenIs(lexer.TokenEOF) {
+		stmt := p.parseStatement()
+		if stmt != nil {
+			block.Statements = append(block.Statements, stmt)
+		}
+		p.nextToken()
+	}
+
+	return block
+}
+
 func (p *Parser) parseExpression(precedence int) Expression {
 	prefix := p.prefixParseFns[p.curToken.Type]
 	if prefix == nil {

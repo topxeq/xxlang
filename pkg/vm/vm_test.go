@@ -1782,3 +1782,51 @@ func TestGetCallStack(t *testing.T) {
 		t.Error("expected non-empty call stack")
 	}
 }
+
+// ============================================
+// Tail Call Optimization Tests
+// ============================================
+
+// TestTailCallLocalsResizing tests that tail calls properly resize the locals
+// array when the called function has more local variables than the caller.
+// This is a regression test for a bug where tail-calling a function with
+// more locals would cause an index out of bounds panic.
+func TestTailCallLocalsResizing(t *testing.T) {
+	// This test case has a wrapper function with only 3 locals (parameters)
+	// that tail-calls a helper function with 6 locals (3 params + 3 vars)
+	input := `
+		func helper(a, b, c) {
+			var x = a + 1
+			var y = b + 2
+			var z = c + 3
+			return x + y + z
+		}
+
+		func simpleWrapper(x, y, z) {
+			return helper(x, y, z)
+		}
+
+		simpleWrapper(1, 2, 3)
+	`
+
+	vm := runVM(t, input)
+	// Expected: (1+1) + (2+2) + (3+3) = 2 + 4 + 6 = 12
+	testIntegerObject(t, 12, vm.LastPopped())
+}
+
+// TestTailCallRecursiveWithLocals tests recursive tail calls with local variables
+func TestTailCallRecursiveWithLocals(t *testing.T) {
+	input := `
+		func tailFact(n, acc) {
+			if (n <= 1) {
+				return acc
+			}
+			return tailFact(n - 1, n * acc)
+		}
+
+		tailFact(5, 1)
+	`
+
+	vm := runVM(t, input)
+	testIntegerObject(t, 120, vm.LastPopped())
+}
