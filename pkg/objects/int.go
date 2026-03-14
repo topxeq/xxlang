@@ -11,10 +11,11 @@ type Int struct {
 }
 
 // IntCacheMin is the minimum cached integer value
-const IntCacheMin = -5
+const IntCacheMin = -100
 
 // IntCacheMax is the maximum cached integer value
-const IntCacheMax = 256
+// Extended to cover common loop indices and calculation results
+const IntCacheMax = 10000
 
 // intCache holds pre-allocated integers for common values
 var intCache [IntCacheMax - IntCacheMin + 1]*Int

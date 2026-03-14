@@ -1,0 +1,83 @@
+// Detailed comparison of naive vs optimized fibonacci
+import "std/time"
+
+// ========== Naive recursive (slow) ==========
+func fibNaive(n) {
+    if (n <= 1) {
+        return n
+    }
+    return fibNaive(n - 1) + fibNaive(n - 2)
+}
+
+// ========== Tail-recursive (fast with TCO) ==========
+func fibHelper(n, a, b) {
+    if (n == 0) {
+        return a
+    }
+    if (n == 1) {
+        return b
+    }
+    return fibHelper(n - 1, b, a + b)
+}
+
+func fibTail(n) {
+    return fibHelper(n, 0, 1)
+}
+
+// ========== Iterative (fastest) ==========
+func fibIter(n) {
+    if (n <= 1) {
+        return n
+    }
+    var a = 0
+    var b = 1
+    for (var i = 2; i <= n; i++) {
+        var temp = a + b
+        a = b
+        b = temp
+    }
+    return b
+}
+
+// Test correctness
+println("Verifying correctness...")
+var testN = 35
+var expected = 9227465
+var r1 = fibNaive(testN)
+var r2 = fibTail(testN)
+var r3 = fibIter(testN)
+println("fibNaive(" + testN.toStr() + ") = " + r1.toStr() + " (correct: " + (r1 == expected).toStr() + ")")
+println("fibTail(" + testN.toStr() + ") = " + r2.toStr() + " (correct: " + (r2 == expected).toStr() + ")")
+println("fibIter(" + testN.toStr() + ") = " + r3.toStr() + " (correct: " + (r3 == expected).toStr() + ")")
+
+// Benchmark tail-recursive version
+println("")
+println("=== Benchmark fibTail (TCO) ===")
+var iterations = 10
+var start = time.unixNano()
+for (var i = 0; i < iterations; i++) {
+    var _ = fibTail(35)
+}
+var elapsedNs = time.unixNano() - start
+var avgNs = elapsedNs / iterations
+println("fibTail(35) average: " + avgNs.toStr() + " ns (~" + (avgNs / 1000000).toStr() + " ms)")
+
+// Benchmark iterative version
+println("")
+println("=== Benchmark fibIter ===")
+start = time.unixNano()
+for (var i = 0; i < iterations; i++) {
+    var _ = fibIter(35)
+}
+elapsedNs = time.unixNano() - start
+avgNs = elapsedNs / iterations
+println("fibIter(35) average: " + avgNs.toStr() + " ns (~" + (avgNs / 1000000).toStr() + " ms)")
+
+// Benchmark naive version (only a few iterations)
+println("")
+println("=== Benchmark fibNaive (slow) ===")
+iterations = 1
+start = time.unixMs()
+var _ = fibNaive(35)
+elapsedNs = time.unixMs() - start
+println("fibNaive(35): " + (elapsedNs * 1000000).toStr() + " ns (~" + elapsedNs.toStr() + " ms)")
