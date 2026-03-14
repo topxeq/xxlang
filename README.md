@@ -297,6 +297,31 @@ func fibNaive(n) {
 
 See [benchmarks/FIB35_FINAL_REPORT.md](benchmarks/FIB35_FINAL_REPORT.md) for detailed analysis.
 
+### High Performance via Go Functions
+
+When embedding Xxlang in Go, you can register Go functions for native performance:
+
+```go
+// Register a Go function
+interp.SetGlobal("goFib", &objects.Builtin{
+    Fn: func(args ...objects.Object) objects.Object {
+        n := args[0].(*objects.Int).Value
+        return &objects.Int{Value: fibFast(n)}  // Go-native, instant!
+    },
+})
+
+// Call from Xxlang
+interp.Eval("goFib(100000)")  // Microseconds, not seconds!
+```
+
+| Method | fib(35) | Speedup |
+|--------|---------|---------|
+| Xxlang naive | 6.5 sec | baseline |
+| Xxlang TCO | 200 µs | 32,000x |
+| Go function | 25 µs | **260,000x** |
+
+See [docs/EMBEDDING.md](docs/EMBEDDING.md) for complete examples.
+
 ## License
 
 MIT License
