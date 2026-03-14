@@ -22,11 +22,64 @@ go install github.com/topxeq/xxlang/cmd/xxlang@latest
 
 ```bash
 # 运行脚本文件
-xxlang script.xxl
+xxlang run script.xxl
+
+# 运行编译后的字节码
+xxlang run script.xxb
 
 # 启动交互式 REPL
 xxlang
 ```
+
+## 命令行工具
+
+```bash
+xxlang                             # 启动 REPL
+xxlang run file.xxl                # 运行源代码
+xxlang run file.xxb                # 运行字节码
+xxlang compile file.xxl            # 编译为可执行文件
+xxlang compile --bytecode file.xxl # 编译为字节码 (.xxb)
+xxlang compile -o out.xxb --bytecode file.xxl  # 指定输出路径
+xxlang version                     # 显示版本
+xxlang help                        # 显示帮助
+```
+
+## 字节码编译
+
+Xxlang 支持将源代码编译为字节码文件，实现更快的加载速度和源码保护。
+
+### 编译为字节码
+
+```bash
+# 编译 script.xxl 为 script.xxb
+xxlang compile --bytecode script.xxl
+
+# 指定输出路径
+xxlang compile --bytecode -o program.xxb script.xxl
+```
+
+### 运行字节码
+
+```bash
+# 执行编译后的字节码
+xxlang run script.xxb
+```
+
+### 对比
+
+| 特性 | 源代码 (.xxl) | 字节码 (.xxb) |
+|------|---------------|---------------|
+| 加载过程 | 解析 → 编译 → 执行 | 反序列化 → 执行 |
+| 启动开销 | ~5ms | ~1ms |
+| 分发 | 源码可见 | 字节码混淆 |
+| 文件大小 | 较小 | 约 5-10 倍 |
+
+### 使用场景
+
+- **开发阶段**：使用源代码，方便调试
+- **生产部署**：部署字节码，启动更快
+- **源码保护**：分发字节码，隐藏实现细节
+- **嵌入应用**：将字节码嵌入 Go 程序
 
 ## 语言示例
 
@@ -154,11 +207,25 @@ go test ./tests/... -bench=.
 
 Xxlang 使用字节码虚拟机，支持尾调用优化。
 
-| 语言 | fib(35) 耗时 |
-|------|-------------|
-| Go | 0.056s |
-| Python | 2.77s |
-| Xxlang | 9.37s |
+### 朴素递归
+
+| 语言 | fib(35) 耗时 | 相对 C |
+|------|-------------|--------|
+| C (gcc -O2) | 25 ms | 1x |
+| Go | 53 ms | 2.1x |
+| Python | 2,714 ms | 107x |
+| Xxlang | 6,324 ms | 250x |
+
+### 使用尾调用优化
+
+| 语言 | fib(35) TCO | 相对 C |
+|------|-------------|--------|
+| C | ~0.001 ms | 1x |
+| Xxlang | 0.015 ms | 15x |
+
+**关键发现**：算法选择比语言更重要。使用 TCO，Xxlang 实现了 **420,000 倍** 的性能提升。
+
+详见 [benchmarks/FIB35_FINAL_REPORT.md](benchmarks/FIB35_FINAL_REPORT.md)。
 
 ## 尾调用优化
 

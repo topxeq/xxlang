@@ -154,12 +154,52 @@ push([1, 2], 3)     // [1, 2, 3]
 ## CLI Commands
 
 ```bash
-xxlang                   # Start REPL
-xxlang run file.xxl      # Run script
-xxlang compile file.xxl  # Compile to executable
-xxlang version           # Show version
-xxlang help              # Show help
+xxlang                        # Start REPL
+xxlang run file.xxl           # Run source script
+xxlang run file.xxb           # Run compiled bytecode
+xxlang compile file.xxl       # Compile to executable wrapper
+xxlang compile --bytecode file.xxl    # Compile to bytecode (.xxb)
+xxlang compile -o out.xxb --bytecode file.xxl  # Compile with output path
+xxlang version                # Show version
+xxlang help                   # Show help
 ```
+
+## Bytecode Compilation
+
+Xxlang supports compiling source code to bytecode files for faster loading and distribution.
+
+### Compile to Bytecode
+
+```bash
+# Compile script.xxl to script.xxb
+xxlang compile --bytecode script.xxl
+
+# Specify output path
+xxlang compile --bytecode -o program.xxb script.xxl
+```
+
+### Run Bytecode
+
+```bash
+# Execute compiled bytecode
+xxlang run script.xxb
+```
+
+### Benefits
+
+| Feature | Source (.xxl) | Bytecode (.xxb) |
+|---------|---------------|-----------------|
+| Loading | Parse + Compile + Execute | Deserialize + Execute |
+| Startup | ~5ms overhead | ~1ms overhead |
+| Distribution | Source code visible | Obfuscated bytecode |
+| Size | Smaller | ~5-10x larger |
+
+### Use Cases
+
+- **Development**: Use source files for easy editing
+- **Production**: Deploy bytecode for faster startup
+- **Distribution**: Share bytecode to hide source code
+- **Embedding**: Include bytecode in Go applications
 
 ## REPL Commands
 
@@ -188,13 +228,25 @@ go test ./...
 
 Xxlang uses a bytecode VM with tail call optimization.
 
-| Language | fib(35) Time | Relative to Go |
-|----------|--------------|----------------|
-| Go | 0.056s | 1x |
-| Python | 2.77s | 49x |
-| Xxlang | 9.37s | 167x |
+### Naive Recursion
 
-See [benchmarks/RESULTS.md](benchmarks/RESULTS.md) for detailed analysis.
+| Language | fib(35) Time | Relative to C |
+|----------|--------------|---------------|
+| C (gcc -O2) | 25 ms | 1x |
+| Go | 53 ms | 2.1x |
+| Python | 2,714 ms | 107x |
+| Xxlang | 6,324 ms | 250x |
+
+### With Tail Call Optimization
+
+| Language | fib(35) TCO | Relative to C |
+|----------|-------------|---------------|
+| C | ~0.001 ms | 1x |
+| Xxlang | 0.015 ms | 15x |
+
+**Key insight**: Algorithm choice matters more than language. Using TCO, Xxlang achieves **420,000x** speedup over naive recursion.
+
+See [benchmarks/FIB35_FINAL_REPORT.md](benchmarks/FIB35_FINAL_REPORT.md) for detailed analysis.
 
 ## License
 

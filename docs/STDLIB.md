@@ -18,6 +18,7 @@ io.println("Hello, World!")
 - [std/json](#stdjson) - JSON encoding/decoding
 - [std/regex](#stdregex) - Regular expressions
 - [std/crypto](#stdcrypto) - Cryptographic functions
+- [std/time](#stdtime) - Time and date functions
 
 ---
 
@@ -626,6 +627,168 @@ Returns n random bytes as hex string.
 
 ```xxl
 randomHex(16)  // "a1b2c3d4..." (32 hex chars)
+```
+
+---
+
+## std/time
+
+Time and date functions for working with timestamps and durations.
+
+### Timestamps
+
+#### unix()
+Returns current Unix timestamp in seconds.
+
+```xxl
+import "std/time"
+var ts = time.unix()  // e.g., 1710422400
+```
+
+#### unixMs()
+Returns current Unix timestamp in milliseconds.
+
+```xxl
+var ms = time.unixMs()  // e.g., 1710422400000
+```
+
+#### unixNano()
+Returns current Unix timestamp in nanoseconds.
+
+```xxl
+var ns = time.unixNano()  // e.g., 1710422400000000000
+```
+
+### Date/Time Components
+
+#### now()
+Returns current time as a map with components.
+
+```xxl
+var t = time.now()
+println(t["year"])     // 2026
+println(t["month"])    // 3 (March)
+println(t["day"])      // 14
+println(t["hour"])     // 20
+println(t["minute"])   // 30
+println(t["second"])   // 45
+println(t["nanosecond"])  // 123456789
+```
+
+#### year(), month(), day(), hour(), minute(), second()
+Returns current date/time component.
+
+```xxl
+println(time.year())    // 2026
+println(time.month())   // 3
+println(time.day())     // 14
+println(time.hour())    // 20
+println(time.minute())  // 30
+println(time.second())  // 45
+```
+
+#### weekday()
+Returns current weekday (0=Sunday, 1=Monday, ..., 6=Saturday).
+
+```xxl
+var wd = time.weekday()  // e.g., 4 (Thursday)
+```
+
+### Formatting
+
+#### format(layout)
+Formats current time using Go-style layout.
+
+```xxl
+println(time.format("2006-01-02"))           // "2026-03-14"
+println(time.format("15:04:05"))             // "20:30:45"
+println(time.format("2006-01-02 15:04:05"))  // "2026-03-14 20:30:45"
+```
+
+#### formatUnix(timestamp, layout)
+Formats a Unix timestamp.
+
+```xxl
+var ts = time.unix()
+println(time.formatUnix(ts, "2006-01-02"))
+```
+
+#### parse(layout, value)
+Parses a time string and returns Unix timestamp.
+
+```xxl
+var ts = time.parse("2006-01-02", "2026-03-14")
+```
+
+### Sleep
+
+#### sleep(ms)
+Pauses execution for specified milliseconds.
+
+```xxl
+println("Starting...")
+time.sleep(1000)  // Sleep 1 second
+println("Done!")
+```
+
+#### sleepSec(seconds)
+Pauses execution for specified seconds.
+
+```xxl
+time.sleepSec(2)  // Sleep 2 seconds
+```
+
+### Date Arithmetic
+
+#### addDays(days)
+Adds days to current time, returns Unix timestamp.
+
+```xxl
+var tomorrow = time.addDays(1)
+var nextWeek = time.addDays(7)
+```
+
+#### addMonths(months)
+Adds months to current time.
+
+```xxl
+var nextMonth = time.addMonths(1)
+```
+
+#### addYears(years)
+Adds years to current time.
+
+```xxl
+var nextYear = time.addYears(1)
+```
+
+#### since(startMs)
+Returns milliseconds elapsed since given timestamp.
+
+```xxl
+var start = time.unixMs()
+// ... do some work ...
+var elapsed = time.since(start)
+println("Took " + elapsed.toStr() + " ms")
+```
+
+### Calendar
+
+#### isLeapYear(year)
+Returns true if year is a leap year.
+
+```xxl
+time.isLeapYear(2024)  // true
+time.isLeapYear(2023)  // false
+```
+
+#### daysInMonth(year, month)
+Returns number of days in month.
+
+```xxl
+time.daysInMonth(2024, 2)  // 29 (leap year)
+time.daysInMonth(2023, 2)  // 28
+time.daysInMonth(2024, 1)  // 31
 ```
 
 ---
