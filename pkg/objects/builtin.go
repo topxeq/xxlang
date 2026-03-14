@@ -906,6 +906,55 @@ var Builtins = map[string]*Builtin{
             return &Array{Elements: reversed}
         },
     },
+
+    // ============================================================
+    // Dynamic Code Execution
+    // ============================================================
+    "runCode": {
+        Fn: func(args ...Object) Object {
+            if len(args) < 1 || len(args) > 2 {
+                return newError("wrong number of arguments for runCode. got=%d, want=1 or 2", len(args))
+            }
+
+            code, ok := args[0].(*String)
+            if !ok {
+                return newError("first argument to 'runCode' must be STRING, got %s", args[0].Type())
+            }
+
+            // Optional second argument: a map of variables to pass to the code
+            var argMap *Map
+            if len(args) == 2 {
+                argMap, ok = args[1].(*Map)
+                if !ok {
+                    return newError("second argument to 'runCode' must be MAP, got %s", args[1].Type())
+                }
+            }
+
+            // Use the registered callback if available
+            if runCodeImpl != nil {
+                result, err := runCodeImpl(code.Value, argMap)
+                if err != nil {
+                    return newError("runCode error: %v", err)
+                }
+                if result == nil {
+                    return NULL
+                }
+                return result
+            }
+
+            return newError("runCode not available in this context")
+        },
+    },
+}
+
+// RunCodeImpl is the implementation function for runCode, set by the VM
+var runCodeImpl func(code string, args *Map) (Object, error)
+
+// SetRunCodeImpl registers the runCode implementation and returns the previous value
+func SetRunCodeImpl(fn func(code string, args *Map) (Object, error)) func(code string, args *Map) (Object, error) {
+    prev := runCodeImpl
+    runCodeImpl = fn
+    return prev
 }
 
 // newError creates a new Error object with the given message

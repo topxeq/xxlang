@@ -2122,3 +2122,85 @@ func TestFinallyRunsOnException(t *testing.T) {
 	vm := runVM(t, input)
 	testIntegerObject(t, 42, vm.LastPopped())
 }
+
+// ============================================
+// runCode Tests
+// ============================================
+
+func TestRunCodeBasic(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		{`runCode("1 + 2")`, int64(3)},
+		{`runCode("10 * 5")`, int64(50)},
+		{`runCode("\"hello\" + \" world\"")`, "hello world"},
+		{`runCode("true && false")`, false},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		switch expected := tt.expected.(type) {
+		case int64:
+			testIntegerObject(t, expected, vm.LastPopped())
+		case string:
+			testStringObject(t, expected, vm.LastPopped())
+		case bool:
+			testBooleanObject(t, expected, vm.LastPopped())
+		}
+	}
+}
+
+func TestRunCodeWithArguments(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		{`runCode("x + y", {"x": 10, "y": 20})`, int64(30)},
+		{`runCode("x * 2", {"x": 5})`, int64(10)},
+		{`runCode("a + b + c", {"a": 1, "b": 2, "c": 3})`, int64(6)},
+		{`runCode("name", {"name": "test"})`, "test"},
+	}
+
+	for _, tt := range tests {
+		vm := runVM(t, tt.input)
+		switch expected := tt.expected.(type) {
+		case int64:
+			testIntegerObject(t, expected, vm.LastPopped())
+		case string:
+			testStringObject(t, expected, vm.LastPopped())
+		}
+	}
+}
+
+func TestRunCodeFunctionDefinition(t *testing.T) {
+	// Each runCode call is an independent execution context
+	// Functions must be defined and called within the same runCode call
+	input := `runCode("func add(a, b) { return a + b }; add(10, 20)")`
+	vm := runVM(t, input)
+	testIntegerObject(t, 30, vm.LastPopped())
+}
+
+func TestRunCodeNested(t *testing.T) {
+	input := `runCode("runCode(\"5 * 3\")")`
+	vm := runVM(t, input)
+	testIntegerObject(t, 15, vm.LastPopped())
+}
+
+func TestRunCodeReturnArray(t *testing.T) {
+	input := `runCode("var arr = [1, 2, 3]; arr")`
+	vm := runVM(t, input)
+	arr, ok := vm.LastPopped().(*objects.Array)
+	if !ok {
+		t.Fatalf("expected Array, got %T", vm.LastPopped())
+	}
+	if len(arr.Elements) != 3 {
+		t.Fatalf("expected 3 elements, got %d", len(arr.Elements))
+	}
+}
+
+func TestRunCodeModifyArgument(t *testing.T) {
+	input := `runCode("x = x * 2; x", {"x": 5})`
+	vm := runVM(t, input)
+	testIntegerObject(t, 10, vm.LastPopped())
+}

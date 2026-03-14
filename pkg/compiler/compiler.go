@@ -3,6 +3,8 @@ package compiler
 
 import (
 	"fmt"
+	"path"
+	"strings"
 
 	"github.com/topxeq/xxlang/pkg/objects"
 	"github.com/topxeq/xxlang/pkg/parser"
@@ -81,6 +83,7 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(38, "sum")
 	s.DefineBuiltin(39, "avg")
 	s.DefineBuiltin(40, "reverse")
+	s.DefineBuiltin(41, "runCode")
 	return s
 }
 
@@ -269,6 +272,18 @@ func NewWithState(s *SymbolTable, constants []objects.Object) *Compiler {
 		inlineableGlobals: make(map[int]*InlineableFuncInfo),
 		options:           DefaultOptimizations(),
 	}
+}
+
+// DefineGlobal defines a global variable in the symbol table
+// This is used by runCode to pre-define arguments before compilation
+func (c *Compiler) DefineGlobal(name string) Symbol {
+	return c.symbolTable.Define(name)
+}
+
+// ResolveSymbol resolves a symbol by name
+// This is used by runCode to find argument indices after compilation
+func (c *Compiler) ResolveSymbol(name string) (Symbol, bool) {
+	return c.symbolTable.Resolve(name)
 }
 
 // SetSource sets the source file path and code for error reporting
@@ -1164,9 +1179,23 @@ func (c *Compiler) compileImportStatement(node *parser.ImportStatement) error {
 		// Pop the original module reference
 		c.emit(OpPop)
 	} else {
-		// Simple import: import "./math"
-		// Just load and pop the module (for side effects)
-		c.emit(OpPop)
+		// Simple import: import "std/time" or import "./math"
+		// Auto-bind module name extracted from path
+		path := node.Path.Value
+
+		// Extract module name from path
+		// Examples: "std/time" -> "time", "./math" -> "math", "math" -> "math"
+		moduleName := extractModuleName(path)
+
+		if moduleName != "" {
+			// Store the module as a global variable
+			symbol := c.symbolTable.Define(moduleName)
+			c.emit(OpSetGlobal, symbol.Index)
+			c.emit(OpPop) // Pop the pushed-back value from OpSetGlobal
+		} else {
+			// Can't extract name, just load for side effects
+			c.emit(OpPop)
+		}
 	}
 
 	return nil
@@ -1893,4 +1922,48 @@ func (c *Compiler) compileThrowStatement(node *parser.ThrowStatement) error {
 	c.emit(OpThrow)
 
 	return nil
+}
+
+// extractModuleName extracts a module name from a path for auto-binding.
+// Examples: "std/time" -> "time", "./math" -> "math", "math" -> "math"
+// Returns empty string if a valid name cannot be extracted.
+func extractModuleName(modulePath string) string {
+	// Clean the path
+	modulePath = strings.TrimSpace(modulePath)
+
+	// Get the base name
+	base := path.Base(modulePath)
+
+	// Remove common prefixes
+	// "std/time" -> "time"
+	// "plugin/mysql" -> "mysql"
+	if base == "." || base == ".." || base == "" {
+		return ""
+	}
+
+	// Remove file extension if present (e.g., ".xxl")
+	if idx := strings.LastIndex(base, "."); idx > 0 {
+		base = base[:idx]
+	}
+
+	// Validate that it's a valid identifier
+	if len(base) == 0 {
+		return ""
+	}
+
+	// Check first character is letter or underscore
+	first := base[0]
+	if !((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z') || first == '_') {
+		return ""
+	}
+
+	// Check rest are alphanumeric or underscore
+	for i := 1; i < len(base); i++ {
+		c := base[i]
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+			return ""
+		}
+	}
+
+	return base
 }
