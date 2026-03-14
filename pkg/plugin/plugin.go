@@ -1,23 +1,19 @@
 // pkg/plugin/plugin.go
-// Plugin system for loading plugins at runtime.
+// Plugin system for loading WebAssembly plugins at runtime.
 //
-// Two plugin formats are supported:
-//
-// 1. Native plugins (.so) - Go shared libraries using CGO (Linux/macOS/FreeBSD only)
-// 2. WebAssembly plugins (.wasm) - WASM modules using wazero (all platforms, no CGO)
+// WASM plugins work on all platforms (Windows, Linux, macOS) without CGO.
+// Plugins can be written in TinyGo, Rust, C/C++, Zig, AssemblyScript, etc.
 //
 // Usage from xxlang:
 //
 //	import "plugin/myplugin"
 //	myplugin.hello()
 //
-// Building a native plugin (Linux/macOS only):
-//
-//	go build -buildmode=plugin -o myplugin.so myplugin.go
-//
-// Building a WASM plugin (all platforms):
+// Building a WASM plugin:
 //
 //	tinygo build -o myplugin.wasm -target=wasi myplugin.go
+//	# or with Rust:
+//	cargo build --target wasm32-wasi --release
 package plugin
 
 import (
@@ -30,12 +26,9 @@ import (
 	"github.com/topxeq/xxlang/pkg/objects"
 )
 
-// Plugin is the interface that native plugins must implement.
-// Plugins are loaded from .so files and register their exports
-// through this interface.
+// Plugin is the interface that WASM plugins must implement.
 type Plugin interface {
 	// Name returns the plugin name (used as plugin/name in imports).
-	// This should match the filename (without .so extension).
 	Name() string
 
 	// Exports returns the module's exported symbols.
@@ -53,7 +46,8 @@ var Registry = struct {
 }
 
 // Register registers a plugin with the registry.
-// This is typically called from a plugin's init() function.
+// This is typically called from a plugin's init() function (for static plugins)
+// or by the loader after loading a WASM plugin.
 func Register(p Plugin) {
 	if p == nil {
 		return
@@ -91,11 +85,11 @@ func List() []string {
 	return names
 }
 
-// Loader handles loading .so plugin files.
+// Loader handles loading WASM plugin files.
 type Loader struct {
-	mu       sync.RWMutex
-	paths    []string          // search paths for plugins
-	loading  map[string]bool   // cycle detection
+	mu      sync.RWMutex
+	paths   []string        // search paths for plugins
+	loading map[string]bool // cycle detection
 }
 
 // NewLoader creates a new plugin loader with default search paths.
@@ -130,11 +124,8 @@ func (l *Loader) Paths() []string {
 }
 
 // Load loads a plugin by name.
-// It first checks the registry, then searches for a .so file.
+// It first checks the registry, then searches for a .wasm file.
 // Returns the plugin and any error encountered.
-//
-// Note: Go's plugin package only works on Linux, macOS, and FreeBSD.
-// On Windows, this will return an error.
 func (l *Loader) Load(name string) (Plugin, error) {
 	// Check if already registered
 	if p, ok := Get(name); ok {
@@ -167,7 +158,7 @@ func (l *Loader) Load(name string) (Plugin, error) {
 	return plugin, nil
 }
 
-// loadFromFile attempts to load a plugin from a .so or .wasm file.
+// loadFromFile attempts to load a plugin from a .wasm file.
 func (l *Loader) loadFromFile(name string) (Plugin, error) {
 	// Get search paths
 	l.mu.RLock()
@@ -175,51 +166,24 @@ func (l *Loader) loadFromFile(name string) (Plugin, error) {
 	copy(paths, l.paths)
 	l.mu.RUnlock()
 
-	// Extensions to try in order
-	extensions := []string{".wasm", ".so"}
-
 	// Search for plugin file
 	for _, searchPath := range paths {
-		for _, ext := range extensions {
-			pluginPath := filepath.Join(searchPath, name+ext)
+		pluginPath := filepath.Join(searchPath, name+".wasm")
 
-			// Check if file exists
-			if _, err := os.Stat(pluginPath); os.IsNotExist(err) {
-				continue
-			}
-
-			// Try to load based on extension
-			var plugin Plugin
-			var err error
-
-			switch ext {
-			case ".wasm":
-				plugin, err = loadPluginWASM(pluginPath)
-			case ".so":
-				plugin, err = loadPluginSO(pluginPath)
-			}
-
-			if err == nil {
-				return plugin, nil
-			}
-			// Continue to next path/extension if this one failed
-			return nil, fmt.Errorf("error loading plugin %s from %s: %v", name, pluginPath, err)
+		// Check if file exists
+		if _, err := os.Stat(pluginPath); os.IsNotExist(err) {
+			continue
 		}
+
+		// Try to load the WASM plugin
+		plugin, err := loadPluginWASM(pluginPath)
+		if err == nil {
+			return plugin, nil
+		}
+		return nil, fmt.Errorf("error loading plugin %s from %s: %v", name, pluginPath, err)
 	}
 
 	return nil, fmt.Errorf("plugin not found: %s (searched: %s)", name, strings.Join(paths, ", "))
-}
-
-// loadPluginSO is implemented in plugin_native.go for supported platforms
-// and plugin_stub.go for unsupported platforms (Windows).
-// The signature is:
-//   func loadPluginSO(path string) (Plugin, error)
-
-// isNotExist checks if an error indicates file not found.
-func isNotExist(err error) bool {
-	return err != nil && (strings.Contains(err.Error(), "not found") ||
-		strings.Contains(err.Error(), "no such file") ||
-		strings.Contains(err.Error(), "cannot find"))
 }
 
 // ToModule converts a Plugin to an objects.Module.
@@ -230,4 +194,15 @@ func ToModule(p Plugin) *objects.Module {
 		Exports: exports,
 		Globals: nil, // Plugins don't have isolated globals
 	}
+}
+
+// isNotExist checks if an error indicates that a plugin was not found.
+func isNotExist(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "not found") ||
+		strings.Contains(msg, "no such file") ||
+		strings.Contains(msg, "cannot find")
 }

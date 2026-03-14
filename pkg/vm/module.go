@@ -20,12 +20,12 @@ import (
 // It handles caching and circular dependency detection.
 // Supports three module types:
 //   - std/* : Standard library modules
-//   - plugin/* : Native Go plugins (.so files)
+//   - plugin/* : WebAssembly plugins (.wasm files)
 //   - *.xxl : xxlang source files
 func (vm *VM) loadModuleFile(resolvedPath string) (*objects.Module, error) {
-	// Check if it's a native plugin first
+	// Check if it's a WASM plugin first
 	if strings.HasPrefix(resolvedPath, "plugin/") {
-		return vm.loadNativePlugin(resolvedPath)
+		return vm.loadWasmPlugin(resolvedPath)
 	}
 
 	// Check if it's a standard library module
@@ -109,9 +109,12 @@ func (vm *VM) loadModuleFile(resolvedPath string) (*objects.Module, error) {
     return mod, nil
 }
 
-// loadNativePlugin loads a native Go plugin (.so file).
-// Plugin path format: plugin/name (e.g., plugin/mysql)
-func (vm *VM) loadNativePlugin(path string) (*objects.Module, error) {
+// loadWasmPlugin loads a WebAssembly plugin (.wasm file).
+// Plugin path format: plugin/name (e.g., plugin/fib)
+//
+// WASM plugins work on all platforms (Windows, Linux, macOS) without CGO.
+// Plugins can be written in TinyGo, Rust, C/C++, Zig, AssemblyScript, etc.
+func (vm *VM) loadWasmPlugin(path string) (*objects.Module, error) {
 	// Extract plugin name from path (plugin/name -> name)
 	pluginName := strings.TrimPrefix(path, "plugin/")
 	if pluginName == "" {
@@ -150,7 +153,7 @@ func (vm *VM) loadNativePlugin(path string) (*objects.Module, error) {
 	// Load the plugin
 	p, err := loader.Load(pluginName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load plugin %s: %v", pluginName, err)
+		return nil, fmt.Errorf("failed to load WASM plugin %s: %v", pluginName, err)
 	}
 
 	// Convert plugin to module

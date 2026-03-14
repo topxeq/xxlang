@@ -1,5 +1,5 @@
 // pkg/plugin/wasm_loader.go
-// WebAssembly plugin loader using wazero runtime.
+// WebAssembly plugin loader using gowasm runtime.
 // Works on all platforms including Windows without CGO.
 package plugin
 
@@ -8,15 +8,15 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/tetratelabs/wazero"
-	"github.com/tetratelabs/wazero/api"
-	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
+	"github.com/topxeq/gowasm"
+	"github.com/topxeq/gowasm/api"
+	"github.com/topxeq/gowasm/imports/wasi_snapshot_preview1"
 )
 
-// loadPluginWASM loads a .wasm file using wazero runtime.
+// loadPluginWASM loads a .wasm file using gowasm runtime.
 // This works on all platforms including Windows without CGO.
 //
-// Supports both TinyGo and standard Go WASM plugins.
+// WASM plugins can be written in TinyGo, Rust, C/C++, Zig, AssemblyScript, etc.
 func loadPluginWASM(path string) (Plugin, error) {
 	// Read the WASM file
 	wasmBytes, err := os.ReadFile(path)
@@ -27,10 +27,10 @@ func loadPluginWASM(path string) (Plugin, error) {
 	// Create context
 	ctx := context.Background()
 
-	// Create wazero runtime
-	rt := wazero.NewRuntime(ctx)
+	// Create gowasm runtime
+	rt := gowasm.NewRuntime(ctx)
 
-	// Instantiate WASI, required for Go-compiled WASM (wasip1)
+	// Instantiate WASI, required for WASI-compliant WASM modules
 	wasi_snapshot_preview1.MustInstantiate(ctx, rt)
 
 	// Compile the module first
@@ -41,8 +41,8 @@ func loadPluginWASM(path string) (Plugin, error) {
 	}
 
 	// Instantiate with stdout/stderr configured
-	// _start will run automatically, initializing the Go runtime
-	moduleConfig := wazero.NewModuleConfig().
+	// _start will run automatically, initializing the runtime
+	moduleConfig := gowasm.NewModuleConfig().
 		WithStdout(os.Stdout).
 		WithStderr(os.Stderr)
 
