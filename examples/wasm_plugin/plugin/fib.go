@@ -1,40 +1,58 @@
 // examples/wasm_plugin/plugin/fib.go
 // A WebAssembly plugin for Fibonacci calculation.
 //
-// Build with standard Go (Go 1.21+):
+// IMPORTANT: This requires TinyGo, not standard Go!
+// Standard Go's wasip1 target does NOT support plugin-style WASM modules.
 //
-//	GOOS=wasip1 GOARCH=wasm go build -o fib.wasm fib.go
+// Build with TinyGo:
+//   tinygo build -o fib.wasm -target=wasi fib.go
 //
-// This creates a cross-platform plugin that works on Windows, Linux, macOS
-// without CGO.
+// Why TinyGo is required:
+// - Standard Go runs _start (main) and exits, closing the module
+// - TinyGo's architecture allows exported functions to remain callable
 package main
 
 import (
-	"fmt"
 	"unsafe"
 )
 
-// Global buffer for string returns
-var stringBuffer []byte
+// Memory allocation for WASM
+var memory []byte
 
-// Plugin name - exported for the host
-//
+//export alloc
+func alloc(size uint32) uint32 {
+	offset := uint32(len(memory))
+	// Ensure 8-byte alignment for int64
+	if offset%8 != 0 {
+		offset += 8 - offset%8
+	}
+	newLen := offset + size
+	if uint32(cap(memory)) < newLen {
+		newMem := make([]byte, newLen*2)
+		copy(newMem, memory)
+		memory = newMem[:newLen]
+	} else {
+		memory = memory[:newLen]
+	}
+	return offset
+}
+
 //export plugin_name
 func pluginName() (ptr uint32, size uint32) {
 	name := "fib"
-	return stringToPtr(name)
+	ptr = alloc(uint32(len(name)))
+	copy(memory[ptr:], name)
+	return ptr, uint32(len(name))
 }
 
-// Plugin version - exported for the host
-//
 //export plugin_version
 func pluginVersion() (ptr uint32, size uint32) {
 	version := "1.0.0-wasm"
-	return stringToPtr(version)
+	ptr = alloc(uint32(len(version)))
+	copy(memory[ptr:], version)
+	return ptr, uint32(len(version))
 }
 
-// Fast Fibonacci - O(n) time complexity
-//
 //export call_fast
 func fibFast(n int64) int64 {
 	if n <= 1 {
@@ -47,8 +65,6 @@ func fibFast(n int64) int64 {
 	return b
 }
 
-// Matrix Fibonacci - O(log n) time complexity
-//
 //export call_matrix
 func fibMatrix(n int64) int64 {
 	if n <= 1 {
@@ -78,9 +94,6 @@ func fibMatrix(n int64) int64 {
 	return result[0][1]
 }
 
-// Check if a number is a Fibonacci number
-// Returns 1 (true) or 0 (false)
-//
 //export call_isFib
 func isFib(n int64) int32 {
 	if n < 0 {
@@ -103,9 +116,6 @@ func isFib(n int64) int32 {
 	return 0
 }
 
-// Batch Fibonacci - returns fib(0) to fib(n)
-// Returns pointer to int64 array and count
-//
 //export call_range_
 func fibRange(n int64) (ptr uint32, count uint32) {
 	if n < 0 {
@@ -127,34 +137,6 @@ func fibRange(n int64) (ptr uint32, count uint32) {
 	return ptr, count
 }
 
-// Memory allocation for WASM
-var memory []byte
-
-//export alloc
-func alloc(size uint32) uint32 {
-	offset := uint32(len(memory))
-	// Ensure 8-byte alignment for int64
-	if offset%8 != 0 {
-		offset += 8 - offset%8
-	}
-	newLen := offset + size
-	if newLen > uint32(cap(memory)) {
-		newMem := make([]byte, newLen*2)
-		copy(newMem, memory)
-		memory = newMem
-	} else {
-		memory = memory[:newLen]
-	}
-	return offset
-}
-
-// Helper: convert string to pointer and size
-func stringToPtr(s string) (uint32, uint32) {
-	ptr := alloc(uint32(len(s)))
-	copy(memory[ptr:], s)
-	return ptr, uint32(len(s))
-}
-
 func main() {
-	fmt.Println("Fibonacci WASM Plugin loaded")
+	// main is required but not used for TinyGo WASM plugins
 }

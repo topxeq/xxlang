@@ -38,9 +38,15 @@ func (p *WasmPlugin) Exports() map[string]objects.Object {
 
 	// Get version if available
 	if versionFn := p.module.ExportedFunction("plugin_version"); versionFn != nil {
-		if results, err := versionFn.Call(ctx); err == nil && len(results) >= 2 {
-			version := readStringFromMemory2(p.module, uint32(results[0]), uint32(results[1]))
-			result["version"] = &objects.String{Value: version}
+		allocFn := p.module.ExportedFunction("alloc")
+		if allocFn != nil {
+			if allocResults, err := allocFn.Call(ctx, 8); err == nil && len(allocResults) > 0 {
+				resultPtr := uint32(allocResults[0])
+				if _, err := versionFn.Call(ctx, uint64(resultPtr)); err == nil {
+					version := readStringFromResultPtr(p.module, resultPtr)
+					result["version"] = &objects.String{Value: version}
+				}
+			}
 		}
 	}
 
@@ -120,7 +126,7 @@ func (p *WasmPlugin) wrapFunction(fn api.Function, name string) *objects.Builtin
 				return objects.FALSE
 
 			case "call_range_":
-				// Single int64 argument, returns pointer and count
+				// int64 argument + resultPtr, writes to memory
 				if len(args) != 1 {
 					return &objects.Error{Message: "range_ requires 1 argument"}
 				}
@@ -129,17 +135,36 @@ func (p *WasmPlugin) wrapFunction(fn api.Function, name string) *objects.Builtin
 					return &objects.Error{Message: "argument must be integer"}
 				}
 
-				results, err := fn.Call(ctx, uint64(n.Value))
+				// Allocate memory for result pointer
+				allocFn := p.module.ExportedFunction("alloc")
+				if allocFn == nil {
+					return &objects.Error{Message: "alloc function not found"}
+				}
+
+				allocResults, err := allocFn.Call(ctx, 8) // 8 bytes for ptr + count
 				if err != nil {
 					return &objects.Error{Message: err.Error()}
 				}
-				if len(results) < 2 {
-					return &objects.Error{Message: "function returned invalid result"}
+				resultPtr := uint32(allocResults[0])
+
+				// Call the function with n and resultPtr
+				_, err = fn.Call(ctx, uint64(n.Value), uint64(resultPtr))
+				if err != nil {
+					return &objects.Error{Message: err.Error()}
+				}
+
+				// Read ptr and count from resultPtr
+				mem := p.module.Memory()
+				if mem == nil {
+					return &objects.Error{Message: "memory not available"}
+				}
+				ptr, ok1 := mem.ReadUint32Le(resultPtr)
+				count, ok2 := mem.ReadUint32Le(resultPtr + 4)
+				if !ok1 || !ok2 {
+					return &objects.Error{Message: "failed to read result"}
 				}
 
 				// Read array from memory
-				ptr := uint32(results[0])
-				count := uint32(results[1])
 				arr := readInt64ArrayFromMemory(p.module, ptr, count)
 
 				// Convert to Xxlang array
