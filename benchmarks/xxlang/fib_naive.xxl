@@ -1,0 +1,10 @@
+// Naive recursive fibonacci for benchmarking
+func fib(n) {
+    if (n <= 1) {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+var result = fib(35)
+println("fib(35) = " + result.toStr())
