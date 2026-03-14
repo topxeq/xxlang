@@ -186,6 +186,13 @@ func (vm *VM) GetCallStack() string {
 // Run executes the bytecode
 // Optimized: caches frame pointer in local variable to reduce method calls
 func (vm *VM) Run() error {
+	// Register runCode callback for dynamic code execution
+	// Save the previous callback to restore after execution (for nested calls)
+	prevCallback := objects.SetRunCodeImpl(func(code string, args *objects.Map) (objects.Object, error) {
+		return RunCodeInVM(code, args, vm)
+	})
+	defer objects.SetRunCodeImpl(prevCallback)
+
 	frame := vm.frames[vm.frameIndex-1]
 	frameIns := frame.Instructions()
 
@@ -376,6 +383,10 @@ func (vm *VM) Run() error {
 		case compiler.OpReturn:
 			if err := vm.executeReturn(); err != nil {
 				return err
+			}
+			// If we returned from the main frame, exit the loop
+			if vm.frameIndex == 0 {
+				return nil
 			}
 
 		case compiler.OpClosure:
@@ -1374,6 +1385,11 @@ func (vm *VM) executeReturn() error {
 	return nil
 }
 
+// isMainFrame returns true if we're at the main (bottom) frame
+func (vm *VM) isMainFrame() bool {
+	return vm.frameIndex <= 1
+}
+
 func (vm *VM) executeArray() error {
 	numElements := int(vm.readUint16())
 	vm.currentFrame().IP += 2
@@ -1692,6 +1708,7 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["sum"],           // 38
 		objects.Builtins["avg"],           // 39
 		objects.Builtins["reverse"],       // 40
+		objects.Builtins["runCode"],       // 41
 	}
 
 	if index < 0 || index >= len(builtins) {
@@ -1925,16 +1942,55 @@ func (vm *VM) executeGetMethod() error {
 		return nil
 	}
 
-	// For non-instance objects without methods, pop and handle normally
+	// For non-instance objects without methods, pop and handle property access
 	obj = vm.stack.Pop()
 
 	// Handle Module objects (for namespace imports)
+	// Check if this is a method call by scanning ahead for OpCallMethod
 	if mod, ok := obj.(*objects.Module); ok {
 		val, ok := mod.Exports[name]
 		if !ok {
 			return fmt.Errorf("export '%s' not found in module %s", name, mod.Name)
 		}
-		vm.stack.Push(val)
+
+		// Scan ahead for OpCallMethod (skip up to 20 instructions to find it)
+		frameIns := frame.Instructions()
+		isMethodCall := false
+		scanIP := frame.IP + 1
+		maxScan := 20
+		for i := 0; i < maxScan && scanIP < len(frameIns); i++ {
+			op := compiler.Opcode(frameIns[scanIP])
+			if op == compiler.OpCallMethod {
+				isMethodCall = true
+				break
+			}
+			// Stop scanning if we hit certain opcodes that indicate this is not a method call
+			if op == compiler.OpPop || op == compiler.OpCall || op == compiler.OpSetGlobal ||
+				op == compiler.OpSetLocal || op == compiler.OpJump || op == compiler.OpJumpIfFalse {
+				break
+			}
+			// Skip operands based on opcode
+			switch op {
+			case compiler.OpConstant, compiler.OpGetGlobal, compiler.OpSetGlobal,
+				compiler.OpGetLocal, compiler.OpSetLocal, compiler.OpGetMethod,
+				compiler.OpGetExport, compiler.OpSetExport:
+				scanIP += 3 // 1 byte opcode + 2 bytes operand
+			case compiler.OpCall, compiler.OpCallMethod:
+				scanIP += 2 // 1 byte opcode + 1 byte operand
+			default:
+				scanIP += 1
+			}
+		}
+
+		if isMethodCall {
+			// Method call: keep module on stack so executeCallMethod can detect it
+			// Stack: [... module] -> [... module, export]
+			vm.stack.Push(obj) // push module back
+			vm.stack.Push(val)
+		} else {
+			// Property access: just push the value
+			vm.stack.Push(val)
+		}
 		return nil
 	}
 
@@ -1957,7 +2013,41 @@ func (vm *VM) executeCallMethod() error {
 	// Check if this is an Instance object for method binding
 	inst, ok := instance.(*objects.Instance)
 	if !ok {
+		// Check if this is a Module function call (Module instance)
+		// Module functions should NOT receive the module as a receiver
+		if _, isModule := instance.(*objects.Module); isModule {
+			// Module function call - don't pass module as receiver
+			// Stack: [... module, method, arg1, arg2, ...]
+			// Pop arguments first
+			args := make([]objects.Object, numArgs)
+			for i := numArgs - 1; i >= 0; i-- {
+				args[i] = vm.stack.Pop()
+			}
+
+			// Pop the function
+			vm.stack.Pop()
+
+			// Pop the module (not used as argument)
+			vm.stack.Pop()
+
+			// Call as regular function (without receiver)
+			switch f := method.(type) {
+			case *compiler.CompiledFunction:
+				return vm.callFunction(f, numArgs, nil, nil, nil)
+			case *Closure:
+				return vm.callFunction(f.Fn, numArgs, f.FreeVars, f.Constants, f.Globals)
+			case *objects.Builtin:
+				// Call builtin directly (we already popped all the stack items)
+				result := f.Fn(args...)
+				vm.stack.Push(result)
+				return nil
+			default:
+				return fmt.Errorf("cannot call non-function: %T", method)
+			}
+		}
+
 		// Check if method is a Builtin (for primitive type methods)
+		// This handles calls like 42.typeOf(), null.typeOf(), etc.
 		if builtin, isBuiltin := method.(*objects.Builtin); isBuiltin {
 			// Stack: [... receiver, builtin_method, arg1, arg2, ...]
 			// Pop arguments first
@@ -1984,7 +2074,7 @@ func (vm *VM) executeCallMethod() error {
 			return nil
 		}
 
-		// Not an instance and not a builtin method - treat as regular function call
+		// Not an instance, module, or builtin method - treat as regular function call
 		// Stack is: [method, arg1, arg2, ...]
 		// Pop arguments first
 		args := make([]objects.Object, numArgs)
