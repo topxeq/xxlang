@@ -10,20 +10,41 @@ import (
 // and improve execution patterns
 type Optimizer struct {
 	bytecode *Bytecode
+	flags    OptimizationFlags
 }
 
 // NewOptimizer creates a new optimizer for given bytecode
 func NewOptimizer(bytecode *Bytecode) *Optimizer {
-	return &Optimizer{bytecode: bytecode}
+	return &Optimizer{
+		bytecode: bytecode,
+		flags:    DefaultOptimizations(),
+	}
+}
+
+// NewOptimizerWithFlags creates an optimizer with custom flags
+func NewOptimizerWithFlags(bytecode *Bytecode, flags OptimizationFlags) *Optimizer {
+	return &Optimizer{
+		bytecode: bytecode,
+		flags:    flags,
+	}
 }
 
 // Optimize runs all optimization passes
 func (o *Optimizer) Optimize() *Bytecode {
-	result := o.FoldConstants()
-	result = o.InlineFunctions()
-	result = o.GenerateSuperinstructions()
-	result = o.GenerateTypeSpecializations()
-	return result
+	// FoldConstants is part of BytecodeOptimizer
+	if o.flags.BytecodeOptimizer {
+		o.bytecode = o.FoldConstants()
+	}
+	if o.flags.InlineFunctions {
+		o.bytecode = o.InlineFunctions()
+	}
+	if o.flags.Superinstructions {
+		o.bytecode = o.GenerateSuperinstructions()
+	}
+	if o.flags.TypeSpecialization {
+		o.bytecode = o.GenerateTypeSpecializations()
+	}
+	return o.bytecode
 }
 
 // FoldConstants evaluates constant expressions at compile time
@@ -441,6 +462,7 @@ type inlineableFunc struct {
 }
 
 // findCallInstruction finds the OpCall instruction after loading callee and args
+// Uses stack effect tracking to properly handle complex argument expressions
 func (o *Optimizer) findCallInstruction(instructions []byte, calleePos int, numArgs int) (int, bool) {
 	// Skip callee load instruction
 	def, err := Lookup(instructions[calleePos])
@@ -452,39 +474,169 @@ func (o *Optimizer) findCallInstruction(instructions []byte, calleePos int, numA
 		pos += w
 	}
 
-	// Skip argument load instructions
-	argsFound := 0
-	for argsFound < numArgs && pos < len(instructions) {
+	// Track stack depth relative to callee position
+	// We need to find when numArgs values are on stack, then OpCall
+	// Note: callee is already on stack, we're tracking arguments pushed after it
+	stackDepth := 0
+
+	for pos < len(instructions) {
 		op := Opcode(instructions[pos])
 		def, err := Lookup(byte(op))
 		if err != nil {
 			return -1, false
 		}
 
-		// Count arguments by tracking stack effect
-		switch op {
-		case OpConstant, OpGetLocal, OpGetGlobal, OpTrue, OpFalse, OpNull:
-			argsFound++
-		default:
-			// Other instructions might have side effects, be conservative
-		}
-
-		// Move to next instruction
-		pos += 1
+		// Calculate instruction length
+		instrLen := 1
 		for _, w := range def.OperandWidths {
-			pos += w
+			instrLen += w
 		}
-	}
 
-	// Check if we found OpCall
-	if pos < len(instructions) && Opcode(instructions[pos]) == OpCall {
-		callNumArgs := int(instructions[pos+1])
-		if callNumArgs == numArgs {
-			return pos, true
+		// Check for OpCall BEFORE applying its stack effect
+		// At this point, stackDepth should equal numArgs
+		if op == OpCall {
+			callNumArgs := int(instructions[pos+1])
+			if callNumArgs == numArgs && stackDepth == numArgs {
+				return pos, true
+			}
 		}
+
+		// Track stack effect
+		stackEffect := stackEffectOf(op, instructions, pos)
+		stackDepth += stackEffect
+
+		// If stack goes negative or too deep, something's wrong
+		if stackDepth < 0 || stackDepth > numArgs+20 {
+			return -1, false
+		}
+
+		pos += instrLen
 	}
 
 	return -1, false
+}
+
+// stackEffectOf returns the net stack effect of an instruction (positive = pushes, negative = pops)
+func stackEffectOf(op Opcode, instructions []byte, pos int) int {
+	switch op {
+	// Instructions that push 1 value
+	case OpConstant, OpGetLocal, OpGetGlobal, OpGetFree, OpTrue, OpFalse, OpNull,
+		OpBuiltin, OpGetField, OpIndex, OpIndexSafe, OpDup:
+		return 1
+
+	// Superinstructions that push 1 value (pop 2, push 1 = net -1 each, but these compute and push)
+	case OpConstantAdd, OpConstantSub, OpConstantMul,
+		OpGetLocalAdd, OpGetLocalSub, OpGetLocalMul:
+		return -1 // pop 2, push 1 = net -1
+
+	// Array creates array from stack elements
+	case OpArray:
+		if pos+2 < len(instructions) {
+			count := int(instructions[pos+1])<<8 | int(instructions[pos+2])
+			return 1 - count // pops count elements, pushes array
+		}
+		return 0
+
+	// Map creates map from key-value pairs
+	case OpMap:
+		if pos+2 < len(instructions) {
+			count := int(instructions[pos+1])<<8 | int(instructions[pos+2]) // number of pairs
+			return 1 - count*2 // pops count*2 elements, pushes map
+		}
+		return 0
+
+	// Call pops callee + numArgs, pushes 1 result
+	case OpCall:
+		if pos+1 < len(instructions) {
+			numArgs := int(instructions[pos+1])
+			return -numArgs // pops args and callee (numArgs+1), pushes result (1): net = -numArgs
+		}
+		return 0
+
+	// Method call pops receiver + args, pushes result
+	case OpCallMethod:
+		if pos+1 < len(instructions) {
+			numArgs := int(instructions[pos+1])
+			return -numArgs // pops args + receiver, pushes result
+		}
+		return 0
+
+	// Tail call
+	case OpTailCall:
+		if pos+1 < len(instructions) {
+			numArgs := int(instructions[pos+1])
+			return -numArgs
+		}
+		return 0
+
+	// Instructions that pop 1 value
+	case OpPop, OpSetGlobal, OpSetLocal, OpSetFree, OpSetIndex, OpSetField:
+		return -1
+
+	// Binary ops pop 2, push 1 = net -1
+	case OpAdd, OpSub, OpMul, OpDiv, OpMod:
+		return -1
+
+	// Comparison ops pop 2, push 1 = net -1
+	case OpEqual, OpNotEqual, OpLess, OpGreater, OpLessEqual, OpGreaterEqual:
+		return -1
+
+	// Logical ops
+	case OpAnd, OpOr:
+		return -1
+	case OpNot:
+		return 0 // pop 1, push 1
+
+	// Unary minus
+	case OpNeg:
+		return 0 // pop 1, push 1
+
+	// Jump instructions - no net effect (we're looking for call sites, not tracking across jumps)
+	case OpJump, OpJumpIfFalse, OpJumpIfTrue, OpBreak, OpContinue, OpReturn:
+		return 0
+
+	// Closure pushes 1
+	case OpClosure:
+		return 1
+
+	// New creates object (pops args based on count, pushes object)
+	case OpNew:
+		if pos+1 < len(instructions) {
+			numArgs := int(instructions[pos+1])
+			return 1 - numArgs // pops numArgs, pushes object
+		}
+		return 0
+
+	// Increment/decrement local
+	case OpIncLocal, OpDecLocal, OpAddLocalConst:
+		return 0 // modify local, no stack effect
+
+	// Push/pop scope - no stack effect
+	case OpPushScope, OpPopScope:
+		return 0
+
+	// GetMethod pushes method
+	case OpGetMethod:
+		return 1
+
+	// Class pushes class object
+	case OpClass:
+		return 1
+
+	// Module operations
+	case OpLoadModule, OpModule:
+		return 1
+	case OpGetExport, OpSetExport:
+		return 0
+
+	// DefineLocal stores TOS
+	case OpDefineLocal:
+		return -1
+
+	default:
+		// Conservative: assume no stack effect
+		return 0
+	}
 }
 
 // inlineCall generates inlined bytecode for a function call
@@ -565,6 +717,22 @@ func (o *Optimizer) transformInlineBody(body []byte, numParams int) []byte {
 			case OpNeg, OpNot:
 				// Arg is on stack, just emit the unary op
 				return []byte{byte(unaryOp)}
+			}
+		}
+	}
+
+	// Pattern 3.5: Single parameter used twice with binary operation (e.g., x * x, x + x)
+	// Body: OpGetLocal 0, OpGetLocal 0, OpBinaryOp
+	// Transformation: OpDup, OpBinaryOp (duplicate the arg, then operate)
+	if numParams == 1 && len(body) == 5 {
+		if Opcode(body[0]) == OpGetLocal && body[1] == 0 &&
+			Opcode(body[2]) == OpGetLocal && body[3] == 0 {
+			binaryOp := Opcode(body[4])
+			switch binaryOp {
+			case OpAdd, OpSub, OpMul, OpDiv, OpMod,
+				OpEqual, OpNotEqual, OpLess, OpGreater, OpLessEqual, OpGreaterEqual:
+				// Emit: OpDup, OpBinaryOp
+				return []byte{byte(OpDup), byte(binaryOp)}
 			}
 		}
 	}
