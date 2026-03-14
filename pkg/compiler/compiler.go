@@ -1091,6 +1091,12 @@ func (c *Compiler) Compile(node parser.Node) error {
 	case *parser.SuperCallExpression:
 		return c.compileSuperCallExpression(node)
 
+	case *parser.TryStatement:
+		return c.compileTryStatement(node)
+
+	case *parser.ThrowStatement:
+		return c.compileThrowStatement(node)
+
 	default:
 		return fmt.Errorf("unknown node type: %T", node)
 	}
@@ -1294,6 +1300,13 @@ func (c *Compiler) replaceInstruction(pos int, newInstruction []byte) {
 func (c *Compiler) changeOperand(pos int, operand int) {
 	op := Opcode(c.currentInstructions()[pos])
 	newInstruction := Make(op, operand)
+	c.replaceInstruction(pos, newInstruction)
+}
+
+// changeOperands changes multiple operands of an instruction
+func (c *Compiler) changeOperands(pos int, operands ...int) {
+	op := Opcode(c.currentInstructions()[pos])
+	newInstruction := Make(op, operands...)
 	c.replaceInstruction(pos, newInstruction)
 }
 
@@ -1773,4 +1786,117 @@ func (c *Compiler) patchContinueJumps(pos int) {
 		c.changeOperand(jumpPos, pos)
 	}
 	ctx.continueJumps = []int{} // Clear after patching
+}
+
+// compileTryStatement compiles a try-catch-finally statement
+func (c *Compiler) compileTryStatement(node *parser.TryStatement) error {
+	// Push exception handler with placeholder addresses (will be patched)
+	pushHandlerPos := c.emit(OpPushHandler, 9999, 9999) // catchAddr, finallyAddr
+
+	// Compile try block
+	if err := c.Compile(node.Block); err != nil {
+		return err
+	}
+
+	// Remove trailing pop if present
+	if c.lastInstruction.Opcode == OpPop {
+		c.removeLastInstruction()
+	}
+
+	// Pop handler after successful try block
+	c.emit(OpPopHandler)
+
+	// After try block completes normally, we need to:
+	// - If there's a finally: fall through to finally (no jump needed)
+	// - If there's no finally but catch: jump past catch
+	var jumpPastCatchPos int = -1
+	if node.Catch != nil && node.Finally == nil {
+		// Only have catch, no finally - need to jump past catch after try
+		jumpPastCatchPos = c.emit(OpJump, 9999)
+	}
+
+	// Record catch address (0 if no catch)
+	catchAddr := 0
+	if node.Catch != nil {
+		catchAddr = len(c.currentInstructions())
+
+		// The exception value is on the stack, bind it to the variable
+		symbol := c.symbolTable.Define(node.Catch.Exception.Value)
+		switch symbol.Scope {
+		case GlobalScope:
+			c.emit(OpSetGlobal, symbol.Index)
+		case LocalScope:
+			c.emit(OpSetLocal, symbol.Index)
+		}
+
+		// Compile catch body
+		if err := c.Compile(node.Catch.Block); err != nil {
+			return err
+		}
+
+		// Remove trailing pop if present
+		if c.lastInstruction.Opcode == OpPop {
+			c.removeLastInstruction()
+		}
+
+		// After catch, if there's a finally, fall through to it
+		// Otherwise, jump to end
+		if node.Finally == nil {
+			// Jump to end after catch (will be patched below)
+			jumpEndPos := c.emit(OpJump, 9999)
+			// We'll patch this below
+			defer func() {
+				endPos := len(c.currentInstructions())
+				c.changeOperand(jumpEndPos, endPos)
+			}()
+		}
+	}
+
+	// Record finally address (0 if no finally)
+	finallyAddr := 0
+	if node.Finally != nil {
+		finallyAddr = len(c.currentInstructions())
+
+		// Compile finally block
+		if err := c.Compile(node.Finally.Block); err != nil {
+			return err
+		}
+
+		// Remove trailing pop if present
+		if c.lastInstruction.Opcode == OpPop {
+			c.removeLastInstruction()
+		}
+	}
+
+	// Patch push handler with catch and finally addresses
+	c.changeOperands(pushHandlerPos, catchAddr, finallyAddr)
+
+	// Patch jump past catch (if we emitted one)
+	if jumpPastCatchPos >= 0 {
+		// Jump past catch (to end, which is after finally if present)
+		endPos := len(c.currentInstructions())
+		c.changeOperand(jumpPastCatchPos, endPos)
+	}
+
+	// Add pop for try statement
+	c.emit(OpPop)
+
+	return nil
+}
+
+// compileThrowStatement compiles a throw statement
+func (c *Compiler) compileThrowStatement(node *parser.ThrowStatement) error {
+	// Compile the expression to throw (if present)
+	if node.ErrExpr != nil {
+		if err := c.Compile(node.ErrExpr); err != nil {
+			return err
+		}
+	} else {
+		// Throw null if no expression
+		c.emit(OpNull)
+	}
+
+	c.emit(OpThrow)
+
+	return nil
 }

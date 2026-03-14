@@ -247,6 +247,10 @@ func (p *Parser) parseStatement() Statement {
 		return p.parseExportStatement()
 	case lexer.TokenClass:
 		return p.parseClassStatement()
+	case lexer.TokenTry:
+		return p.parseTryStatement()
+	case lexer.TokenThrow:
+		return p.parseThrowStatement()
 	case lexer.TokenLBrace:
 		// Check if this is a map literal or block statement
 		// Empty {} is treated as map literal
@@ -1085,6 +1089,123 @@ func (p *Parser) parseCaseBody() *BlockStatement {
 	}
 
 	return block
+}
+
+// parseTryStatement parses a try-catch-finally statement
+// try {
+//     statements
+// } catch (e) {
+//     statements
+// } finally {
+//     statements
+// }
+func (p *Parser) parseTryStatement() *TryStatement {
+	stmt := &TryStatement{Token: p.curToken}
+
+	// Expect '{' for try block
+	if !p.expectPeek(lexer.TokenLBrace) {
+		return nil
+	}
+
+	stmt.Block = p.parseBlockStatement()
+
+	// Check for catch
+	if p.peekTokenIs(lexer.TokenCatch) {
+		p.nextToken()
+		stmt.Catch = p.parseCatchStatement()
+		if stmt.Catch == nil {
+			return nil
+		}
+	}
+
+	// Check for finally
+	if p.peekTokenIs(lexer.TokenFinally) {
+		p.nextToken()
+		stmt.Finally = p.parseFinallyStatement()
+		if stmt.Finally == nil {
+			return nil
+		}
+	}
+
+	// Must have at least catch or finally
+	if stmt.Catch == nil && stmt.Finally == nil {
+		p.addError(fmt.Sprintf("line %d:%d: try statement must have catch or finally clause",
+			stmt.Token.Line, stmt.Token.Column))
+		return nil
+	}
+
+	return stmt
+}
+
+// parseCatchStatement parses a catch clause
+func (p *Parser) parseCatchStatement() *CatchStatement {
+	stmt := &CatchStatement{Token: p.curToken}
+
+	// Expect '(' for exception variable
+	if !p.expectPeek(lexer.TokenLParen) {
+		return nil
+	}
+
+	// Expect identifier for exception variable
+	if !p.expectPeek(lexer.TokenIdent) {
+		return nil
+	}
+
+	stmt.Exception = &Identifier{Token: p.curToken, Value: p.curToken.Literal}
+
+	// Expect ')'
+	if !p.expectPeek(lexer.TokenRParen) {
+		return nil
+	}
+
+	// Expect '{' for catch block
+	if !p.expectPeek(lexer.TokenLBrace) {
+		return nil
+	}
+
+	stmt.Block = p.parseBlockStatement()
+
+	return stmt
+}
+
+// parseFinallyStatement parses a finally clause
+func (p *Parser) parseFinallyStatement() *FinallyStatement {
+	stmt := &FinallyStatement{Token: p.curToken}
+
+	// Expect '{' for finally block
+	if !p.expectPeek(lexer.TokenLBrace) {
+		return nil
+	}
+
+	stmt.Block = p.parseBlockStatement()
+
+	return stmt
+}
+
+// parseThrowStatement parses a throw statement
+func (p *Parser) parseThrowStatement() *ThrowStatement {
+	stmt := &ThrowStatement{Token: p.curToken}
+
+	// Check if there's an expression after throw
+	if p.peekTokenIs(lexer.TokenSemicolon) {
+		// Throw without value - will throw null, consume semicolon
+		p.nextToken()
+		return stmt
+	}
+
+	if p.peekTokenIs(lexer.TokenRBrace) {
+		// Throw without value at end of block - don't consume the }
+		return stmt
+	}
+
+	p.nextToken()
+	stmt.ErrExpr = p.parseExpression(LOWEST)
+
+	if p.peekTokenIs(lexer.TokenSemicolon) {
+		p.nextToken()
+	}
+
+	return stmt
 }
 
 func (p *Parser) parseExpression(precedence int) Expression {
