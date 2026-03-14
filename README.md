@@ -139,13 +139,12 @@ println(fib.fast(50))      // 12586269025
 println(fib.matrix(92))    // Largest Fibonacci in int64 range
 ```
 
-**Three plugin types available:**
+**Two plugin types available:**
 
 | Type | Windows | CGO | Runtime Loading |
 |------|---------|-----|-----------------|
 | Static Plugin | ✅ | ❌ | ❌ |
 | WASM Plugin | ✅ | ❌ | ✅ |
-| Native .so Plugin | ❌ | ✅ | ✅ |
 
 | Method | fib(35) Time | Speedup |
 |--------|--------------|---------|

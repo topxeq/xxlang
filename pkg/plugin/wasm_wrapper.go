@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/tetratelabs/wazero/api"
+	"github.com/topxeq/gowasm/api"
 	"github.com/topxeq/xxlang/pkg/objects"
 )
 

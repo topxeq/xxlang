@@ -7,16 +7,16 @@ Xxlang supports two types of plugins for high-performance operations:
 
 ## Plugin Types Comparison
 
-| Feature | Static Plugin | WASM Plugin | Native .so Plugin |
-|---------|---------------|-------------|-------------------|
-| Windows Support | ✅ Yes | ✅ Yes | ❌ No |
-| Linux Support | ✅ Yes | ✅ Yes | ✅ Yes |
-| macOS Support | ✅ Yes | ✅ Yes | ✅ Yes |
-| Requires CGO | ❌ No | ❌ No | ✅ Yes |
-| Runtime Loading | ❌ No | ✅ Yes | ✅ Yes |
-| Performance | Fastest | Fast (~10-20% overhead) | Fastest |
-| Security | Host process | Sandboxed | Host process |
-| Distribution | Compiled in | Single .wasm file | .so file |
+| Feature | Static Plugin | WASM Plugin |
+|---------|---------------|-------------|
+| Windows Support | ✅ Yes | ✅ Yes |
+| Linux Support | ✅ Yes | ✅ Yes |
+| macOS Support | ✅ Yes | ✅ Yes |
+| Requires CGO | ❌ No | ❌ No |
+| Runtime Loading | ❌ No | ✅ Yes |
+| Performance | Fastest | Fast (~10-20% overhead) |
+| Security | Host process | Sandboxed |
+| Distribution | Compiled in | Single .wasm file |
 
 ## Overview
 
@@ -29,8 +29,8 @@ Plugins provide:
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Xxlang Code   │────▶│   Interpreter   │────▶│  Go Plugin      │
-│                 │     │                 │     │  (fib.so)       │
+│   Xxlang Code   │────▶│   Interpreter   │────▶│  WASM Plugin    │
+│                 │     │                 │     │  (fib.wasm)     │
 │ import "plugin/ │     │  Plugin Loader  │     │                 │
 │        fib"     │     │                 │     │  - fib.fast()   │
 │ fib.fast(50)    │◀────│  Registry       │◀────│  - fib.matrix() │
@@ -269,49 +269,18 @@ The Fibonacci plugin uses `int64`, which has limits:
 
 For larger numbers, use `math/big.Int` in your plugin.
 
-## Dynamic Plugin Loading (.so files)
+## Static vs WASM Plugins
 
-On Linux/macOS, you can load plugins from `.so` files at runtime:
-
-### Build Plugin
-
-```bash
-go build -buildmode=plugin -o plugins/fib.so plugin/fibplugin.go
-```
-
-### Load in Program
-
-```go
-import "github.com/topxeq/xxlang/pkg/plugin"
-
-loader := plugin.NewLoader()
-loader.AddPath("./plugins")
-
-p, err := loader.Load("fib")
-if err != nil {
-    panic(err)
-}
-
-// Plugin is now available as "plugin/fib" in Xxlang
-```
-
-**Note**: Dynamic loading requires:
-- Linux, macOS, or FreeBSD (not Windows)
-- Same Go version for plugin and main program
-- CGO enabled
-
-## Static vs Dynamic Plugins
-
-| Aspect | Static (import) | WASM (.wasm) | Native (.so) |
-|--------|-----------------|--------------|--------------|
-| Platform | All platforms | **All platforms** | Linux/macOS only |
-| Windows | ✅ Yes | ✅ **Yes** | ❌ No |
-| Requires CGO | ❌ No | ❌ **No** | ✅ Yes |
-| Distribution | Compiled in | Single .wasm file | .so file |
-| Updates | Recompile required | Replace .wasm file | Replace .so file |
-| Debugging | Easier | Medium | Harder |
-| Performance | Fastest | ~10-20% overhead | Fastest |
-| Recommended | Yes | **Yes for Windows** | No |
+| Aspect | Static (import) | WASM (.wasm) |
+|--------|-----------------|--------------|
+| Platform | All platforms | **All platforms** |
+| Windows | ✅ Yes | ✅ **Yes** |
+| Requires CGO | ❌ No | ❌ **No** |
+| Distribution | Compiled in | Single .wasm file |
+| Updates | Recompile required | Replace .wasm file |
+| Debugging | Easier | Medium |
+| Performance | Fastest | ~10-20% overhead |
+| Recommended | Yes | **Yes** |
 
 ## WebAssembly Plugins
 
@@ -388,9 +357,101 @@ func main() {} // Required but not used
 
 ### Building WASM Plugins
 
+#### Option 1: Using C (Recommended)
+
+C is the most portable option for WASM plugins. You need `clang` with wasm32 target support.
+
 ```bash
-# Build with TinyGo (required)
-tinygo build -o fib.wasm -target=wasi plugin/fib.go
+# Install clang (Ubuntu/Debian)
+apt install clang lld
+
+# Build
+clang -o fib.wasm --target=wasm32 -O2 fib.c \
+    -nostdlib -nostartfiles \
+    -Wl,--no-entry -Wl,--export-all
+```
+
+#### Option 2: Using TinyGo
+
+**Note**: TinyGo 0.36 supports Go 1.19-1.24 only. For newer Go versions, use C instead.
+
+```bash
+# Build with TinyGo
+tinygo build -o fib.wasm -target=wasi fib.go
+```
+
+### WASM Plugin Structure
+
+A WASM plugin must export these functions:
+
+```c
+// Required: Memory allocator
+uint32_t alloc(uint32_t size);
+
+// Optional: Plugin metadata
+void plugin_name(uint32_t result_ptr);   // Writes (ptr, size) to result_ptr
+void plugin_version(uint32_t result_ptr);
+
+// Exported functions (prefix with "call_" for Xxlang)
+int64_t call_fast(int64_t n);            // Accessible as "fast" in Xxlang
+int64_t call_matrix(int64_t n);          // Accessible as "matrix" in Xxlang
+```
+
+### Complete C Example
+
+```c
+// fib.c - Fibonacci WASM plugin
+#include <stdint.h>
+
+extern unsigned char __heap_base;
+static uintptr_t heap_ptr = 0;
+
+// Memory allocator
+uint32_t alloc(uint32_t size) {
+    if (heap_ptr == 0) heap_ptr = (uintptr_t)&__heap_base;
+    if (heap_ptr % 8 != 0) heap_ptr += 8 - (heap_ptr % 8);
+    uintptr_t result = heap_ptr;
+    heap_ptr += size;
+    return (uint32_t)result;
+}
+
+// Plugin name
+void plugin_name(uint32_t result_ptr) {
+    const char* name = "fib";
+    uint32_t offset = alloc(3);
+    unsigned char* mem = (unsigned char*)offset;
+    for (int i = 0; i < 3; i++) mem[i] = name[i];
+    uint32_t* result = (uint32_t*)result_ptr;
+    result[0] = offset;
+    result[1] = 3;
+}
+
+// Fibonacci function - accessible as "fast" in Xxlang
+int64_t call_fast(int64_t n) {
+    if (n <= 1) return n;
+    int64_t a = 0, b = 1;
+    for (int64_t i = 2; i <= n; i++) {
+        int64_t tmp = a + b;
+        a = b;
+        b = tmp;
+    }
+    return b;
+}
+
+// Entry point (required but not used)
+void _start(void) {}
+```
+
+Build and test:
+
+```bash
+# Build
+clang -o fib.wasm --target=wasm32 -O2 fib.c \
+    -nostdlib -nostartfiles \
+    -Wl,--no-entry -Wl,--export-all
+
+# Test in Xxlang
+xxlang -e 'import "plugin/fib"; println(fib.fast(50))'
 ```
 
 ## Complete Example

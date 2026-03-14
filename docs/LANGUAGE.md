@@ -615,7 +615,7 @@ export secret
 ### Module Resolution
 
 1. `std/xxx` - Standard library modules
-2. `plugin/xxx` - Native Go plugins (`.so` files)
+2. `plugin/xxx` - WebAssembly plugins (`.wasm` files)
 3. `./xxx` or `../xxx` - Relative path modules
 4. `/xxx` - Absolute path modules
 
