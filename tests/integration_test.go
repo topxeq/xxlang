@@ -625,3 +625,121 @@ func TestPostfixOperators(t *testing.T) {
 		assertInt(t, result, tt.expected)
 	}
 }
+
+// ============================================
+// Switch Statement
+// ============================================
+
+func TestSwitchStatement(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected int64
+	}{
+		{
+			name:     "basic switch with match",
+			input:    "var x = 2; switch (x) { case 1: x = 10 case 2: x = 20 case 3: x = 30 } x",
+			expected: 20,
+		},
+		{
+			name:     "switch with default",
+			input:    "var x = 5; switch (x) { case 1: x = 10 case 2: x = 20 default: x = 100 } x",
+			expected: 100,
+		},
+		{
+			name:     "switch first case matches",
+			input:    "var x = 1; switch (x) { case 1: x = 10 case 2: x = 20 default: x = 100 } x",
+			expected: 10,
+		},
+		{
+			name:     "switch no match no default",
+			input:    "var x = 99; switch (x) { case 1: x = 10 case 2: x = 20 } x",
+			expected: 99,
+		},
+		{
+			name:     "switch in function",
+			input:    "func getValue(n) { switch (n) { case 1: return 10 case 2: return 20 default: return 0 } } getValue(2)",
+			expected: 20,
+		},
+		{
+			name:     "switch with expression",
+			input:    "var x = 1 + 1; switch (x) { case 1: x = 10 case 2: x = 20 } x",
+			expected: 20,
+		},
+		{
+			name:     "switch only default",
+			input:    "var x = 5; switch (x) { default: x = 42 } x",
+			expected: 42,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := runCode(t, tt.input)
+			assertInt(t, result, tt.expected)
+		})
+	}
+}
+
+func TestSwitchStatementWithString(t *testing.T) {
+	input := `var x = "b"; switch (x) { case "a": x = "apple" case "b": x = "banana" } x`
+
+	l := lexer.New(input)
+	p := parser.New(l)
+	program := p.ParseProgram()
+
+	if len(p.Errors()) > 0 {
+		t.Fatalf("parser errors: %v", p.Errors())
+	}
+
+	c := compiler.New()
+	if err := c.Compile(program); err != nil {
+		t.Fatalf("compiler error: %v", err)
+	}
+
+	bytecode := c.Bytecode()
+	v := vm.New(bytecode)
+
+	if err := v.Run(); err != nil {
+		t.Fatalf("vm error: %v", err)
+	}
+
+	result := v.LastPopped()
+	assertString(t, result, "banana")
+}
+
+func TestSwitchStatementWithReturn(t *testing.T) {
+	input := `
+		func test(n) {
+			switch (n) {
+				case 1: return "one"
+				case 2: return "two"
+				default: return "other"
+			}
+		}
+		test(1)
+	`
+
+	l := lexer.New(input)
+	p := parser.New(l)
+	program := p.ParseProgram()
+
+	if len(p.Errors()) > 0 {
+		t.Fatalf("parser errors: %v", p.Errors())
+	}
+
+	c := compiler.New()
+	if err := c.Compile(program); err != nil {
+		t.Fatalf("compiler error: %v", err)
+	}
+
+	bytecode := c.Bytecode()
+	v := vm.New(bytecode)
+
+	if err := v.Run(); err != nil {
+		t.Fatalf("vm error: %v", err)
+	}
+
+	result := v.LastPopped()
+	assertString(t, result, "one")
+}

@@ -217,6 +217,16 @@ type Compiler struct {
 
 	// Optimization options
 	options OptimizationFlags
+
+	// Loop context for break/continue support
+	loopContexts []loopContext
+}
+
+// loopContext tracks break/continue positions within a loop
+type loopContext struct {
+	continuePos int     // Position to jump to for continue (set after body is compiled)
+	breakPos    []int   // Positions of break jumps to patch
+	continueJumps []int // Positions of continue jumps to patch (for for-loops)
 }
 
 // New creates a new compiler with default optimizations
@@ -377,9 +387,99 @@ func (c *Compiler) Compile(node parser.Node) error {
 		// Add pop for if expression
 		c.emit(OpPop)
 
+	case *parser.SwitchStatement:
+		// Compile switch expression (value on stack)
+		if err := c.Compile(node.Expression); err != nil {
+			return err
+		}
+
+		// Track positions for patching jumps to end
+		var endJumps []int
+
+		// Track positions for "jump to next case" to patch later
+		var caseJumpPositions []int
+
+		// Compile each case
+		for i, caseStmt := range node.Cases {
+			// Duplicate switch value for comparison
+			c.emit(OpDup)
+
+			// Compile case expression
+			if err := c.Compile(caseStmt.Expression); err != nil {
+				return err
+			}
+
+			// Compare: switchValue == caseValue
+			c.emit(OpEqual)
+
+			// Jump to next case/default if not matched
+			jumpNotMatchedPos := c.emit(OpJumpIfFalse, 9999)
+
+			// Match found: pop the duplicated switch value
+			c.emit(OpPop)
+
+			// Compile case body
+			if err := c.Compile(caseStmt.Consequence); err != nil {
+				return err
+			}
+
+			// Remove trailing pop if present
+			if c.lastInstruction.Opcode == OpPop {
+				c.removeLastInstruction()
+			}
+
+			// Jump to end of switch
+			endJumpPos := c.emit(OpJump, 9999)
+			endJumps = append(endJumps, endJumpPos)
+
+			// Patch "not matched" jump to next case
+			nextPos := len(c.currentInstructions())
+			c.changeOperand(jumpNotMatchedPos, nextPos)
+
+			// Store position in case we need to chain cases
+			caseJumpPositions = append(caseJumpPositions, jumpNotMatchedPos)
+
+			// If this is the last case and there's no default,
+			// we need to pop the switch value
+			if i == len(node.Cases)-1 && node.Default == nil {
+				// This is where the "not matched" jump lands
+				// Pop the switch value
+				c.emit(OpPop)
+			}
+		}
+
+		// Compile default case if exists
+		if node.Default != nil {
+			// At this point, switch value is still on stack (from failed case matches)
+			// Pop it since we don't need it for default
+			c.emit(OpPop)
+
+			// Compile default body
+			if err := c.Compile(node.Default.Consequence); err != nil {
+				return err
+			}
+
+			// Remove trailing pop if present
+			if c.lastInstruction.Opcode == OpPop {
+				c.removeLastInstruction()
+			}
+		}
+
+		// Patch all "jump to end" positions
+		endPos := len(c.currentInstructions())
+		for _, pos := range endJumps {
+			c.changeOperand(pos, endPos)
+		}
+
+		// Add pop for switch expression
+		c.emit(OpPop)
+
 	case *parser.WhileStatement:
 		// Save position for loop start
 		loopStart := len(c.currentInstructions())
+
+		// Push loop context for break/continue tracking
+		c.pushLoopContext(loopStart)
 
 		// Compile condition
 		if err := c.Compile(node.Condition); err != nil {
@@ -406,6 +506,9 @@ func (c *Compiler) Compile(node parser.Node) error {
 		afterBodyPos := len(c.currentInstructions())
 		c.changeOperand(jumpNotTruthyPos, afterBodyPos)
 
+		// Pop loop context and patch break positions
+		c.popLoopContext(afterBodyPos)
+
 	case *parser.ForStatement:
 		// for (init; condition; update) { body }
 		// Compile init
@@ -417,6 +520,9 @@ func (c *Compiler) Compile(node parser.Node) error {
 
 		// Save position for loop start
 		loopStart := len(c.currentInstructions())
+
+		// Push loop context (initially continue goes to condition, will update later)
+		c.pushLoopContext(loopStart)
 
 		// Compile condition (if none, use true)
 		if node.Condition != nil {
@@ -444,8 +550,16 @@ func (c *Compiler) Compile(node parser.Node) error {
 			c.removeLastInstruction()
 		}
 
-		// Compile update
+		// Record update position for continue (continue should jump to update)
 		if node.Update != nil {
+			updatePos := len(c.currentInstructions())
+			// Patch all continue jumps to point to update
+			c.patchContinueJumps(updatePos)
+			// Update the continuePos for any continue statements in the update itself
+			if len(c.loopContexts) > 0 {
+				c.loopContexts[len(c.loopContexts)-1].continuePos = updatePos
+			}
+
 			if err := c.Compile(node.Update); err != nil {
 				return err
 			}
@@ -461,6 +575,9 @@ func (c *Compiler) Compile(node parser.Node) error {
 		// Fix jump position
 		afterBodyPos := len(c.currentInstructions())
 		c.changeOperand(jumpNotTruthyPos, afterBodyPos)
+
+		// Pop loop context and patch break positions
+		c.popLoopContext(afterBodyPos)
 
 		// Clear safe array access tracking after loop
 		c.safeArrayAccess = make(map[string]bool)
@@ -483,6 +600,9 @@ func (c *Compiler) Compile(node parser.Node) error {
 
 		// Loop start
 		loopStart := len(c.currentInstructions())
+
+		// Push loop context for break/continue tracking
+		c.pushLoopContext(loopStart)
 
 		// Jump if finished (when iterator is null after iteration)
 		jumpNotTruthyPos := c.emit(OpJumpIfFalse, 9999)
@@ -513,11 +633,23 @@ func (c *Compiler) Compile(node parser.Node) error {
 		afterBodyPos := len(c.currentInstructions())
 		c.changeOperand(jumpNotTruthyPos, afterBodyPos)
 
+		// Pop loop context and patch break positions
+		c.popLoopContext(afterBodyPos)
+
 	case *parser.BreakStatement:
-		c.emit(OpBreak)
+		// Emit jump to after loop (will be patched when loop ends)
+		breakPos := c.emit(OpJump, 9999)
+		c.addBreakPos(breakPos)
 
 	case *parser.ContinueStatement:
-		c.emit(OpContinue)
+		// Emit jump to continue target (will be patched for for-loops)
+		// For while loops, use the current continuePos directly
+		continuePos := c.currentLoopContinuePos()
+		if continuePos >= 0 {
+			jumpPos := c.emit(OpJump, continuePos)
+			// Also track for possible repatching (for for-loops with update)
+			c.addContinueJump(jumpPos)
+		}
 
 	case *parser.IntegerLiteral:
 		integer := objects.NewInt(node.Value)
@@ -1583,4 +1715,62 @@ func (c *Compiler) analyzeLoopSafety(node *parser.ForStatement) {
 func (c *Compiler) isArrayAccessSafe(arrayName, indexName string) bool {
 	key := fmt.Sprintf("%s[%s]", arrayName, indexName)
 	return c.safeArrayAccess[key]
+}
+
+// pushLoopContext starts a new loop context for break/continue tracking
+func (c *Compiler) pushLoopContext(continuePos int) {
+	c.loopContexts = append(c.loopContexts, loopContext{
+		continuePos:   continuePos,
+		breakPos:      []int{},
+		continueJumps: []int{},
+	})
+}
+
+// popLoopContext ends the current loop context and patches all break jumps
+func (c *Compiler) popLoopContext(afterLoopPos int) {
+	if len(c.loopContexts) == 0 {
+		return
+	}
+	ctx := c.loopContexts[len(c.loopContexts)-1]
+	// Patch all break positions to jump to after the loop
+	for _, pos := range ctx.breakPos {
+		c.changeOperand(pos, afterLoopPos)
+	}
+	c.loopContexts = c.loopContexts[:len(c.loopContexts)-1]
+}
+
+// currentLoopContinuePos returns the continue position of the current loop
+func (c *Compiler) currentLoopContinuePos() int {
+	if len(c.loopContexts) == 0 {
+		return -1
+	}
+	return c.loopContexts[len(c.loopContexts)-1].continuePos
+}
+
+// addBreakPos records a break position to be patched later
+func (c *Compiler) addBreakPos(pos int) {
+	if len(c.loopContexts) == 0 {
+		return
+	}
+	c.loopContexts[len(c.loopContexts)-1].breakPos = append(c.loopContexts[len(c.loopContexts)-1].breakPos, pos)
+}
+
+// addContinueJump records a continue jump position to be patched later
+func (c *Compiler) addContinueJump(pos int) {
+	if len(c.loopContexts) == 0 {
+		return
+	}
+	c.loopContexts[len(c.loopContexts)-1].continueJumps = append(c.loopContexts[len(c.loopContexts)-1].continueJumps, pos)
+}
+
+// patchContinueJumps patches all continue jumps to jump to the specified position
+func (c *Compiler) patchContinueJumps(pos int) {
+	if len(c.loopContexts) == 0 {
+		return
+	}
+	ctx := &c.loopContexts[len(c.loopContexts)-1]
+	for _, jumpPos := range ctx.continueJumps {
+		c.changeOperand(jumpPos, pos)
+	}
+	ctx.continueJumps = []int{} // Clear after patching
 }

@@ -564,15 +564,27 @@ func (vm *VM) executeBinaryOp(op compiler.Opcode) error {
 	leftIsInt, rightIsInt := isInt(left), isInt(right)
 	leftIsFloat, rightIsFloat := isFloat(left), isFloat(right)
 
-	// String concatenation
+	// String concatenation (with auto-conversion)
 	if op == compiler.OpAdd {
-		if leftStr, ok := left.(*objects.String); ok {
-			if rightStr, ok := right.(*objects.String); ok {
-				// Use InternString for commonly used strings
-				concatenated := leftStr.Value + rightStr.Value
-				vm.stack.Push(objects.InternString(concatenated))
-				return nil
+		leftIsStr := isString(left)
+		rightIsStr := isString(right)
+
+		// If either operand is a string, convert both to strings and concatenate
+		if leftIsStr || rightIsStr {
+			var leftStr, rightStr string
+			if leftIsStr {
+				leftStr = left.(*objects.String).Value
+			} else {
+				leftStr = left.Inspect()
 			}
+			if rightIsStr {
+				rightStr = right.(*objects.String).Value
+			} else {
+				rightStr = right.Inspect()
+			}
+			concatenated := leftStr + rightStr
+			vm.stack.Push(objects.InternString(concatenated))
+			return nil
 		}
 	}
 
@@ -1275,9 +1287,28 @@ func (vm *VM) tailCallFunction(fn *compiler.CompiledFunction, numArgs int, freeV
 	// Pop callee from stack
 	vm.stack.Pop()
 
-	// Update locals with new arguments
-	for i := 0; i < numArgs; i++ {
-		frame.Locals[i] = args[i]
+	// Resize locals array if the new function needs more locals
+	// This is critical: the new function may have more local variables
+	// than the current frame was originally allocated for
+	if cap(frame.Locals) < fn.NumLocals {
+		// Need to allocate a larger slice
+		newLocals := make([]objects.Object, fn.NumLocals)
+		// Copy existing arguments to new slice
+		for i := 0; i < numArgs; i++ {
+			newLocals[i] = args[i]
+		}
+		frame.Locals = newLocals
+	} else {
+		// Existing slice has enough capacity
+		frame.Locals = frame.Locals[:fn.NumLocals]
+		// Update locals with new arguments
+		for i := 0; i < numArgs; i++ {
+			frame.Locals[i] = args[i]
+		}
+		// Initialize any additional locals beyond parameters to nil
+		for i := numArgs; i < fn.NumLocals; i++ {
+			frame.Locals[i] = nil
+		}
 	}
 
 	// Reset frame to new function
