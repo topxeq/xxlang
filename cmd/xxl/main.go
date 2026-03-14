@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/topxeq/xxlang/pkg/compiler"
@@ -21,7 +20,7 @@ const (
 )
 
 const (
-	Version   = "0.3.0"
+	Version   = "0.3.1"
 )
 
 // REPL represents an interactive REPL session
@@ -109,7 +108,7 @@ func printUsage() {
 }
 
 func printVersion() {
-    fmt.Printf("Xxlang v%s (Go %s)\n", Version, runtime.Version())
+    fmt.Printf("Xxlang v%s\n", Version)
 }
 
 func startREPL() {
