@@ -16,8 +16,7 @@ import (
 // loadPluginWASM loads a .wasm file using wazero runtime.
 // This works on all platforms including Windows without CGO.
 //
-// Note: Requires TinyGo-compiled WASM. Standard Go's wasip1 target
-// runs _start (main) and exits, closing the module.
+// Supports both TinyGo and standard Go WASM plugins.
 func loadPluginWASM(path string) (Plugin, error) {
 	// Read the WASM file
 	wasmBytes, err := os.ReadFile(path)
@@ -34,8 +33,20 @@ func loadPluginWASM(path string) (Plugin, error) {
 	// Instantiate WASI, required for Go-compiled WASM (wasip1)
 	wasi_snapshot_preview1.MustInstantiate(ctx, rt)
 
-	// Instantiate the WASM module
-	module, err := rt.Instantiate(ctx, wasmBytes)
+	// Compile the module first
+	compiled, err := rt.CompileModule(ctx, wasmBytes)
+	if err != nil {
+		rt.Close(ctx)
+		return nil, fmt.Errorf("failed to compile wasm module: %v", err)
+	}
+
+	// Instantiate with stdout/stderr configured
+	// _start will run automatically, initializing the Go runtime
+	moduleConfig := wazero.NewModuleConfig().
+		WithStdout(os.Stdout).
+		WithStderr(os.Stderr)
+
+	module, err := rt.InstantiateModule(ctx, compiled, moduleConfig)
 	if err != nil {
 		rt.Close(ctx)
 		return nil, fmt.Errorf("failed to instantiate wasm module: %v", err)
@@ -44,7 +55,6 @@ func loadPluginWASM(path string) (Plugin, error) {
 	// Get plugin name from exported function if available
 	name := "wasm_plugin"
 	if nameFn := module.ExportedFunction("plugin_name"); nameFn != nil {
-		// Allocate memory for result
 		allocFn := module.ExportedFunction("alloc")
 		if allocFn != nil {
 			if results, err := allocFn.Call(ctx, 8); err == nil && len(results) > 0 {

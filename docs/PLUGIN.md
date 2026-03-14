@@ -317,13 +317,16 @@ if err != nil {
 
 WASM plugins work on all platforms including Windows, without CGO.
 
-**Important**: WASM plugins require **TinyGo**. Standard Go's `GOOS=wasip1` does NOT work because:
+**Important**: WASM plugins require **TinyGo**. Standard Go's `GOOS=wasip1` does NOT work for plugins because:
 
 1. Go's wasip1 runs `_start` (main) to initialize the runtime
-2. After `_start` returns, WASI specification closes the module
-3. Exported functions become unavailable after the module closes
+2. When `main()` returns, Go calls `proc_exit(0)`
+3. WASI specification closes the module after `proc_exit`
+4. Exported functions become unavailable after the module closes
 
-TinyGo uses a different architecture that allows exported functions to be called after initialization.
+Even with `select {}` in main, there's a runtime check that prevents exported functions from being called until `_start` completes its initialization phase. Since `select {}` blocks `_start` forever, the initialization flag is never set.
+
+**TinyGo uses a different architecture** that doesn't have this limitation.
 
 ### Installing TinyGo
 
@@ -339,9 +342,8 @@ sudo dpkg -i tinygo_0.36.0_amd64.deb
 # Download from https://tinygo.org/getting-started/install/windows/
 ```
 
-**Note**: TinyGo version compatibility with Go versions:
+**Note**: TinyGo version compatibility:
 - TinyGo 0.36: Go 1.19-1.24
-- TinyGo 0.35: Go 1.19-1.23
 - Check [tinygo.org](https://tinygo.org) for latest compatibility
 
 ### Creating a WASM Plugin
@@ -387,7 +389,7 @@ func main() {} // Required but not used
 ### Building WASM Plugins
 
 ```bash
-# Build with TinyGo
+# Build with TinyGo (required)
 tinygo build -o fib.wasm -target=wasi plugin/fib.go
 ```
 

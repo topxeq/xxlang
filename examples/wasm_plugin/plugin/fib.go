@@ -1,15 +1,19 @@
 // examples/wasm_plugin/plugin/fib.go
 // A WebAssembly plugin for Fibonacci calculation.
 //
-// IMPORTANT: This requires TinyGo, not standard Go!
-// Standard Go's wasip1 target does NOT support plugin-style WASM modules.
+// IMPORTANT: This MUST be built with TinyGo, not standard Go!
 //
 // Build with TinyGo:
-//   tinygo build -o fib.wasm -target=wasi fib.go
 //
-// Why TinyGo is required:
-// - Standard Go runs _start (main) and exits, closing the module
-// - TinyGo's architecture allows exported functions to remain callable
+//	tinygo build -o fib.wasm -target=wasi fib.go
+//
+// Standard Go's GOOS=wasip1 does NOT work for plugins because:
+// 1. When main() returns, Go calls proc_exit(0) which closes the module
+// 2. Even with select{} in main, there's a runtime check that prevents
+//    exported functions from being called until _start completes
+//
+// TinyGo uses a different architecture that allows exported functions
+// to remain callable after initialization.
 package main
 
 import (
@@ -138,5 +142,5 @@ func fibRange(n int64) (ptr uint32, count uint32) {
 }
 
 func main() {
-	// main is required but not used for TinyGo WASM plugins
+	// TinyGo allows exported functions to be called after main returns
 }
