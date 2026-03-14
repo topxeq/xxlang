@@ -73,6 +73,30 @@ xxlang run script.xxb
 | 启动开销 | ~5ms | ~1ms |
 | 分发 | 源码可见 | 字节码混淆 |
 | 文件大小 | 较小 | 约 5-10 倍 |
+| 跨平台 | 是 | **是 - 相同字节码可在任意平台运行** |
+
+### 跨平台兼容性
+
+Xxlang 字节码文件是**平台无关的**：
+
+- 同一个 `.xxb` 文件可在 Windows、Linux、macOS 上运行
+- 支持不同的 CPU 架构（amd64、arm64）
+- 在不同平台间移动无需重新编译
+
+```bash
+# 在 Windows 上编译
+xxlang compile --bytecode script.xxl
+
+# 复制 script.xxb 到 Linux 上运行
+xxlang run script.xxb  # 无需修改即可运行！
+```
+
+这得益于：
+- 固定字节序（Big Endian）用于版本号
+- Go 的 gob 编码（平台无关的序列化）
+- IEEE 754 浮点数（标准格式）
+- UTF-8 字符串（通用编码）
+- 不包含文件路径等平台相关数据
 
 ### 使用场景
 
