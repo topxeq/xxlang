@@ -1,18 +1,24 @@
 // examples/wasm_plugin/plugin/fib.go
 // A WebAssembly plugin for Fibonacci calculation.
 //
-// Build with TinyGo:
-//   tinygo build -o fib.wasm -target=wasi fib.go
+// Build with standard Go (Go 1.21+):
+//
+//	GOOS=wasip1 GOARCH=wasm go build -o fib.wasm fib.go
 //
 // This creates a cross-platform plugin that works on Windows, Linux, macOS
 // without CGO.
 package main
 
 import (
+	"fmt"
 	"unsafe"
 )
 
+// Global buffer for string returns
+var stringBuffer []byte
+
 // Plugin name - exported for the host
+//
 //export plugin_name
 func pluginName() (ptr uint32, size uint32) {
 	name := "fib"
@@ -20,6 +26,7 @@ func pluginName() (ptr uint32, size uint32) {
 }
 
 // Plugin version - exported for the host
+//
 //export plugin_version
 func pluginVersion() (ptr uint32, size uint32) {
 	version := "1.0.0-wasm"
@@ -27,6 +34,7 @@ func pluginVersion() (ptr uint32, size uint32) {
 }
 
 // Fast Fibonacci - O(n) time complexity
+//
 //export call_fast
 func fibFast(n int64) int64 {
 	if n <= 1 {
@@ -40,6 +48,7 @@ func fibFast(n int64) int64 {
 }
 
 // Matrix Fibonacci - O(log n) time complexity
+//
 //export call_matrix
 func fibMatrix(n int64) int64 {
 	if n <= 1 {
@@ -70,6 +79,8 @@ func fibMatrix(n int64) int64 {
 }
 
 // Check if a number is a Fibonacci number
+// Returns 1 (true) or 0 (false)
+//
 //export call_isFib
 func isFib(n int64) int32 {
 	if n < 0 {
@@ -93,31 +104,27 @@ func isFib(n int64) int32 {
 }
 
 // Batch Fibonacci - returns fib(0) to fib(n)
-// Returns pointer to array and count
+// Returns pointer to int64 array and count
+//
 //export call_range_
 func fibRange(n int64) (ptr uint32, count uint32) {
 	if n < 0 {
 		return 0, 0
 	}
 
-	results := make([]int64, n+1)
+	count = uint32(n + 1)
+	size := count * 8
+	ptr = alloc(size)
+
+	// Fill array with Fibonacci numbers
 	a, b := int64(0), int64(1)
 	for i := int64(0); i <= n; i++ {
-		results[i] = a
+		offset := ptr + uint32(i*8)
+		*(*int64)(unsafe.Pointer(uintptr(offset))) = a
 		a, b = b, a+b
 	}
 
-	// Allocate memory and copy results
-	size := uint32((n + 1) * 8)
-	buf := alloc(size)
-
-	// Copy int64 values as bytes
-	for i, val := range results {
-		offset := buf + uint32(i*8)
-		*(*int64)(unsafe.Pointer(uintptr(offset))) = val
-	}
-
-	return buf, uint32(n + 1)
+	return ptr, count
 }
 
 // Memory allocation for WASM
@@ -126,7 +133,18 @@ var memory []byte
 //export alloc
 func alloc(size uint32) uint32 {
 	offset := uint32(len(memory))
-	memory = append(memory, make([]byte, size)...)
+	// Ensure 8-byte alignment for int64
+	if offset%8 != 0 {
+		offset += 8 - offset%8
+	}
+	newLen := offset + size
+	if newLen > uint32(cap(memory)) {
+		newMem := make([]byte, newLen*2)
+		copy(newMem, memory)
+		memory = newMem
+	} else {
+		memory = memory[:newLen]
+	}
 	return offset
 }
 
@@ -137,4 +155,6 @@ func stringToPtr(s string) (uint32, uint32) {
 	return ptr, uint32(len(s))
 }
 
-func main() {}
+func main() {
+	fmt.Println("Fibonacci WASM Plugin loaded")
+}

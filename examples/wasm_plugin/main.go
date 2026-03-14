@@ -6,8 +6,12 @@
 //
 // Prerequisites:
 //   1. Install TinyGo: https://tinygo.org/getting-started/
+//      Note: TinyGo requires Go 1.19-1.24 (check tinygo.org for latest compatibility)
 //   2. Build the plugin: cd plugin && tinygo build -o fib.wasm -target=wasi fib.go
 //   3. Run this example: go run main.go
+//
+// Note: Standard Go's GOOS=wasip1 does NOT support exporting individual functions.
+// You must use TinyGo for WASM plugins.
 package main
 
 import (

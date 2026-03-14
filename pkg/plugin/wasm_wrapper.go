@@ -38,8 +38,8 @@ func (p *WasmPlugin) Exports() map[string]objects.Object {
 
 	// Get version if available
 	if versionFn := p.module.ExportedFunction("plugin_version"); versionFn != nil {
-		if ptrSize, err := versionFn.Call(ctx); err == nil && len(ptrSize) > 0 {
-			version := readStringFromMemory(p.module, ptrSize[0])
+		if results, err := versionFn.Call(ctx); err == nil && len(results) >= 2 {
+			version := readStringFromMemory2(p.module, uint32(results[0]), uint32(results[1]))
 			result["version"] = &objects.String{Value: version}
 		}
 	}
