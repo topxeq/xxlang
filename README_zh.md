@@ -296,6 +296,31 @@ println(fib(10000))  // 瞬间完成，不会栈溢出！
 
 **性能提升**：使用 TCO 后，fib(35) 性能提升约 **420,000 倍**！
 
+### 通过 Go 函数实现高性能
+
+将 Xxlang 嵌入 Go 应用时，可以注册 Go 函数获得原生性能：
+
+```go
+// 注册 Go 函数
+interp.SetGlobal("goFib", &objects.Builtin{
+    Fn: func(args ...objects.Object) objects.Object {
+        n := args[0].(*objects.Int).Value
+        return &objects.Int{Value: fibFast(n)}  // Go 原生，极速！
+    },
+})
+
+// 从 Xxlang 调用
+interp.Eval("goFib(100000)")  // 微秒级，而非秒级！
+```
+
+| 方式 | fib(35) | 性能提升 |
+|------|---------|----------|
+| Xxlang 朴素递归 | 6.5 秒 | 基准 |
+| Xxlang TCO | 200 µs | 32,000x |
+| Go 函数 | 25 µs | **260,000x** |
+
+详见 [docs/EMBEDDING.md](docs/EMBEDDING.md)。
+
 ## 内置函数列表
 
 Xxlang 提供 41 个内置函数：
