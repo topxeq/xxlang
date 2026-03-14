@@ -270,6 +270,31 @@ Xxlang uses a bytecode VM with tail call optimization.
 
 **Key insight**: Algorithm choice matters more than language. Using TCO, Xxlang achieves **420,000x** speedup over naive recursion.
 
+### TCO Rules
+
+Tail Call Optimization applies **automatically** when the function call is the last operation:
+
+| Pattern | TCO | Reason |
+|---------|-----|--------|
+| `return func(args)` | ✅ Yes | Call is the last operation |
+| `return a + func(args)` | ❌ No | Addition needed after call |
+| `return func(a) + func(b)` | ❌ No | Addition needed after calls |
+
+```xxl
+// ✅ TCO applies - instant execution
+func fibTail(n, a, b) {
+    if (n == 0) { return a }
+    if (n == 1) { return b }
+    return fibTail(n - 1, b, a + b)  // Direct tail call
+}
+
+// ❌ No TCO - exponential time
+func fibNaive(n) {
+    if (n <= 1) { return n }
+    return fibNaive(n - 1) + fibNaive(n - 2)  // Addition after calls
+}
+```
+
 See [benchmarks/FIB35_FINAL_REPORT.md](benchmarks/FIB35_FINAL_REPORT.md) for detailed analysis.
 
 ## License
