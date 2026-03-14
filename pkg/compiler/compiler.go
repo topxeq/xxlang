@@ -142,11 +142,19 @@ type CompilationScope struct {
 	instructions []byte
 }
 
+// InlineableFuncInfo stores information about an inlineable function
+type InlineableFuncInfo struct {
+	ConstIndex int // Index in constants pool
+	NumParams  int
+	Body       []byte
+}
+
 // Bytecode represents compiled bytecode
 type Bytecode struct {
-	Instructions []byte
-	Constants    []objects.Object
-	SourceMap    *SourceMap // Maps instruction positions to source locations
+	Instructions      []byte
+	Constants         []objects.Object
+	SourceMap         *SourceMap // Maps instruction positions to source locations
+	InlineableGlobals map[int]*InlineableFuncInfo // Global index -> inlineable function info
 }
 
 // CompiledFunction represents a compiled function
@@ -204,6 +212,9 @@ type Compiler struct {
 	// Optimization context tracking
 	safeArrayAccess map[string]bool // Track which array accesses are safe (bounds-checked by loop)
 
+	// Inlining support
+	inlineableGlobals map[int]*InlineableFuncInfo // Global index -> inlineable function info
+
 	// Optimization options
 	options OptimizationFlags
 }
@@ -211,39 +222,42 @@ type Compiler struct {
 // New creates a new compiler with default optimizations
 func New() *Compiler {
 	return &Compiler{
-		constants:       []objects.Object{},
-		symbolTable:     NewSymbolTable(),
-		scopes:          []CompilationScope{{instructions: []byte{}}},
-		scopeIndex:      0,
-		sourceMap:       NewSourceMap(),
-		safeArrayAccess: make(map[string]bool),
-		options:         DefaultOptimizations(),
+		constants:         []objects.Object{},
+		symbolTable:       NewSymbolTable(),
+		scopes:            []CompilationScope{{instructions: []byte{}}},
+		scopeIndex:        0,
+		sourceMap:         NewSourceMap(),
+		safeArrayAccess:   make(map[string]bool),
+		inlineableGlobals: make(map[int]*InlineableFuncInfo),
+		options:           DefaultOptimizations(),
 	}
 }
 
 // NewWithOptions creates a new compiler with custom optimization settings
 func NewWithOptions(opts OptimizationFlags) *Compiler {
 	return &Compiler{
-		constants:       []objects.Object{},
-		symbolTable:     NewSymbolTable(),
-		scopes:          []CompilationScope{{instructions: []byte{}}},
-		scopeIndex:      0,
-		sourceMap:       NewSourceMap(),
-		safeArrayAccess: make(map[string]bool),
-		options:         opts,
+		constants:         []objects.Object{},
+		symbolTable:       NewSymbolTable(),
+		scopes:            []CompilationScope{{instructions: []byte{}}},
+		scopeIndex:        0,
+		sourceMap:         NewSourceMap(),
+		safeArrayAccess:   make(map[string]bool),
+		inlineableGlobals: make(map[int]*InlineableFuncInfo),
+		options:           opts,
 	}
 }
 
 // NewWithState creates a new compiler with existing state
 func NewWithState(s *SymbolTable, constants []objects.Object) *Compiler {
 	return &Compiler{
-		constants:       constants,
-		symbolTable:     s,
-		scopes:          []CompilationScope{{instructions: []byte{}}},
-		scopeIndex:      0,
-		sourceMap:       NewSourceMap(),
-		safeArrayAccess: make(map[string]bool),
-		options:         DefaultOptimizations(),
+		constants:         constants,
+		symbolTable:       s,
+		scopes:            []CompilationScope{{instructions: []byte{}}},
+		scopeIndex:        0,
+		sourceMap:         NewSourceMap(),
+		safeArrayAccess:   make(map[string]bool),
+		inlineableGlobals: make(map[int]*InlineableFuncInfo),
+		options:           DefaultOptimizations(),
 	}
 }
 
@@ -753,6 +767,14 @@ func (c *Compiler) Compile(node parser.Node) error {
 			switch funcSymbol.Scope {
 			case GlobalScope:
 				c.emit(OpSetGlobal, funcSymbol.Index)
+				// Track inlineable functions for optimization
+				if compiledFn.IsInlineable && len(compiledFn.FreeVariables) == 0 {
+					c.inlineableGlobals[funcSymbol.Index] = &InlineableFuncInfo{
+						ConstIndex: fnIndex,
+						NumParams:  compiledFn.NumParameters,
+						Body:       compiledFn.InlineBody,
+					}
+				}
 			case LocalScope:
 				c.emit(OpSetLocal, funcSymbol.Index)
 			}
@@ -1077,9 +1099,10 @@ func (c *Compiler) compileExportStatement(node *parser.ExportStatement) error {
 // Bytecode returns the compiled bytecode
 func (c *Compiler) Bytecode() *Bytecode {
 	bytecode := &Bytecode{
-		Instructions: c.currentInstructions(),
-		Constants:    c.constants,
-		SourceMap:    c.sourceMap,
+		Instructions:      c.currentInstructions(),
+		Constants:         c.constants,
+		SourceMap:         c.sourceMap,
+		InlineableGlobals: c.inlineableGlobals,
 	}
 
 	// Apply optimizations if enabled
@@ -1200,6 +1223,7 @@ func (c *Compiler) analyzeInlineable(instructions []byte) (bool, []byte) {
 
 	// Function is inlineable if it ends with a single value return
 	// and doesn't contain side effects (function calls, assignments)
+	// or control flow (jumps, multiple returns)
 
 	// Check if ends with OpReturn preceded by value-producing instructions
 	lastIP := len(instructions) - 1
@@ -1211,20 +1235,26 @@ func (c *Compiler) analyzeInlineable(instructions []byte) (bool, []byte) {
 	// side effects, it's inlineable
 	// Count instructions and check for side effects
 	sideEffectOpcodes := map[Opcode]bool{
-		OpSetGlobal: true,
-		OpSetLocal:  true,
-		OpSetFree:   true,
-		OpSetIndex:  true,
-		OpSetField:  true,
-		OpCall:      true,
-		OpTailCall:  true,
-		OpCallMethod: true,
-		OpPop:       true,
+		OpSetGlobal:   true,
+		OpSetLocal:    true,
+		OpSetFree:     true,
+		OpSetIndex:    true,
+		OpSetField:    true,
+		OpCall:        true,
+		OpTailCall:    true,
+		OpCallMethod:  true,
+		OpPop:         true,
+		OpJump:        true,
+		OpJumpIfFalse: true,
+		OpJumpIfTrue:  true,
+		OpReturn:      true, // Multiple returns not allowed
+		OpBreak:       true,
+		OpContinue:    true,
 	}
 
 	numInstructions := 0
 	i := 0
-	for i < len(instructions)-1 { // Exclude return
+	for i < len(instructions)-1 { // Exclude final return
 		op := Opcode(instructions[i])
 
 		if sideEffectOpcodes[op] {

@@ -469,7 +469,8 @@ func TestFunctionDefinition(t *testing.T) {
 }
 
 func TestFunctionCall(t *testing.T) {
-	input := "func f() { return 1; } f();"
+	// Use a function with side effects (print) so it won't be inlined
+	input := "func f(x) { print(x); return x; } f(42);"
 
 	program := parse(input)
 	compiler := New()
