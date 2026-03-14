@@ -1,0 +1,257 @@
+// 08_closures.xxl
+// Closures, captured variables, and functional patterns
+
+// === Basic Closure ===
+println("=== Basic Closure ===")
+
+func makeCounter() {
+    var count = 0
+    return func() {
+        count = count + 1
+        return count
+    }
+}
+
+var counter = makeCounter()
+println("counter(): ", counter())  // 1
+println("counter(): ", counter())  // 2
+println("counter(): ", counter())  // 3
+
+// === Independent Counters ===
+println("\n=== Independent Counters ===")
+var counter1 = makeCounter()
+var counter2 = makeCounter()
+
+println("counter1(): ", counter1())  // 1
+println("counter1(): ", counter1())  // 2
+println("counter2(): ", counter2())  // 1 (independent)
+println("counter1(): ", counter1())  // 3
+println("counter2(): ", counter2())  // 2
+
+// === Closure Capturing Parameters ===
+println("\n=== Closure Capturing Parameters ===")
+
+func makeAdder(x) {
+    return func(y) {
+        return x + y
+    }
+}
+
+var add5 = makeAdder(5)
+var add10 = makeAdder(10)
+
+println("add5(3): ", add5(3))    // 8
+println("add5(7): ", add5(7))    // 12
+println("add10(3): ", add10(3))  // 13
+
+// === Closure with Multiple Captured Variables ===
+println("\n=== Closure with Multiple Captured Variables ===")
+
+func makeAccumulator(initial) {
+    var total = initial
+    var count = 0
+
+    return func(value) {
+        total = total + value
+        count = count + 1
+        return {"total": total, "count": count}
+    }
+}
+
+var acc = makeAccumulator(100)
+println("acc(10): ", acc(10))
+println("acc(20): ", acc(20))
+println("acc(30): ", acc(30))
+
+// === Closure for Data Privacy ===
+println("\n=== Closure for Data Privacy ===")
+
+func createBankAccount(initialBalance) {
+    var balance = initialBalance
+
+    return {
+        "deposit": func(amount) {
+            balance = balance + amount
+            return balance
+        },
+        "withdraw": func(amount) {
+            if (balance >= amount) {
+                balance = balance - amount
+                return balance
+            }
+            return null  // Insufficient funds
+        },
+        "getBalance": func() {
+            return balance
+        }
+    }
+}
+
+var account = createBankAccount(100)
+println("Initial balance: ", account["getBalance"]())
+println("After deposit(50): ", account["deposit"](50))
+println("After withdraw(30): ", account["withdraw"](30))
+println("Final balance: ", account["getBalance"]())
+
+// === Closure as Callback ===
+println("\n=== Closure as Callback ===")
+
+func withTimer(label, action) {
+    // Simulate timing (just demonstrate closure pattern)
+    println("Starting: ", label)
+    var result = action()
+    println("Completed: ", label)
+    return result
+}
+
+var expensiveResult = withTimer("calculation", func() {
+    var sum = 0
+    for (var i = 0; i < 100; i++) {
+        sum = sum + i
+    }
+    return sum
+})
+println("Result: ", expensiveResult)
+
+// === Closure for Partial Application ===
+println("\n=== Closure for Partial Application ===")
+
+func partial(f, x) {
+    return func(y) {
+        return f(x, y)
+    }
+}
+
+func power(base, exp) {
+    var result = 1
+    for (var i = 0; i < exp; i++) {
+        result = result * base
+    }
+    return result
+}
+
+var square = partial(power, 2)
+var cube = partial(power, 3)
+
+println("square(5): ", square(5))  // 25
+println("cube(3): ", cube(3))      // 27
+
+// === Closure for Memoization ===
+println("\n=== Closure for Memoization ===")
+
+func memoize(f) {
+    var cache = {}
+
+    return func(x) {
+        var key = toStr(x)
+        if (hasKey(cache, key)) {
+            println("  (cache hit for ", x, ")")
+            return cache[key]
+        }
+        var result = f(x)
+        cache[key] = result
+        return result
+    }
+}
+
+func slowSquare(x) {
+    println("  (computing square of ", x, ")")
+    return x * x
+}
+
+var fastSquare = memoize(slowSquare)
+println("fastSquare(5): ", fastSquare(5))
+println("fastSquare(5): ", fastSquare(5))  // Should hit cache
+println("fastSquare(3): ", fastSquare(3))
+println("fastSquare(5): ", fastSquare(5))  // Should hit cache
+
+// === Closure for Iterator Pattern ===
+println("\n=== Closure for Iterator Pattern ===")
+
+func rangeIterator(start, end) {
+    var current = start
+    return func() {
+        if (current < end) {
+            var val = current
+            current = current + 1
+            return val
+        }
+        return null
+    }
+}
+
+var iter = rangeIterator(0, 5)
+var iterVal = iter()
+while (iterVal != null) {
+    println("Iterator value: ", iterVal)
+    iterVal = iter()
+}
+
+// === Closure for Once-Only Execution ===
+println("\n=== Closure for Once-Only Execution ===")
+
+func once(f) {
+    var called = false
+    var result = null
+
+    return func() {
+        if (!called) {
+            result = f()
+            called = true
+        }
+        return result
+    }
+}
+
+var initialize = once(func() {
+    println("  Initializing...")
+    return "initialized"
+})
+
+println("First call: ", initialize())
+println("Second call: ", initialize())
+println("Third call: ", initialize())
+
+// === Higher-Order Functions with Closures ===
+println("\n=== Higher-Order Functions with Closures ===")
+
+func makeMultiplier(factor) {
+    return func(x) {
+        return x * factor
+    }
+}
+
+var double = makeMultiplier(2)
+var triple = makeMultiplier(3)
+
+func mapArray(arr, f) {
+    var result = []
+    for (item in arr) {
+        push(result, f(item))
+    }
+    return result
+}
+
+var numbers = [1, 2, 3, 4, 5]
+println("Original: ", numbers)
+println("Doubled: ", mapArray(numbers, double))
+println("Tripled: ", mapArray(numbers, triple))
+
+// === Closure in Loop (Classic Pattern) ===
+println("\n=== Closure in Loop ===")
+
+func makeFunctions() {
+    var funcs = []
+    for (var i = 0; i < 3; i++) {
+        // Each closure captures its own 'i' value
+        push(funcs, func(x) {
+            return x + i
+        })
+    }
+    return funcs
+}
+
+var funcs = makeFunctions()
+println("funcs[0](10): ", funcs[0](10))
+println("funcs[1](10): ", funcs[1](10))
+println("funcs[2](10): ", funcs[2](10))

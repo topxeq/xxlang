@@ -1,0 +1,356 @@
+// 15_functional.xxl
+// Functional programming patterns: map, filter, reduce, and higher-order functions
+
+// === Higher-Order Functions ===
+println("=== Higher-Order Functions ===")
+
+// Function that takes another function as argument
+func applyTwice(f, x) {
+    return f(f(x))
+}
+
+var double = func(x) { return x * 2 }
+println("applyTwice(double, 3) = ", applyTwice(double, 3))
+
+// Function that returns a function
+func makeAdder(n) {
+    return func(x) {
+        return x + n
+    }
+}
+
+var add5 = makeAdder(5)
+var add10 = makeAdder(10)
+println("add5(7) = ", add5(7))
+println("add10(7) = ", add10(7))
+
+// === Map Implementation ===
+println("\n=== Map Implementation ===")
+
+func mapArray(arr, f) {
+    var result = []
+    for (item in arr) {
+        push(result, f(item))
+    }
+    return result
+}
+
+var numbers = [1, 2, 3, 4, 5]
+
+var doubled = mapArray(numbers, func(x) { return x * 2 })
+println("numbers: ", numbers)
+println("doubled: ", doubled)
+
+var squared = mapArray(numbers, func(x) { return x * x })
+println("squared: ", squared)
+
+var stringified = mapArray(numbers, func(x) { return "num:" + x })
+println("stringified: ", stringified)
+
+// === Filter Implementation ===
+println("\n=== Filter Implementation ===")
+
+func filterArray(arr, predicate) {
+    var result = []
+    for (item in arr) {
+        if (predicate(item)) {
+            push(result, item)
+        }
+    }
+    return result
+}
+
+var mixed = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+var evens = filterArray(mixed, func(x) { return x % 2 == 0 })
+println("Original: ", mixed)
+println("Evens: ", evens)
+
+var greaterThan5 = filterArray(mixed, func(x) { return x > 5 })
+println("Greater than 5: ", greaterThan5)
+
+// === Reduce Implementation ===
+println("\n=== Reduce Implementation ===")
+
+func reduceArray(arr, f, initial) {
+    var acc = initial
+    for (item in arr) {
+        acc = f(acc, item)
+    }
+    return acc
+}
+
+var nums = [1, 2, 3, 4, 5]
+
+var sum = reduceArray(nums, func(acc, x) { return acc + x }, 0)
+println("Sum: ", sum)
+
+var product = reduceArray(nums, func(acc, x) { return acc * x }, 1)
+println("Product: ", product)
+
+var maxVal = reduceArray(nums, func(acc, x) {
+    if (x > acc) { return x }
+    return acc
+}, nums[0])
+println("Max: ", maxVal)
+
+// === Chaining Operations ===
+println("\n=== Chaining Operations ===")
+
+func chain(value) {
+    return {
+        "value": value,
+        "map": func(f) {
+            return chain(mapArray(value, f))
+        },
+        "filter": func(predicate) {
+            return chain(filterArray(value, predicate))
+        },
+        "reduce": func(f, initial) {
+            return reduceArray(value, f, initial)
+        },
+        "get": func() {
+            return value
+        }
+    }
+}
+
+var result = chain([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    .filter(func(x) { return x % 2 == 0 })
+    .map(func(x) { return x * x })
+    .get()
+
+println("Even numbers squared: ", result)
+
+// === Composition ===
+println("\n=== Composition ===")
+
+func compose(f, g) {
+    return func(x) {
+        return f(g(x))
+    }
+}
+
+var addOne = func(x) { return x + 1 }
+var multiplyByTwo = func(x) { return x * 2 }
+
+var addOneThenDouble = compose(multiplyByTwo, addOne)
+var doubleThenAddOne = compose(addOne, multiplyByTwo)
+
+println("addOneThenDouble(5) = ", addOneThenDouble(5))  // (5+1)*2 = 12
+println("doubleThenAddOne(5) = ", doubleThenAddOne(5))  // (5*2)+1 = 11
+
+// === Pipe (Left-to-Right Composition) ===
+println("\n=== Pipe ===")
+
+func pipe(f, g) {
+    return func(x) {
+        return g(f(x))
+    }
+}
+
+var pipeline = pipe(addOne, multiplyByTwo)
+println("pipe(addOne, double)(5) = ", pipeline(5))  // (5+1)*2 = 12
+
+// === Currying ===
+println("\n=== Currying ===")
+
+func curry2(f) {
+    return func(a) {
+        return func(b) {
+            return f(a, b)
+        }
+    }
+}
+
+func add(a, b) {
+    return a + b
+}
+
+var curriedAdd = curry2(add)
+var addTen = curriedAdd(10)
+println("curriedAdd(10)(5) = ", addTen(5))
+
+// === Partial Application ===
+println("\n=== Partial Application ===")
+
+func partial2(f, a) {
+    return func(b) {
+        return f(a, b)
+    }
+}
+
+func greet(greeting, name) {
+    return greeting + ", " + name + "!"
+}
+
+var sayHello = partial2(greet, "Hello")
+var sayHi = partial2(greet, "Hi")
+
+println(sayHello("Alice"))
+println(sayHi("Bob"))
+
+// === Flip ===
+println("\n=== Flip ===")
+
+func flip(f) {
+    return func(a, b) {
+        return f(b, a)
+    }
+}
+
+func subtract(a, b) {
+    return a - b
+}
+
+var flippedSubtract = flip(subtract)
+println("subtract(10, 3) = ", subtract(10, 3))      // 7
+println("flippedSubtract(10, 3) = ", flippedSubtract(10, 3))  // -7
+
+// === Memoization ===
+println("\n=== Memoization ===")
+
+func memoize(f) {
+    var cache = {}
+    return func(x) {
+        var key = toStr(x)
+        if (hasKey(cache, key)) {
+            return cache[key]
+        }
+        var result = f(x)
+        cache[key] = result
+        return result
+    }
+}
+
+var fibMemo = memoize(func(n) {
+    if (n <= 1) { return n }
+    return fibMemo(n - 1) + fibMemo(n - 2)
+})
+
+println("fibMemo(20) = ", fibMemo(20))
+println("fibMemo(30) = ", fibMemo(30))
+
+// === Find/FindIndex ===
+println("\n=== Find/FindIndex ===")
+
+func find(arr, predicate) {
+    for (item in arr) {
+        if (predicate(item)) {
+            return item
+        }
+    }
+    return null
+}
+
+func findIndex(arr, predicate) {
+    for (var i = 0; i < len(arr); i++) {
+        if (predicate(arr[i])) {
+            return i
+        }
+    }
+    return -1
+}
+
+var users = [
+    {"name": "Alice", "age": 25},
+    {"name": "Bob", "age": 30},
+    {"name": "Charlie", "age": 35}
+]
+
+var found = find(users, func(u) { return u["age"] > 28 })
+println("Found user: ", found)
+
+var idx = findIndex(users, func(u) { return u["name"] == "Bob" })
+println("Bob's index: ", idx)
+
+// === Some/Every ===
+println("\n=== Some/Every ===")
+
+func some(arr, predicate) {
+    for (item in arr) {
+        if (predicate(item)) {
+            return true
+        }
+    }
+    return false
+}
+
+func every(arr, predicate) {
+    for (item in arr) {
+        if (!predicate(item)) {
+            return false
+        }
+    }
+    return true
+}
+
+var testArr = [2, 4, 6, 8, 10]
+println("Has odd number: ", some(testArr, func(x) { return x % 2 != 0 }))
+println("All even: ", every(testArr, func(x) { return x % 2 == 0 }))
+
+// === Zip ===
+println("\n=== Zip ===")
+
+func zip(arr1, arr2) {
+    var result = []
+    var minLen = len(arr1)
+    if (len(arr2) < minLen) { minLen = len(arr2) }
+
+    for (var i = 0; i < minLen; i++) {
+        push(result, [arr1[i], arr2[i]])
+    }
+    return result
+}
+
+var names = ["Alice", "Bob", "Charlie"]
+var ages = [25, 30, 35]
+var pairs = zip(names, ages)
+println("Zipped: ", pairs)
+
+// === FlatMap ===
+println("\n=== FlatMap ===")
+
+func flatMap(arr, f) {
+    var result = []
+    for (item in arr) {
+        var mapped = f(item)
+        for (subItem in mapped) {
+            push(result, subItem)
+        }
+    }
+    return result
+}
+
+var nested = [[1, 2], [3, 4], [5, 6]]
+var flattened = flatMap(nested, func(x) { return x })
+println("Flattened: ", flattened)
+
+// Range expansion
+var range = flatMap([1, 2, 3], func(x) {
+    return [x, x * 10]
+})
+println("Range expanded: ", range)
+
+// === Take/Drop ===
+println("\n=== Take/Drop ===")
+
+func take(arr, n) {
+    var result = []
+    for (var i = 0; i < n && i < len(arr); i++) {
+        push(result, arr[i])
+    }
+    return result
+}
+
+func drop(arr, n) {
+    var result = []
+    for (var i = n; i < len(arr); i++) {
+        push(result, arr[i])
+    }
+    return result
+}
+
+var source = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+println("take([1..10], 3) = ", take(source, 3))
+println("drop([1..10], 3) = ", drop(source, 3))

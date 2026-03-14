@@ -1,0 +1,304 @@
+// 11_classes.xxl
+// Object-oriented programming: classes, instances, and methods
+
+// === Basic Class Definition ===
+println("=== Basic Class Definition ===")
+
+class Point {
+    func init(x, y) {
+        this.x = x
+        this.y = y
+    }
+
+    func toString() {
+        return "(" + string(this.x) + ", " + string(this.y) + ")"
+    }
+
+    func distance() {
+        // Simple distance from origin
+        return sqrt(this.x * this.x + this.y * this.y)
+    }
+}
+
+var p1 = new Point(3, 4)
+println("Point p1: ", p1.toString())
+println("p1.x = ", p1.x)
+println("p1.y = ", p1.y)
+println("Distance from origin: ", p1.distance())
+
+// === Class Methods ===
+println("\n=== Class Methods ===")
+
+class Calculator {
+    func init() {
+        this.result = 0
+    }
+
+    func add(n) {
+        this.result = this.result + n
+        return this
+    }
+
+    func subtract(n) {
+        this.result = this.result - n
+        return this
+    }
+
+    func multiply(n) {
+        this.result = this.result * n
+        return this
+    }
+
+    func getResult() {
+        return this.result
+    }
+
+    func reset() {
+        this.result = 0
+        return this
+    }
+}
+
+var calc = new Calculator()
+println("calc.add(10).multiply(3).getResult(): ",
+    calc.add(10).multiply(3).getResult())
+
+// === Class with Multiple Constructors Pattern ===
+println("\n=== Class with Factory Methods ===")
+
+class Rectangle {
+    func init(width, height) {
+        this.width = width
+        this.height = height
+    }
+
+    func area() {
+        return this.width * this.height
+    }
+
+    func perimeter() {
+        return 2 * (this.width + this.height)
+    }
+
+    func toString() {
+        return "Rectangle(" + string(this.width) + "x" + string(this.height) + ")"
+    }
+}
+
+// Factory function for square
+func createSquare(size) {
+    return new Rectangle(size, size)
+}
+
+var rect = new Rectangle(5, 3)
+var square = createSquare(4)
+
+println("Rectangle: ", rect.toString())
+println("  Area: ", rect.area())
+println("  Perimeter: ", rect.perimeter())
+
+println("Square: ", square.toString())
+println("  Area: ", square.area())
+
+// === Class with Validation ===
+println("\n=== Class with Validation ===")
+
+class BankAccount {
+    func init(owner, initialBalance) {
+        this.owner = owner
+        this.balance = 0
+
+        // Validate initial balance
+        if (initialBalance > 0) {
+            this.balance = initialBalance
+        }
+    }
+
+    func deposit(amount) {
+        if (amount <= 0) {
+            println("  Invalid deposit amount")
+            return false
+        }
+        this.balance = this.balance + amount
+        return true
+    }
+
+    func withdraw(amount) {
+        if (amount <= 0) {
+            println("  Invalid withdrawal amount")
+            return false
+        }
+        if (amount > this.balance) {
+            println("  Insufficient funds")
+            return false
+        }
+        this.balance = this.balance - amount
+        return true
+    }
+
+    func getBalance() {
+        return this.balance
+    }
+
+    func toString() {
+        return this.owner + "'s account: $" + this.balance
+    }
+}
+
+var account = new BankAccount("Alice", 100)
+println("Created: ", account.toString())
+
+print("Depositing $50... ")
+account.deposit(50)
+println("Balance: $", account.getBalance())
+
+print("Withdrawing $30... ")
+account.withdraw(30)
+println("Balance: $", account.getBalance())
+
+print("Withdrawing $200... ")
+account.withdraw(200)  // Should fail
+
+// === Class Composition ===
+println("\n=== Class Composition ===")
+
+class Engine {
+    func init(horsepower) {
+        this.horsepower = horsepower
+        this.running = false
+    }
+
+    func start() {
+        this.running = true
+        println("  Engine started (", this.horsepower, " HP)")
+    }
+
+    func stop() {
+        this.running = false
+        println("  Engine stopped")
+    }
+
+    func isRunning() {
+        return this.running
+    }
+}
+
+class Car {
+    func init(brand, horsepower) {
+        this.brand = brand
+        this.engine = new Engine(horsepower)
+    }
+
+    func start() {
+        println("Starting ", this.brand, ":")
+        this.engine.start()
+    }
+
+    func stop() {
+        println("Stopping ", this.brand, ":")
+        this.engine.stop()
+    }
+}
+
+var car = new Car("Toyota", 180)
+car.start()
+car.stop()
+
+// === Class as Data Container ===
+println("\n=== Class as Data Container ===")
+
+class Person {
+    func init(name, age, email) {
+        this.name = name
+        this.age = age
+        this.email = email
+    }
+
+    func introduce() {
+        return "Hi, I'm " + string(this.name) + ", " + string(this.age) + " years old"
+    }
+
+    func isAdult() {
+        return this.age >= 18
+    }
+}
+
+var people = [
+    new Person("Alice", 25, "alice@example.com"),
+    new Person("Bob", 17, "bob@example.com"),
+    new Person("Charlie", 30, "charlie@example.com")
+]
+
+println("People:")
+for (p in people) {
+    var status = ""
+    if (p.isAdult()) {
+        status = " (adult)"
+    } else {
+        status = " (minor)"
+    }
+    println("  ", p.introduce(), status)
+}
+
+// === Class with Collection ===
+println("\n=== Class with Collection ===")
+
+class Library {
+    func init(name) {
+        this.name = name
+        this.books = []
+    }
+
+    func addBook(title, author) {
+        push(this.books, {"title": title, "author": author})
+    }
+
+    func listBooks() {
+        println("Books in ", this.name, ":")
+        for (book in this.books) {
+            println("  - ", book["title"], " by ", book["author"])
+        }
+    }
+
+    func findByAuthor(author) {
+        var result = []
+        for (book in this.books) {
+            if (book["author"] == author) {
+                push(result, book["title"])
+            }
+        }
+        return result
+    }
+}
+
+var lib = new Library("City Library")
+lib.addBook("1984", "Orwell")
+lib.addBook("Animal Farm", "Orwell")
+lib.addBook("Dune", "Herbert")
+lib.listBooks()
+
+var orwellBooks = lib.findByAuthor("Orwell")
+println("Books by Orwell: ", orwellBooks)
+
+// === Static-like Methods ===
+println("\n=== Utility Methods ===")
+
+class MathUtils {
+    func init() {
+        // Private-like constant (convention)
+        this.PI = 3.14159
+    }
+
+    func circleArea(radius) {
+        return this.PI * radius * radius
+    }
+
+    func circleCircumference(radius) {
+        return 2 * this.PI * radius
+    }
+}
+
+var math = new MathUtils()
+println("Circle radius 5:")
+println("  Area: ", math.circleArea(5))
+println("  Circumference: ", math.circleCircumference(5))

@@ -1,0 +1,245 @@
+// 09_recursion.xxl
+// Recursive algorithms: factorial, fibonacci, tree traversal, etc.
+
+// === Basic Recursion: Factorial ===
+println("=== Basic Recursion: Factorial ===")
+
+func factorial(n) {
+    if (n <= 1) {
+        return 1
+    }
+    return n * factorial(n - 1)
+}
+
+println("factorial(0) = ", factorial(0))
+println("factorial(1) = ", factorial(1))
+println("factorial(5) = ", factorial(5))
+println("factorial(10) = ", factorial(10))
+
+// === Fibonacci Sequence ===
+println("\n=== Fibonacci Sequence ===")
+
+func fib(n) {
+    if (n <= 1) {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+println("Fibonacci sequence:")
+for (var i = 0; i <= 10; i++) {
+    println("  fib(", i, ") = ", fib(i))
+}
+
+// === Tail Recursion ===
+// Note: Tail recursion optimization may have issues in current version
+println("\n=== Tail Recursion (using iterative approach) ===")
+
+func factorialIterative(n) {
+    var result = 1
+    for (var i = 2; i <= n; i++) {
+        result = result * i
+    }
+    return result
+}
+
+println("factorialIterative(10) = ", factorialIterative(10))
+println("factorialIterative(15) = ", factorialIterative(15))
+
+// === Recursive Sum ===
+println("\n=== Recursive Sum ===")
+
+func sumTo(n) {
+    if (n <= 0) {
+        return 0
+    }
+    return n + sumTo(n - 1)
+}
+
+println("sumTo(10) = ", sumTo(10))
+println("sumTo(100) = ", sumTo(100))
+
+// === Recursive Array Sum ===
+println("\n=== Recursive Array Sum ===")
+
+func arraySum(arr, index) {
+    if (index >= len(arr)) {
+        return 0
+    }
+    return arr[index] + arraySum(arr, index + 1)
+}
+
+var nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+println("arraySum([1..10], 0) = ", arraySum(nums, 0))
+
+// === Recursive Array Length ===
+println("\n=== Recursive Array Length ===")
+
+func recursiveLen(arr, index) {
+    if (index >= len(arr)) {
+        return 0
+    }
+    return 1 + recursiveLen(arr, index + 1)
+}
+
+println("recursiveLen([1,2,3,4,5], 0) = ", recursiveLen([1, 2, 3, 4, 5], 0))
+
+// === Recursive Find Max ===
+println("\n=== Recursive Find Max ===")
+
+func findMax(arr, index) {
+    if (index >= len(arr) - 1) {
+        return arr[len(arr) - 1]
+    }
+    var rest = findMax(arr, index + 1)
+    if (arr[index] > rest) {
+        return arr[index]
+    }
+    return rest
+}
+
+var values = [3, 7, 2, 9, 4, 8, 1, 6, 5]
+println("findMax([3,7,2,9,4,8,1,6,5], 0) = ", findMax(values, 0))
+
+// === Recursive Binary Search ===
+println("\n=== Recursive Binary Search ===")
+
+func binarySearch(arr, target, low, high) {
+    if (low > high) {
+        return -1
+    }
+
+    var mid = (low + high) / 2
+
+    if (arr[mid] == target) {
+        return mid
+    }
+    if (arr[mid] > target) {
+        return binarySearch(arr, target, low, mid - 1)
+    }
+    return binarySearch(arr, target, mid + 1, high)
+}
+
+var sorted = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19]
+println("binarySearch for 7: ", binarySearch(sorted, 7, 0, len(sorted) - 1))
+println("binarySearch for 1: ", binarySearch(sorted, 1, 0, len(sorted) - 1))
+println("binarySearch for 19: ", binarySearch(sorted, 19, 0, len(sorted) - 1))
+println("binarySearch for 8: ", binarySearch(sorted, 8, 0, len(sorted) - 1))
+
+// === Recursive GCD ===
+println("\n=== Recursive GCD (Euclidean Algorithm) ===")
+
+func gcd(a, b) {
+    if (b == 0) {
+        return a
+    }
+    return gcd(b, a % b)
+}
+
+println("gcd(48, 18) = ", gcd(48, 18))
+println("gcd(54, 24) = ", gcd(54, 24))
+println("gcd(17, 13) = ", gcd(17, 13))
+
+// === Recursive Power ===
+println("\n=== Recursive Power ===")
+
+func power(base, exp) {
+    if (exp == 0) {
+        return 1
+    }
+    if (exp < 0) {
+        return 1 / power(base, -exp)
+    }
+    // Fast exponentiation
+    if (exp % 2 == 0) {
+        var half = power(base, exp / 2)
+        return half * half
+    }
+    return base * power(base, exp - 1)
+}
+
+println("power(2, 10) = ", power(2, 10))
+println("power(3, 5) = ", power(3, 5))
+println("power(5, 0) = ", power(5, 0))
+
+// === Recursive String Reverse ===
+println("\n=== Recursive String Reverse ===")
+
+func reverseString(s, index) {
+    if (index < 0) {
+        return ""
+    }
+    return s[index] + reverseString(s, index - 1)
+}
+
+func reverseStr(s) {
+    return reverseString(s, len(s) - 1)
+}
+
+println("reverseStr('hello') = ", reverseStr("hello"))
+println("reverseStr('recursion') = ", reverseStr("recursion"))
+
+// === Recursive Tree Structure ===
+println("\n=== Recursive Tree (Nested Arrays) ===")
+
+func treeSum(tree) {
+    var total = 0
+    for (node in tree) {
+        if (typeOf(node) == "ARRAY") {
+            total = total + treeSum(node)
+        } else {
+            total = total + node
+        }
+    }
+    return total
+}
+
+var nestedTree = [1, [2, 3], [4, [5, 6]], 7]
+println("Tree: ", nestedTree)
+println("Tree sum: ", treeSum(nestedTree))
+
+// === Recursive Tree Depth ===
+println("\n=== Recursive Tree Depth ===")
+
+func treeDepth(tree) {
+    if (typeOf(tree) != "ARRAY") {
+        return 0
+    }
+    var maxDepth = 0
+    for (node in tree) {
+        var depth = treeDepth(node)
+        if (depth > maxDepth) {
+            maxDepth = depth
+        }
+    }
+    return 1 + maxDepth
+}
+
+println("Tree depth: ", treeDepth(nestedTree))
+
+// === Memoized Fibonacci ===
+println("\n=== Memoized Fibonacci ===")
+
+var fibCache = {}
+
+func fibMemo(n) {
+    if (n <= 1) {
+        return n
+    }
+    var key = string(n)
+    if (hasKey(fibCache, key)) {
+        return fibCache[key]
+    }
+    var result = fibMemo(n - 1) + fibMemo(n - 2)
+    fibCache[key] = result
+    return result
+}
+
+println("fibMemo(30) = ", fibMemo(30))
+println("fibMemo(35) = ", fibMemo(35))
+
+// Compare performance
+println("\n=== Performance Comparison ===")
+println("Computing fib(20) recursively vs memoized:")
+println("  fib(20) = ", fib(20))
+println("  fibMemo(20) = ", fibMemo(20))

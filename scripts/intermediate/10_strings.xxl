@@ -1,0 +1,282 @@
+// 10_strings.xxl
+// String operations, methods, and patterns
+
+// === String Basics ===
+println("=== String Basics ===")
+var greeting = "Hello, World!"
+var name = "Alice"
+var empty = ""
+
+println("greeting: ", greeting)
+println("name: ", name)
+println("empty: '", empty, "'")
+
+// === String Length ===
+println("\n=== String Length ===")
+println("len(greeting): ", len(greeting))
+println("len(name): ", len(name))
+
+// === String Concatenation ===
+println("\n=== String Concatenation ===")
+var first = "Hello"
+var last = "World"
+var full = first + ", " + last + "!"
+println("Concatenated: ", full)
+
+// Build string in loop
+var builder = ""
+for (var i = 0; i < 5; i++) {
+    builder = builder + string(i)
+}
+println("Built string: ", builder)
+
+// === String Comparison ===
+println("\n=== String Comparison ===")
+var a = "apple"
+var b = "apple"
+var c = "banana"
+
+println("a == b: ", a == b)  // true
+println("a == c: ", a == c)  // false
+println("a != c: ", a != c)  // true
+
+// === String Methods ===
+println("\n=== String Methods ===")
+
+var text = "Hello, World!"
+
+// Contains
+println("text.contains('World'): ", text.contains("World"))
+println("text.contains('world'): ", text.contains("world"))
+
+// Index
+println("text.index('World'): ", text.index("World"))
+println("text.index('xyz'): ", text.index("xyz"))
+
+// Substring
+println("\n=== Substring Operations ===")
+var str = "Hello, World!"
+println("str.subStr(0, 5): ", str.subStr(0, 5))    // "Hello"
+println("str.subStr(7, 12): ", str.subStr(7, 12))  // "World"
+
+// Character at position
+println("\n=== Character Access ===")
+for (var i = 0; i < 5; i++) {
+    println("  str[", i, "]: ", str[i])
+}
+
+// === String Searching ===
+println("\n=== String Searching ===")
+var sentence = "The quick brown fox jumps over the lazy dog"
+
+println("sentence.contains('fox'): ", sentence.contains("fox"))
+println("sentence.contains('cat'): ", sentence.contains("cat"))
+println("sentence.index('quick'): ", sentence.index("quick"))
+println("sentence.index('lazy'): ", sentence.index("lazy"))
+
+// === Case Conversion ===
+println("\n=== Case Conversion ===")
+var mixed = "HeLLo WoRLD"
+println("Original: ", mixed)
+println("upper: ", upper(mixed))
+println("lower: ", lower(mixed))
+
+// === String Trimming ===
+println("\n=== String Trimming ===")
+var padded = "   hello world   "
+println("Original: '", padded, "'")
+println("trim: '", trim(padded), "'")
+
+// === String Splitting (manual) ===
+println("\n=== String Splitting Pattern ===")
+
+func splitBySpace(s) {
+    var parts = []
+    var current = ""
+
+    for (var i = 0; i < len(s); i++) {
+        var ch = s[i]
+        if (ch == " ") {
+            if (len(current) > 0) {
+                push(parts, current)
+                current = ""
+            }
+        } else {
+            current = current + ch
+        }
+    }
+    if (len(current) > 0) {
+        push(parts, current)
+    }
+
+    return parts
+}
+
+var csv = "one two three four five"
+var parts = splitBySpace(csv)
+println("Original: ", csv)
+println("Parts: ", parts)
+
+// === String Joining ===
+println("\n=== String Joining ===")
+
+func joinArray(arr, sep) {
+    if (len(arr) == 0) {
+        return ""
+    }
+    var result = arr[0]
+    for (var i = 1; i < len(arr); i++) {
+        result = result + sep + arr[i]
+    }
+    return result
+}
+
+var words = ["apple", "banana", "cherry"]
+println("words: ", words)
+println("joined: ", joinArray(words, ", "))
+println("joined with |: ", joinArray(words, " | "))
+
+// === String Replacement ===
+println("\n=== String Replacement ===")
+
+func replaceStr(s, old, newStr) {
+    var idx = s.index(old)
+    if (idx < 0) {
+        return s
+    }
+    return s.subStr(0, idx) + newStr + s.subStr(idx + len(old), len(s))
+}
+
+var original = "Hello World"
+var replaced = replaceStr(original, "World", "Xxlang")
+println("Original: ", original)
+println("Replaced: ", replaced)
+
+// === String Prefix/Suffix Check ===
+println("\n=== Prefix/Suffix Check ===")
+
+func hasPrefix(s, prefix) {
+    if (len(prefix) > len(s)) {
+        return false
+    }
+    return s.subStr(0, len(prefix)) == prefix
+}
+
+func hasSuffix(s, suffix) {
+    if (len(suffix) > len(s)) {
+        return false
+    }
+    return s.subStr(len(s) - len(suffix), len(s)) == suffix
+}
+
+var filename = "document.pdf"
+println("filename: ", filename)
+println("hasPrefix('doc'): ", hasPrefix(filename, "doc"))
+println("hasSuffix('.pdf'): ", hasSuffix(filename, ".pdf"))
+println("hasSuffix('.txt'): ", hasSuffix(filename, ".txt"))
+
+// === String Reversal ===
+println("\n=== String Reversal ===")
+
+func reverseString(s) {
+    var result = ""
+    for (var i = len(s) - 1; i >= 0; i--) {
+        result = result + s[i]
+    }
+    return result
+}
+
+var original2 = "Hello"
+var reversed = reverseString(original2)
+println("Original: ", original2)
+println("Reversed: ", reversed)
+
+// === Palindrome Check ===
+println("\n=== Palindrome Check ===")
+
+func isPalindrome(s) {
+    var lower = lower(s)
+    return lower == reverseString(lower)
+}
+
+println("isPalindrome('racecar'): ", isPalindrome("racecar"))
+println("isPalindrome('hello'): ", isPalindrome("hello"))
+println("isPalindrome('Level'): ", isPalindrome("Level"))
+
+// === String to Number Conversion ===
+println("\n=== String to Number Conversion ===")
+
+var numStr = "42"
+var num = parseInt(numStr)
+println("parseInt('42'): ", num)
+println("typeOf: ", typeOf(num))
+
+var floatStr = "3.14159"
+var floatNum = parseFloat(floatStr)
+println("parseFloat('3.14159'): ", floatNum)
+println("typeOf: ", typeOf(floatNum))
+
+// === Number to String Conversion ===
+println("\n=== Number to String Conversion ===")
+
+var n = 42
+var s = string(n)
+println("string(42): ", s)
+println("typeOf: ", typeOf(s))
+
+var f = 3.14
+var sf = string(f)
+println("string(3.14): ", sf)
+
+// === String Formatting Pattern ===
+println("\n=== String Formatting Pattern ===")
+
+func format(template, args) {
+    var result = ""
+    var argIdx = 0
+    var i = 0
+
+    while (i < len(template)) {
+        var ch = template[i]
+        if (ch == "{" && i + 1 < len(template) && template[i + 1] == "}") {
+            if (argIdx < len(args)) {
+                result = result + string(args[argIdx])
+                argIdx = argIdx + 1
+            }
+            i = i + 2
+        } else {
+            result = result + ch
+            i = i + 1
+        }
+    }
+
+    return result
+}
+
+var formatted = format("Name: {}, Age: {}, City: {}", ["Alice", 30, "Beijing"])
+println("Formatted: ", formatted)
+
+// === String Escape Sequences ===
+println("\n=== String Escape Sequences ===")
+
+var escaped = "Line1\nLine2\tTabbed"
+println("With escapes: ", escaped)
+
+var quoted = "She said \"Hello\""
+println("With quotes: ", quoted)
+
+// === Multi-line String Pattern ===
+println("\n=== Building Multi-line String ===")
+
+func buildLines(lines) {
+    var result = ""
+    for (line in lines) {
+        result = result + line + "\n"
+    }
+    return result
+}
+
+var lines = ["First line", "Second line", "Third line"]
+var multiLine = buildLines(lines)
+println("Multi-line string:")
+print(multiLine)

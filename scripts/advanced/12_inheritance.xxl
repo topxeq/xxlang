@@ -1,0 +1,342 @@
+// 12_inheritance.xxl
+// Class inheritance, super calls, and polymorphism
+
+// === Basic Inheritance ===
+println("=== Basic Inheritance ===")
+
+class Animal {
+    func init(name) {
+        this.name = name
+    }
+
+    func speak() {
+        return "..."
+    }
+
+    func introduce() {
+        return "I am " + this.name
+    }
+}
+
+class Dog : Animal {
+    func init(name, breed) {
+        super.init(name)
+        this.breed = breed
+    }
+
+    func speak() {
+        return "Woof!"
+    }
+
+    func fetch() {
+        return this.name + " is fetching!"
+    }
+}
+
+class Cat : Animal {
+    func init(name, color) {
+        super.init(name)
+        this.color = color
+    }
+
+    func speak() {
+        return "Meow!"
+    }
+
+    func climb() {
+        return this.name + " is climbing!"
+    }
+}
+
+var dog = new Dog("Rex", "German Shepherd")
+var cat = new Cat("Whiskers", "orange")
+
+println("Dog: ", dog.introduce())
+println("  speaks: ", dog.speak())
+println("  breed: ", dog.breed)
+println("  ", dog.fetch())
+
+println("\nCat: ", cat.introduce())
+println("  speaks: ", cat.speak())
+println("  color: ", cat.color)
+println("  ", cat.climb())
+
+// === Super Call in Overridden Method ===
+println("\n=== Super Call in Overridden Method ===")
+
+class Vehicle {
+    func init(brand) {
+        this.brand = brand
+        this.speed = 0
+    }
+
+    func info() {
+        return this.brand + " vehicle"
+    }
+
+    func accelerate(amount) {
+        this.speed = this.speed + amount
+        return this.speed
+    }
+}
+
+class Car : Vehicle {
+    func init(brand, model) {
+        super.init(brand)
+        this.model = model
+        this.wheels = 4
+    }
+
+    func info() {
+        return super.info() + " - " + string(this.model) + " (" + string(this.wheels) + " wheels)"
+    }
+}
+
+class Motorcycle : Vehicle {
+    func init(brand) {
+        super.init(brand)
+        this.wheels = 2
+    }
+
+    func info() {
+        return super.info() + " (" + string(this.wheels) + " wheels)"
+    }
+}
+
+var car = new Car("Toyota", "Camry")
+var bike = new Motorcycle("Honda")
+
+println("Car: ", car.info())
+println("Bike: ", bike.info())
+
+// === Polymorphism ===
+println("\n=== Polymorphism ===")
+
+class Shape {
+    func init(name) {
+        this.name = name
+    }
+
+    func area() {
+        return 0
+    }
+
+    func describe() {
+        return this.name + " with area " + this.area()
+    }
+}
+
+class Circle : Shape {
+    func init(radius) {
+        super.init("Circle")
+        this.radius = radius
+    }
+
+    func area() {
+        return 3.14159 * this.radius * this.radius
+    }
+}
+
+class Rectangle : Shape {
+    func init(width, height) {
+        super.init("Rectangle")
+        this.width = width
+        this.height = height
+    }
+
+    func area() {
+        return this.width * this.height
+    }
+}
+
+class Triangle : Shape {
+    func init(base, height) {
+        super.init("Triangle")
+        this.base = base
+        this.height = height
+    }
+
+    func area() {
+        return 0.5 * this.base * this.height
+    }
+}
+
+// Polymorphic array
+var shapes = [
+    new Circle(5),
+    new Rectangle(4, 6),
+    new Triangle(3, 8)
+]
+
+println("Shapes:")
+for (shape in shapes) {
+    println("  ", shape.describe())
+}
+
+// Calculate total area
+var totalArea = 0
+for (shape in shapes) {
+    totalArea = totalArea + shape.area()
+}
+println("Total area: ", totalArea)
+
+// === Multi-level Inheritance ===
+println("\n=== Multi-level Inheritance ===")
+
+class Employee {
+    func init(name, id) {
+        this.name = name
+        this.id = id
+    }
+
+    func getDetails() {
+        return "ID: " + string(this.id) + ", Name: " + this.name
+    }
+
+    func calculatePay() {
+        return 0
+    }
+}
+
+class SalariedEmployee : Employee {
+    func init(name, id, salary) {
+        super.init(name, id)
+        this.salary = salary
+    }
+
+    func calculatePay() {
+        return this.salary
+    }
+
+    func getDetails() {
+        return super.getDetails() + ", Type: Salaried"
+    }
+}
+
+class Manager : SalariedEmployee {
+    func init(name, id, salary, bonus) {
+        super.init(name, id, salary)
+        this.bonus = bonus
+    }
+
+    func calculatePay() {
+        return this.salary + this.bonus
+    }
+
+    func getDetails() {
+        return super.getDetails() + ", Role: Manager"
+    }
+}
+
+var emp = new SalariedEmployee("Alice", "E001", 50000)
+var mgr = new Manager("Bob", "M001", 80000, 20000)
+
+println("Employee: ", emp.getDetails())
+println("  Pay: $", emp.calculatePay())
+
+println("\nManager: ", mgr.getDetails())
+println("  Pay: $", mgr.calculatePay())
+
+// === Inheritance with Collections ===
+println("\n=== Inheritance with Collections ===")
+
+class Item {
+    func init(name, price) {
+        this.name = name
+        this.price = price
+    }
+
+    func getTotal() {
+        return this.price
+    }
+
+    func getDescription() {
+        return this.name + ": $" + this.price
+    }
+}
+
+class DiscountedItem : Item {
+    func init(name, price, discountPercent) {
+        super.init(name, price)
+        this.discountPercent = discountPercent
+    }
+
+    func getTotal() {
+        return this.price * (1 - this.discountPercent / 100)
+    }
+
+    func getDescription() {
+        return this.name + ": $" + string(this.price) + " (" + string(this.discountPercent) + "% off) = $" + this.getTotal()
+    }
+}
+
+var cart = [
+    new Item("Book", 20),
+    new Item("Pen", 5),
+    new DiscountedItem("Laptop", 1000, 10),
+    new DiscountedItem("Phone", 500, 15)
+]
+
+println("Shopping Cart:")
+var total = 0
+for (item in cart) {
+    println("  ", item.getDescription())
+    total = total + item.getTotal()
+}
+println("Total: $", total)
+
+// === Abstract-like Pattern ===
+println("\n=== Abstract-like Pattern ===")
+
+// Base class that should not be instantiated directly
+class DataProcessor {
+    func init(name) {
+        this.name = name
+    }
+
+    // "Abstract" method - should be overridden
+    func process(data) {
+        println("  Warning: process() not implemented")
+        return data
+    }
+
+    func run(data) {
+        println("Running ", this.name, "...")
+        var result = this.process(data)
+        println("Done. Result: ", result)
+        return result
+    }
+}
+
+class UppercaseProcessor : DataProcessor {
+    func init() {
+        super.init("Uppercase Processor")
+    }
+
+    func process(data) {
+        return upper(data)
+    }
+}
+
+class ReverseProcessor : DataProcessor {
+    func init() {
+        super.init("Reverse Processor")
+    }
+
+    func process(data) {
+        var result = ""
+        for (var i = len(data) - 1; i >= 0; i--) {
+            result = result + charAt(data, i)
+        }
+        return result
+    }
+}
+
+var processors = [
+    new UppercaseProcessor(),
+    new ReverseProcessor()
+]
+
+for (proc in processors) {
+    proc.run("hello world")
+}

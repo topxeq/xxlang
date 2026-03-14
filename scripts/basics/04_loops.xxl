@@ -1,0 +1,74 @@
+// 04_loops.xxl
+// While loops and for loops
+
+// === While Loop ===
+println("=== While Loop ===")
+var i = 1
+while (i <= 5) {
+    println("Count: ", i)
+    i++
+}
+
+// === For Loop (C-style) ===
+println("\n=== For Loop (C-style) ===")
+for (var j = 0; j < 5; j++) {
+    println("j = ", j)
+}
+
+// === For Loop (count down) ===
+println("\n=== For Loop (count down) ===")
+for (var k = 5; k > 0; k--) {
+    println("k = ", k)
+}
+
+// === For Loop (step by 2) ===
+println("\n=== For Loop (step by 2) ===")
+for (var m = 0; m <= 10; m += 2) {
+    println("m = ", m)
+}
+
+// === Sum Using Loop ===
+println("\n=== Sum Using Loop ===")
+var sum = 0
+for (var q = 1; q <= 10; q++) {
+    sum += q
+}
+println("Sum of 1 to 10 = ", sum)
+
+// === Factorial Using While ===
+println("\n=== Factorial Using While ===")
+var num = 5
+var factorial = 1
+var temp = num
+
+while (temp > 1) {
+    factorial = factorial * temp
+    temp--
+}
+println("5! = ", factorial)
+
+// === Triangle Pattern ===
+println("\n=== Triangle Pattern ===")
+for (var row = 1; row <= 5; row++) {
+    var stars = ""
+    for (var col = 0; col < row; col++) {
+        stars = stars + "*"
+    }
+    println(stars)
+}
+
+// === Array Iteration (using index) ===
+println("\n=== Array Iteration ===")
+var items = ["apple", "banana", "cherry"]
+println("Items: ", items)
+println("First: ", items[0])
+println("Second: ", items[1])
+println("Third: ", items[2])
+
+// === Nested Loops ===
+println("\n=== Nested Loops ===")
+for (var row = 1; row <= 3; row++) {
+    for (var col = 1; col <= 3; col++) {
+        println("Row ", row, ", Col ", col)
+    }
+}
