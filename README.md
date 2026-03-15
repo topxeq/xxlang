@@ -26,43 +26,57 @@ Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language impleme
 
 ## Installation
 
-### Option 1: Download Pre-built Binary (Recommended)
+### Option 1: One-line Install (Recommended)
+
+**Linux / macOS:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/topxeq/xxlang/master/install.sh | bash
+# or with wget
+wget -qO- https://raw.githubusercontent.com/topxeq/xxlang/master/install.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+iwr -useb https://raw.githubusercontent.com/topxeq/xxlang/master/install.ps1 | iex
+```
+
+### Option 2: Download Pre-built Binary
 
 Download the latest release for your platform from [GitHub Releases](https://github.com/topxeq/xxlang/releases):
 
 ```bash
 # Linux (amd64)
-wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.4-linux-amd64
-chmod +x xxlang-0.3.4-linux-amd64
-sudo mv xxlang-0.3.4-linux-amd64 /usr/local/bin/xxl
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.5-linux-amd64
+chmod +x xxlang-0.3.5-linux-amd64
+sudo mv xxlang-0.3.5-linux-amd64 /usr/local/bin/xxl
 
 # Linux (arm64)
-wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.4-linux-arm64
-chmod +x xxlang-0.3.4-linux-arm64
-sudo mv xxlang-0.3.4-linux-arm64 /usr/local/bin/xxl
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.5-linux-arm64
+chmod +x xxlang-0.3.5-linux-arm64
+sudo mv xxlang-0.3.5-linux-arm64 /usr/local/bin/xxl
 
 # Windows (PowerShell)
-# Download from: https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.4-windows-amd64.exe
+# Download from: https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.5-windows-amd64.exe
 # Rename to xxl.exe and add to PATH
 
 # macOS (amd64)
-wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.4-darwin-amd64
-chmod +x xxlang-0.3.4-darwin-amd64
-sudo mv xxlang-0.3.4-darwin-amd64 /usr/local/bin/xxl
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.5-darwin-amd64
+chmod +x xxlang-0.3.5-darwin-amd64
+sudo mv xxlang-0.3.5-darwin-amd64 /usr/local/bin/xxl
 
 # macOS (arm64/Apple Silicon)
-wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.4-darwin-arm64
-chmod +x xxlang-0.3.4-darwin-arm64
-sudo mv xxlang-0.3.4-darwin-arm64 /usr/local/bin/xxl
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.5-darwin-arm64
+chmod +x xxlang-0.3.5-darwin-arm64
+sudo mv xxlang-0.3.5-darwin-arm64 /usr/local/bin/xxl
 ```
 
-### Option 2: Install via Go
+### Option 3: Install via Go
 
 ```bash
 go install github.com/topxeq/xxlang/cmd/xxl@latest
 ```
 
-### Option 3: Build from Source
+### Option 4: Build from Source
 
 ```bash
 git clone https://github.com/topxeq/xxlang.git
