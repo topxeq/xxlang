@@ -23,6 +23,10 @@ jobs:
 
       - name: Build binaries
         run: |
+          # Get version from git tag (remove 'v' prefix)
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Building version: $VERSION"
+
           mkdir -p dist
 
           # Build for different platforms
@@ -43,7 +47,7 @@ jobs:
             fi
 
             echo "Building for $os/$arch..."
-            GOOS=$os GOARCH=$arch go build -ldflags="-s -w" -o "$output" ./cmd/xxl
+            GOOS=$os GOARCH=$arch go build -ldflags="-s -w -X main.Version=$VERSION" -o "$output" ./cmd/xxl
 
             cd dist
             if [ "$os" = "windows" ]; then

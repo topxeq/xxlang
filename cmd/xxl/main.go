@@ -23,9 +23,8 @@ const (
 	CONTINUE_PROMPT = ".. "
 )
 
-const (
-	Version   = "0.4.1"
-)
+// Version is set via -ldflags at build time. Default is "dev" for local builds.
+var Version = "dev"
 
 // REPL represents an interactive REPL session
 type REPL struct {
