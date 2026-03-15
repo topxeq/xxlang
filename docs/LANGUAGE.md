@@ -20,8 +20,13 @@ Xxlang source files use the `.xxl` extension. Compiled bytecode files use `.xxb`
 # Start interactive REPL
 xxlang
 
-# Run a source file
+# Run a local source file
 xxlang run script.xxl
+xxlang script.xxl                     # Shortcut
+
+# Run a script from URL
+xxlang https://example.com/script.xxl
+xxlang run https://example.com/script.xxl
 
 # Run compiled bytecode
 xxlang run script.xxb
