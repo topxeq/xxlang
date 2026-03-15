@@ -2019,8 +2019,20 @@ func (vm *VM) executeCallMethod() error {
 			// Call as regular function (without receiver)
 			switch f := method.(type) {
 			case *compiler.CompiledFunction:
+				// Push a placeholder callee for callFunction to pop
+				vm.stack.Push(objects.NULL)
+				// Push args back to stack for callFunction to consume
+				for _, arg := range args {
+					vm.stack.Push(arg)
+				}
 				return vm.callFunction(f, numArgs, nil, nil, nil)
 			case *Closure:
+				// Push a placeholder callee for callFunction to pop
+				vm.stack.Push(objects.NULL)
+				// Push args back to stack for callFunction to consume
+				for _, arg := range args {
+					vm.stack.Push(arg)
+				}
 				return vm.callFunction(f.Fn, numArgs, f.FreeVars, f.Constants, f.Globals)
 			case *objects.Builtin:
 				// Call builtin directly (we already popped all the stack items)
