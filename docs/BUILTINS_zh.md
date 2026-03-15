@@ -1,0 +1,756 @@
+# 内置函数参考手册
+
+本文档提供 Xxlang 所有内置函数的完整参考。
+
+## 目录
+
+- [基础函数](#基础函数)
+- [字符串函数](#字符串函数)
+- [数学函数](#数学函数)
+- [类型转换函数](#类型转换函数)
+- [数组函数](#数组函数)
+- [映射函数](#映射函数)
+- [工具函数](#工具函数)
+- [动态代码执行](#动态代码执行)
+- [类型方法](#类型方法)
+- [标准库模块](#标准库模块)
+
+---
+
+## 基础函数
+
+### len(obj)
+
+返回字符串、数组或映射的长度。
+
+```xxl
+len("hello")      // 5
+len([1, 2, 3])    // 3
+len({"a": 1})     // 1
+```
+
+### print(args...)
+
+打印参数到标准输出，不换行。
+
+```xxl
+print("Hello", " ", "World")  // Hello World
+```
+
+### println(args...)
+
+打印参数到标准输出，末尾换行。
+
+```xxl
+println("Hello", "World")  // Hello World
+```
+
+### typeOf(obj)
+
+返回对象的类型字符串。
+
+```xxl
+typeOf(42)        // "INT"
+typeOf("hello")   // "STRING"
+typeOf([1, 2])    // "ARRAY"
+typeOf({"a": 1})  // "MAP"
+typeOf(true)      // "BOOL"
+typeOf(null)      // "NULL"
+```
+
+---
+
+## 字符串函数
+
+### substr(str, start, end?)
+
+从 `start` 到 `end`（不包含）提取子字符串。如果省略 `end`，则提取到字符串末尾。
+
+```xxl
+substr("hello", 1, 4)   // "ell"
+substr("hello", 2)      // "llo"
+```
+
+### split(str, separator)
+
+用分隔符分割字符串，返回数组。
+
+```xxl
+split("a,b,c", ",")     // ["a", "b", "c"]
+split("hello world", " ")  // ["hello", "world"]
+```
+
+### join(array, separator)
+
+用分隔符连接数组元素为字符串。
+
+```xxl
+join(["a", "b", "c"], "-")  // "a-b-c"
+```
+
+### trim(str)
+
+移除首尾空白字符。
+
+```xxl
+trim("  hello  ")  // "hello"
+```
+
+### upper(str)
+
+转换为大写。
+
+```xxl
+upper("hello")  // "HELLO"
+```
+
+### lower(str)
+
+转换为小写。
+
+```xxl
+lower("HELLO")  // "hello"
+```
+
+### containsStr(str, substr)
+
+检查字符串是否包含子串。
+
+```xxl
+containsStr("hello world", "world")  // true
+containsStr("hello", "xyz")          // false
+```
+
+### replace(str, old, new)
+
+替换所有匹配项。
+
+```xxl
+replace("hello world", "world", "Xxlang")  // "hello Xxlang"
+```
+
+### startsWith(str, prefix)
+
+检查是否以指定前缀开头。
+
+```xxl
+startsWith("hello", "he")  // true
+```
+
+### endsWith(str, suffix)
+
+检查是否以指定后缀结尾。
+
+```xxl
+endsWith("hello", "lo")  // true
+```
+
+---
+
+## 数学函数
+
+### abs(num)
+
+返回绝对值。
+
+```xxl
+abs(-42)   // 42
+abs(-3.14) // 3.14
+```
+
+### floor(num)
+
+返回小于或等于数值的最大整数。
+
+```xxl
+floor(3.7)  // 3
+floor(-3.7) // -4
+```
+
+### ceil(num)
+
+返回大于或等于数值的最小整数。
+
+```xxl
+ceil(3.2)   // 4
+ceil(-3.2)  // -3
+```
+
+### sqrt(num)
+
+返回平方根。
+
+```xxl
+sqrt(16)   // 4
+sqrt(2)    // 1.4142135623730951
+```
+
+### pow(base, exp)
+
+返回 `base` 的 `exp` 次方。
+
+```xxl
+pow(2, 10)  // 1024
+pow(3, 2)   // 9
+```
+
+### min(a, b)
+
+返回较小值。
+
+```xxl
+min(5, 3)    // 3
+min(1.5, 2)  // 1.5
+```
+
+### max(a, b)
+
+返回较大值。
+
+```xxl
+max(5, 3)    // 5
+max(1.5, 2)  // 2
+```
+
+---
+
+## 类型转换函数
+
+### int(value)
+
+转换为整数。
+
+```xxl
+int(3.7)       // 3
+int("42")      // 42
+int(true)      // 1
+int(false)     // 0
+```
+
+### float(value)
+
+转换为浮点数。
+
+```xxl
+float(42)      // 42.0
+float("3.14")  // 3.14
+float(true)    // 1.0
+```
+
+### string(value)
+
+转换为字符串表示。
+
+```xxl
+string(42)     // "42"
+string(3.14)   // "3.14"
+string(true)   // "true"
+string([1, 2]) // "[1, 2]"
+```
+
+---
+
+## 数组函数
+
+### push(array, element)
+
+返回追加元素后的新数组。
+
+```xxl
+push([1, 2, 3], 4)  // [1, 2, 3, 4]
+```
+
+### pop(array)
+
+返回移除最后一个元素后的新数组。
+
+```xxl
+pop([1, 2, 3])  // [1, 2]
+```
+
+### first(array)
+
+返回数组第一个元素，空数组返回 null。
+
+```xxl
+first([1, 2, 3])  // 1
+first([])         // null
+```
+
+### last(array)
+
+返回数组最后一个元素，空数组返回 null。
+
+```xxl
+last([1, 2, 3])  // 3
+last([])         // null
+```
+
+### rest(array, start, end?)
+
+返回从 `start` 到 `end`（不包含）的切片。
+
+```xxl
+rest([1, 2, 3, 4], 1, 3)  // [2, 3]
+rest([1, 2, 3, 4], 2)     // [3, 4]
+```
+
+### concat(array1, array2)
+
+连接两个数组。
+
+```xxl
+concat([1, 2], [3, 4])  // [1, 2, 3, 4]
+```
+
+### indexOf(array, element)
+
+返回元素索引，未找到返回 -1。
+
+```xxl
+indexOf([1, 2, 3], 2)   // 1
+indexOf([1, 2, 3], 5)   // -1
+```
+
+### containsArr(array, element)
+
+检查数组是否包含元素。
+
+```xxl
+containsArr([1, 2, 3], 2)  // true
+containsArr([1, 2, 3], 5)  // false
+```
+
+### sort(array)
+
+返回排序后的数组副本。
+
+```xxl
+sort([3, 1, 2])  // [1, 2, 3]
+```
+
+### sum(array)
+
+返回数组元素的和。
+
+```xxl
+sum([1, 2, 3, 4, 5])  // 15
+```
+
+### avg(array)
+
+返回数组元素的平均值。
+
+```xxl
+avg([1, 2, 3, 4, 5])  // 3.0
+```
+
+### reverse(array)
+
+返回反转后的数组副本。
+
+```xxl
+reverse([1, 2, 3])  // [3, 2, 1]
+```
+
+---
+
+## 映射函数
+
+### keys(map)
+
+返回所有键组成的数组。
+
+```xxl
+keys({"a": 1, "b": 2})  // ["a", "b"]
+```
+
+### values(map)
+
+返回所有值组成的数组。
+
+```xxl
+values({"a": 1, "b": 2})  // [1, 2]
+```
+
+### hasKey(map, key)
+
+检查是否包含指定键。
+
+```xxl
+hasKey({"a": 1}, "a")  // true
+hasKey({"a": 1}, "b")  // false
+```
+
+### delete(map, key)
+
+返回移除指定键后的新映射。
+
+```xxl
+delete({"a": 1, "b": 2}, "a")  // {"b": 2}
+```
+
+---
+
+## 工具函数
+
+### range(end) 或 range(start, end)
+
+生成从 start 到 end（包含）的整数数组。
+
+```xxl
+range(5)       // [0, 1, 2, 3, 4, 5]
+range(2, 5)    // [2, 3, 4, 5]
+range(5, 2)    // [5, 4, 3, 2]
+```
+
+### runCode(code, args?)
+
+动态执行 Xxlang 代码。可选的 `args` 映射提供变量。
+
+```xxl
+runCode("1 + 2")                    // 3
+runCode("a + b", {"a": 10, "b": 20}) // 30
+```
+
+### loadPlugin(path)
+
+从指定路径加载原生 Go 插件。
+
+```xxl
+loadPlugin("./myplugin.so")
+```
+
+---
+
+## 类型方法
+
+所有类型都有以下通用方法：
+
+- `typeOf()` - 返回类型字符串
+- `toStr()` - 返回字符串表示
+
+### 整数方法
+
+```xxl
+(-5).abs()      // 5
+42.toFloat()    // 42.0
+42.typeOf()     // "INT"
+```
+
+### 浮点数方法
+
+```xxl
+3.7.floor()     // 3
+3.2.ceil()      // 4
+3.5.round()     // 4
+(-3.14).abs()   // 3.14
+3.14.toInt()    // 3
+```
+
+### 字符串方法
+
+```xxl
+"hello".len()           // 5
+"hello".upper()         // "HELLO"
+"HELLO".lower()         // "hello"
+"  hello  ".trim()      // "hello"
+"a,b,c".split(",")      // ["a", "b", "c"]
+"hello".contains("ell") // true
+"hello".indexOf("l")    // 2
+"hello".startsWith("he") // true
+"hello".endsWith("lo")  // true
+"42".toInt()            // 42
+"3.14".toFloat()        // 3.14
+```
+
+### 数组方法
+
+```xxl
+[1, 2, 3].len()        // 3
+[1, 2].push(3)         // [1, 2, 3]
+[1, 2, 3].pop()        // [1, 2]
+[1, 2, 3].first()      // 1
+[1, 2, 3].last()       // 3
+[1, 2, 3].indexOf(2)   // 1
+[1, 2, 3].contains(2)  // true
+[1, 2, 3].reverse()    // [3, 2, 1]
+["a", "b"].join("-")   // "a-b"
+```
+
+### 映射方法
+
+```xxl
+{"a": 1, "b": 2}.len()     // 2
+{"a": 1, "b": 2}.keys()    // ["a", "b"]
+{"a": 1, "b": 2}.values()  // [1, 2]
+{"a": 1}.hasKey("a")       // true
+{"a": 1, "b": 2}.delete("a") // {"b": 2}
+```
+
+---
+
+## 标准库模块
+
+使用 `import` 语句导入标准库模块：
+
+```xxl
+import "std/math"
+import "std/io" { readFile, writeFile }
+```
+
+### std/math
+
+数学函数和常量。
+
+| 函数 | 说明 | 示例 |
+|------|------|------|
+| `PI` | 圆周率常量 | `math.PI` |
+| `E` | 自然常数 | `math.E` |
+| `abs(x)` | 绝对值 | `math.abs(-5)` |
+| `ceil(x)` | 向上取整 | `math.ceil(3.2)` |
+| `floor(x)` | 向下取整 | `math.floor(3.7)` |
+| `round(x)` | 四舍五入 | `math.round(3.5)` |
+| `sqrt(x)` | 平方根 | `math.sqrt(16)` |
+| `pow(x, y)` | 幂运算 | `math.pow(2, 8)` |
+| `sin(x)` | 正弦（弧度） | `math.sin(1.57)` |
+| `cos(x)` | 余弦（弧度） | `math.cos(0)` |
+| `tan(x)` | 正切（弧度） | `math.tan(1)` |
+| `asin(x)` | 反正弦 | `math.asin(1)` |
+| `acos(x)` | 反余弦 | `math.acos(0)` |
+| `atan(x)` | 反正切 | `math.atan(1)` |
+| `log(x)` | 自然对数 | `math.log(2.7)` |
+| `log10(x)` | 以10为底对数 | `math.log10(100)` |
+| `exp(x)` | 指数函数 | `math.exp(1)` |
+| `min(args...)` | 最小值 | `math.min(3, 1, 2)` |
+| `max(args...)` | 最大值 | `math.max(3, 1, 2)` |
+| `random()` | 随机数 [0, 1) | `math.random()` |
+
+### std/io
+
+输入输出操作。
+
+| 函数 | 说明 | 示例 |
+|------|------|------|
+| `print(args...)` | 打印（不换行） | `io.print("Hello")` |
+| `println(args...)` | 打印（换行） | `io.println("Hello")` |
+| `printf(fmt, args...)` | 格式化打印 | `io.printf("值: %d", 42)` |
+| `readLine()` | 读取一行输入 | `io.readLine()` |
+| `readFile(path)` | 读取文件内容 | `io.readFile("data.txt")` |
+| `readBytes(path)` | 读取文件为字节数组 | `io.readBytes("data.bin")` |
+| `writeFile(path, content)` | 写入字符串到文件 | `io.writeFile("out.txt", "data")` |
+| `writeBytes(path, bytes)` | 写入字节到文件 | `io.writeBytes("out.bin", bytes)` |
+| `appendFile(path, content)` | 追加内容到文件 | `io.appendFile("log.txt", "msg")` |
+| `exists(path)` | 检查文件是否存在 | `io.exists("data.txt")` |
+| `remove(path)` | 删除文件 | `io.remove("temp.txt")` |
+| `mkdir(path)` | 创建目录 | `io.mkdir("mydir")` |
+| `cwd()` | 获取当前目录 | `io.cwd()` |
+| `exit(code)` | 退出程序 | `io.exit(0)` |
+| `env(key)` | 获取环境变量 | `io.env("HOME")` |
+| `setEnv(key, value)` | 设置环境变量 | `io.setEnv("DEBUG", "1")` |
+| `args()` | 获取命令行参数 | `io.args()` |
+
+### std/os
+
+操作系统工具。
+
+| 函数 | 说明 | 示例 |
+|------|------|------|
+| `join(paths...)` | 连接路径 | `os.join("dir", "file.txt")` |
+| `base(path)` | 获取文件名 | `os.base("/a/b/c.txt")` |
+| `dir(path)` | 获取目录路径 | `os.dir("/a/b/c.txt")` |
+| `ext(path)` | 获取扩展名 | `os.ext("file.txt")` |
+| `abs(path)` | 获取绝对路径 | `os.abs("./file")` |
+| `clean(path)` | 清理路径 | `os.clean("./a/../b")` |
+| `isAbs(path)` | 检查是否绝对路径 | `os.isAbs("/home")` |
+| `stat(path)` | 获取文件信息 | `os.stat("file.txt")` |
+| `size(path)` | 获取文件大小 | `os.size("file.txt")` |
+| `isDir(path)` | 检查是否目录 | `os.isDir("mydir")` |
+| `isFile(path)` | 检查是否文件 | `os.isFile("file.txt")` |
+| `listDir(path)` | 列出目录内容 | `os.listDir(".")` |
+| `walk(path)` | 遍历目录树 | `os.walk("/home")` |
+| `exec(cmd)` | 执行命令 | `os.exec("ls -la")` |
+| `shell(cmd)` | 执行 shell 命令 | `os.shell("echo hello")` |
+| `hostname()` | 获取主机名 | `os.hostname()` |
+| `platform()` | 获取操作系统 | `os.platform()` |
+| `arch()` | 获取 CPU 架构 | `os.arch()` |
+| `home()` | 获取主目录 | `os.home()` |
+| `temp()` | 获取临时目录 | `os.temp()` |
+| `rename(old, new)` | 重命名文件 | `os.rename("a.txt", "b.txt")` |
+| `copy(src, dst)` | 复制文件 | `os.copy("a.txt", "b.txt")` |
+| `chmod(path, mode)` | 修改权限 | `os.chmod("file", 0755)` |
+| `tempFile(pattern)` | 创建临时文件 | `os.tempFile("app-*")` |
+| `tempDir(pattern)` | 创建临时目录 | `os.tempDir("app-*")` |
+
+### std/json
+
+JSON 编解码。
+
+| 函数 | 说明 | 示例 |
+|------|------|------|
+| `parse(str)` | 解析 JSON 字符串 | `json.parse('{"a": 1}')` |
+| `stringify(obj, indent?)` | 转换为 JSON 字符串 | `json.stringify(obj, 2)` |
+| `encode(obj)` | 编码为 JSON | `json.encode(obj)` |
+| `decode(str)` | 解码 JSON 字符串 | `json.decode('{"a": 1}')` |
+
+### std/regex
+
+正则表达式操作（兼容 PCRE）。
+
+| 函数 | 说明 | 示例 |
+|------|------|------|
+| `compile(pattern)` | 编译正则表达式 | `regex.compile("\\d+")` |
+| `match(pattern, str)` | 检查是否匹配 | `regex.match("\\d+", "abc123")` |
+| `find(pattern, str)` | 查找第一个匹配 | `regex.find("\\d+", "abc123")` |
+| `findAll(pattern, str, limit?)` | 查找所有匹配 | `regex.findAll("\\d+", "a1b2c3")` |
+| `findGroups(pattern, str)` | 获取捕获组 | `regex.findGroups("(\\d+)-(\\d+)", "1-2")` |
+| `replace(pattern, str, repl)` | 替换匹配 | `regex.replace("\\d+", "a1b2", "X")` |
+| `split(pattern, str, limit?)` | 按正则分割 | `regex.split("\\s+", "a b c")` |
+| `quote(str)` | 转义正则字符 | `regex.quote("a.b")` |
+| `count(pattern, str)` | 计数匹配 | `regex.count("\\d+", "a1b2c3")` |
+| `test(pattern)` | 验证模式 | `regex.test("\\d+")` |
+
+### std/time
+
+时间和日期操作。
+
+| 函数 | 说明 | 示例 |
+|------|------|------|
+| `unix()` | 当前 Unix 时间戳（秒） | `time.unix()` |
+| `unixMs()` | 当前 Unix 时间戳（毫秒） | `time.unixMs()` |
+| `unixNano()` | 当前 Unix 时间戳（纳秒） | `time.unixNano()` |
+| `now()` | 当前时间（映射） | `time.now()` |
+| `year()` | 当前年份 | `time.year()` |
+| `month()` | 当前月份（1-12） | `time.month()` |
+| `day()` | 当前日期 | `time.day()` |
+| `hour()` | 当前小时（0-23） | `time.hour()` |
+| `minute()` | 当前分钟 | `time.minute()` |
+| `second()` | 当前秒数 | `time.second()` |
+| `weekday()` | 星期几（0=周日） | `time.weekday()` |
+| `sleep(ms)` | 休眠毫秒 | `time.sleep(1000)` |
+| `sleepSec(sec)` | 休眠秒 | `time.sleepSec(1)` |
+| `format(layout)` | 格式化当前时间 | `time.format("2006-01-02")` |
+| `formatUnix(ts, layout)` | 格式化时间戳 | `time.formatUnix(ts, "2006-01-02")` |
+| `parse(layout, value)` | 解析时间字符串 | `time.parse("2006-01-02", "2024-01-15")` |
+| `since(ms)` | 距时间戳的毫秒数 | `time.since(start)` |
+| `addDays(days)` | 加天数 | `time.addDays(7)` |
+| `addMonths(months)` | 加月数 | `time.addMonths(1)` |
+| `addYears(years)` | 加年数 | `time.addYears(1)` |
+| `isLeapYear(year)` | 是否闰年 | `time.isLeapYear(2024)` |
+| `daysInMonth(year, month)` | 月天数 | `time.daysInMonth(2024, 2)` |
+
+### std/string
+
+字符串工具模块。
+
+| 函数 | 说明 | 示例 |
+|------|------|------|
+| `len(s)` | 字符串长度 | `string.len("hello")` |
+| `substr(s, start, end?)` | 子串 | `string.substr("hello", 1, 4)` |
+| `indexOf(s, substr)` | 查找子串 | `string.indexOf("hello", "ll")` |
+| `contains(s, substr)` | 包含检查 | `string.contains("hello", "ell")` |
+| `hasPrefix(s, prefix)` | 前缀检查 | `string.hasPrefix("hello", "he")` |
+| `hasSuffix(s, suffix)` | 后缀检查 | `string.hasSuffix("hello", "lo")` |
+| `toUpper(s)` | 转大写 | `string.toUpper("hello")` |
+| `toLower(s)` | 转小写 | `string.toLower("HELLO")` |
+| `trim(s)` | 去空白 | `string.trim("  hello  ")` |
+| `trimSpace(s)` | 去空白 | `string.trimSpace("  hello  ")` |
+| `split(s, sep)` | 分割字符串 | `string.split("a,b,c", ",")` |
+| `join(arr, sep)` | 连接字符串 | `string.join(["a", "b"], "-")` |
+| `repeat(s, n)` | 重复字符串 | `string.repeat("ab", 3)` |
+| `replace(s, old, new)` | 替换全部 | `string.replace("hello", "l", "L")` |
+| `parseInt(s)` | 解析整数 | `string.parseInt("42")` |
+| `parseFloat(s)` | 解析浮点数 | `string.parseFloat("3.14")` |
+| `toString(x)` | 转字符串 | `string.toString(42)` |
+| `reverse(s)` | 反转字符串 | `string.reverse("hello")` |
+
+### std/crypto
+
+加密函数。
+
+| 函数 | 说明 | 示例 |
+|------|------|------|
+| `md5(s)` | MD5 哈希 | `crypto.md5("hello")` |
+| `sha1(s)` | SHA1 哈希 | `crypto.sha1("hello")` |
+| `sha256(s)` | SHA256 哈希 | `crypto.sha256("hello")` |
+| `sha512(s)` | SHA512 哈希 | `crypto.sha512("hello")` |
+| `base64Encode(s)` | Base64 编码 | `crypto.base64Encode("hello")` |
+| `base64Decode(s)` | Base64 解码 | `crypto.base64Decode("aGVsbG8=")` |
+| `hexEncode(s)` | 十六进制编码 | `crypto.hexEncode("hello")` |
+| `hexDecode(s)` | 十六进制解码 | `crypto.hexDecode("68656c6c6f")` |
+
+### std/fmt
+
+格式化工具。
+
+| 函数 | 说明 | 示例 |
+|------|------|------|
+| `sprintf(format, args...)` | 格式化字符串 | `fmt.sprintf("名字: %s, 年龄: %d", "张三", 25)` |
+| `printf(format, args...)` | 格式化打印 | `fmt.printf("值: %d\n", 42)` |
+
+### std/array
+
+扩展数组工具。
+
+| 函数 | 说明 | 示例 |
+|------|------|------|
+| `map(arr, fn)` | 映射元素 | `array.map([1, 2, 3], fn(x) { x * 2 })` |
+| `filter(arr, fn)` | 过滤元素 | `array.filter([1, 2, 3], fn(x) { x > 1 })` |
+| `reduce(arr, fn, init)` | 归约元素 | `array.reduce([1, 2, 3], fn(a, b) { a + b }, 0)` |
+| `forEach(arr, fn)` | 遍历元素 | `array.forEach([1, 2, 3], fn(x) { println(x) })` |
+
+### std/collections
+
+集合工具（集合、栈、队列）。
+
+### std/bytes
+
+字节数组操作。
+
+### std/csv
+
+CSV 文件解析和写入。
+
+### std/debug
+
+调试工具。
+
+### std/encoding
+
+编解码工具（Base64、Hex）。
+
+### std/env
+
+环境变量工具。
+
+### std/log
+
+日志工具。
+
+### std/net
+
+网络工具。
+
+### std/sort
+
+高级排序工具。
+
+### std/strconv
+
+字符串转换工具。
+
+### std/text
+
+文本处理工具。
+
+### std/uuid
+
+UUID 生成。
+
+---
+
+## 另见
+
+- [语言参考](LANGUAGE.md) - 完整语言语法
+- [标准库](STDLIB.md) - 标准库概述
+- [嵌入指南](EMBEDDING.md) - 在 Go 应用中使用 Xxlang
