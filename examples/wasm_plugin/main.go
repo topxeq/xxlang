@@ -4,9 +4,10 @@
 // WASM plugins work on all platforms including Windows, without CGO.
 //
 // Build the plugin:
-//   cd plugin && ./build.sh
-// Or manually:
-//   clang -o fib.wasm --target=wasm32 -O2 fib.c -nostdlib -nostartfiles -Wl,--no-entry -Wl,--export-all
+//   cd plugin && ./build.sh fib.ts    # AssemblyScript (smallest)
+//   cd plugin && ./build.sh fib.rs    # Rust
+//   cd plugin && ./build.sh fib.zig   # Zig
+//   cd plugin && ./build.sh fib.c     # C
 //
 // Run this example:
 //   go run main.go
@@ -26,18 +27,21 @@ func main() {
 	fmt.Println("==============================================")
 	fmt.Println()
 
-	// Create plugin loader with search path
+	// Create plugin loader
 	loader := plugin.NewLoader()
-	loader.AddPath("./plugin")
 
-	// Load the WASM plugin
+	// Method 1: Load by direct file path (recommended)
+	// This is the simplest way - just specify the .wasm file path
 	fmt.Println("Loading fib.wasm plugin...")
-	p, err := loader.Load("fib")
+	p, err := loader.LoadPath("./plugin/fib.wasm")
 	if err != nil {
 		fmt.Printf("Failed to load plugin: %v\n", err)
 		fmt.Println()
-		fmt.Println("To build the plugin with clang:")
-		fmt.Println("  clang -o fib.wasm --target=wasm32 -O2 fib.c -nostdlib -nostartfiles -Wl,--no-entry -Wl,--export-all")
+		fmt.Println("To build the plugin, run one of:")
+		fmt.Println("  cd plugin && ./build.sh fib.ts    # AssemblyScript")
+		fmt.Println("  cd plugin && ./build.sh fib.rs    # Rust")
+		fmt.Println("  cd plugin && ./build.sh fib.zig   # Zig")
+		fmt.Println("  cd plugin && ./build.sh fib.c     # C")
 		return
 	}
 	fmt.Printf("Loaded plugin: %s\n", p.Name())
@@ -277,8 +281,9 @@ println("isFib(-1) = " + fib.isFib(-1).toStr())
 	fmt.Println("  3. Cross-platform plugin files")
 	fmt.Println("  4. Sandboxed execution")
 	fmt.Println()
-	fmt.Println("Build command:")
-	fmt.Println("  clang -o fib.wasm --target=wasm32 -O2 fib.c \\")
-	fmt.Println("    -nostdlib -nostartfiles \\")
-	fmt.Println("    -Wl,--no-entry -Wl,--export-all")
+	fmt.Println("Build commands:")
+	fmt.Println("  AssemblyScript: asc fib.ts -o fib.wasm --optimize --runtime stub --initialMemory 2")
+	fmt.Println("  Rust:           rustc --target wasm32-unknown-unknown -O --crate-type cdylib -o fib.wasm fib.rs")
+	fmt.Println("  Zig:            zig build-exe fib.zig -target wasm32-freestanding -O ReleaseSmall -fno-entry -rdynamic")
+	fmt.Println("  C:              clang -o fib.wasm --target=wasm32 -O2 fib.c -nostdlib -nostartfiles -Wl,--no-entry -Wl,--export-all")
 }

@@ -158,6 +158,46 @@ func (l *Loader) Load(name string) (Plugin, error) {
 	return plugin, nil
 }
 
+// LoadPath loads a plugin from a specific file path.
+// The path should point to a .wasm file.
+// This is useful when you want to load a plugin from a specific location
+// without setting up search paths.
+//
+// Example:
+//
+//	loader := plugin.NewLoader()
+//	p, err := loader.LoadPath("./my-plugins/fib.wasm")
+func (l *Loader) LoadPath(path string) (Plugin, error) {
+	// Get absolute path for registry key
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		absPath = path
+	}
+
+	// Check if already registered by path
+	if p, ok := Get(absPath); ok {
+		return p, nil
+	}
+
+	// Check if file exists
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil, fmt.Errorf("plugin file not found: %s", path)
+	}
+
+	// Load the WASM plugin
+	plugin, err := loadPluginWASM(path)
+	if err != nil {
+		return nil, err
+	}
+
+	// Register with absolute path as key
+	Registry.Lock()
+	Registry.plugins[absPath] = plugin
+	Registry.Unlock()
+
+	return plugin, nil
+}
+
 // loadFromFile attempts to load a plugin from a .wasm file.
 func (l *Loader) loadFromFile(name string) (Plugin, error) {
 	// Get search paths
