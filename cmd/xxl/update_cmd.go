@@ -185,7 +185,7 @@ func findAssetForPlatform(release *GitHubRelease) (string, string, error) {
 		runtime.GOOS, runtime.GOARCH, strings.Join(available, ", "))
 }
 
-// downloadFile downloads a file to a temporary location
+// downloadFile downloads a file to a temporary location with progress display
 func downloadFile(url string) (string, error) {
 	client := &http.Client{
 		Timeout: 5 * time.Minute, // Large files may take time
@@ -208,14 +208,94 @@ func downloadFile(url string) (string, error) {
 	}
 	defer tempFile.Close()
 
-	// Copy the download with progress
-	_, err = io.Copy(tempFile, resp.Body)
-	if err != nil {
-		os.Remove(tempFile.Name())
-		return "", err
+	// Get file size for progress
+	totalSize := resp.ContentLength
+	var downloaded int64
+
+	// Create progress bar
+	buf := make([]byte, 32*1024) // 32KB buffer
+	lastPercent := -1
+
+	for {
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			_, writeErr := tempFile.Write(buf[:n])
+			if writeErr != nil {
+				os.Remove(tempFile.Name())
+				return "", writeErr
+			}
+			downloaded += int64(n)
+
+			// Update progress
+			if totalSize > 0 {
+				percent := int(float64(downloaded) / float64(totalSize) * 100)
+				if percent != lastPercent {
+					printProgressBar(percent, downloaded, totalSize)
+					lastPercent = percent
+				}
+			} else {
+				// Unknown size, show downloaded bytes
+				printProgressBar(-1, downloaded, 0)
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			os.Remove(tempFile.Name())
+			return "", err
+		}
 	}
 
+	// Print newline after progress bar
+	fmt.Println()
+
 	return tempFile.Name(), nil
+}
+
+// printProgressBar prints a progress bar
+func printProgressBar(percent int, downloaded, total int64) {
+	width := 40
+	var bar strings.Builder
+
+	if percent >= 0 {
+		// Known size - show percentage
+		filled := percent * width / 100
+		bar.WriteString("\r  [")
+		for i := 0; i < width; i++ {
+			if i < filled {
+				bar.WriteString("=")
+			} else {
+				bar.WriteString(" ")
+			}
+		}
+		bar.WriteString("] ")
+
+		// Show percentage and size
+		fmt.Printf("%s %3d%%  (%s / %s)",
+			bar.String(),
+			percent,
+			formatBytes(downloaded),
+			formatBytes(total))
+	} else {
+		// Unknown size - show downloaded bytes only
+		bar.WriteString("\r  Downloading: ")
+		fmt.Printf("%s %s", bar.String(), formatBytes(downloaded))
+	}
+}
+
+// formatBytes formats bytes to human readable string
+func formatBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
 // copyFile creates a copy of a file
