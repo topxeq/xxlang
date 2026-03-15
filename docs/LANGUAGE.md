@@ -575,7 +575,7 @@ class Child : Parent {
 ### Import Syntax
 
 ```xxl
-// Import entire module
+// Import standard library
 import "std/math"
 println(math.sqrt(16))
 
@@ -586,6 +586,17 @@ io.println("Hello")
 // Import specific functions
 import "std/string" { upper, lower }
 println(upper("hello"))
+
+// Import from relative path
+import * as utils from "./utils"
+println(utils.add(5, 3))
+
+// Import from absolute path
+import * as math from "/home/user/project/math.xxl"
+
+// Import WASM plugin by path
+import * as fib from "./plugins/fib.wasm"
+println(fib.fast(50))
 ```
 
 ### Export Syntax
@@ -614,10 +625,17 @@ export secret
 
 ### Module Resolution
 
-1. `std/xxx` - Standard library modules
-2. `plugin/xxx` - WebAssembly plugins (`.wasm` files)
-3. `./xxx` or `../xxx` - Relative path modules
-4. `/xxx` - Absolute path modules
+Module paths are resolved based on prefix and file extension:
+
+| Path Format | Description | Example |
+|-------------|-------------|---------|
+| `std/xxx` | Standard library module | `import "std/math"` |
+| `plugin/xxx` | WASM plugin by name | `import "plugin/fib"` |
+| `*.wasm` | WASM plugin by file path | `import * as fib from "./fib.wasm"` |
+| `./xxx` or `../xxx` | Relative path module | `import * as utils from "./utils"` |
+| `/xxx` | Absolute path module | `import * as math from "/home/user/math.xxl"` |
+
+**Note:** For file paths, `.wasm` files are loaded as WASM plugins; other paths have `.xxl` extension auto-added.
 
 ## Error Handling
 
