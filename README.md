@@ -107,8 +107,11 @@ This command will:
 ## Quick Start
 
 ```bash
-# Run a file
+# Run a local file
 xxl run script.xxl
+
+# Run a script from URL
+xxl https://raw.githubusercontent.com/user/repo/main/script.xxl
 
 # Start interactive REPL
 xxl
@@ -259,11 +262,13 @@ push([1, 2], 3)     // [1, 2, 3]
 
 ```bash
 xxl                           # Start REPL
-xxl run file.xxl              # Run source script
-xxl run file.xxb              # Run compiled bytecode
-xxl compile file.xxl          # Compile to executable wrapper
-xxl compile --bytecode file.xxl       # Compile to bytecode (.xxb)
-xxl compile -o out.xxb --bytecode file.xxl   # Compile with output path
+xxl script.xxl                # Run local script (shortcut)
+xxl run script.xxl            # Run source script
+xxl run script.xxb            # Run compiled bytecode
+xxl https://example.com/script.xxl  # Run script from URL
+xxl compile script.xxl        # Compile to executable wrapper
+xxl compile --bytecode script.xxl   # Compile to bytecode (.xxb)
+xxl compile -o out.xxb --bytecode script.xxl   # Compile with output path
 xxl update                    # Self-update to latest version
 xxl version                   # Show version
 xxl help                      # Show help

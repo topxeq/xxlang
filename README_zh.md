@@ -96,8 +96,11 @@ xxl update
 ## 快速开始
 
 ```bash
-# 运行脚本文件
+# 运行本地脚本文件
 xxl run script.xxl
+
+# 从 URL 运行脚本
+xxl https://raw.githubusercontent.com/user/repo/main/script.xxl
 
 # 运行编译后的字节码
 xxl run script.xxb
@@ -110,11 +113,13 @@ xxl
 
 ```bash
 xxl                                # 启动 REPL
-xxl run file.xxl                   # 运行源代码
-xxl run file.xxb                   # 运行字节码
-xxl compile file.xxl               # 编译为可执行文件
-xxl compile --bytecode file.xxl    # 编译为字节码 (.xxb)
-xxl compile -o out.xxb --bytecode file.xxl   # 指定输出路径
+xxl script.xxl                     # 运行本地脚本（快捷方式）
+xxl run script.xxl                 # 运行源代码
+xxl run script.xxb                 # 运行字节码
+xxl https://example.com/script.xxl # 从 URL 运行脚本
+xxl compile script.xxl             # 编译为可执行文件
+xxl compile --bytecode script.xxl  # 编译为字节码 (.xxb)
+xxl compile -o out.xxb --bytecode script.xxl   # 指定输出路径
 xxl update                         # 自我更新到最新版本
 xxl version                        # 显示版本
 xxl help                           # 显示帮助
