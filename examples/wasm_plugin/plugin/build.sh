@@ -59,9 +59,19 @@ case "$EXT" in
         fi
         rustc --target wasm32-unknown-unknown -O --crate-type cdylib -o "$OUTPUT" "$SOURCE"
         ;;
+    ts)
+        OUTPUT="${BASENAME}.wasm"
+        echo "Building AssemblyScript source: $SOURCE -> $OUTPUT"
+        if ! command -v asc &> /dev/null; then
+            echo "Error: AssemblyScript not installed"
+            echo "Install: npm install -g assemblyscript"
+            exit 1
+        fi
+        asc "$SOURCE" -o "$OUTPUT" --optimize --runtime stub --initialMemory 2
+        ;;
     *)
         echo "Error: Unknown source type: $EXT"
-        echo "Supported: .c, .go, .zig, .rs"
+        echo "Supported: .c, .go, .zig, .rs, .ts"
         exit 1
         ;;
 esac
