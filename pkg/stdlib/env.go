@@ -9,6 +9,14 @@ import (
 	"github.com/topxeq/xxlang/pkg/objects"
 )
 
+// scriptArgs stores the script-specific arguments (after -- separator)
+var scriptArgs []string
+
+// SetScriptArgs sets the script-specific arguments for scripts to access
+func SetScriptArgs(args []string) {
+	scriptArgs = args
+}
+
 func init() {
 	Register(&Module{
 		Name: "std/env",
@@ -192,6 +200,34 @@ func init() {
 
 			// Get arguments (command line args)
 			"args": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				cmdArgs := os.Args
+				result := make([]objects.Object, len(cmdArgs))
+				for i, arg := range cmdArgs {
+					result[i] = String(arg)
+				}
+				return Array(result...)
+			}),
+
+			// Get script-specific arguments (after -- separator)
+			"scriptArgs": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				result := make([]objects.Object, len(scriptArgs))
+				for i, arg := range scriptArgs {
+					result[i] = String(arg)
+				}
+				return Array(result...)
+			}),
+
+			// Get mixed arguments: script args if -- exists, otherwise all args
+			"mixArgs": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				// If scriptArgs has content (-- was used), return those
+				if len(scriptArgs) > 0 {
+					result := make([]objects.Object, len(scriptArgs))
+					for i, arg := range scriptArgs {
+						result[i] = String(arg)
+					}
+					return Array(result...)
+				}
+				// Otherwise return all args
 				cmdArgs := os.Args
 				result := make([]objects.Object, len(cmdArgs))
 				for i, arg := range cmdArgs {
