@@ -85,6 +85,41 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(40, "reverse")
 	s.DefineBuiltin(41, "runCode")
 	s.DefineBuiltin(42, "loadPlugin")
+	// String utilities
+	s.DefineBuiltin(43, "repeat")
+	s.DefineBuiltin(44, "lpad")
+	s.DefineBuiltin(45, "rpad")
+	s.DefineBuiltin(46, "charAt")
+	s.DefineBuiltin(47, "trimLeft")
+	s.DefineBuiltin(48, "trimRight")
+	// Type checking
+	s.DefineBuiltin(49, "isEmpty")
+	s.DefineBuiltin(50, "isString")
+	s.DefineBuiltin(51, "isNumber")
+	s.DefineBuiltin(52, "isInt")
+	s.DefineBuiltin(53, "isFloat")
+	s.DefineBuiltin(54, "isArray")
+	s.DefineBuiltin(55, "isMap")
+	s.DefineBuiltin(56, "isBool")
+	s.DefineBuiltin(57, "isFunction")
+	s.DefineBuiltin(58, "isNull")
+	// Math utilities
+	s.DefineBuiltin(59, "round")
+	s.DefineBuiltin(60, "clamp")
+	s.DefineBuiltin(61, "sign")
+	s.DefineBuiltin(62, "random")
+	s.DefineBuiltin(63, "randomInt")
+	// Array utilities
+	s.DefineBuiltin(64, "unique")
+	s.DefineBuiltin(65, "flatten")
+	s.DefineBuiltin(66, "without")
+	s.DefineBuiltin(67, "take")
+	s.DefineBuiltin(68, "drop")
+	// Map utilities
+	s.DefineBuiltin(69, "merge")
+	s.DefineBuiltin(70, "entries")
+	// Format
+	s.DefineBuiltin(71, "format")
 	return s
 }
 
