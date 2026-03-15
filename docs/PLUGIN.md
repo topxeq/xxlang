@@ -282,6 +282,14 @@ For larger numbers, use `math/big.Int` in your plugin.
 | Performance | Fastest | ~10-20% overhead |
 | Recommended | Yes | **Yes** |
 
+### WASM Plugin Language Comparison
+
+| Language | Build Size | Performance | Difficulty | Notes |
+|----------|------------|-------------|------------|-------|
+| C | Smallest (~1.5KB) | Best | Medium | Most portable, requires clang |
+| Zig | Small (~1.3KB) | Best | Easy | Modern language, excellent WASM support |
+| TinyGo | Medium (~15KB) | Good | Easy | Go syntax, limited Go version support |
+
 ## WebAssembly Plugins
 
 WASM plugins work on all platforms including Windows, without CGO.
@@ -371,9 +379,61 @@ clang -o fib.wasm --target=wasm32 -O2 fib.c \
     -Wl,--no-entry -Wl,--export-all
 ```
 
-#### Option 2: Using TinyGo
+#### Option 2: Using Zig
 
-**Note**: TinyGo 0.36 supports Go 1.19-1.24 only. For newer Go versions, use C instead.
+Zig is a modern systems programming language with excellent WASM support.
+
+```bash
+# Install Zig from https://ziglang.org/learn/getting-started/
+
+# Build
+zig build-exe fib.zig -target wasm32-freestanding -O ReleaseSmall -fno-entry -rdynamic
+```
+
+Complete Zig example:
+
+```zig
+// fib.zig - Fibonacci WASM plugin
+var heap_ptr: usize = 65536; // Start at 64KB offset
+
+// Memory allocation from WASM heap
+export fn alloc(size: u32) u32 {
+    if (heap_ptr % 8 != 0) {
+        heap_ptr += 8 - (heap_ptr % 8);
+    }
+    const result: u32 = @intCast(heap_ptr);
+    heap_ptr += size;
+    return result;
+}
+
+// Plugin name - writes (ptr, size) to result_ptr
+export fn plugin_name(result_ptr: u32) void {
+    const offset = alloc(3);
+    const mem = @as([*]u8, @ptrFromInt(offset));
+    @memcpy(mem, "fib");
+    const result = @as(*[2]u32, @ptrFromInt(result_ptr));
+    result[0] = offset;
+    result[1] = 3;
+}
+
+// Fibonacci function - accessible as "fast" in Xxlang
+export fn call_fast(n: i64) i64 {
+    if (n <= 1) return n;
+    var a: i64 = 0;
+    var b: i64 = 1;
+    var i: i64 = 2;
+    while (i <= n) : (i += 1) {
+        const tmp = a + b;
+        a = b;
+        b = tmp;
+    }
+    return b;
+}
+```
+
+#### Option 3: Using TinyGo
+
+**Note**: TinyGo 0.36 supports Go 1.19-1.24 only. For newer Go versions, use C or Zig instead.
 
 ```bash
 # Build with TinyGo
@@ -395,6 +455,21 @@ void plugin_version(uint32_t result_ptr);
 // Exported functions (prefix with "call_" for Xxlang)
 int64_t call_fast(int64_t n);            // Accessible as "fast" in Xxlang
 int64_t call_matrix(int64_t n);          // Accessible as "matrix" in Xxlang
+```
+
+**Zig equivalent:**
+
+```zig
+// Memory allocator
+export fn alloc(size: u32) u32 { ... }
+
+// Plugin metadata
+export fn plugin_name(result_ptr: u32) void { ... }
+export fn plugin_version(result_ptr: u32) void { ... }
+
+// Exported functions
+export fn call_fast(n: i64) i64 { ... }
+export fn call_matrix(n: i64) i64 { ... }
 ```
 
 ### Complete C Example
@@ -456,19 +531,35 @@ xxlang -e 'import "plugin/fib"; println(fib.fast(50))'
 
 ## Complete Example
 
-See [examples/fib_plugin/](../examples/fib_plugin/) for a complete working example:
+See [examples/wasm_plugin/](../examples/wasm_plugin/) for a complete working WASM plugin example:
 
 ```
-examples/fib_plugin/
-├── main.go           # Main program
+examples/wasm_plugin/
+├── main.go           # Test program
 └── plugin/
-    └── fibplugin.go  # Plugin implementation
+    ├── build.sh      # Build script (supports C, Go, Zig)
+    ├── fib.c         # C implementation
+    ├── fib.go        # TinyGo implementation
+    ├── fib.zig       # Zig implementation
+    └── fib.wasm      # Compiled WASM plugin
 ```
 
 Run the example:
 
 ```bash
-cd examples/fib_plugin
+cd examples/wasm_plugin
+
+# Build with C (recommended)
+cd plugin && ./build.sh fib.c
+
+# Or build with Zig
+cd plugin && ./build.sh fib.zig
+
+# Or build with TinyGo
+cd plugin && ./build.sh fib.go
+
+# Test
+cd ..
 go run main.go
 ```
 
