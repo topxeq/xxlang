@@ -207,3 +207,105 @@ func TestClassToBool(t *testing.T) {
 		t.Error("Class.ToBool() should return TRUE")
 	}
 }
+
+// ============================================================
+// TypeTag Tests
+// ============================================================
+
+func TestTypeTags(t *testing.T) {
+	tests := []struct {
+		name     string
+		obj      Object
+		expected TypeTag
+	}{
+		{"null", NULL, TagNull},
+		{"true", TRUE, TagBool},
+		{"false", FALSE, TagBool},
+		{"int", &Int{Value: 42}, TagInt},
+		{"float", &Float{Value: 3.14}, TagFloat},
+		{"string", &String{Value: "hello"}, TagString},
+		{"array", &Array{Elements: []Object{}}, TagArray},
+		{"map", &Map{Pairs: map[HashKey]MapPair{}}, TagMap},
+		{"error", &Error{Message: "test"}, TagError},
+		{"return", &Return{Value: NULL}, TagReturn},
+		{"class", &Class{Name: "MyClass"}, TagClass},
+		{"instance", &Instance{Class: &Class{Name: "MyClass"}}, TagInstance},
+		{"module", &Module{Name: "test"}, TagModule},
+		{"builtin", &Builtin{Fn: func(...Object) Object { return NULL }}, TagBuiltin},
+		{"compiled function", &CompiledFunction{NumLocals: 0}, TagCompiledFunction},
+		{"function", &Function{Parameters: []*Identifier{}}, TagFunction},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.obj.TypeTag(); got != tt.expected {
+				t.Errorf("%s.TypeTag() = %v, want %v", tt.name, got, tt.expected)
+			}
+		})
+	}
+}
+
+// ============================================================
+// Instance Tests
+// ============================================================
+
+func TestInstanceType(t *testing.T) {
+	class := &Class{Name: "MyClass"}
+	inst := &Instance{Class: class}
+	if got := inst.Type(); got != InstanceType {
+		t.Errorf("Instance.Type() = %s, want INSTANCE", got)
+	}
+}
+
+func TestInstanceInspect(t *testing.T) {
+	class := &Class{Name: "MyClass"}
+	inst := &Instance{Class: class}
+	if got := inst.Inspect(); got != "MyClass instance" {
+		t.Errorf("Instance.Inspect() = %s, want 'MyClass instance'", got)
+	}
+}
+
+func TestInstanceToBool(t *testing.T) {
+	class := &Class{Name: "MyClass"}
+	inst := &Instance{Class: class}
+	if inst.ToBool() != TRUE {
+		t.Error("Instance.ToBool() should return TRUE")
+	}
+}
+
+func TestInstanceHashKey(t *testing.T) {
+	class := &Class{Name: "MyClass"}
+	inst := &Instance{Class: class}
+	key := inst.HashKey()
+	_ = key // Just verify it doesn't panic
+}
+
+// ============================================================
+// Map HashKey Tests
+// ============================================================
+
+func TestMapHashKey(t *testing.T) {
+	m := &Map{Pairs: map[HashKey]MapPair{}}
+	key := m.HashKey()
+	_ = key // Just verify it doesn't panic
+}
+
+// ============================================================
+// NewInt Tests
+// ============================================================
+
+func TestNewInt(t *testing.T) {
+	// Test small values (should use cache)
+	for i := int64(-10); i <= 100; i++ {
+		n := NewInt(i)
+		if n.Value != i {
+			t.Errorf("NewInt(%d).Value = %d, want %d", i, n.Value, i)
+		}
+	}
+
+	// Test large value (should not use cache)
+	n := NewInt(10000)
+	if n.Value != 10000 {
+		t.Errorf("NewInt(10000).Value = %d, want 10000", n.Value)
+	}
+}
