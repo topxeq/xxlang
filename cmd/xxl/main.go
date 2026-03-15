@@ -20,7 +20,7 @@ const (
 )
 
 const (
-	Version   = "0.3.5"
+	Version   = "0.3.6"
 )
 
 // REPL represents an interactive REPL session
