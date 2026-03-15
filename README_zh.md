@@ -15,34 +15,92 @@ Xxlang 是一个基于字节码虚拟机的脚本语言，使用 Go 语言实现
 
 ## 安装
 
+### 方式 1：下载预编译二进制文件（推荐）
+
+从 [GitHub Releases](https://github.com/topxeq/xxlang/releases) 下载适合你平台的最新版本：
+
 ```bash
-go install github.com/topxeq/xxlang/cmd/xxlang@latest
+# Linux (amd64)
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.4-linux-amd64
+chmod +x xxlang-0.3.4-linux-amd64
+sudo mv xxlang-0.3.4-linux-amd64 /usr/local/bin/xxl
+
+# Linux (arm64)
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.4-linux-arm64
+chmod +x xxlang-0.3.4-linux-arm64
+sudo mv xxlang-0.3.4-linux-arm64 /usr/local/bin/xxl
+
+# Windows (PowerShell)
+# 下载: https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.4-windows-amd64.exe
+# 重命名为 xxl.exe 并添加到 PATH
+
+# macOS (amd64)
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.4-darwin-amd64
+chmod +x xxlang-0.3.4-darwin-amd64
+sudo mv xxlang-0.3.4-darwin-amd64 /usr/local/bin/xxl
+
+# macOS (arm64/Apple Silicon)
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.4-darwin-arm64
+chmod +x xxlang-0.3.4-darwin-arm64
+sudo mv xxlang-0.3.4-darwin-arm64 /usr/local/bin/xxl
 ```
+
+### 方式 2：通过 Go 安装
+
+```bash
+go install github.com/topxeq/xxlang/cmd/xxl@latest
+```
+
+### 方式 3：从源码构建
+
+```bash
+git clone https://github.com/topxeq/xxlang.git
+cd xxlang
+go build -o xxl ./cmd/xxl
+```
+
+## 更新
+
+Xxlang 支持从 GitHub Release 自动更新：
+
+```bash
+xxl update
+```
+
+此命令会：
+1. 从 GitHub 获取最新版本信息
+2. 与当前版本比较
+3. 下载适合你操作系统和架构的二进制文件
+4. 自动重命名为 `xxl`（Linux/macOS）或 `xxl.exe`（Windows）
+5. 替换当前可执行文件
+
+**注意**：在 Windows 上，旧的执行文件可能会保留为 `xxl.exe.old`，直到下次重启。
 
 ## 快速开始
 
 ```bash
 # 运行脚本文件
-xxlang run script.xxl
+xxl run script.xxl
 
 # 运行编译后的字节码
-xxlang run script.xxb
+xxl run script.xxb
 
 # 启动交互式 REPL
-xxlang
+xxl
 ```
 
 ## 命令行工具
 
 ```bash
-xxlang                             # 启动 REPL
-xxlang run file.xxl                # 运行源代码
-xxlang run file.xxb                # 运行字节码
-xxlang compile file.xxl            # 编译为可执行文件
-xxlang compile --bytecode file.xxl # 编译为字节码 (.xxb)
-xxlang compile -o out.xxb --bytecode file.xxl  # 指定输出路径
-xxlang version                     # 显示版本
-xxlang help                        # 显示帮助
+xxl                                # 启动 REPL
+xxl run file.xxl                   # 运行源代码
+xxl run file.xxb                   # 运行字节码
+xxl compile file.xxl               # 编译为可执行文件
+xxl compile --bytecode file.xxl    # 编译为字节码 (.xxb)
+xxl compile -o out.xxb --bytecode file.xxl   # 指定输出路径
+xxl update                         # 自我更新到最新版本
+xxl version                        # 显示版本
+xxl help                           # 显示帮助
 ```
 
 ## 字节码编译
@@ -53,17 +111,17 @@ Xxlang 支持将源代码编译为字节码文件，实现更快的加载速度�
 
 ```bash
 # 编译 script.xxl 为 script.xxb
-xxlang compile --bytecode script.xxl
+xxl compile --bytecode script.xxl
 
 # 指定输出路径
-xxlang compile --bytecode -o program.xxb script.xxl
+xxl compile --bytecode -o program.xxb script.xxl
 ```
 
 ### 运行字节码
 
 ```bash
 # 执行编译后的字节码
-xxlang run script.xxb
+xxl run script.xxb
 ```
 
 ### 对比
@@ -86,10 +144,10 @@ Xxlang 字节码文件是**平台无关的**：
 
 ```bash
 # 在 Windows 上编译
-xxlang compile --bytecode script.xxl
+xxl compile --bytecode script.xxl
 
 # 复制 script.xxb 到 Linux 上运行
-xxlang run script.xxb  # 无需修改即可运行！
+xxl run script.xxb  # 无需修改即可运行！
 ```
 
 这得益于：
@@ -205,14 +263,6 @@ exit, quit  - 退出 REPL
 help        - 显示帮助信息
 history     - 显示命令历史
 clear       - 清除所有变量和函数
-```
-
-## 从源码构建
-
-```bash
-git clone https://github.com/topxeq/xxlang.git
-cd xxlang
-go build -o xxlang ./cmd/xxlang
 ```
 
 ## 运行测试
