@@ -14,6 +14,7 @@ import (
 	"github.com/topxeq/xxlang/pkg/lexer"
 	"github.com/topxeq/xxlang/pkg/objects"
 	"github.com/topxeq/xxlang/pkg/parser"
+	"github.com/topxeq/xxlang/pkg/stdlib"
 	"github.com/topxeq/xxlang/pkg/vm"
 )
 
@@ -44,6 +45,18 @@ func NewREPL() *REPL {
 	}
 }
 
+// splitArgs splits command line arguments at the -- separator.
+// Returns (interpreterArgs, scriptArgs).
+// Everything after -- is passed to the script.
+func splitArgs(args []string) (interpreterArgs []string, scriptArgs []string) {
+	for i, arg := range args {
+		if arg == "--" {
+			return args[:i], args[i+1:]
+		}
+	}
+	return args, nil
+}
+
 func main() {
 	// No arguments - start REPL
 	if len(os.Args) < 2 {
@@ -51,8 +64,14 @@ func main() {
 		return
 	}
 
-	// Check for help or version flags
-	for _, arg := range os.Args[1:] {
+	// Split arguments at -- separator
+	interpreterArgs, scriptArgs := splitArgs(os.Args[1:])
+
+	// Set script args for scripts to access via env::scriptArgs()
+	stdlib.SetScriptArgs(scriptArgs)
+
+	// Check for help or version flags (only in interpreter args)
+	for _, arg := range interpreterArgs {
 		if arg == "--help" || arg == "-h" || arg == "help" {
 			printUsage()
 			return
@@ -63,20 +82,20 @@ func main() {
 		}
 	}
 
-	switch os.Args[1] {
+	switch interpreterArgs[0] {
 	case "compile":
-		if err := compileCmd(os.Args[2:]); err != nil {
+		if err := compileCmd(interpreterArgs[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 	case "run":
-		if len(os.Args) < 3 {
-			fmt.Println("Usage: xxl run <file|url>")
+		if len(interpreterArgs) < 2 {
+			fmt.Println("Usage: xxl run <file|url> [-- script args...]")
 			os.Exit(1)
 		}
-		runFileOrURL(os.Args[2])
+		runFileOrURL(interpreterArgs[1])
 	case "update":
-		if err := updateCmd(os.Args[2:]); err != nil {
+		if err := updateCmd(interpreterArgs[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -86,7 +105,7 @@ func main() {
 		printUsage()
 	default:
 		// Check if it's a file or URL that we can run directly
-		arg := os.Args[1]
+		arg := interpreterArgs[0]
 		if isURL(arg) || strings.HasSuffix(arg, ".xxl") || strings.HasSuffix(arg, ".xxb") {
 			runFileOrURL(arg)
 		} else {
@@ -102,25 +121,30 @@ func printUsage() {
     fmt.Printf("Xxlang v%s\n", Version)
     fmt.Println()
     fmt.Println("Usage:")
-    fmt.Println("  xxl                    Start interactive REPL")
-    fmt.Println("  xxl <file|url>         Execute a .xxl file or script from URL")
-    fmt.Println("  xxl run <file|url>     Execute a .xxl file or script from URL")
-    fmt.Println("  xxl compile <file>     Compile file to bytecode")
-    fmt.Println("  xxl update             Self-update to latest version from GitHub")
-    fmt.Println("  xxl version            Print version information")
-    fmt.Println("  xxl help               Print this help message")
+    fmt.Println("  xxl                         Start interactive REPL")
+    fmt.Println("  xxl <file|url> [-- args...] Execute a .xxl file or script from URL")
+    fmt.Println("  xxl run <file|url> [-- args...]")
+    fmt.Println("                              Execute a .xxl file or script from URL")
+    fmt.Println("  xxl compile <file>          Compile file to bytecode")
+    fmt.Println("  xxl update                  Self-update to latest version from GitHub")
+    fmt.Println("  xxl version                 Print version information")
+    fmt.Println("  xxl help                    Print this help message")
     fmt.Println()
     fmt.Println("Options:")
     fmt.Println("  -o, --output path     Output path for compiled file")
     fmt.Println("      --target os/arch  Cross-compile for target OS/architecture")
     fmt.Println("      --bytecode        Output as bytecode (.xxb) instead of executable")
     fmt.Println()
+    fmt.Println("Script Arguments:")
+    fmt.Println("  Use '--' to separate interpreter arguments from script arguments.")
+    fmt.Println("  Script arguments are accessible via env::scriptArgs().")
+    fmt.Println()
     fmt.Println("Examples:")
     fmt.Println("  xxl")
     fmt.Println("  xxl script.xxl")
-    fmt.Println("  xxl run script.xxl")
+    fmt.Println("  xxl script.xxl -- arg1 arg2 --help")
+    fmt.Println("  xxl run script.xxl -- --verbose -f file.txt")
     fmt.Println("  xxl https://raw.githubusercontent.com/user/repo/main/script.xxl")
-    fmt.Println("  xxl https://gist.githubusercontent.com/user/id/raw/script.xxl")
     fmt.Println("  xxl compile -o program script.xxl")
     fmt.Println("  xxl compile -o program.exe --target windows/amd64 script.xxl")
     fmt.Println("  xxl compile --bytecode script.xxl")
