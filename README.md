@@ -2,6 +2,10 @@
 
 [中文文档](README_zh.md)
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/topxeq/xxlang.svg)](https://pkg.go.dev/github.com/topxeq/xxlang)
+[![Go Report Card](https://goreportcard.com/badge/github.com/topxeq/xxlang)](https://goreportcard.com/report/github.com/topxeq/xxlang)
+[![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language implemented in Go.
 
 ## Features
