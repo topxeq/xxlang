@@ -120,6 +120,37 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(70, "entries")
 	// Format
 	s.DefineBuiltin(71, "format")
+	// Object utilities
+	s.DefineBuiltin(72, "copy")
+	s.DefineBuiltin(73, "clone")
+	s.DefineBuiltin(74, "equals")
+	s.DefineBuiltin(75, "defaults")
+	// Encoding & Hash
+	s.DefineBuiltin(76, "base64Encode")
+	s.DefineBuiltin(77, "base64Decode")
+	s.DefineBuiltin(78, "hexEncode")
+	s.DefineBuiltin(79, "hexDecode")
+	s.DefineBuiltin(80, "md5")
+	s.DefineBuiltin(81, "sha256")
+	// Time & UUID
+	s.DefineBuiltin(82, "sleep")
+	s.DefineBuiltin(83, "now")
+	s.DefineBuiltin(84, "nowMs")
+	s.DefineBuiltin(85, "uuid")
+	// String enhancement
+	s.DefineBuiltin(86, "trimPrefix")
+	s.DefineBuiltin(87, "trimSuffix")
+	s.DefineBuiltin(88, "count")
+	s.DefineBuiltin(89, "isDigit")
+	s.DefineBuiltin(90, "isAlpha")
+	s.DefineBuiltin(91, "isAlphaNum")
+	// Array enhancement
+	s.DefineBuiltin(92, "find")
+	s.DefineBuiltin(93, "findIndex")
+	s.DefineBuiltin(94, "includes")
+	s.DefineBuiltin(95, "shuffle")
+	s.DefineBuiltin(96, "sample")
+	s.DefineBuiltin(97, "chunk")
 	return s
 }
 
@@ -148,6 +179,22 @@ func (s *SymbolTable) Define(name string) Symbol {
 // Resolve finds a symbol in the symbol table or outer scopes
 func (s *SymbolTable) Resolve(name string) (Symbol, bool) {
 	symbol, ok := s.Store[name]
+	// If we found a builtin, check if outer scope has a non-builtin with the same name
+	// (local variables should shadow builtins)
+	if ok && symbol.Scope == BuiltinScope && s.Outer != nil {
+		outerSymbol, outerOk := s.Outer.Resolve(name)
+		if outerOk && outerSymbol.Scope != BuiltinScope {
+			// Found a non-builtin in outer scope, use that instead
+			if outerSymbol.Scope == GlobalScope {
+				return outerSymbol, true
+			}
+			// Add to free symbols if not already there
+			free := Symbol{Name: name, Scope: FreeScope, Index: len(s.FreeSymbols)}
+			s.FreeSymbols = append(s.FreeSymbols, outerSymbol)
+			s.Store[name] = free
+			return free, true
+		}
+	}
 	if !ok && s.Outer != nil {
 		symbol, ok = s.Outer.Resolve(name)
 		if !ok {
