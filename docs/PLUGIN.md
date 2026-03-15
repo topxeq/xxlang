@@ -112,6 +112,76 @@ type Plugin interface {
 
 WASM plugins work on all platforms including Windows, without CGO. They can be written in any language that compiles to WebAssembly.
 
+### Quick Start
+
+**1. Build a `.wasm` file** using any supported language:
+
+```bash
+# AssemblyScript (smallest output)
+asc fib.ts -o fib.wasm --optimize --runtime stub --initialMemory 2
+
+# Or C, Zig, Rust, TinyGo
+./build.sh fib.ts    # or fib.c, fib.zig, fib.rs, fib.go
+```
+
+**2. Load the plugin** by specifying the `.wasm` file path:
+
+```go
+loader := plugin.NewLoader()
+p, err := loader.LoadPath("./fib.wasm")  // Direct file path
+```
+
+**3. Use in Xxlang:**
+
+```xxl
+import "plugin/fib"
+println(fib.fast(50))
+```
+
+### Output File
+
+All supported languages produce the same output: **a single `.wasm` file**. This file is a portable WebAssembly binary that can be loaded by Xxlang on any platform.
+
+| Language | Output File | Typical Size |
+|----------|-------------|--------------|
+| AssemblyScript | `fib.wasm` | ~1KB |
+| C | `fib.wasm` | ~1.5KB |
+| Zig | `fib.wasm` | ~1.3KB |
+| Rust | `fib.wasm` | ~1.3KB |
+| TinyGo | `fib.wasm` | ~15KB |
+
+### Where to Put WASM Files
+
+You can place `.wasm` files anywhere. There are two ways to load them:
+
+**Option 1: Load by file path (recommended)**
+
+```go
+loader := plugin.NewLoader()
+p, err := loader.LoadPath("/path/to/your/plugin.wasm")
+```
+
+**Option 2: Load by name with search paths**
+
+```go
+loader := plugin.NewLoader()
+loader.AddPath("./plugins")          // Add search directory
+loader.AddPath("/opt/xxlang/plugins")
+
+p, err := loader.Load("fib")         // Searches for fib.wasm in all paths
+```
+
+### Loading from Xxlang Code
+
+The Xxlang interpreter automatically loads WASM plugins when you import them:
+
+```xxl
+import "plugin/fib"    // Loads fib.wasm from search paths
+
+// Or load from specific path (if supported by your Xxlang setup)
+import "plugin://./my-plugins/fib.wasm"
+```
+
 ### Supported Languages
 
 | Language | Status | Build Size | Notes |
@@ -731,6 +801,44 @@ export function call_range_(n: i64, resultPtr: u32): void {
 
 ## Using Plugins from Xxlang
 
+### Loading Plugins
+
+**From Go (embedding Xxlang):**
+
+```go
+package main
+
+import (
+    "github.com/topxeq/xxlang/pkg/plugin"
+    "github.com/topxeq/xxlang/pkg/interpreter"
+)
+
+func main() {
+    loader := plugin.NewLoader()
+
+    // Method 1: Load by file path (recommended)
+    p, err := loader.LoadPath("./plugins/fib.wasm")
+    if err != nil {
+        panic(err)
+    }
+
+    // Method 2: Load by name with search paths
+    loader.AddPath("./plugins")
+    p, err = loader.Load("fib")  // Searches for fib.wasm
+
+    // Create interpreter and use plugin
+    interp := interpreter.New(interpreter.WithStdlib())
+    plugin.Register(p)  // Make available as "plugin/fib"
+
+    interp.Eval(`
+        import "plugin/fib"
+        println(fib.fast(50))
+    `)
+}
+```
+
+**From Xxlang script:**
+
 ```xxl
 import "plugin/fib"
 
@@ -749,6 +857,13 @@ println("Is 13 Fibonacci? " + fib.isFib(13))
 var fibs = fib.range_(10)
 println("First 11: " + fibs.toStr())
 ```
+
+### Plugin Loading Summary
+
+| Method | Use Case | Example |
+|--------|----------|---------|
+| `LoadPath(path)` | Load from specific file path | `loader.LoadPath("./my-plugin.wasm")` |
+| `Load(name)` | Load by name with search paths | `loader.Load("fib")` searches for `fib.wasm` |
 
 ---
 
