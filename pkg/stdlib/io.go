@@ -91,6 +91,25 @@ func init() {
 				return String(string(content))
 			}),
 
+			"readBytes": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("readBytes() takes exactly 1 argument")
+				}
+				filename, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("readBytes() requires a string filename")
+				}
+				content, err := os.ReadFile(filename.Value)
+				if err != nil {
+					return Error(err.Error())
+				}
+				result := make([]objects.Object, len(content))
+				for i, b := range content {
+					result[i] = Int(int64(b))
+				}
+				return Array(result...)
+			}),
+
 			"writeFile": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				if len(args) != 2 {
 					return Error("writeFile() takes exactly 2 arguments")
@@ -104,6 +123,36 @@ func init() {
 					return Error("writeFile() requires a string content")
 				}
 				err := os.WriteFile(filename.Value, []byte(content.Value), 0644)
+				if err != nil {
+					return Error(err.Error())
+				}
+				return Null()
+			}),
+
+			"writeBytes": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 2 {
+					return Error("writeBytes() takes exactly 2 arguments")
+				}
+				filename, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("writeBytes() requires a string filename")
+				}
+				arr, ok := args[1].(*objects.Array)
+				if !ok {
+					return Error("writeBytes() requires an array of bytes")
+				}
+				data := make([]byte, len(arr.Elements))
+				for i, elem := range arr.Elements {
+					n, ok := elem.(*objects.Int)
+					if !ok {
+						return Error("writeBytes() requires integer array elements")
+					}
+					if n.Value < 0 || n.Value > 255 {
+						return Error("writeBytes() byte values must be 0-255")
+					}
+					data[i] = byte(n.Value)
+				}
+				err := os.WriteFile(filename.Value, data, 0644)
 				if err != nil {
 					return Error(err.Error())
 				}
