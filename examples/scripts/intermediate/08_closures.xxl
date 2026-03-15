@@ -64,25 +64,28 @@ println("acc(20): ", acc(20))
 println("acc(30): ", acc(30))
 
 // === Closure for Data Privacy ===
+// NOTE: When multiple closures share the same variable, use a map
+// to ensure they share state correctly. See docs/SCOPE_zh.md for details.
 println("\n=== Closure for Data Privacy ===")
 
 func createBankAccount(initialBalance) {
-    var balance = initialBalance
+    // Use a map to share state between multiple closures
+    var state = {"balance": initialBalance}
 
     return {
         "deposit": func(amount) {
-            balance = balance + amount
-            return balance
+            state["balance"] = state["balance"] + amount
+            return state["balance"]
         },
         "withdraw": func(amount) {
-            if (balance >= amount) {
-                balance = balance - amount
-                return balance
+            if (state["balance"] >= amount) {
+                state["balance"] = state["balance"] - amount
+                return state["balance"]
             }
             return null  // Insufficient funds
         },
         "getBalance": func() {
-            return balance
+            return state["balance"]
         }
     }
 }
@@ -143,7 +146,7 @@ func memoize(f) {
     var cache = {}
 
     return func(x) {
-        var key = toStr(x)
+        var key = string(x)
         if (hasKey(cache, key)) {
             println("  (cache hit for ", x, ")")
             return cache[key]
