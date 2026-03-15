@@ -5,17 +5,18 @@
 ## 目录结构
 
 ```
-scripts/
+examples/scripts/
 ├── basics/          # 基础语法 (01-05)
 ├── intermediate/    # 中级特性 (06-10)
-├── advanced/        # 高级特性 (11-15)
-└── stdlib/          # 标准库使用 (16-20)
+├── advanced/        # 高级特性 (11-16)
+├── stdlib/          # 标准库使用 (17-20+)
+└── cmdline/         # 命令行参数处理示例
 ```
 
 ## 运行脚本
 
 ```bash
-xx run scripts/basics/01_variables.xxl
+xxlang examples/scripts/basics/01_variables.xxl
 ```
 
 ## 脚本列表
@@ -43,14 +44,22 @@ xx run scripts/basics/01_variables.xxl
 13. **13_modules.xxl** - 模块模式、命名空间
 14. **14_error_handling.xxl** - 错误处理模式
 15. **15_functional.xxl** - 函数式编程：map、filter、reduce
+16. **16_try_catch.xxl** - try-catch 异常处理
 
 ### 标准库 (stdlib/)
 
-16. **16_math.xxl** - 数学函数
-17. **17_string_funcs.xxl** - 字符串函数
-18. **18_io.xxl** - 输入输出操作
-19. **19_encoding.xxl** - 编码模式和简单密码
-20. **20_utilities.xxl** - 工具函数
+17. **16_math.xxl** - 数学函数
+18. **17_string_funcs.xxl** - 字符串函数
+19. **18_io.xxl** - 输入输出操作
+20. **19_encoding.xxl** - 编码模式和简单密码
+21. **20_utilities.xxl** - 工具函数
+
+### 命令行处理 (cmdline/)
+
+- **args_basic.xxl** - 6 种命令行参数处理基础模式
+- **cli_demo.xxl** - 完整的 CLI 应用示例（选项解析、帮助、版本）
+- **echo.xxl** - 类 Unix echo 命令的实现
+- **README.md** - 命令行处理的详细说明
 
 ## 内置函数
 
@@ -155,10 +164,6 @@ if (grade >= 90) {
 }
 ```
 
-### 自定义脚本
-
-用户添加的以 `hm_` 开头的脚本不应被删除。
-
 ## 学习路径
 
 建议按以下顺序学习：
@@ -167,3 +172,13 @@ if (grade >= 90) {
 2. 然后学习 intermediate/ 的数据结构
 3. 接着理解 advanced/ 的面向对象
 4. 最后掌握 stdlib/ 的标准库使用
+5. 实践 cmdline/ 的命令行工具开发
+
+## 其他示例
+
+除了本目录外，`examples/` 下还有其他专题示例：
+
+- **examples/embed/** - Go 嵌入式调用示例
+- **examples/fib_plugin/** - 插件系统示例
+- **examples/wasm_plugin/** - WASM 插件示例
+- **examples/performance_via_go/** - 性能测试示例
