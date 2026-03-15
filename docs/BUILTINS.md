@@ -421,6 +421,236 @@ Loads a native Go plugin from the specified path.
 loadPlugin("./myplugin.so")
 ```
 
+### copy(obj)
+
+Creates a shallow copy of an array or map.
+
+```xxl
+var arr = [1, 2, 3]
+var arrCopy = copy(arr)
+arrCopy[0] = 99
+println(arr[0])     // 1 (original unchanged)
+
+var map = {"a": 1}
+var mapCopy = copy(map)
+```
+
+### clone(obj)
+
+Creates a deep copy of an array or map.
+
+```xxl
+var nested = {"a": [1, 2, 3]}
+var cloned = clone(nested)
+cloned["a"][0] = 99
+println(nested["a"][0])  // 1 (original unchanged)
+```
+
+### equals(a, b)
+
+Performs deep equality comparison.
+
+```xxl
+equals([1, 2], [1, 2])           // true
+equals({"a": 1}, {"a": 1})       // true
+equals([1, [2, 3]], [1, [2, 3]]) // true
+```
+
+### defaults(obj, defaultObj)
+
+Fills in missing keys from default object.
+
+```xxl
+var config = {"host": "localhost"}
+var result = defaults(config, {"host": "127.0.0.1", "port": 8080})
+// {"host": "localhost", "port": 8080}
+```
+
+### base64Encode(s)
+
+Encodes string to base64.
+
+```xxl
+base64Encode("hello")  // "aGVsbG8="
+```
+
+### base64Decode(s)
+
+Decodes base64 string.
+
+```xxl
+base64Decode("aGVsbG8=")  // "hello"
+```
+
+### hexEncode(s)
+
+Encodes string to hexadecimal.
+
+```xxl
+hexEncode("hello")  // "68656c6c6f"
+```
+
+### hexDecode(s)
+
+Decodes hexadecimal string.
+
+```xxl
+hexDecode("68656c6c6f")  // "hello"
+```
+
+### md5(s)
+
+Returns MD5 hash as hex string.
+
+```xxl
+md5("hello")  // "5d41402abc4b2a76b9719d911017c592"
+```
+
+### sha256(s)
+
+Returns SHA256 hash as hex string.
+
+```xxl
+sha256("hello")  // "2cf24dba5fb0a30e26e83b2ac5b9e29e..."
+```
+
+### sleep(ms)
+
+Pauses execution for specified milliseconds.
+
+```xxl
+println("Starting...")
+sleep(1000)  // Sleep 1 second
+println("Done!")
+```
+
+### now()
+
+Returns current Unix timestamp in seconds.
+
+```xxl
+var ts = now()  // e.g., 1710422400
+```
+
+### nowMs()
+
+Returns current Unix timestamp in milliseconds.
+
+```xxl
+var ms = nowMs()  // e.g., 1710422400000
+```
+
+### uuid()
+
+Generates a random UUID string.
+
+```xxl
+var id = uuid()  // "550e8400-e29b-41d4-a716-446655440000"
+```
+
+### trimPrefix(s, prefix)
+
+Removes prefix from string if present.
+
+```xxl
+trimPrefix("hello_world", "hello_")  // "world"
+trimPrefix("hello", "x")             // "hello"
+```
+
+### trimSuffix(s, suffix)
+
+Removes suffix from string if present.
+
+```xxl
+trimSuffix("hello.txt", ".txt")  // "hello"
+trimSuffix("hello", ".txt")      // "hello"
+```
+
+### count(arr)
+
+Returns the length of an array.
+
+```xxl
+count([1, 2, 3, 4, 5])  // 5
+```
+
+### isDigit(s)
+
+Returns true if string contains only digits.
+
+```xxl
+isDigit("12345")   // true
+isDigit("12a45")   // false
+```
+
+### isAlpha(s)
+
+Returns true if string contains only letters.
+
+```xxl
+isAlpha("hello")   // true
+isAlpha("hello1")  // false
+```
+
+### isAlphaNum(s)
+
+Returns true if string contains only letters and digits.
+
+```xxl
+isAlphaNum("hello123")  // true
+isAlphaNum("hello!")    // false
+```
+
+### find(arr, predicate)
+
+Returns first element that matches predicate, or null.
+
+```xxl
+find([1, 2, 3, 4, 5], func(x) { return x > 3 })  // 4
+```
+
+### findIndex(arr, predicate)
+
+Returns index of first element that matches predicate, or -1.
+
+```xxl
+findIndex([1, 2, 3, 4, 5], func(x) { return x > 3 })  // 3
+```
+
+### includes(arr, value)
+
+Returns true if array contains value.
+
+```xxl
+includes([1, 2, 3], 2)   // true
+includes([1, 2, 3], 5)   // false
+```
+
+### shuffle(arr)
+
+Returns a shuffled copy of the array.
+
+```xxl
+shuffle([1, 2, 3, 4, 5])  // [3, 1, 5, 2, 4] (random order)
+```
+
+### sample(arr, n)
+
+Returns n random elements from array.
+
+```xxl
+sample([1, 2, 3, 4, 5], 2)  // [3, 5] (random selection)
+```
+
+### chunk(arr, size)
+
+Splits array into chunks of specified size.
+
+```xxl
+chunk([1, 2, 3, 4, 5, 6], 2)  // [[1, 2], [3, 4], [5, 6]]
+chunk([1, 2, 3, 4, 5], 2)     // [[1, 2], [3, 4], [5]]
+```
+
 ---
 
 ## Type Methods

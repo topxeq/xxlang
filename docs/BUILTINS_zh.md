@@ -421,6 +421,236 @@ runCode("a + b", {"a": 10, "b": 20}) // 30
 loadPlugin("./myplugin.so")
 ```
 
+### copy(obj)
+
+创建数组或映射的浅拷贝。
+
+```xxl
+var arr = [1, 2, 3]
+var arrCopy = copy(arr)
+arrCopy[0] = 99
+println(arr[0])     // 1 (原数组不变)
+
+var map = {"a": 1}
+var mapCopy = copy(map)
+```
+
+### clone(obj)
+
+创建数组或映射的深拷贝。
+
+```xxl
+var nested = {"a": [1, 2, 3]}
+var cloned = clone(nested)
+cloned["a"][0] = 99
+println(nested["a"][0])  // 1 (原对象不变)
+```
+
+### equals(a, b)
+
+执行深度相等比较。
+
+```xxl
+equals([1, 2], [1, 2])           // true
+equals({"a": 1}, {"a": 1})       // true
+equals([1, [2, 3]], [1, [2, 3]]) // true
+```
+
+### defaults(obj, defaultObj)
+
+用默认对象填充缺失的键。
+
+```xxl
+var config = {"host": "localhost"}
+var result = defaults(config, {"host": "127.0.0.1", "port": 8080})
+// {"host": "localhost", "port": 8080}
+```
+
+### base64Encode(s)
+
+将字符串编码为 base64。
+
+```xxl
+base64Encode("hello")  // "aGVsbG8="
+```
+
+### base64Decode(s)
+
+解码 base64 字符串。
+
+```xxl
+base64Decode("aGVsbG8=")  // "hello"
+```
+
+### hexEncode(s)
+
+将字符串编码为十六进制。
+
+```xxl
+hexEncode("hello")  // "68656c6c6f"
+```
+
+### hexDecode(s)
+
+解码十六进制字符串。
+
+```xxl
+hexDecode("68656c6c6f")  // "hello"
+```
+
+### md5(s)
+
+返回 MD5 哈希十六进制字符串。
+
+```xxl
+md5("hello")  // "5d41402abc4b2a76b9719d911017c592"
+```
+
+### sha256(s)
+
+返回 SHA256 哈希十六进制字符串。
+
+```xxl
+sha256("hello")  // "2cf24dba5fb0a30e26e83b2ac5b9e29e..."
+```
+
+### sleep(ms)
+
+暂停执行指定的毫秒数。
+
+```xxl
+println("开始...")
+sleep(1000)  // 休眠1秒
+println("完成！")
+```
+
+### now()
+
+返回当前 Unix 时间戳（秒）。
+
+```xxl
+var ts = now()  // 例如: 1710422400
+```
+
+### nowMs()
+
+返回当前 Unix 时间戳（毫秒）。
+
+```xxl
+var ms = nowMs()  // 例如: 1710422400000
+```
+
+### uuid()
+
+生成随机 UUID 字符串。
+
+```xxl
+var id = uuid()  // "550e8400-e29b-41d4-a716-446655440000"
+```
+
+### trimPrefix(s, prefix)
+
+移除字符串的前缀（如果存在）。
+
+```xxl
+trimPrefix("hello_world", "hello_")  // "world"
+trimPrefix("hello", "x")             // "hello"
+```
+
+### trimSuffix(s, suffix)
+
+移除字符串的后缀（如果存在）。
+
+```xxl
+trimSuffix("hello.txt", ".txt")  // "hello"
+trimSuffix("hello", ".txt")      // "hello"
+```
+
+### count(arr)
+
+返回数组的长度。
+
+```xxl
+count([1, 2, 3, 4, 5])  // 5
+```
+
+### isDigit(s)
+
+如果字符串只包含数字则返回 true。
+
+```xxl
+isDigit("12345")   // true
+isDigit("12a45")   // false
+```
+
+### isAlpha(s)
+
+如果字符串只包含字母则返回 true。
+
+```xxl
+isAlpha("hello")   // true
+isAlpha("hello1")  // false
+```
+
+### isAlphaNum(s)
+
+如果字符串只包含字母和数字则返回 true。
+
+```xxl
+isAlphaNum("hello123")  // true
+isAlphaNum("hello!")    // false
+```
+
+### find(arr, predicate)
+
+返回第一个匹配谓词的元素，或 null。
+
+```xxl
+find([1, 2, 3, 4, 5], func(x) { return x > 3 })  // 4
+```
+
+### findIndex(arr, predicate)
+
+返回第一个匹配谓词的元素的索引，或 -1。
+
+```xxl
+findIndex([1, 2, 3, 4, 5], func(x) { return x > 3 })  // 3
+```
+
+### includes(arr, value)
+
+如果数组包含值则返回 true。
+
+```xxl
+includes([1, 2, 3], 2)   // true
+includes([1, 2, 3], 5)   // false
+```
+
+### shuffle(arr)
+
+返回随机打乱顺序的数组副本。
+
+```xxl
+shuffle([1, 2, 3, 4, 5])  // [3, 1, 5, 2, 4] (随机顺序)
+```
+
+### sample(arr, n)
+
+从数组中随机选取 n 个元素。
+
+```xxl
+sample([1, 2, 3, 4, 5], 2)  // [3, 5] (随机选择)
+```
+
+### chunk(arr, size)
+
+将数组分割为指定大小的块。
+
+```xxl
+chunk([1, 2, 3, 4, 5, 6], 2)  // [[1, 2], [3, 4], [5, 6]]
+chunk([1, 2, 3, 4, 5], 2)     // [[1, 2], [3, 4], [5]]
+```
+
 ---
 
 ## 类型方法
