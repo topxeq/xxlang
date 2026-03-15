@@ -3,6 +3,8 @@ package plugin
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/topxeq/xxlang/pkg/objects"
@@ -344,5 +346,81 @@ func TestPlugin_Overwrite(t *testing.T) {
 	}
 	if got != p2 {
 		t.Error("expected second plugin to overwrite first")
+	}
+}
+
+func TestLoader_LoadPath(t *testing.T) {
+	Registry.Lock()
+	Registry.plugins = make(map[string]Plugin)
+	Registry.Unlock()
+
+	loader := NewLoader()
+
+	t.Run("file not found", func(t *testing.T) {
+		p, err := loader.LoadPath("/nonexistent/path/plugin.wasm")
+		if err == nil {
+			t.Error("expected error for non-existent file")
+		}
+		if p != nil {
+			t.Errorf("expected nil plugin, got %v", p)
+		}
+	})
+}
+
+func TestLoader_loadFromFile_ExistingFile(t *testing.T) {
+	// Create a temp file to test file existence check
+	tmpFile, err := os.CreateTemp("", "test*.wasm")
+	if err != nil {
+		t.Skip("could not create temp file")
+	}
+	defer os.Remove(tmpFile.Name())
+
+	loader := NewLoader()
+	loader.SetPaths([]string{filepath.Dir(tmpFile.Name())})
+
+	// Load a file that exists but isn't valid WASM
+	p, err := loader.loadFromFile(filepath.Base(tmpFile.Name())[:len(filepath.Base(tmpFile.Name()))-5])
+	// Should fail because the file isn't a valid WASM file
+	if err == nil {
+		t.Error("expected error for invalid WASM file")
+	}
+	if p != nil {
+		t.Errorf("expected nil plugin, got %v", p)
+	}
+}
+
+func TestLoader_loadFromFile_AllPaths(t *testing.T) {
+	loader := NewLoader()
+	loader.SetPaths([]string{"/nonexistent1", "/nonexistent2", "/nonexistent3"})
+
+	// Try to load from multiple paths - all should fail
+	p, err := loader.loadFromFile("nonexistent")
+	if err == nil {
+		t.Error("expected error for non-existent plugin")
+	}
+	if p != nil {
+		t.Errorf("expected nil plugin, got %v", p)
+	}
+}
+
+func TestLoader_Concurrent(t *testing.T) {
+	Registry.Lock()
+	Registry.plugins = make(map[string]Plugin)
+	Registry.Unlock()
+
+	loader := NewLoader()
+
+	// Test concurrent access to Paths
+	done := make(chan bool)
+	for i := 0; i < 10; i++ {
+		go func() {
+			loader.AddPath("/test/path")
+			_ = loader.Paths()
+			done <- true
+		}()
+	}
+
+	for i := 0; i < 10; i++ {
+		<-done
 	}
 }

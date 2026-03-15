@@ -152,3 +152,80 @@ func compareObjectsForTest(t *testing.T, got, expected Object) {
 		}
 	}
 }
+
+func TestStringTypeTag(t *testing.T) {
+	s := &String{Value: "hello"}
+	if got := s.TypeTag(); got != TagString {
+		t.Errorf("String.TypeTag() = %v, want TagString", got)
+	}
+}
+
+func TestInternString(t *testing.T) {
+	// First call should create a new string
+	s1 := InternString("test_string")
+	if s1 == nil {
+		t.Fatal("InternString returned nil")
+	}
+	if s1.Value != "test_string" {
+		t.Errorf("InternString value = %q, want %q", s1.Value, "test_string")
+	}
+
+	// Second call should return the same cached string
+	s2 := InternString("test_string")
+	if s1 != s2 {
+		t.Error("InternString should return cached string for same value")
+	}
+
+	// Different string should create a new object
+	s3 := InternString("different_string")
+	if s1 == s3 {
+		t.Error("InternString should return different object for different value")
+	}
+}
+
+func TestInternBatch(t *testing.T) {
+	strings := []string{"one", "two", "three"}
+	result := InternBatch(strings)
+
+	if len(result) != 3 {
+		t.Fatalf("InternBatch returned %d strings, want 3", len(result))
+	}
+
+	for i, s := range result {
+		if s == nil {
+			t.Errorf("InternBatch[%d] is nil", i)
+			continue
+		}
+		if s.Value != strings[i] {
+			t.Errorf("InternBatch[%d].Value = %q, want %q", i, s.Value, strings[i])
+		}
+	}
+
+	// Verify caching works - interning the same strings should return same objects
+	result2 := InternBatch([]string{"one", "two", "three"})
+	for i := range result {
+		if result[i] != result2[i] {
+			t.Errorf("InternBatch should return cached strings for same values at index %d", i)
+		}
+	}
+}
+
+func TestInternStringConcurrent(t *testing.T) {
+	// Test concurrent access to string interning
+	done := make(chan bool)
+	for i := 0; i < 10; i++ {
+		go func() {
+			for j := 0; j < 100; j++ {
+				s := InternString("concurrent_test")
+				if s.Value != "concurrent_test" {
+					t.Error("InternString returned wrong value")
+				}
+			}
+			done <- true
+		}()
+	}
+
+	for i := 0; i < 10; i++ {
+		<-done
+	}
+}
