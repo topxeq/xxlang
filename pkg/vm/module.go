@@ -18,14 +18,20 @@ import (
 
 // loadModuleFile loads, compiles, and executes a module file.
 // It handles caching and circular dependency detection.
-// Supports three module types:
+// Supports module types:
 //   - std/* : Standard library modules
-//   - plugin/* : WebAssembly plugins (.wasm files)
+//   - plugin/* : WebAssembly plugins by name
+//   - *.wasm : WebAssembly plugins by file path
 //   - *.xxl : xxlang source files
 func (vm *VM) loadModuleFile(resolvedPath string) (*objects.Module, error) {
-	// Check if it's a WASM plugin first
+	// Check if it's a WASM plugin by name (plugin/xxx)
 	if strings.HasPrefix(resolvedPath, "plugin/") {
 		return vm.loadWasmPlugin(resolvedPath)
+	}
+
+	// Check if it's a WASM plugin by file path (*.wasm)
+	if strings.HasSuffix(resolvedPath, ".wasm") {
+		return vm.loadWasmPluginByPath(resolvedPath)
 	}
 
 	// Check if it's a standard library module
@@ -179,6 +185,42 @@ func (vm *VM) loadPluginByPath(wasmPath string) (objects.Object, error) {
 	}
 
 	cacheKey := "wasm:" + absPath
+	if vm.loader.HasModule(cacheKey) {
+		cachedMod, err := vm.loader.Get(cacheKey)
+		if err != nil {
+			return nil, err
+		}
+		return &objects.Module{
+			Name:    cachedMod.Name,
+			Exports: cachedMod.Exports,
+			Globals: cachedMod.Globals,
+		}, nil
+	}
+
+	// Create a plugin loader and load from the specified path
+	loader := plugin.NewLoader()
+	p, err := loader.LoadPath(wasmPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load WASM plugin '%s': %v", wasmPath, err)
+	}
+
+	// Convert plugin to module
+	mod := plugin.ToModule(p)
+
+	// Cache the module
+	vm.loader.Set(cacheKey, &module.Module{
+		Name:    mod.Name,
+		Exports: mod.Exports,
+	})
+
+	return mod, nil
+}
+
+// loadWasmPluginByPath loads a WASM plugin from a specific file path.
+// This is called when importing a .wasm file via import statement.
+func (vm *VM) loadWasmPluginByPath(wasmPath string) (*objects.Module, error) {
+	// Check if already loaded
+	cacheKey := "wasm:" + wasmPath
 	if vm.loader.HasModule(cacheKey) {
 		cachedMod, err := vm.loader.Get(cacheKey)
 		if err != nil {

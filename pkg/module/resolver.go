@@ -18,19 +18,26 @@ var (
 )
 
 // Resolve resolves an import path relative to the importer.
-// It handles relative paths starting with "./" or "../".
-// Standard library paths starting with "std/" are returned as-is.
-// Plugin paths starting with "plugin/" are returned as-is.
-// The returned path will have the .xxl extension added if not present (for file-based modules).
+// It handles:
+//   - Standard library paths starting with "std/" -> returns as-is
+//   - Plugin paths starting with "plugin/" -> returns as-is
+//   - Absolute paths and relative paths -> resolves to file path
+//   - .wasm extension -> returns as-is (WASM plugin)
+//   - Other paths -> adds .xxl extension if not present (Xxlang module)
 func Resolve(importerPath, importPath string) (string, error) {
 	// Check if it's a standard library module
 	if strings.HasPrefix(importPath, "std/") {
 		return importPath, nil
 	}
 
-	// Check if it's a plugin module
+	// Check if it's a plugin module (by name)
 	if strings.HasPrefix(importPath, "plugin/") {
 		return importPath, nil
+	}
+
+	// Check if it's an absolute path
+	if filepath.IsAbs(importPath) {
+		return resolveFilePath(importPath), nil
 	}
 
 	// Check if it's a relative path
@@ -44,13 +51,24 @@ func Resolve(importerPath, importPath string) (string, error) {
 	// Resolve the path
 	resolved := filepath.Join(importerDir, importPath)
 
-	// Add .xxl extension if not present
-	if filepath.Ext(resolved) != ".xxl" {
-		resolved += ".xxl"
+	return resolveFilePath(resolved), nil
+}
+
+// resolveFilePath handles file path resolution.
+// .wasm files are returned as-is, others get .xxl extension added if not present.
+func resolveFilePath(path string) string {
+	// Clean the path
+	path = filepath.Clean(path)
+
+	// .wasm files are WASM plugins, return as-is
+	if filepath.Ext(path) == ".wasm" {
+		return path
 	}
 
-	// Clean the path
-	resolved = filepath.Clean(resolved)
+	// Add .xxl extension if not present
+	if filepath.Ext(path) != ".xxl" {
+		path += ".xxl"
+	}
 
-	return resolved, nil
+	return path
 }
