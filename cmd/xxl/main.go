@@ -20,7 +20,7 @@ const (
 )
 
 const (
-	Version   = "0.3.3"
+	Version   = "0.3.4"
 )
 
 // REPL represents an interactive REPL session
@@ -72,6 +72,11 @@ func main() {
 			os.Exit(1)
 		}
 		runFile(os.Args[2])
+	case "update":
+		if err := updateCmd(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
 	case "version":
 		printVersion()
 	case "help":
@@ -91,6 +96,7 @@ func printUsage() {
     fmt.Println("  xxl                    Start interactive REPL")
     fmt.Println("  xxl run <file>         Execute a .xxl file")
     fmt.Println("  xxl compile <file>     Compile file to bytecode")
+    fmt.Println("  xxl update             Self-update to latest version from GitHub")
     fmt.Println("  xxl version            Print version information")
     fmt.Println("  xxl help               Print this help message")
     fmt.Println()
@@ -105,6 +111,7 @@ func printUsage() {
     fmt.Println("  xxl compile -o program script.xxl")
     fmt.Println("  xxl compile -o program.exe --target windows/amd64 script.xxl")
     fmt.Println("  xxl compile --bytecode script.xxl")
+    fmt.Println("  xxl update")
 }
 
 func printVersion() {
