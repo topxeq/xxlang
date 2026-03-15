@@ -2,27 +2,110 @@
 
 Xxlang supports two types of plugins for high-performance operations:
 
-1. **Static Plugins** - Compile into your Go application (all platforms)
-2. **WebAssembly Plugins** - Load `.wasm` files at runtime (all platforms, no CGO)
-
-## Plugin Types Comparison
-
 | Feature | Static Plugin | WASM Plugin |
 |---------|---------------|-------------|
-| Windows Support | ✅ Yes | ✅ Yes |
-| Linux Support | ✅ Yes | ✅ Yes |
-| macOS Support | ✅ Yes | ✅ Yes |
-| Requires CGO | ❌ No | ❌ No |
-| Runtime Loading | ❌ No | ✅ Yes |
+| Platform | Windows, Linux, macOS | Windows, Linux, macOS |
+| CGO Required | No | No |
+| Runtime Loading | No (compile-time) | Yes |
 | Performance | Fastest | Fast (~10-20% overhead) |
-| Security | Host process | Sandboxed |
 | Distribution | Compiled in | Single .wasm file |
+
+---
+
+## WebAssembly Plugins (Recommended)
+
+### Quick Start
+
+```bash
+# 1. Build .wasm file (AssemblyScript - smallest)
+asc fib.ts -o fib.wasm --optimize --runtime stub --initialMemory 2
+
+# 2. Load and use
+go run main.go
+```
+
+```go
+loader := plugin.NewLoader()
+p, err := loader.LoadPath("./fib.wasm")  // Direct file path
+plugin.Register(p)
+
+interp.Eval(`import "plugin/fib"; println(fib.fast(50))`)
+```
+
+### Output Files
+
+All languages produce a single `.wasm` file:
+
+| Language | File Size | Build Command |
+|----------|-----------|---------------|
+| **AssemblyScript** | ~1KB | `asc fib.ts -o fib.wasm --optimize --runtime stub --initialMemory 2` |
+| **C** | ~1.5KB | `clang -o fib.wasm --target=wasm32 -O2 fib.c -nostdlib -nostartfiles -Wl,--no-entry -Wl,--export-all` |
+| **Zig** | ~1.3KB | `zig build-exe fib.zig -target wasm32-freestanding -O ReleaseSmall -fno-entry -rdynamic` |
+| **Rust** | ~1.3KB | `rustc --target wasm32-unknown-unknown -O --crate-type cdylib -o fib.wasm fib.rs` |
+| **TinyGo** | ~15KB | `tinygo build -o fib.wasm -target=wasi fib.go` |
+
+### Loading Methods
+
+**Method 1: Load by file path (recommended)**
+
+```go
+loader := plugin.NewLoader()
+p, err := loader.LoadPath("./plugins/fib.wasm")
+```
+
+**Method 2: Load by name with search paths**
+
+```go
+loader := plugin.NewLoader()
+loader.AddPath("./plugins")
+p, err := loader.Load("fib")  // Searches for fib.wasm
+```
+
+### Supported Languages
+
+| Language | Status | Notes |
+|----------|--------|-------|
+| AssemblyScript | Tested | Smallest output, TypeScript-like syntax |
+| C | Tested | Most portable, requires clang |
+| Zig | Tested | Modern language, excellent WASM support |
+| Rust | Tested | Use `wasm32-unknown-unknown` target |
+| TinyGo | Tested | Go syntax, requires Go 1.19-1.24 |
+| C++ | Compatible | Use clang with wasm32 target |
+| Standard Go | Not supported | Only exports `_start`, use TinyGo instead |
+
+### Plugin Specification
+
+Required exports:
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `alloc` | `(size: u32) -> u32` | Memory allocator (required) |
+| `plugin_name` | `(result_ptr: u32) -> void` | Returns plugin name |
+| `plugin_version` | `(result_ptr: u32) -> void` | Returns version string |
+| `call_xxx` | Various | Exported functions (`call_fast` → `fib.fast`) |
+
+Data types:
+- `i64` → `Int` (primary numeric type)
+- `i32` → `Int` (boolean: 0/1)
+- Strings/Arrays: write `(pointer, size)` to `result_ptr`
+
+### Using from Xxlang
+
+```xxl
+import "plugin/fib"
+
+println(fib.version)           // "1.0.0-as"
+println(fib.fast(50))          // 12586269025
+println(fib.matrix(92))        // 7540113804746346429
+println(fib.isFib(13))         // true
+println(fib.range_(10))        // [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]
+```
 
 ---
 
 ## Static Plugins
 
-Static plugins are Go packages that compile directly into your application.
+Static plugins are Go packages compiled into your application.
 
 ### Creating a Static Plugin
 
@@ -35,839 +118,38 @@ import (
     "github.com/topxeq/xxlang/pkg/plugin"
 )
 
-// FibPlugin implements plugin.Plugin interface
 type FibPlugin struct{}
 
-// Name returns the plugin name (used as "plugin/fib" in imports)
-func (p *FibPlugin) Name() string {
-    return "fib"
-}
+func (p *FibPlugin) Name() string { return "fib" }
 
-// Exports returns the functions and variables accessible from Xxlang
 func (p *FibPlugin) Exports() map[string]objects.Object {
     return map[string]objects.Object{
         "fast": &objects.Builtin{
             Fn: func(args ...objects.Object) objects.Object {
-                if len(args) != 1 {
-                    return &objects.Error{Message: "fib.fast requires 1 argument"}
-                }
-                n, ok := args[0].(*objects.Int)
-                if !ok {
-                    return &objects.Error{Message: "argument must be integer"}
-                }
-                result := fibFast(n.Value)
-                return &objects.Int{Value: result}
+                n := args[0].(*objects.Int)
+                return &objects.Int{Value: fibFast(n.Value)}
             },
         },
-        "version": &objects.String{Value: "1.0.0"},
     }
 }
 
-func fibFast(n int64) int64 {
-    if n <= 1 { return n }
-    a, b := int64(0), int64(1)
-    for i := int64(2); i <= n; i++ {
-        a, b = b, a+b
-    }
-    return b
-}
-
-func init() {
-    plugin.Register(&FibPlugin{})
-}
+func init() { plugin.Register(&FibPlugin{}) }
 ```
 
 ### Using Static Plugin
 
 ```go
-// main.go
-package main
-
-import (
-    "github.com/topxeq/xxlang/pkg/interpreter"
-    _ "github.com/topxeq/xxlang/examples/fib_plugin/plugin"
-)
+import _ "github.com/topxeq/xxlang/examples/fib_plugin/plugin"
 
 func main() {
     interp := interpreter.New(interpreter.WithStdlib())
-    interp.Eval(`
-        import "plugin/fib"
-        println(fib.fast(50))
-    `)
-}
-```
-
-### Plugin Interface
-
-```go
-type Plugin interface {
-    Name() string                              // Plugin name
-    Exports() map[string]objects.Object        // Exported symbols
+    interp.Eval(`import "plugin/fib"; println(fib.fast(50))`)
 }
 ```
 
 ---
 
-## WebAssembly Plugins
-
-WASM plugins work on all platforms including Windows, without CGO. They can be written in any language that compiles to WebAssembly.
-
-### Quick Start
-
-**1. Build a `.wasm` file** using any supported language:
-
-```bash
-# AssemblyScript (smallest output)
-asc fib.ts -o fib.wasm --optimize --runtime stub --initialMemory 2
-
-# Or C, Zig, Rust, TinyGo
-./build.sh fib.ts    # or fib.c, fib.zig, fib.rs, fib.go
-```
-
-**2. Load the plugin** by specifying the `.wasm` file path:
-
-```go
-loader := plugin.NewLoader()
-p, err := loader.LoadPath("./fib.wasm")  // Direct file path
-```
-
-**3. Use in Xxlang:**
-
-```xxl
-import "plugin/fib"
-println(fib.fast(50))
-```
-
-### Output File
-
-All supported languages produce the same output: **a single `.wasm` file**. This file is a portable WebAssembly binary that can be loaded by Xxlang on any platform.
-
-| Language | Output File | Typical Size |
-|----------|-------------|--------------|
-| AssemblyScript | `fib.wasm` | ~1KB |
-| C | `fib.wasm` | ~1.5KB |
-| Zig | `fib.wasm` | ~1.3KB |
-| Rust | `fib.wasm` | ~1.3KB |
-| TinyGo | `fib.wasm` | ~15KB |
-
-### Where to Put WASM Files
-
-You can place `.wasm` files anywhere. There are two ways to load them:
-
-**Option 1: Load by file path (recommended)**
-
-```go
-loader := plugin.NewLoader()
-p, err := loader.LoadPath("/path/to/your/plugin.wasm")
-```
-
-**Option 2: Load by name with search paths**
-
-```go
-loader := plugin.NewLoader()
-loader.AddPath("./plugins")          // Add search directory
-loader.AddPath("/opt/xxlang/plugins")
-
-p, err := loader.Load("fib")         // Searches for fib.wasm in all paths
-```
-
-### Loading from Xxlang Code
-
-The Xxlang interpreter automatically loads WASM plugins when you import them:
-
-```xxl
-import "plugin/fib"    // Loads fib.wasm from search paths
-
-// Or load from specific path (if supported by your Xxlang setup)
-import "plugin://./my-plugins/fib.wasm"
-```
-
-### Supported Languages
-
-| Language | Status | Build Size | Notes |
-|----------|--------|------------|-------|
-| **AssemblyScript** | ✅ Tested | ~1KB | Smallest output, TypeScript-like syntax |
-| **C** | ✅ Tested | ~1.5KB | Most portable, requires clang |
-| **Zig** | ✅ Tested | ~1.3KB | Modern language, excellent WASM support |
-| **Rust** | ✅ Tested | ~1.3KB | Use `wasm32-unknown-unknown` target |
-| **TinyGo** | ✅ Tested | ~15KB | Go syntax, Go 1.19-1.24 only |
-| **C++** | ✅ Compatible | ~2KB | Use clang with wasm32 target |
-| Standard Go | ❌ Not supported | ~1.8MB | Only exports `_start`, not custom functions |
-
-**Why Standard Go doesn't work:** Go's wasip1 target is for standalone applications only. It ignores `//export` directives and only exports `_start` (entry point). Use TinyGo instead.
-
-### Plugin Specification
-
-A valid WASM plugin must export these functions:
-
-| Function | Signature | Required | Description |
-|----------|-----------|----------|-------------|
-| `alloc` | `(size: u32) -> u32` | Yes | Memory allocator |
-| `plugin_name` | `(result_ptr: u32) -> void` | Recommended | Returns plugin name |
-| `plugin_version` | `(result_ptr: u32) -> void` | Optional | Returns version string |
-| `call_xxx` | Various | As needed | Exported functions (prefix `call_` maps to `xxx` in Xxlang) |
-
-**Data Type Mapping:**
-
-| WASM Type | Xxlang Type | Notes |
-|-----------|-------------|-------|
-| `i64` | `Int` | Primary numeric type |
-| `i32` | `Int` | For boolean returns (0/1) |
-| `u32` | Pointer | Memory pointer for strings/arrays |
-
-**String/Array Convention:**
-
-Functions returning strings or arrays write `(pointer, size)` to `result_ptr`:
-
-```c
-void call_range_(int64_t n, uint32_t result_ptr) {
-    uint32_t* result = (uint32_t*)result_ptr;
-    result[0] = data_pointer;  // Pointer to data
-    result[1] = data_size;      // Size in bytes
-}
-```
-
----
-
-## Building WASM Plugins
-
-### C
-
-Most portable option. Requires `clang` with wasm32 target.
-
-```bash
-# Install (Ubuntu/Debian)
-apt install clang lld
-
-# Build
-clang -o fib.wasm --target=wasm32 -O2 fib.c \
-    -nostdlib -nostartfiles \
-    -Wl,--no-entry -Wl,--export-all
-```
-
-**Complete Example:**
-
-```c
-// fib.c
-#include <stdint.h>
-
-extern unsigned char __heap_base;
-static uintptr_t heap_ptr = 0;
-
-// Memory allocator
-uint32_t alloc(uint32_t size) {
-    if (heap_ptr == 0) heap_ptr = (uintptr_t)&__heap_base;
-    if (heap_ptr % 8 != 0) heap_ptr += 8 - (heap_ptr % 8);
-    uintptr_t result = heap_ptr;
-    heap_ptr += size;
-    return (uint32_t)result;
-}
-
-// Plugin metadata
-void plugin_name(uint32_t result_ptr) {
-    const char* name = "fib";
-    uint32_t offset = alloc(3);
-    unsigned char* mem = (unsigned char*)offset;
-    for (int i = 0; i < 3; i++) mem[i] = name[i];
-    uint32_t* result = (uint32_t*)result_ptr;
-    result[0] = offset;
-    result[1] = 3;
-}
-
-void plugin_version(uint32_t result_ptr) {
-    const char* version = "1.0.0-c";
-    uint32_t offset = alloc(7);
-    unsigned char* mem = (unsigned char*)offset;
-    for (int i = 0; i < 7; i++) mem[i] = version[i];
-    uint32_t* result = (uint32_t*)result_ptr;
-    result[0] = offset;
-    result[1] = 7;
-}
-
-// Fibonacci - O(n)
-int64_t call_fast(int64_t n) {
-    if (n <= 1) return n;
-    int64_t a = 0, b = 1;
-    for (int64_t i = 2; i <= n; i++) {
-        int64_t tmp = a + b;
-        a = b;
-        b = tmp;
-    }
-    return b;
-}
-
-// Fibonacci - O(log n) matrix algorithm
-int64_t call_matrix(int64_t n) {
-    if (n <= 1) return n;
-    int64_t result[2][2] = {{1, 0}, {0, 1}};
-    int64_t base[2][2] = {{1, 1}, {1, 0}};
-    int64_t temp[2][2];
-    while (n > 0) {
-        if (n & 1) {
-            for (int i = 0; i < 2; i++)
-                for (int j = 0; j < 2; j++)
-                    temp[i][j] = result[i][0]*base[0][j] + result[i][1]*base[1][j];
-            for (int i = 0; i < 2; i++)
-                for (int j = 0; j < 2; j++)
-                    result[i][j] = temp[i][j];
-        }
-        for (int i = 0; i < 2; i++)
-            for (int j = 0; j < 2; j++)
-                temp[i][j] = base[i][0]*base[0][j] + base[i][1]*base[1][j];
-        for (int i = 0; i < 2; i++)
-            for (int j = 0; j < 2; j++)
-                base[i][j] = temp[i][j];
-        n >>= 1;
-    }
-    return result[0][1];
-}
-
-void _start(void) {}
-```
-
-### Zig
-
-Modern systems language with excellent WASM support.
-
-```bash
-# Install from https://ziglang.org/
-
-# Build
-zig build-exe fib.zig -target wasm32-freestanding -O ReleaseSmall -fno-entry -rdynamic
-```
-
-**Complete Example:**
-
-```zig
-// fib.zig
-var heap_ptr: usize = 65536;
-
-export fn alloc(size: u32) u32 {
-    if (heap_ptr % 8 != 0) heap_ptr += 8 - (heap_ptr % 8);
-    const result: u32 = @intCast(heap_ptr);
-    heap_ptr += size;
-    return result;
-}
-
-fn writeString(s: []const u8, result_ptr: u32) void {
-    const offset = alloc(@intCast(s.len));
-    const mem = @as([*]u8, @ptrFromInt(offset));
-    @memcpy(mem, s);
-    const result = @as(*[2]u32, @ptrFromInt(result_ptr));
-    result[0] = offset;
-    result[1] = @intCast(s.len);
-}
-
-export fn plugin_name(result_ptr: u32) void {
-    writeString("fib", result_ptr);
-}
-
-export fn plugin_version(result_ptr: u32) void {
-    writeString("1.0.0-zig", result_ptr);
-}
-
-export fn call_fast(n: i64) i64 {
-    if (n <= 1) return n;
-    var a: i64 = 0;
-    var b: i64 = 1;
-    var i: i64 = 2;
-    while (i <= n) : (i += 1) {
-        const tmp = a + b;
-        a = b;
-        b = tmp;
-    }
-    return b;
-}
-
-export fn call_matrix(n: i64) i64 {
-    if (n <= 1) return n;
-    var result = [2][2]i64{ .{ 1, 0 }, .{ 0, 1 } };
-    var base = [2][2]i64{ .{ 1, 1 }, .{ 1, 0 } };
-    var m = n;
-    while (m > 0) {
-        if (m & 1 == 1) {
-            result = .{
-                .{ result[0][0]*base[0][0] + result[0][1]*base[1][0], result[0][0]*base[0][1] + result[0][1]*base[1][1] },
-                .{ result[1][0]*base[0][0] + result[1][1]*base[1][0], result[1][0]*base[0][1] + result[1][1]*base[1][1] },
-            };
-        }
-        base = .{
-            .{ base[0][0]*base[0][0] + base[0][1]*base[1][0], base[0][0]*base[0][1] + base[0][1]*base[1][1] },
-            .{ base[1][0]*base[0][0] + base[1][1]*base[1][0], base[1][0]*base[0][1] + base[1][1]*base[1][1] },
-        };
-        m >>= 1;
-    }
-    return result[0][1];
-}
-
-export fn call_isFib(n: i64) i32 {
-    if (n < 0) return 0;
-    const n2 = n * n;
-    var sqrt1: i64 = 0;
-    while (sqrt1 * sqrt1 < 5 * n2 + 4) : (sqrt1 += 1) {}
-    if (sqrt1 * sqrt1 == 5 * n2 + 4) return 1;
-    var sqrt2: i64 = 0;
-    while (sqrt2 * sqrt2 < 5 * n2 - 4) : (sqrt2 += 1) {}
-    if (sqrt2 * sqrt2 == 5 * n2 - 4) return 1;
-    return 0;
-}
-
-export fn call_range_(n: i64, result_ptr: u32) void {
-    const result = @as(*[2]u32, @ptrFromInt(result_ptr));
-    if (n < 0) {
-        result[0] = 0;
-        result[1] = 0;
-        return;
-    }
-    const count: u32 = @intCast(n + 1);
-    const ptr = alloc(count * 8);
-    const arr = @as([*]i64, @ptrFromInt(ptr));
-    var a: i64 = 0;
-    var b: i64 = 1;
-    for (0..@intCast(n + 1)) |i| {
-        arr[i] = a;
-        const tmp = a + b;
-        a = b;
-        b = tmp;
-    }
-    result[0] = ptr;
-    result[1] = count;
-}
-```
-
-### Rust
-
-Requires `wasm32-unknown-unknown` target.
-
-```bash
-# Install target
-rustup target add wasm32-unknown-unknown
-
-# Build
-rustc --target wasm32-unknown-unknown -O --crate-type cdylib -o fib.wasm fib.rs
-```
-
-**Complete Example:**
-
-```rust
-// fib.rs
-#![no_std]
-#![no_main]
-
-use core::panic::PanicInfo;
-
-#[panic_handler]
-fn panic(_info: &PanicInfo) -> ! { loop {} }
-
-static mut HEAP_PTR: usize = 65536;
-
-#[no_mangle]
-pub extern "C" fn alloc(size: u32) -> u32 {
-    unsafe {
-        if HEAP_PTR % 8 != 0 {
-            HEAP_PTR += 8 - (HEAP_PTR % 8);
-        }
-        let result = HEAP_PTR as u32;
-        HEAP_PTR += size as usize;
-        result
-    }
-}
-
-fn write_string(s: &str, result_ptr: u32) {
-    unsafe {
-        let bytes = s.as_bytes();
-        let offset = alloc(bytes.len() as u32);
-        let mem = offset as *mut u8;
-        for (i, &byte) in bytes.iter().enumerate() {
-            *mem.add(i) = byte;
-        }
-        let result = result_ptr as *mut u32;
-        *result = offset;
-        *result.add(1) = bytes.len() as u32;
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn plugin_name(result_ptr: u32) {
-    write_string("fib", result_ptr);
-}
-
-#[no_mangle]
-pub extern "C" fn plugin_version(result_ptr: u32) {
-    write_string("1.0.0-rust", result_ptr);
-}
-
-#[no_mangle]
-pub extern "C" fn call_fast(n: i64) -> i64 {
-    if n <= 1 { return n; }
-    let mut a: i64 = 0;
-    let mut b: i64 = 1;
-    for _ in 2..=n {
-        let tmp = a + b;
-        a = b;
-        b = tmp;
-    }
-    b
-}
-
-#[no_mangle]
-pub extern "C" fn call_matrix(n: i64) -> i64 {
-    if n <= 1 { return n; }
-    let mut result = [[1i64, 0], [0, 1]];
-    let mut base = [[1i64, 1], [1, 0]];
-    let mut m = n;
-    while m > 0 {
-        if m & 1 == 1 {
-            result = [
-                [result[0][0]*base[0][0] + result[0][1]*base[1][0], result[0][0]*base[0][1] + result[0][1]*base[1][1]],
-                [result[1][0]*base[0][0] + result[1][1]*base[1][0], result[1][0]*base[0][1] + result[1][1]*base[1][1]],
-            ];
-        }
-        base = [
-            [base[0][0]*base[0][0] + base[0][1]*base[1][0], base[0][0]*base[0][1] + base[0][1]*base[1][1]],
-            [base[1][0]*base[0][0] + base[1][1]*base[1][0], base[1][0]*base[0][1] + base[1][1]*base[1][1]],
-        ];
-        m >>= 1;
-    }
-    result[0][1]
-}
-
-#[no_mangle]
-pub extern "C" fn call_isFib(n: i64) -> i32 {
-    if n < 0 { return 0; }
-    let n2 = n * n;
-    let check1 = 5 * n2 + 4;
-    let check2 = 5 * n2 - 4;
-    fn is_perfect_square(x: i64) -> bool {
-        let mut sqrt: i64 = 0;
-        while sqrt * sqrt < x { sqrt += 1; }
-        sqrt * sqrt == x
-    }
-    if is_perfect_square(check1) || is_perfect_square(check2) { 1 } else { 0 }
-}
-
-#[no_mangle]
-pub extern "C" fn call_range_(n: i64, result_ptr: u32) {
-    unsafe {
-        let result = result_ptr as *mut u32;
-        if n < 0 {
-            *result = 0;
-            *result.add(1) = 0;
-            return;
-        }
-        let count = (n + 1) as u32;
-        let ptr = alloc(count * 8);
-        let arr = ptr as *mut i64;
-        let mut a: i64 = 0;
-        let mut b: i64 = 1;
-        for i in 0..=n {
-            *arr.add(i as usize) = a;
-            let tmp = a + b;
-            a = b;
-            b = tmp;
-        }
-        *result = ptr;
-        *result.add(1) = count;
-    }
-}
-```
-
-### TinyGo
-
-Go syntax with WASM support. **Note: TinyGo 0.36 only supports Go 1.19-1.24.**
-
-```bash
-# Install from https://tinygo.org/
-
-# Build
-tinygo build -o fib.wasm -target=wasi fib.go
-```
-
-**Complete Example:**
-
-```go
-// fib.go
-package main
-
-import "unsafe"
-
-var memory []byte
-
-//export alloc
-func alloc(size uint32) uint32 {
-    offset := uint32(len(memory))
-    if offset%8 != 0 {
-        offset += 8 - offset%8
-    }
-    newLen := offset + size
-    if uint32(cap(memory)) < newLen {
-        newMem := make([]byte, newLen*2)
-        copy(newMem, memory)
-        memory = newMem[:newLen]
-    } else {
-        memory = memory[:newLen]
-    }
-    return offset
-}
-
-//export plugin_name
-func pluginName() (ptr uint32, size uint32) {
-    name := "fib"
-    ptr = alloc(uint32(len(name)))
-    copy(memory[ptr:], name)
-    return ptr, uint32(len(name))
-}
-
-//export plugin_version
-func pluginVersion() (ptr uint32, size uint32) {
-    version := "1.0.0-wasm"
-    ptr = alloc(uint32(len(version)))
-    copy(memory[ptr:], version)
-    return ptr, uint32(len(version))
-}
-
-//export call_fast
-func fibFast(n int64) int64 {
-    if n <= 1 { return n }
-    a, b := int64(0), int64(1)
-    for i := int64(2); i <= n; i++ {
-        a, b = b, a+b
-    }
-    return b
-}
-
-//export call_matrix
-func fibMatrix(n int64) int64 {
-    if n <= 1 { return n }
-    mul := func(a, b [2][2]int64) [2][2]int64 {
-        return [2][2]int64{
-            {a[0][0]*b[0][0] + a[0][1]*b[1][0], a[0][0]*b[0][1] + a[0][1]*b[1][1]},
-            {a[1][0]*b[0][0] + a[1][1]*b[1][0], a[1][0]*b[0][1] + a[1][1]*b[1][1]},
-        }
-    }
-    result := [2][2]int64{{1, 0}, {0, 1}}
-    base := [2][2]int64{{1, 1}, {1, 0}}
-    for n > 0 {
-        if n&1 == 1 { result = mul(result, base) }
-        base = mul(base, base)
-        n >>= 1
-    }
-    return result[0][1]
-}
-
-//export call_isFib
-func isFib(n int64) int32 {
-    if n < 0 { return 0 }
-    n2 := n * n
-    check := func(x int64) bool {
-        sqrt := int64(0)
-        for sqrt*sqrt < x { sqrt++ }
-        return sqrt*sqrt == x
-    }
-    if check(5*n2+4) || check(5*n2-4) { return 1 }
-    return 0
-}
-
-//export call_range_
-func fibRange(n int64) (ptr uint32, count uint32) {
-    if n < 0 { return 0, 0 }
-    count = uint32(n + 1)
-    ptr = alloc(count * 8)
-    a, b := int64(0), int64(1)
-    for i := int64(0); i <= n; i++ {
-        *(*int64)(unsafe.Pointer(uintptr(ptr + uint32(i*8)))) = a
-        a, b = b, a+b
-    }
-    return ptr, count
-}
-
-func main() {}
-```
-
-### AssemblyScript
-
-TypeScript-like syntax. Produces the smallest WASM files.
-
-```bash
-# Install
-npm install -g assemblyscript
-
-# Build
-asc fib.ts -o fib.wasm --optimize --runtime stub --initialMemory 2
-```
-
-**Important:** AssemblyScript requires `--initialMemory 2` (2 pages = 128KB) to have enough memory for the heap.
-
-**Complete Example:**
-
-```typescript
-// fib.ts
-var heapPtr: usize = 65536;
-
-export function alloc(size: u32): u32 {
-    if (heapPtr % 8 != 0) {
-        heapPtr += 8 - (heapPtr % 8);
-    }
-    const result = heapPtr as u32;
-    heapPtr += size as usize;
-    return result;
-}
-
-export function plugin_name(resultPtr: u32): void {
-    const ptr = alloc(3);
-    for (let i = 0; i < 3; i++) {
-        store<u8>(ptr + i, "fib".charCodeAt(i));
-    }
-    store<u32>(resultPtr, ptr);
-    store<u32>(resultPtr + 4, 3);
-}
-
-export function plugin_version(resultPtr: u32): void {
-    const ptr = alloc(8);
-    for (let i = 0; i < 8; i++) {
-        store<u8>(ptr + i, "1.0.0-as".charCodeAt(i));
-    }
-    store<u32>(resultPtr, ptr);
-    store<u32>(resultPtr + 4, 8);
-}
-
-export function call_fast(n: i64): i64 {
-    if (n <= 1) return n;
-    let a: i64 = 0, b: i64 = 1;
-    for (let i: i64 = 2; i <= n; i++) {
-        const tmp = a + b;
-        a = b;
-        b = tmp;
-    }
-    return b;
-}
-
-export function call_matrix(n: i64): i64 {
-    if (n <= 1) return n;
-    var r00: i64 = 1, r01: i64 = 0, r10: i64 = 0, r11: i64 = 1;
-    var b00: i64 = 1, b01: i64 = 1, b10: i64 = 1, b11: i64 = 0;
-    var m = n;
-    while (m > 0) {
-        if (m & 1) {
-            const t00 = r00 * b00 + r01 * b10;
-            const t01 = r00 * b01 + r01 * b11;
-            const t10 = r10 * b00 + r11 * b10;
-            const t11 = r10 * b01 + r11 * b11;
-            r00 = t00; r01 = t01; r10 = t10; r11 = t11;
-        }
-        const t00 = b00 * b00 + b01 * b10;
-        const t01 = b00 * b01 + b01 * b11;
-        const t10 = b10 * b00 + b11 * b10;
-        const t11 = b10 * b01 + b11 * b11;
-        b00 = t00; b01 = t01; b10 = t10; b11 = t11;
-        m >>= 1;
-    }
-    return r01;
-}
-
-export function call_isFib(n: i64): i32 {
-    if (n < 0) return 0;
-    const n2 = n * n;
-    var s: i64 = 0;
-    while (s * s < 5 * n2 + 4) s++;
-    if (s * s == 5 * n2 + 4) return 1;
-    s = 0;
-    while (s * s < 5 * n2 - 4) s++;
-    if (s * s == 5 * n2 - 4) return 1;
-    return 0;
-}
-
-export function call_range_(n: i64, resultPtr: u32): void {
-    if (n < 0) {
-        store<u32>(resultPtr, 0);
-        store<u32>(resultPtr + 4, 0);
-        return;
-    }
-    const count: u32 = (n + 1) as u32;
-    const ptr = alloc(count * 8);
-    var a: i64 = 0, b: i64 = 1;
-    for (let i: i64 = 0; i <= n; i++) {
-        store<i64>(ptr + (i as usize) * 8, a);
-        const tmp = a + b;
-        a = b;
-        b = tmp;
-    }
-    store<u32>(resultPtr, ptr);
-    store<u32>(resultPtr + 4, count);
-}
-```
-
----
-
-## Using Plugins from Xxlang
-
-### Loading Plugins
-
-**From Go (embedding Xxlang):**
-
-```go
-package main
-
-import (
-    "github.com/topxeq/xxlang/pkg/plugin"
-    "github.com/topxeq/xxlang/pkg/interpreter"
-)
-
-func main() {
-    loader := plugin.NewLoader()
-
-    // Method 1: Load by file path (recommended)
-    p, err := loader.LoadPath("./plugins/fib.wasm")
-    if err != nil {
-        panic(err)
-    }
-
-    // Method 2: Load by name with search paths
-    loader.AddPath("./plugins")
-    p, err = loader.Load("fib")  // Searches for fib.wasm
-
-    // Create interpreter and use plugin
-    interp := interpreter.New(interpreter.WithStdlib())
-    plugin.Register(p)  // Make available as "plugin/fib"
-
-    interp.Eval(`
-        import "plugin/fib"
-        println(fib.fast(50))
-    `)
-}
-```
-
-**From Xxlang script:**
-
-```xxl
-import "plugin/fib"
-
-// Version
-println("Version: " + fib.version)
-
-// Basic functions
-println("fib(10) = " + fib.fast(10))
-println("fib(50) = " + fib.fast(50))
-println("fib(92) = " + fib.matrix(92))
-
-// Utility
-println("Is 13 Fibonacci? " + fib.isFib(13))
-
-// Batch
-var fibs = fib.range_(10)
-println("First 11: " + fibs.toStr())
-```
-
-### Plugin Loading Summary
-
-| Method | Use Case | Example |
-|--------|----------|---------|
-| `LoadPath(path)` | Load from specific file path | `loader.LoadPath("./my-plugin.wasm")` |
-| `Load(name)` | Load by name with search paths | `loader.Load("fib")` searches for `fib.wasm` |
-
----
-
-## Performance Comparison
+## Performance
 
 | Method | fib(35) | Complexity |
 |--------|---------|------------|
@@ -880,44 +162,34 @@ println("First 11: " + fibs.toStr())
 
 ---
 
-## Complete Examples
-
-See [examples/wasm_plugin/](../examples/wasm_plugin/):
+## Examples
 
 ```
 examples/wasm_plugin/
-├── main.go           # Test program
+├── main.go                  # Comprehensive test
+├── test_loader_methods.go   # Loading methods test
 └── plugin/
-    ├── build.sh      # Build script (supports .c, .zig, .rs, .go, .ts)
-    ├── fib.c         # C implementation
-    ├── fib.zig       # Zig implementation
-    ├── fib.rs        # Rust implementation
-    ├── fib.go        # TinyGo implementation
-    └── fib.ts        # AssemblyScript implementation
+    ├── build.sh             # Build script
+    ├── fib.ts               # AssemblyScript (978 bytes)
+    ├── fib.c                # C (~1.5KB)
+    ├── fib.zig              # Zig (~1.3KB)
+    ├── fib.rs               # Rust (~1.3KB)
+    └── fib.go               # TinyGo (~15KB)
 ```
-
-Run tests:
 
 ```bash
 cd examples/wasm_plugin
 
-# Build with any language
-./plugin/build.sh fib.ts      # AssemblyScript (smallest)
-./plugin/build.sh fib.rs      # Rust
-./plugin/build.sh fib.zig     # Zig
-./plugin/build.sh fib.c       # C
-./plugin/build.sh fib.go      # TinyGo
+# Build and test
+./plugin/build.sh fib.ts && go run main.go
+./plugin/build.sh fib.rs && go run main.go
 
-# Test
-go run main.go
+# Test loading methods
+go run test_loader_methods.go
 ```
 
 ---
 
-## Best Practices
+## Full Code Examples
 
-1. **Validate arguments** - Check count and types
-2. **Return errors** - Use `&objects.Error{Message: "..."}`
-3. **Handle edge cases** - Test with zero, negative, boundary values
-4. **Use efficient algorithms** - Prefer O(log n) over O(n)
-5. **Batch operations** - Return arrays for multiple results
+See the `examples/wasm_plugin/plugin/` directory for complete implementations in each language.
