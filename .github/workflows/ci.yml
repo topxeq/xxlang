@@ -5,11 +5,16 @@ on:
     branches: [master, main]
   pull_request:
     branches: [master, main]
+  workflow_dispatch:
 
 jobs:
   test:
     name: Test
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        go: ['1.23']
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -17,24 +22,38 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: ${{ matrix.go }}
           cache: true
 
       - name: Download dependencies
         run: go mod download
 
       - name: Run tests
-        run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+        run: |
+          go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+          go tool cover -func coverage.out -o coverage.out
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+      - name: Go Coverage Badge
+        uses: tj-actions/coverage-badge-go@v3
+        if: ${{ runner.os == 'Linux' && matrix.go == '1.23' }}
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage.out
-          flags: unittests
-          name: codecov-umbrella
-          fail_ci_if_error: false
-          verbose: true
+          green: 60
+          filename: coverage.out
+
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        id: auto-commit-action
+        with:
+          commit_message: Apply code coverage badge
+          skip_fetch: true
+          skip_checkout: true
+          file_pattern: ./README.md
+
+      - name: Push Changes
+        if: steps.auto-commit-action.outputs.changes_detected == 'true'
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ github.token }}
+          branch: ${{ github.ref }}
 
   lint:
     name: Lint
