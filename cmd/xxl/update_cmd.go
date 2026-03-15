@@ -4,10 +4,12 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -24,9 +26,60 @@ type GitHubRelease struct {
 	} `json:"assets"`
 }
 
+// newHTTPClient creates an HTTP client that respects proxy environment variables
+// Supports: HTTP_PROXY, HTTPS_PROXY, http_proxy, https_proxy, NO_PROXY, no_proxy
+func newHTTPClient(timeout time.Duration) *http.Client {
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: false,
+		},
+	}
+
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: transport,
+	}
+}
+
+// getProxyInfo returns information about configured proxy
+func getProxyInfo() string {
+	proxyURL := ""
+	if p := os.Getenv("HTTPS_PROXY"); p != "" {
+		proxyURL = p
+	} else if p := os.Getenv("https_proxy"); p != "" {
+		proxyURL = p
+	} else if p := os.Getenv("HTTP_PROXY"); p != "" {
+		proxyURL = p
+	} else if p := os.Getenv("http_proxy"); p != "" {
+		proxyURL = p
+	}
+
+	if proxyURL != "" {
+		// Parse and mask password if present
+		if u, err := url.Parse(proxyURL); err == nil {
+			if u.User != nil {
+				if _, hasPass := u.User.Password(); hasPass {
+					u.User = url.UserPassword(u.User.Username(), "****")
+					return u.String()
+				}
+			}
+			return proxyURL
+		}
+		return proxyURL
+	}
+	return ""
+}
+
 // updateCmd implements the self-update command
 func updateCmd(args []string) error {
 	fmt.Printf("Current version: %s\n", Version)
+
+	// Show proxy info if configured
+	if proxyInfo := getProxyInfo(); proxyInfo != "" {
+		fmt.Printf("Using proxy: %s\n", proxyInfo)
+	}
+
 	fmt.Println("Checking for updates...")
 
 	// Get latest release from GitHub
@@ -114,12 +167,10 @@ func updateCmd(args []string) error {
 
 // getLatestRelease fetches the latest release from GitHub
 func getLatestRelease() (*GitHubRelease, error) {
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
+	client := newHTTPClient(30 * time.Second)
 
-	url := "https://api.github.com/repos/topxeq/xxlang/releases/latest"
-	req, err := http.NewRequest("GET", url, nil)
+	apiURL := "https://api.github.com/repos/topxeq/xxlang/releases/latest"
+	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -195,12 +246,10 @@ func findAssetForPlatform(release *GitHubRelease) (string, string, error) {
 }
 
 // downloadFile downloads a file to a temporary location with progress display
-func downloadFile(url string) (string, error) {
-	client := &http.Client{
-		Timeout: 5 * time.Minute, // Large files may take time
-	}
+func downloadFile(downloadURL string) (string, error) {
+	client := newHTTPClient(5 * time.Minute) // Large files may take time
 
-	resp, err := client.Get(url)
+	resp, err := client.Get(downloadURL)
 	if err != nil {
 		return "", err
 	}
