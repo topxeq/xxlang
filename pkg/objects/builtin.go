@@ -2,6 +2,10 @@
 package objects
 
 import (
+	"crypto/md5"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"math"
 	"math/rand"
@@ -1626,6 +1630,501 @@ var Builtins = map[string]*Builtin{
             return &String{Value: fmt.Sprintf(format.Value, formatArgs...)}
         },
     },
+
+    // ============================================================
+    // Object Utility Functions
+    // ============================================================
+    "copy": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for copy. got=%d, want=1", len(args))
+            }
+            return deepCopyObject(args[0])
+        },
+    },
+    "clone": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for clone. got=%d, want=1", len(args))
+            }
+            return shallowCopyObject(args[0])
+        },
+    },
+    "equals": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 2 {
+                return newError("wrong number of arguments for equals. got=%d, want=2", len(args))
+            }
+            return &Bool{Value: deepEquals(args[0], args[1])}
+        },
+    },
+    "defaults": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 2 {
+                return newError("wrong number of arguments for defaults. got=%d, want=2", len(args))
+            }
+
+            target, ok := args[0].(*Map)
+            if !ok {
+                return newError("first argument to 'defaults' must be MAP, got %s", args[0].Type())
+            }
+
+            defaults, ok := args[1].(*Map)
+            if !ok {
+                return newError("second argument to 'defaults' must be MAP, got %s", args[1].Type())
+            }
+
+            result := make(map[HashKey]MapPair)
+            for k, v := range target.Pairs {
+                result[k] = v
+            }
+            for k, v := range defaults.Pairs {
+                if _, exists := result[k]; !exists {
+                    result[k] = v
+                }
+            }
+
+            return &Map{Pairs: result}
+        },
+    },
+
+    // ============================================================
+    // Encoding & Hash Functions
+    // ============================================================
+    "base64Encode": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for base64Encode. got=%d, want=1", len(args))
+            }
+
+            str, ok := args[0].(*String)
+            if !ok {
+                return newError("argument to 'base64Encode' must be STRING, got %s", args[0].Type())
+            }
+
+            return &String{Value: base64.StdEncoding.EncodeToString([]byte(str.Value))}
+        },
+    },
+    "base64Decode": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for base64Decode. got=%d, want=1", len(args))
+            }
+
+            str, ok := args[0].(*String)
+            if !ok {
+                return newError("argument to 'base64Decode' must be STRING, got %s", args[0].Type())
+            }
+
+            decoded, err := base64.StdEncoding.DecodeString(str.Value)
+            if err != nil {
+                return newError("base64Decode failed: %s", err.Error())
+            }
+
+            return &String{Value: string(decoded)}
+        },
+    },
+    "hexEncode": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for hexEncode. got=%d, want=1", len(args))
+            }
+
+            str, ok := args[0].(*String)
+            if !ok {
+                return newError("argument to 'hexEncode' must be STRING, got %s", args[0].Type())
+            }
+
+            return &String{Value: hex.EncodeToString([]byte(str.Value))}
+        },
+    },
+    "hexDecode": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for hexDecode. got=%d, want=1", len(args))
+            }
+
+            str, ok := args[0].(*String)
+            if !ok {
+                return newError("argument to 'hexDecode' must be STRING, got %s", args[0].Type())
+            }
+
+            decoded, err := hex.DecodeString(str.Value)
+            if err != nil {
+                return newError("hexDecode failed: %s", err.Error())
+            }
+
+            return &String{Value: string(decoded)}
+        },
+    },
+    "md5": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for md5. got=%d, want=1", len(args))
+            }
+
+            str, ok := args[0].(*String)
+            if !ok {
+                return newError("argument to 'md5' must be STRING, got %s", args[0].Type())
+            }
+
+            hash := md5.Sum([]byte(str.Value))
+            return &String{Value: hex.EncodeToString(hash[:])}
+        },
+    },
+    "sha256": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for sha256. got=%d, want=1", len(args))
+            }
+
+            str, ok := args[0].(*String)
+            if !ok {
+                return newError("argument to 'sha256' must be STRING, got %s", args[0].Type())
+            }
+
+            hash := sha256.Sum256([]byte(str.Value))
+            return &String{Value: hex.EncodeToString(hash[:])}
+        },
+    },
+
+    // ============================================================
+    // Time & UUID Functions
+    // ============================================================
+    "sleep": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for sleep. got=%d, want=1", len(args))
+            }
+
+            ms, ok := args[0].(*Int)
+            if !ok {
+                return newError("argument to 'sleep' must be INT (milliseconds), got %s", args[0].Type())
+            }
+
+            time.Sleep(time.Duration(ms.Value) * time.Millisecond)
+            return NULL
+        },
+    },
+    "now": {
+        Fn: func(args ...Object) Object {
+            return &Int{Value: time.Now().Unix()}
+        },
+    },
+    "nowMs": {
+        Fn: func(args ...Object) Object {
+            return &Int{Value: time.Now().UnixMilli()}
+        },
+    },
+    "uuid": {
+        Fn: func(args ...Object) Object {
+            initRand()
+            randMu.Lock()
+            defer randMu.Unlock()
+
+            b := make([]byte, 16)
+            randSrc.Read(b)
+            // Version 4
+            b[6] = (b[6] & 0x0f) | 0x40
+            // Variant
+            b[8] = (b[8] & 0x3f) | 0x80
+
+            return &String{Value: fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])}
+        },
+    },
+
+    // ============================================================
+    // String Enhancement Functions
+    // ============================================================
+    "trimPrefix": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 2 {
+                return newError("wrong number of arguments for trimPrefix. got=%d, want=2", len(args))
+            }
+
+            str, ok := args[0].(*String)
+            if !ok {
+                return newError("first argument to 'trimPrefix' must be STRING, got %s", args[0].Type())
+            }
+
+            prefix, ok := args[1].(*String)
+            if !ok {
+                return newError("second argument to 'trimPrefix' must be STRING, got %s", args[1].Type())
+            }
+
+            return &String{Value: strings.TrimPrefix(str.Value, prefix.Value)}
+        },
+    },
+    "trimSuffix": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 2 {
+                return newError("wrong number of arguments for trimSuffix. got=%d, want=2", len(args))
+            }
+
+            str, ok := args[0].(*String)
+            if !ok {
+                return newError("first argument to 'trimSuffix' must be STRING, got %s", args[0].Type())
+            }
+
+            suffix, ok := args[1].(*String)
+            if !ok {
+                return newError("second argument to 'trimSuffix' must be STRING, got %s", args[1].Type())
+            }
+
+            return &String{Value: strings.TrimSuffix(str.Value, suffix.Value)}
+        },
+    },
+    "count": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 2 {
+                return newError("wrong number of arguments for count. got=%d, want=2", len(args))
+            }
+
+            str, ok := args[0].(*String)
+            if !ok {
+                return newError("first argument to 'count' must be STRING, got %s", args[0].Type())
+            }
+
+            substr, ok := args[1].(*String)
+            if !ok {
+                return newError("second argument to 'count' must be STRING, got %s", args[1].Type())
+            }
+
+            return &Int{Value: int64(strings.Count(str.Value, substr.Value))}
+        },
+    },
+    "isDigit": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for isDigit. got=%d, want=1", len(args))
+            }
+
+            str, ok := args[0].(*String)
+            if !ok {
+                return newError("argument to 'isDigit' must be STRING, got %s", args[0].Type())
+            }
+
+            if len(str.Value) == 0 {
+                return FALSE
+            }
+
+            for _, r := range str.Value {
+                if r < '0' || r > '9' {
+                    return FALSE
+                }
+            }
+            return TRUE
+        },
+    },
+    "isAlpha": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for isAlpha. got=%d, want=1", len(args))
+            }
+
+            str, ok := args[0].(*String)
+            if !ok {
+                return newError("argument to 'isAlpha' must be STRING, got %s", args[0].Type())
+            }
+
+            if len(str.Value) == 0 {
+                return FALSE
+            }
+
+            for _, r := range str.Value {
+                if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')) {
+                    return FALSE
+                }
+            }
+            return TRUE
+        },
+    },
+    "isAlphaNum": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for isAlphaNum. got=%d, want=1", len(args))
+            }
+
+            str, ok := args[0].(*String)
+            if !ok {
+                return newError("argument to 'isAlphaNum' must be STRING, got %s", args[0].Type())
+            }
+
+            if len(str.Value) == 0 {
+                return FALSE
+            }
+
+            for _, r := range str.Value {
+                if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')) {
+                    return FALSE
+                }
+            }
+            return TRUE
+        },
+    },
+
+    // ============================================================
+    // Array Enhancement Functions
+    // ============================================================
+    "find": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 2 {
+                return newError("wrong number of arguments for find. got=%d, want=2", len(args))
+            }
+
+            arr, ok := args[0].(*Array)
+            if !ok {
+                return newError("first argument to 'find' must be ARRAY, got %s", args[0].Type())
+            }
+
+            for _, elem := range arr.Elements {
+                if deepEquals(elem, args[1]) {
+                    return elem
+                }
+            }
+
+            return NULL
+        },
+    },
+    "findIndex": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 2 {
+                return newError("wrong number of arguments for findIndex. got=%d, want=2", len(args))
+            }
+
+            arr, ok := args[0].(*Array)
+            if !ok {
+                return newError("first argument to 'findIndex' must be ARRAY, got %s", args[0].Type())
+            }
+
+            for i, elem := range arr.Elements {
+                if deepEquals(elem, args[1]) {
+                    return &Int{Value: int64(i)}
+                }
+            }
+
+            return &Int{Value: -1}
+        },
+    },
+    "includes": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 2 {
+                return newError("wrong number of arguments for includes. got=%d, want=2", len(args))
+            }
+
+            arr, ok := args[0].(*Array)
+            if !ok {
+                return newError("first argument to 'includes' must be ARRAY, got %s", args[0].Type())
+            }
+
+            for _, elem := range arr.Elements {
+                if deepEquals(elem, args[1]) {
+                    return TRUE
+                }
+            }
+
+            return FALSE
+        },
+    },
+    "shuffle": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for shuffle. got=%d, want=1", len(args))
+            }
+
+            arr, ok := args[0].(*Array)
+            if !ok {
+                return newError("argument to 'shuffle' must be ARRAY, got %s", args[0].Type())
+            }
+
+            initRand()
+            randMu.Lock()
+            defer randMu.Unlock()
+
+            result := make([]Object, len(arr.Elements))
+            copy(result, arr.Elements)
+
+            randSrc.Shuffle(len(result), func(i, j int) {
+                result[i], result[j] = result[j], result[i]
+            })
+
+            return &Array{Elements: result}
+        },
+    },
+    "sample": {
+        Fn: func(args ...Object) Object {
+            if len(args) < 1 || len(args) > 2 {
+                return newError("wrong number of arguments for sample. got=%d, want=1 or 2", len(args))
+            }
+
+            arr, ok := args[0].(*Array)
+            if !ok {
+                return newError("first argument to 'sample' must be ARRAY, got %s", args[0].Type())
+            }
+
+            if len(arr.Elements) == 0 {
+                return NULL
+            }
+
+            initRand()
+            randMu.Lock()
+            defer randMu.Unlock()
+
+            count := int64(1)
+            if len(args) == 2 {
+                c, ok := args[1].(*Int)
+                if !ok {
+                    return newError("second argument to 'sample' must be INT, got %s", args[1].Type())
+                }
+                count = c.Value
+            }
+
+            if count == 1 {
+                idx := randSrc.Intn(len(arr.Elements))
+                return arr.Elements[idx]
+            }
+
+            result := make([]Object, 0, count)
+            indices := randSrc.Perm(len(arr.Elements))
+            for i := int64(0); i < count && i < int64(len(indices)); i++ {
+                result = append(result, arr.Elements[indices[i]])
+            }
+
+            return &Array{Elements: result}
+        },
+    },
+    "chunk": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 2 {
+                return newError("wrong number of arguments for chunk. got=%d, want=2", len(args))
+            }
+
+            arr, ok := args[0].(*Array)
+            if !ok {
+                return newError("first argument to 'chunk' must be ARRAY, got %s", args[0].Type())
+            }
+
+            size, ok := args[1].(*Int)
+            if !ok {
+                return newError("second argument to 'chunk' must be INT, got %s", args[1].Type())
+            }
+
+            if size.Value <= 0 {
+                return newError("chunk size must be positive")
+            }
+
+            chunks := make([]Object, 0)
+            for i := 0; i < len(arr.Elements); i += int(size.Value) {
+                end := i + int(size.Value)
+                if end > len(arr.Elements) {
+                    end = len(arr.Elements)
+                }
+                chunks = append(chunks, &Array{Elements: arr.Elements[i:end]})
+            }
+
+            return &Array{Elements: chunks}
+        },
+    },
 }
 
 // RunCodeImpl is the implementation function for runCode, set by the VM
@@ -1700,4 +2199,109 @@ func flattenArray(elements []Object, depth int64) []Object {
     }
 
     return result
+}
+
+// deepCopyObject creates a deep copy of an object
+func deepCopyObject(obj Object) Object {
+    switch o := obj.(type) {
+    case *Int:
+        return &Int{Value: o.Value}
+    case *Float:
+        return &Float{Value: o.Value}
+    case *String:
+        return &String{Value: o.Value}
+    case *Bool:
+        if o.Value {
+            return TRUE
+        }
+        return FALSE
+    case *Null:
+        return NULL
+    case *Array:
+        elements := make([]Object, len(o.Elements))
+        for i, elem := range o.Elements {
+            elements[i] = deepCopyObject(elem)
+        }
+        return &Array{Elements: elements}
+    case *Map:
+        pairs := make(map[HashKey]MapPair)
+        for k, v := range o.Pairs {
+            pairs[k] = MapPair{
+                Key:   deepCopyObject(v.Key),
+                Value: deepCopyObject(v.Value),
+            }
+        }
+        return &Map{Pairs: pairs}
+    default:
+        // For other types, return as-is (functions, builtins, etc.)
+        return obj
+    }
+}
+
+// shallowCopyObject creates a shallow copy of an object
+func shallowCopyObject(obj Object) Object {
+    switch o := obj.(type) {
+    case *Array:
+        elements := make([]Object, len(o.Elements))
+        copy(elements, o.Elements)
+        return &Array{Elements: elements}
+    case *Map:
+        pairs := make(map[HashKey]MapPair)
+        for k, v := range o.Pairs {
+            pairs[k] = v
+        }
+        return &Map{Pairs: pairs}
+    default:
+        // For primitive types, return as-is
+        return obj
+    }
+}
+
+// deepEquals compares two objects for deep equality
+func deepEquals(a, b Object) bool {
+    if a.Type() != b.Type() {
+        return false
+    }
+
+    switch aObj := a.(type) {
+    case *Int:
+        bObj, ok := b.(*Int)
+        return ok && aObj.Value == bObj.Value
+    case *Float:
+        bObj, ok := b.(*Float)
+        return ok && aObj.Value == bObj.Value
+    case *String:
+        bObj, ok := b.(*String)
+        return ok && aObj.Value == bObj.Value
+    case *Bool:
+        bObj, ok := b.(*Bool)
+        return ok && aObj.Value == bObj.Value
+    case *Null:
+        return true
+    case *Array:
+        bObj, ok := b.(*Array)
+        if !ok || len(aObj.Elements) != len(bObj.Elements) {
+            return false
+        }
+        for i := range aObj.Elements {
+            if !deepEquals(aObj.Elements[i], bObj.Elements[i]) {
+                return false
+            }
+        }
+        return true
+    case *Map:
+        bObj, ok := b.(*Map)
+        if !ok || len(aObj.Pairs) != len(bObj.Pairs) {
+            return false
+        }
+        for k, v := range aObj.Pairs {
+            bVal, exists := bObj.Pairs[k]
+            if !exists || !deepEquals(v.Value, bVal.Value) {
+                return false
+            }
+        }
+        return true
+    default:
+        return a.Inspect() == b.Inspect()
+    }
 }

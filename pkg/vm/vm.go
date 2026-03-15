@@ -1300,8 +1300,12 @@ func (vm *VM) executeTailCall() error {
 	case *Closure:
 		return vm.tailCallFunction(fn.Fn, numArgs, fn.FreeVars, fn.Constants, fn.Globals)
 	case *objects.Builtin:
-		// Builtins don't benefit from TCO, just use regular call
-		return vm.callBuiltin(fn, numArgs)
+		// Builtins don't benefit from TCO, call it and then execute return logic
+		if err := vm.callBuiltin(fn, numArgs); err != nil {
+			return err
+		}
+		// The builtin result is on the stack, now execute return logic
+		return vm.executeReturn()
 	default:
 		return fmt.Errorf("calling non-function: %T", callee)
 	}
@@ -1751,6 +1755,37 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["entries"],       // 70
 		// Format
 		objects.Builtins["format"],        // 71
+		// Object utilities
+		objects.Builtins["copy"],          // 72
+		objects.Builtins["clone"],         // 73
+		objects.Builtins["equals"],        // 74
+		objects.Builtins["defaults"],      // 75
+		// Encoding & Hash
+		objects.Builtins["base64Encode"],  // 76
+		objects.Builtins["base64Decode"],  // 77
+		objects.Builtins["hexEncode"],     // 78
+		objects.Builtins["hexDecode"],     // 79
+		objects.Builtins["md5"],           // 80
+		objects.Builtins["sha256"],        // 81
+		// Time & UUID
+		objects.Builtins["sleep"],         // 82
+		objects.Builtins["now"],           // 83
+		objects.Builtins["nowMs"],         // 84
+		objects.Builtins["uuid"],          // 85
+		// String enhancement
+		objects.Builtins["trimPrefix"],    // 86
+		objects.Builtins["trimSuffix"],    // 87
+		objects.Builtins["count"],         // 88
+		objects.Builtins["isDigit"],       // 89
+		objects.Builtins["isAlpha"],       // 90
+		objects.Builtins["isAlphaNum"],    // 91
+		// Array enhancement
+		objects.Builtins["find"],          // 92
+		objects.Builtins["findIndex"],     // 93
+		objects.Builtins["includes"],      // 94
+		objects.Builtins["shuffle"],       // 95
+		objects.Builtins["sample"],        // 96
+		objects.Builtins["chunk"],         // 97
 	}
 
 	if index < 0 || index >= len(builtins) {
