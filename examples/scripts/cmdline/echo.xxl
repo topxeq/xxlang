@@ -1,0 +1,87 @@
+// echo.xxl
+// A simple echo-like utility demonstrating command line argument handling
+// Similar to the Unix 'echo' command
+
+let env = load("std/env")
+let array = load("std/array")
+let string = load("std/string")
+let fmt = load("std/fmt")
+
+// Parse flags
+let args = env.args()
+let noNewline = false
+let interpretEscapes = false
+let message = []
+
+// Parse arguments (skip program name)
+let i = 1
+while i < array.len(args) {
+    let arg = args[i]
+
+    if arg == "-n" {
+        // Do not output trailing newline
+        noNewline = true
+    } else if arg == "-e" {
+        // Enable interpretation of backslash escapes
+        interpretEscapes = true
+    } else if arg == "-E" {
+        // Disable interpretation (default)
+        interpretEscapes = false
+    } else if arg == "--help" {
+        fmt.println("Usage: echo [OPTION]... [STRING]...")
+        fmt.println("Echo the STRING(s) to standard output.")
+        fmt.println("")
+        fmt.println("  -n    do not output the trailing newline")
+        fmt.println("  -e    enable interpretation of backslash escapes")
+        fmt.println("  -E    disable interpretation of backslash escapes (default)")
+        fmt.println("")
+        fmt.println("Example: echo -n -e 'Hello\\nWorld'")
+        return 0
+    } else if string.hasPrefix(arg, "-") {
+        // Check for combined flags like -ne
+        let flags = string.substr(arg, 1, string.len(arg))
+        let j = 0
+        while j < string.len(flags) {
+            let c = string.substr(flags, j, j + 1)
+            if c == "n" {
+                noNewline = true
+            } else if c == "e" {
+                interpretEscapes = true
+            } else if c == "E" {
+                interpretEscapes = false
+            }
+            j = j + 1
+        }
+    } else {
+        // Regular argument - add to message
+        message = array.push(message, arg)
+    }
+
+    i = i + 1
+}
+
+// Process escapes if needed
+let processEscapes = fn(s) {
+    let result = s
+    result = string.replace(result, "\\n", "\n")
+    result = string.replace(result, "\\t", "\t")
+    result = string.replace(result, "\\r", "\r")
+    result = string.replace(result, "\\\\", "\\")
+    result = string.replace(result, "\\\"", "\"")
+    result = string.replace(result, "\\'", "'")
+    return result
+}
+
+// Build output
+let output = string.join(message, " ")
+
+if interpretEscapes {
+    output = processEscapes(output)
+}
+
+// Print output
+if noNewline {
+    fmt.print(output)
+} else {
+    fmt.println(output)
+}

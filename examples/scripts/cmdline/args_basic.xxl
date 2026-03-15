@@ -1,0 +1,159 @@
+// args_basic.xxl
+// Basic command line argument handling patterns in Xxlang
+
+// Load modules
+let env = load("std/env")
+let array = load("std/array")
+let string = load("std/string")
+let fmt = load("std/fmt")
+
+// ============================================================
+// Pattern 1: Simple positional arguments
+// ============================================================
+fmt.println("=== Pattern 1: Simple positional arguments ===")
+
+let args = env.args()
+fmt.println("Program:", args[0])
+fmt.println("Argument count:", array.len(args))
+
+// Print all arguments
+let i = 0
+while i < array.len(args) {
+    fmt.println("  args[", i, "] =", args[i])
+    i = i + 1
+}
+fmt.println("")
+
+// ============================================================
+// Pattern 2: Get first argument with default
+// ============================================================
+fmt.println("=== Pattern 2: First argument with default ===")
+
+let getArg = fn(index, default) {
+    let args = env.args()
+    if index < array.len(args) {
+        return args[index]
+    }
+    return default
+}
+
+let inputFile = getArg(1, "default.txt")
+let outputFile = getArg(2, "output.txt")
+fmt.println("Input file:", inputFile)
+fmt.println("Output file:", outputFile)
+fmt.println("")
+
+// ============================================================
+// Pattern 3: Flag detection
+// ============================================================
+fmt.println("=== Pattern 3: Flag detection ===")
+
+let hasFlag = fn(flagName) {
+    let args = env.args()
+    let i = 0
+    while i < array.len(args) {
+        if args[i] == flagName || args[i] == "-" + string.substr(flagName, 1, 100) {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+let hasHelp = hasFlag("--help") || hasFlag("-h")
+let hasVerbose = hasFlag("--verbose") || hasFlag("-v")
+
+fmt.println("Has --help:", hasHelp)
+fmt.println("Has --verbose:", hasVerbose)
+fmt.println("")
+
+// ============================================================
+// Pattern 4: Get option value
+// ============================================================
+fmt.println("=== Pattern 4: Get option value ===")
+
+let getOption = fn(shortName, longName, default) {
+    let args = env.args()
+    let i = 0
+    while i < array.len(args) {
+        if args[i] == shortName || args[i] == longName {
+            if i + 1 < array.len(args) {
+                return args[i + 1]
+            }
+        }
+        i = i + 1
+    }
+    return default
+}
+
+let name = getOption("-n", "--name", "World")
+let count = string.parseInt(getOption("-c", "--count", "1"))
+
+fmt.println("Name:", name)
+fmt.println("Count:", count)
+fmt.println("")
+
+// ============================================================
+// Pattern 5: Environment variables as fallback
+// ============================================================
+fmt.println("=== Pattern 5: Environment variables as fallback ===")
+
+let getConfig = fn(argName, envName, default) {
+    let args = env.args()
+    let i = 0
+    while i < array.len(args) {
+        if args[i] == argName && i + 1 < array.len(args) {
+            return args[i + 1]
+        }
+        i = i + 1
+    }
+    // Fallback to environment variable
+    let envVal = env.get(envName)
+    if envVal != "" {
+        return envVal
+    }
+    return default
+}
+
+let host = getConfig("--host", "APP_HOST", "localhost")
+let port = getConfig("--port", "APP_PORT", "8080")
+
+fmt.println("Host:", host)
+fmt.println("Port:", port)
+fmt.println("")
+
+// ============================================================
+// Pattern 6: Collect remaining positional arguments
+// ============================================================
+fmt.println("=== Pattern 6: Collect positional arguments ===")
+
+let getPositionalArgs = fn() {
+    let args = env.args()
+    let positional = []
+    let i = 1  // Skip program name
+    while i < array.len(args) {
+        let arg = args[i]
+        // Skip options and their values
+        if string.hasPrefix(arg, "-") {
+            // Skip option value if it's not another option
+            if i + 1 < array.len(args) && !string.hasPrefix(args[i + 1], "-") {
+                i = i + 1
+            }
+        } else {
+            positional = array.push(positional, arg)
+        }
+        i = i + 1
+    }
+    return positional
+}
+
+let files = getPositionalArgs()
+fmt.println("Files to process:", array.len(files))
+let j = 0
+while j < array.len(files) {
+    fmt.println("  -", files[j])
+    j = j + 1
+}
+
+fmt.println("")
+fmt.println("Done!")
