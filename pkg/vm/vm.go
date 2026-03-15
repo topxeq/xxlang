@@ -1960,36 +1960,15 @@ func (vm *VM) executeGetMethod() error {
 			return fmt.Errorf("export '%s' not found in module %s", name, mod.Name)
 		}
 
-		// Scan ahead for OpCallMethod (skip up to 20 instructions to find it)
-		frameIns := frame.Instructions()
-		isMethodCall := false
-		scanIP := frame.IP + 1
-		maxScan := 20
-		for i := 0; i < maxScan && scanIP < len(frameIns); i++ {
-			op := compiler.Opcode(frameIns[scanIP])
-			if op == compiler.OpCallMethod {
-				isMethodCall = true
-				break
-			}
-			// Stop scanning if we hit certain opcodes that indicate this is not a method call
-			if op == compiler.OpPop || op == compiler.OpCall || op == compiler.OpSetGlobal ||
-				op == compiler.OpSetLocal || op == compiler.OpJump || op == compiler.OpJumpIfFalse {
-				break
-			}
-			// Skip operands based on opcode
-			switch op {
-			case compiler.OpConstant, compiler.OpGetGlobal, compiler.OpSetGlobal,
-				compiler.OpGetLocal, compiler.OpSetLocal, compiler.OpGetMethod,
-				compiler.OpGetExport, compiler.OpSetExport:
-				scanIP += 3 // 1 byte opcode + 2 bytes operand
-			case compiler.OpCall, compiler.OpCallMethod:
-				scanIP += 2 // 1 byte opcode + 1 byte operand
-			default:
-				scanIP += 1
-			}
-		}
+		// Check if the export is a callable (function)
+		// If it is, we assume it will be called as a method
+		// This is a simpler approach than scanning ahead
+		_, isBuiltin := val.(*objects.Builtin)
+		_, isCompiledFunc := val.(*compiler.CompiledFunction)
+		_, isClosure := val.(*Closure)
+		isCallable := isBuiltin || isCompiledFunc || isClosure
 
-		if isMethodCall {
+		if isCallable {
 			// Method call: keep module on stack so executeCallMethod can detect it
 			// Stack: [... module] -> [... module, export]
 			vm.stack.Push(obj) // push module back

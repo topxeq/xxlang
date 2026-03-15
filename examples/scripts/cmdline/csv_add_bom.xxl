@@ -1,0 +1,74 @@
+// csv_add_bom.xxl
+// Add UTF-8 BOM to CSV file if not present
+// BOM (Byte Order Mark) for UTF-8 is: 0xEF 0xBB 0xBF
+
+import "std/io"
+
+// UTF-8 BOM bytes
+var BOM = [239, 187, 191]
+
+// Check if data starts with BOM
+func hasBOM(bytes) {
+    if (len(bytes) < 3) {
+        return false
+    }
+    return bytes[0] == 239 && bytes[1] == 187 && bytes[2] == 191
+}
+
+// Add BOM to file if not present
+func addBOMToCSV(filename) {
+    // Read file as bytes
+    var bytes = io.readBytes(filename)
+
+    if (typeOf(bytes) == "ERROR") {
+        println("Error reading file: ", bytes)
+        return false
+    }
+
+    // Check if already has BOM
+    if (hasBOM(bytes)) {
+        println("File already has BOM: ", filename)
+        return true
+    }
+
+    // Create new bytes with BOM prefix
+    var newBytes = BOM
+    var i = 0
+    while (i < len(bytes)) {
+        newBytes = push(newBytes, bytes[i])
+        i = i + 1
+    }
+
+    // Write back
+    var result = io.writeBytes(filename, newBytes)
+    if (typeOf(result) == "ERROR") {
+        println("Error writing file: ", result)
+        return false
+    }
+
+    println("BOM added to: ", filename)
+    return true
+}
+
+// Main
+// args() returns: [executable, "run", script_path, arg1, arg2, ...]
+var cmdArgs = io.args()
+if (len(cmdArgs) < 4) {
+    println("Usage: xxl run csv_add_bom.xxl <csv_file>")
+    println("       Adds UTF-8 BOM to CSV file if not present")
+    io.exit(1)
+}
+
+var filename = cmdArgs[3]
+
+if (!io.exists(filename)) {
+    println("File not found: ", filename)
+    io.exit(1)
+}
+
+var success = addBOMToCSV(filename)
+if (!success) {
+    io.exit(1)
+}
+
+println("Done!")
