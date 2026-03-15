@@ -26,21 +26,78 @@ Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language impleme
 
 ## Installation
 
+### Option 1: Download Pre-built Binary (Recommended)
+
+Download the latest release for your platform from [GitHub Releases](https://github.com/topxeq/xxlang/releases):
+
 ```bash
-go install github.com/topxeq/xxlang/cmd/xxlang@latest
+# Linux (amd64)
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.4-linux-amd64
+chmod +x xxlang-0.3.4-linux-amd64
+sudo mv xxlang-0.3.4-linux-amd64 /usr/local/bin/xxl
+
+# Linux (arm64)
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.4-linux-arm64
+chmod +x xxlang-0.3.4-linux-arm64
+sudo mv xxlang-0.3.4-linux-arm64 /usr/local/bin/xxl
+
+# Windows (PowerShell)
+# Download from: https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.4-windows-amd64.exe
+# Rename to xxl.exe and add to PATH
+
+# macOS (amd64)
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.4-darwin-amd64
+chmod +x xxlang-0.3.4-darwin-amd64
+sudo mv xxlang-0.3.4-darwin-amd64 /usr/local/bin/xxl
+
+# macOS (arm64/Apple Silicon)
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.4-darwin-arm64
+chmod +x xxlang-0.3.4-darwin-arm64
+sudo mv xxlang-0.3.4-darwin-arm64 /usr/local/bin/xxl
 ```
+
+### Option 2: Install via Go
+
+```bash
+go install github.com/topxeq/xxlang/cmd/xxl@latest
+```
+
+### Option 3: Build from Source
+
+```bash
+git clone https://github.com/topxeq/xxlang.git
+cd xxlang
+go build -o xxl ./cmd/xxl
+```
+
+## Updating
+
+Xxlang supports self-updating from GitHub releases:
+
+```bash
+xxl update
+```
+
+This command will:
+1. Check the latest release from GitHub
+2. Compare with current version
+3. Download the appropriate binary for your OS and architecture
+4. Automatically rename to `xxl` (Linux/macOS) or `xxl.exe` (Windows)
+5. Replace the current executable
+
+**Note**: On Windows, the old executable may remain as `xxl.exe.old` until next reboot.
 
 ## Quick Start
 
 ```bash
 # Run a file
-xxlang run script.xxl
+xxl run script.xxl
 
 # Start interactive REPL
-xxlang
+xxl
 
 # Compile to executable
-xxlang compile -o program script.xxl
+xxl compile -o program script.xxl
 ```
 
 ## Language Examples
@@ -184,14 +241,15 @@ push([1, 2], 3)     // [1, 2, 3]
 ## CLI Commands
 
 ```bash
-xxlang                        # Start REPL
-xxlang run file.xxl           # Run source script
-xxlang run file.xxb           # Run compiled bytecode
-xxlang compile file.xxl       # Compile to executable wrapper
-xxlang compile --bytecode file.xxl    # Compile to bytecode (.xxb)
-xxlang compile -o out.xxb --bytecode file.xxl  # Compile with output path
-xxlang version                # Show version
-xxlang help                   # Show help
+xxl                           # Start REPL
+xxl run file.xxl              # Run source script
+xxl run file.xxb              # Run compiled bytecode
+xxl compile file.xxl          # Compile to executable wrapper
+xxl compile --bytecode file.xxl       # Compile to bytecode (.xxb)
+xxl compile -o out.xxb --bytecode file.xxl   # Compile with output path
+xxl update                    # Self-update to latest version
+xxl version                   # Show version
+xxl help                      # Show help
 ```
 
 ## Bytecode Compilation
@@ -202,17 +260,17 @@ Xxlang supports compiling source code to bytecode files for faster loading and d
 
 ```bash
 # Compile script.xxl to script.xxb
-xxlang compile --bytecode script.xxl
+xxl compile --bytecode script.xxl
 
 # Specify output path
-xxlang compile --bytecode -o program.xxb script.xxl
+xxl compile --bytecode -o program.xxb script.xxl
 ```
 
 ### Run Bytecode
 
 ```bash
 # Execute compiled bytecode
-xxlang run script.xxb
+xxl run script.xxb
 ```
 
 ### Benefits
@@ -235,10 +293,10 @@ Xxlang bytecode files are **platform-independent**:
 
 ```bash
 # Compile on Windows
-xxlang compile --bytecode script.xxl
+xxl compile --bytecode script.xxl
 
 # Copy script.xxb to Linux and run
-xxlang run script.xxb  # Works without modification!
+xxl run script.xxb  # Works without modification!
 ```
 
 This is possible because:
@@ -263,14 +321,6 @@ This is possible because:
 | `help` | Show help message |
 | `history` | Show command history |
 | `clear` | Clear all variables and functions |
-
-## Building from Source
-
-```bash
-git clone https://github.com/topxeq/xxlang.git
-cd xxlang
-go build -o xxlang ./cmd/xxlang
-```
 
 ## Running Tests
 
