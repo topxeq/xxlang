@@ -91,9 +91,10 @@ function Main {
     $version = Get-LatestVersion
     Write-Info "Latest version: $version"
 
-    # Build download URL
-    $assetName = "xxlang-$version-windows-$arch.exe"
-    $downloadUrl = "https://github.com/$Repo/releases/download/v$version/$assetName"
+    # Build download URL - using zip archive
+    # Format: xxlang-windows-{arch}.zip
+    $archiveName = "xxlang-windows-$arch.zip"
+    $downloadUrl = "https://github.com/$Repo/releases/download/v$version/$archiveName"
 
     Write-Info "Download URL: $downloadUrl"
 
@@ -112,13 +113,37 @@ function Main {
 
     $installPath = Join-Path $InstallDir $BinaryName
 
-    # Download
+    # Download archive
     Write-Info "Downloading Xxlang v$version..."
     try {
-        $tempFile = Join-Path $env:TEMP $BinaryName
-        Invoke-WebRequest -Uri $downloadUrl -OutFile $tempFile -UseBasicParsing
+        $tempArchive = Join-Path $env:TEMP $archiveName
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $tempArchive -UseBasicParsing
     } catch {
         Write-Err "Failed to download Xxlang: $_"
+        exit 1
+    }
+
+    # Extract archive
+    Write-Info "Extracting..."
+    try {
+        $extractDir = Join-Path $env:TEMP "xxlang-extract-$(Get-Random)"
+        New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
+
+        # Use .NET's ZipFile for extraction
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($tempArchive, $extractDir)
+
+        # Find the extracted binary
+        $extractedBinary = Join-Path $extractDir $BinaryName
+        if (-not (Test-Path $extractedBinary)) {
+            Write-Err "Binary not found in archive: $BinaryName"
+            Remove-Item $tempArchive -Force
+            Remove-Item $extractDir -Recurse -Force
+            exit 1
+        }
+    } catch {
+        Write-Err "Failed to extract archive: $_"
+        Remove-Item $tempArchive -Force -ErrorAction SilentlyContinue
         exit 1
     }
 
@@ -130,7 +155,11 @@ function Main {
 
     # Install
     Write-Info "Installing to $installPath..."
-    Move-Item $tempFile $installPath -Force
+    Move-Item $extractedBinary $installPath -Force
+
+    # Cleanup
+    Remove-Item $tempArchive -Force -ErrorAction SilentlyContinue
+    Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
 
     # Verify installation
     if (Test-Path $installPath) {

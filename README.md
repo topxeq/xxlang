@@ -46,28 +46,32 @@ Download the latest release for your platform from [GitHub Releases](https://git
 
 ```bash
 # Linux (amd64)
-wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.5-linux-amd64
-chmod +x xxlang-0.3.5-linux-amd64
-sudo mv xxlang-0.3.5-linux-amd64 /usr/local/bin/xxl
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-linux-amd64.tar.gz
+tar -xzf xxlang-linux-amd64.tar.gz
+chmod +x xxl
+sudo mv xxl /usr/local/bin/
 
 # Linux (arm64)
-wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.5-linux-arm64
-chmod +x xxlang-0.3.5-linux-arm64
-sudo mv xxlang-0.3.5-linux-arm64 /usr/local/bin/xxl
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-linux-arm64.tar.gz
+tar -xzf xxlang-linux-arm64.tar.gz
+chmod +x xxl
+sudo mv xxl /usr/local/bin/
 
 # Windows (PowerShell)
-# Download from: https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.5-windows-amd64.exe
-# Rename to xxl.exe and add to PATH
+# Download from: https://github.com/topxeq/xxlang/releases/latest/download/xxlang-windows-amd64.zip
+# Extract xxl.exe and add to PATH
 
 # macOS (amd64)
-wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.5-darwin-amd64
-chmod +x xxlang-0.3.5-darwin-amd64
-sudo mv xxlang-0.3.5-darwin-amd64 /usr/local/bin/xxl
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-darwin-amd64.tar.gz
+tar -xzf xxlang-darwin-amd64.tar.gz
+chmod +x xxl
+sudo mv xxl /usr/local/bin/
 
 # macOS (arm64/Apple Silicon)
-wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.5-darwin-arm64
-chmod +x xxlang-0.3.5-darwin-arm64
-sudo mv xxlang-0.3.5-darwin-arm64 /usr/local/bin/xxl
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-darwin-arm64.tar.gz
+tar -xzf xxlang-darwin-arm64.tar.gz
+chmod +x xxl
+sudo mv xxl /usr/local/bin/
 ```
 
 ### Option 3: Install via Go
@@ -95,9 +99,8 @@ xxl update
 This command will:
 1. Check the latest release from GitHub
 2. Compare with current version
-3. Download the appropriate binary for your OS and architecture
-4. Automatically rename to `xxl` (Linux/macOS) or `xxl.exe` (Windows)
-5. Replace the current executable
+3. Download the compressed archive for your OS and architecture
+4. Extract the binary and replace the current executable
 
 **Note**: On Windows, the old executable may remain as `xxl.exe.old` until next reboot.
 

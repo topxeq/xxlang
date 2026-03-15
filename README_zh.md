@@ -35,28 +35,32 @@ iwr -useb https://raw.githubusercontent.com/topxeq/xxlang/master/install.ps1 | i
 
 ```bash
 # Linux (amd64)
-wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.5-linux-amd64
-chmod +x xxlang-0.3.5-linux-amd64
-sudo mv xxlang-0.3.5-linux-amd64 /usr/local/bin/xxl
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-linux-amd64.tar.gz
+tar -xzf xxlang-linux-amd64.tar.gz
+chmod +x xxl
+sudo mv xxl /usr/local/bin/
 
 # Linux (arm64)
-wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.5-linux-arm64
-chmod +x xxlang-0.3.5-linux-arm64
-sudo mv xxlang-0.3.5-linux-arm64 /usr/local/bin/xxl
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-linux-arm64.tar.gz
+tar -xzf xxlang-linux-arm64.tar.gz
+chmod +x xxl
+sudo mv xxl /usr/local/bin/
 
 # Windows (PowerShell)
-# 下载: https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.5-windows-amd64.exe
-# 重命名为 xxl.exe 并添加到 PATH
+# 下载: https://github.com/topxeq/xxlang/releases/latest/download/xxlang-windows-amd64.zip
+# 解压得到 xxl.exe 并添加到 PATH
 
 # macOS (amd64)
-wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.5-darwin-amd64
-chmod +x xxlang-0.3.5-darwin-amd64
-sudo mv xxlang-0.3.5-darwin-amd64 /usr/local/bin/xxl
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-darwin-amd64.tar.gz
+tar -xzf xxlang-darwin-amd64.tar.gz
+chmod +x xxl
+sudo mv xxl /usr/local/bin/
 
 # macOS (arm64/Apple Silicon)
-wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.5-darwin-arm64
-chmod +x xxlang-0.3.5-darwin-arm64
-sudo mv xxlang-0.3.5-darwin-arm64 /usr/local/bin/xxl
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-darwin-arm64.tar.gz
+tar -xzf xxlang-darwin-arm64.tar.gz
+chmod +x xxl
+sudo mv xxl /usr/local/bin/
 ```
 
 ### 方式 3：通过 Go 安装
@@ -84,9 +88,8 @@ xxl update
 此命令会：
 1. 从 GitHub 获取最新版本信息
 2. 与当前版本比较
-3. 下载适合你操作系统和架构的二进制文件
-4. 自动重命名为 `xxl`（Linux/macOS）或 `xxl.exe`（Windows）
-5. 替换当前可执行文件
+3. 下载适合你操作系统和架构的压缩包
+4. 解压并替换当前可执行文件
 
 **注意**：在 Windows 上，旧的执行文件可能会保留为 `xxl.exe.old`，直到下次重启。
 

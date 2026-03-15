@@ -95,6 +95,34 @@ download_file() {
     fi
 }
 
+# Extract tar.gz archive
+extract_targz() {
+    local archive="$1"
+    local dest="$2"
+
+    if command -v tar &> /dev/null; then
+        tar -xzf "$archive" -C "$dest"
+    else
+        error "tar is required for extraction. Please install it."
+        exit 1
+    fi
+}
+
+# Extract zip archive
+extract_zip() {
+    local archive="$1"
+    local dest="$2"
+
+    if command -v unzip &> /dev/null; then
+        unzip -o -q "$archive" -d "$dest"
+    elif command -v 7z &> /dev/null; then
+        7z x -y -o"$dest" "$archive" > /dev/null
+    else
+        error "unzip or 7z is required for extraction. Please install one of them."
+        exit 1
+    fi
+}
+
 # Main installation
 main() {
     echo ""
@@ -131,33 +159,50 @@ main() {
     VERSION=$(get_latest_version)
     info "Latest version: $VERSION"
 
-    # Build download URL
+    # Build download URL - using compressed archives
+    # Format: xxlang-{os}-{arch}.tar.gz (Linux/macOS) or xxlang-{os}-{arch}.zip (Windows)
     if [ "$OS" = "windows" ]; then
         BINARY_NAME="xxl.exe"
-        ASSET_NAME="xxlang-${VERSION}-${OS}-${ARCH}.exe"
+        ARCHIVE_NAME="xxlang-${OS}-${ARCH}.zip"
     else
         BINARY_NAME="xxl"
-        ASSET_NAME="xxlang-${VERSION}-${OS}-${ARCH}"
+        ARCHIVE_NAME="xxlang-${OS}-${ARCH}.tar.gz"
     fi
 
-    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/v${VERSION}/${ASSET_NAME}"
+    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/v${VERSION}/${ARCHIVE_NAME}"
 
     info "Download URL: $DOWNLOAD_URL"
 
     # Create temp directory
     TMP_DIR=$(mktemp -d)
-    TMP_FILE="${TMP_DIR}/${BINARY_NAME}"
+    ARCHIVE_FILE="${TMP_DIR}/${ARCHIVE_NAME}"
 
-    # Download binary
+    # Download archive
     info "Downloading Xxlang v${VERSION}..."
-    if ! download_file "$DOWNLOAD_URL" "$TMP_FILE"; then
+    if ! download_file "$DOWNLOAD_URL" "$ARCHIVE_FILE"; then
         error "Failed to download Xxlang"
         rm -rf "$TMP_DIR"
         exit 1
     fi
 
+    # Extract archive
+    info "Extracting..."
+    if [ "$OS" = "windows" ]; then
+        extract_zip "$ARCHIVE_FILE" "$TMP_DIR"
+    else
+        extract_targz "$ARCHIVE_FILE" "$TMP_DIR"
+    fi
+
+    # Find the extracted binary
+    EXTRACTED_BINARY="${TMP_DIR}/${BINARY_NAME}"
+    if [ ! -f "$EXTRACTED_BINARY" ]; then
+        error "Binary not found in archive: $BINARY_NAME"
+        rm -rf "$TMP_DIR"
+        exit 1
+    fi
+
     # Make executable
-    chmod +x "$TMP_FILE"
+    chmod +x "$EXTRACTED_BINARY"
 
     # Determine install directory
     if [ "$OS" = "windows" ]; then
@@ -199,7 +244,7 @@ main() {
 
     # Install
     info "Installing to $INSTALL_PATH..."
-    mv "$TMP_FILE" "$INSTALL_PATH"
+    mv "$EXTRACTED_BINARY" "$INSTALL_PATH"
 
     # Cleanup
     rm -rf "$TMP_DIR"
