@@ -15,43 +15,57 @@ Xxlang 是一个基于字节码虚拟机的脚本语言，使用 Go 语言实现
 
 ## 安装
 
-### 方式 1：下载预编译二进制文件（推荐）
+### 方式 1：一键安装（推荐）
+
+**Linux / macOS:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/topxeq/xxlang/master/install.sh | bash
+# 或使用 wget
+wget -qO- https://raw.githubusercontent.com/topxeq/xxlang/master/install.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+iwr -useb https://raw.githubusercontent.com/topxeq/xxlang/master/install.ps1 | iex
+```
+
+### 方式 2：下载预编译二进制文件
 
 从 [GitHub Releases](https://github.com/topxeq/xxlang/releases) 下载适合你平台的最新版本：
 
 ```bash
 # Linux (amd64)
-wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.4-linux-amd64
-chmod +x xxlang-0.3.4-linux-amd64
-sudo mv xxlang-0.3.4-linux-amd64 /usr/local/bin/xxl
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.5-linux-amd64
+chmod +x xxlang-0.3.5-linux-amd64
+sudo mv xxlang-0.3.5-linux-amd64 /usr/local/bin/xxl
 
 # Linux (arm64)
-wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.4-linux-arm64
-chmod +x xxlang-0.3.4-linux-arm64
-sudo mv xxlang-0.3.4-linux-arm64 /usr/local/bin/xxl
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.5-linux-arm64
+chmod +x xxlang-0.3.5-linux-arm64
+sudo mv xxlang-0.3.5-linux-arm64 /usr/local/bin/xxl
 
 # Windows (PowerShell)
-# 下载: https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.4-windows-amd64.exe
+# 下载: https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.5-windows-amd64.exe
 # 重命名为 xxl.exe 并添加到 PATH
 
 # macOS (amd64)
-wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.4-darwin-amd64
-chmod +x xxlang-0.3.4-darwin-amd64
-sudo mv xxlang-0.3.4-darwin-amd64 /usr/local/bin/xxl
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.5-darwin-amd64
+chmod +x xxlang-0.3.5-darwin-amd64
+sudo mv xxlang-0.3.5-darwin-amd64 /usr/local/bin/xxl
 
 # macOS (arm64/Apple Silicon)
-wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.4-darwin-arm64
-chmod +x xxlang-0.3.4-darwin-arm64
-sudo mv xxlang-0.3.4-darwin-arm64 /usr/local/bin/xxl
+wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-0.3.5-darwin-arm64
+chmod +x xxlang-0.3.5-darwin-arm64
+sudo mv xxlang-0.3.5-darwin-arm64 /usr/local/bin/xxl
 ```
 
-### 方式 2：通过 Go 安装
+### 方式 3：通过 Go 安装
 
 ```bash
 go install github.com/topxeq/xxlang/cmd/xxl@latest
 ```
 
-### 方式 3：从源码构建
+### 方式 4：从源码构建
 
 ```bash
 git clone https://github.com/topxeq/xxlang.git
