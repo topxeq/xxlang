@@ -44,34 +44,76 @@ function Write-Err {
 
 # Detect architecture
 function Get-Architecture {
-    $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
-    switch ($arch) {
-        "X64" { return "amd64" }
-        "X86" { return "386" }
-        "Arm64" { return "arm64" }
-        "Arm" { return "arm" }
-        default { return $arch.ToString().ToLower() }
+    # Try .NET RuntimeInformation first (requires .NET 4.7.1+)
+    try {
+        $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+        if ($arch) {
+            switch ($arch) {
+                "X64" { return "amd64" }
+                "X86" { return "386" }
+                "Arm64" { return "arm64" }
+                "Arm" { return "arm" }
+                default { return $arch.ToString().ToLower() }
+            }
+        }
+    } catch {
+        # Fall through to WMI method
+    }
+
+    # Fallback: Use environment variable (works on all Windows versions)
+    $cpuArch = $env:PROCESSOR_ARCHITECTURE
+    switch ($cpuArch) {
+        "AMD64" { return "amd64" }
+        "x86" { return "386" }
+        "ARM64" { return "arm64" }
+        "ARM" { return "arm" }
+        default {
+            # Last resort: Use WMI
+            try {
+                $proc = Get-CimInstance -ClassName Win32_Processor -ErrorAction SilentlyContinue
+                if ($proc) {
+                    $arch = $proc.AddressWidth
+                    switch ($arch) {
+                        64 { return "amd64" }
+                        32 { return "386" }
+                    }
+                }
+            } catch {
+                # Ignore errors
+            }
+            # Default to amd64 as most common
+            return "amd64"
+        }
     }
 }
 
 # Get latest version from GitHub
 function Get-LatestVersion {
     try {
-        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -UseBasicParsing
-        $version = $release.tag_name -replace "^v", ""
-        return $version
-    } catch {
-        # Fallback: parse HTML
-        try {
-            $html = Invoke-WebRequest -Uri "https://github.com/$Repo/releases/latest" -UseBasicParsing
-            if ($html.Content -match "tag/v(\d+\.\d+\.\d+)") {
-                return $matches[1]
+        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -UseBasicParsing -ErrorAction Stop
+        if ($release -and $release.tag_name) {
+            $version = $release.tag_name -replace "^v", ""
+            if ($version) {
+                return $version
             }
-        } catch {
-            Write-Err "Failed to get latest version from GitHub"
-            exit 1
         }
+    } catch {
+        Write-Warn "Could not fetch from API, trying HTML fallback..."
     }
+
+    # Fallback: parse HTML
+    try {
+        $html = Invoke-WebRequest -Uri "https://github.com/$Repo/releases/latest" -UseBasicParsing -ErrorAction Stop
+        if ($html.Content -match "tag/v(\d+\.\d+\.\d+)") {
+            return $matches[1]
+        }
+    } catch {
+        Write-Err "Failed to get latest version from GitHub: $_"
+        exit 1
+    }
+
+    Write-Err "Could not determine latest version"
+    exit 1
 }
 
 # Main installation
@@ -102,6 +144,12 @@ function Main {
     if ([string]::IsNullOrEmpty($InstallDir)) {
         # Default to user's local bin or AppData
         $localAppData = [Environment]::GetFolderPath("LocalApplicationData")
+        if ([string]::IsNullOrEmpty($localAppData)) {
+            $localAppData = $env:LOCALAPPDATA
+        }
+        if ([string]::IsNullOrEmpty($localAppData)) {
+            $localAppData = Join-Path $env:USERPROFILE "AppData\Local"
+        }
         $InstallDir = Join-Path $localAppData "xxlang"
     }
 
