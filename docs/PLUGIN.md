@@ -446,6 +446,52 @@ export fn call_fast(n: i64) i64 {
 tinygo build -o fib.wasm -target=wasi fib.go
 ```
 
+### WASM Plugin Specification
+
+Any language that can compile to WebAssembly and export functions can be used to write plugins.
+
+#### Supported Languages
+
+| Language | Status | Build Size | Notes |
+|----------|--------|------------|-------|
+| **C** | ✅ Tested | ~1.5KB | Most portable, requires clang |
+| **Zig** | ✅ Tested | ~1.3KB | Modern language, excellent WASM support |
+| **TinyGo** | ✅ Tested | ~15KB | Go syntax, Go 1.19-1.24 only |
+| **Rust** | ✅ Compatible | ~2KB | Use `wasm32-unknown-unknown` target |
+| **C++** | ✅ Compatible | ~2KB | Use clang with wasm32 target |
+| **AssemblyScript** | ✅ Compatible | ~1KB | TypeScript-like syntax, WASM-native |
+| **Standard Go** | ❌ Not supported | ~1.8MB | Only exports `_start`, not custom functions |
+
+#### Plugin Requirements
+
+A valid WASM plugin must:
+
+1. **Export `alloc(size: u32) -> u32`** - Memory allocator for passing strings/arrays
+2. **Export `plugin_name(result_ptr: u32)`** - Returns plugin name (optional but recommended)
+3. **Export `plugin_version(result_ptr: u32)`** - Returns version string (optional)
+4. **Export functions with `call_` prefix** - e.g., `call_fast` becomes `fast` in Xxlang
+
+#### Data Type Mapping
+
+| WASM Type | Xxlang Type | Notes |
+|-----------|-------------|-------|
+| `i64` | `Int` | Primary numeric type |
+| `i32` | `Int` | For boolean returns (0/1) |
+| `u32` | Memory pointer | For string/array operations |
+
+#### String/Array Convention
+
+For functions that return strings or arrays:
+
+```c
+// Write result to result_ptr as (pointer, size) pair
+void call_something(uint32_t result_ptr) {
+    uint32_t* result = (uint32_t*)result_ptr;
+    result[0] = data_pointer;  // Pointer to data
+    result[1] = data_size;      // Size in bytes
+}
+```
+
 ### WASM Plugin Structure
 
 A WASM plugin must export these functions:
@@ -477,6 +523,66 @@ export fn plugin_version(result_ptr: u32) void { ... }
 export fn call_fast(n: i64) i64 { ... }
 export fn call_matrix(n: i64) i64 { ... }
 ```
+
+**Rust equivalent:**
+
+```rust
+use std::alloc::{alloc, Layout};
+
+static mut HEAP_PTR: usize = 65536;
+
+#[no_mangle]
+pub extern "C" fn alloc(size: u32) -> u32 {
+    unsafe {
+        if HEAP_PTR % 8 != 0 {
+            HEAP_PTR += 8 - (HEAP_PTR % 8);
+        }
+        let result = HEAP_PTR as u32;
+        HEAP_PTR += size as usize;
+        result
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn call_fast(n: i64) -> i64 {
+    if n <= 1 { return n; }
+    let (mut a, mut b) = (0i64, 1i64);
+    for _ in 2..=n {
+        let tmp = a + b;
+        a = b;
+        b = tmp;
+    }
+    b
+}
+```
+
+Build: `cargo build --target wasm32-unknown-unknown --release`
+
+**AssemblyScript equivalent:**
+
+```typescript
+var heapPtr: usize = 65536;
+
+export function alloc(size: u32): u32 {
+    if (heapPtr % 8 != 0) heapPtr += 8 - (heapPtr % 8);
+    const result = heapPtr;
+    heapPtr += size;
+    return result as u32;
+}
+
+export function call_fast(n: i64): i64 {
+    if (n <= 1) return n;
+    let a: i64 = 0, b: i64 = 1;
+    for (let i = 2; i <= n; i++) {
+        const tmp = a + b;
+        a = b;
+        b = tmp;
+    }
+    return b;
+}
+```
+
+Build: `asc fib.ts -o fib.wasm --optimize`
 
 ### Complete C Example
 
