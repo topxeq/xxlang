@@ -7,6 +7,9 @@ on:
     branches: [master, main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   test:
     name: Test
@@ -14,7 +17,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
-        go: ['1.23']
+        go: ['1.24']
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -33,7 +36,7 @@ jobs:
 
       - name: Go Coverage Badge
         uses: tj-actions/coverage-badge-go@v3
-        if: ${{ runner.os == 'Linux' && matrix.go == '1.23' }}
+        if: ${{ runner.os == 'Linux' && matrix.go == '1.24' }}
         with:
           green: 60
           filename: coverage.out
@@ -63,7 +66,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.24'
           cache: true
 
       - name: golangci-lint
@@ -83,7 +86,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.24'
           cache: true
 
       - name: Build
