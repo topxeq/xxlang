@@ -1,5 +1,5 @@
 #!/bin/bash
-# build.sh - Build WASM plugin from C, Go (TinyGo), or Zig source
+# build.sh - Build WASM plugin from C, Go (TinyGo), Zig, or Rust source
 #
 # Usage: ./build.sh [source]
 #
@@ -7,11 +7,13 @@
 #   fib.c   - C source (requires clang with wasm32 target)
 #   fib.go  - Go source (requires TinyGo)
 #   fib.zig - Zig source (requires Zig)
+#   fib.rs  - Rust source (requires Rust with wasm32-unknown-unknown target)
 #
 # Requirements:
 #   clang with wasm32 target: apt install clang lld
 #   TinyGo: https://tinygo.org/getting-started/install/
 #   Zig: https://ziglang.org/learn/getting-started/
+#   Rust: rustup target add wasm32-unknown-unknown
 
 cd "$(dirname "$0")"
 
@@ -47,9 +49,19 @@ case "$EXT" in
         fi
         zig build-exe "$SOURCE" -target wasm32-freestanding -O ReleaseSmall -fno-entry -rdynamic
         ;;
+    rs)
+        OUTPUT="${BASENAME}.wasm"
+        echo "Building Rust source: $SOURCE -> $OUTPUT"
+        if ! command -v rustc &> /dev/null; then
+            echo "Error: Rust not installed"
+            echo "Install from: https://rustup.rs/"
+            exit 1
+        fi
+        rustc --target wasm32-unknown-unknown -O --crate-type cdylib -o "$OUTPUT" "$SOURCE"
+        ;;
     *)
         echo "Error: Unknown source type: $EXT"
-        echo "Supported: .c, .go, .zig"
+        echo "Supported: .c, .go, .zig, .rs"
         exit 1
         ;;
 esac

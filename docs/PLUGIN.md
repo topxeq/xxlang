@@ -456,8 +456,8 @@ Any language that can compile to WebAssembly and export functions can be used to
 |----------|--------|------------|-------|
 | **C** | ✅ Tested | ~1.5KB | Most portable, requires clang |
 | **Zig** | ✅ Tested | ~1.3KB | Modern language, excellent WASM support |
+| **Rust** | ✅ Tested | ~1.3KB | Use `wasm32-unknown-unknown` target |
 | **TinyGo** | ✅ Tested | ~15KB | Go syntax, Go 1.19-1.24 only |
-| **Rust** | ✅ Compatible | ~2KB | Use `wasm32-unknown-unknown` target |
 | **C++** | ✅ Compatible | ~2KB | Use clang with wasm32 target |
 | **AssemblyScript** | ✅ Compatible | ~1KB | TypeScript-like syntax, WASM-native |
 | **Standard Go** | ❌ Not supported | ~1.8MB | Only exports `_start`, not custom functions |
@@ -527,7 +527,13 @@ export fn call_matrix(n: i64) i64 { ... }
 **Rust equivalent:**
 
 ```rust
-use std::alloc::{alloc, Layout};
+#![no_std]
+#![no_main]
+
+use core::panic::PanicInfo;
+
+#[panic_handler]
+fn panic(_info: &PanicInfo) -> ! { loop {} }
 
 static mut HEAP_PTR: usize = 65536;
 
@@ -556,7 +562,7 @@ pub extern "C" fn call_fast(n: i64) -> i64 {
 }
 ```
 
-Build: `cargo build --target wasm32-unknown-unknown --release`
+Build: `rustc --target wasm32-unknown-unknown -O --crate-type cdylib -o fib.wasm fib.rs`
 
 **AssemblyScript equivalent:**
 
