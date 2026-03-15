@@ -945,6 +945,36 @@ var Builtins = map[string]*Builtin{
             return newError("runCode not available in this context")
         },
     },
+
+    // ============================================================
+    // Plugin Loading
+    // ============================================================
+    "loadPlugin": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for loadPlugin. got=%d, want=1", len(args))
+            }
+
+            path, ok := args[0].(*String)
+            if !ok {
+                return newError("argument to 'loadPlugin' must be STRING (file path), got %s", args[0].Type())
+            }
+
+            // Use the registered callback if available
+            if loadPluginImpl != nil {
+                result, err := loadPluginImpl(path.Value)
+                if err != nil {
+                    return newError("loadPlugin error: %v", err)
+                }
+                if result == nil {
+                    return NULL
+                }
+                return result
+            }
+
+            return newError("loadPlugin not available in this context")
+        },
+    },
 }
 
 // RunCodeImpl is the implementation function for runCode, set by the VM
@@ -954,6 +984,16 @@ var runCodeImpl func(code string, args *Map) (Object, error)
 func SetRunCodeImpl(fn func(code string, args *Map) (Object, error)) func(code string, args *Map) (Object, error) {
     prev := runCodeImpl
     runCodeImpl = fn
+    return prev
+}
+
+// LoadPluginImpl is the implementation function for loadPlugin, set by the VM
+var loadPluginImpl func(path string) (Object, error)
+
+// SetLoadPluginImpl registers the loadPlugin implementation and returns the previous value
+func SetLoadPluginImpl(fn func(path string) (Object, error)) func(path string) (Object, error) {
+    prev := loadPluginImpl
+    loadPluginImpl = fn
     return prev
 }
 

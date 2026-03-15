@@ -193,6 +193,12 @@ func (vm *VM) Run() error {
 	})
 	defer objects.SetRunCodeImpl(prevCallback)
 
+	// Register loadPlugin callback for WASM plugin loading
+	prevLoadPlugin := objects.SetLoadPluginImpl(func(path string) (objects.Object, error) {
+		return vm.loadPluginByPath(path)
+	})
+	defer objects.SetLoadPluginImpl(prevLoadPlugin)
+
 	frame := vm.frames[vm.frameIndex-1]
 	frameIns := frame.Instructions()
 
@@ -1709,6 +1715,7 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["avg"],           // 39
 		objects.Builtins["reverse"],       // 40
 		objects.Builtins["runCode"],       // 41
+		objects.Builtins["loadPlugin"],    // 42
 	}
 
 	if index < 0 || index >= len(builtins) {
