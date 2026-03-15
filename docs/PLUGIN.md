@@ -19,14 +19,21 @@ Xxlang supports two types of plugins for high-performance operations:
 ```bash
 # 1. Build .wasm file (AssemblyScript - smallest)
 asc fib.ts -o fib.wasm --optimize --runtime stub --initialMemory 2
-
-# 2. Load and use
-go run main.go
 ```
+
+**From Xxlang (recommended):**
+
+```xxl
+// Load and use directly in Xxlang
+var fib = loadPlugin("./fib.wasm")
+println(fib.fast(50))
+```
+
+**From Go:**
 
 ```go
 loader := plugin.NewLoader()
-p, err := loader.LoadPath("./fib.wasm")  // Direct file path
+p, err := loader.LoadPath("./fib.wasm")
 plugin.Register(p)
 
 interp.Eval(`import "plugin/fib"; println(fib.fast(50))`)
@@ -46,14 +53,25 @@ All languages produce a single `.wasm` file:
 
 ### Loading Methods
 
-**Method 1: Load by file path (recommended)**
+**Method 1: Load from Xxlang code (recommended)**
+
+```xxl
+// Load WASM plugin directly in Xxlang
+var fib = loadPlugin("./plugins/fib.wasm")
+
+// Use the plugin
+println(fib.version)
+println(fib.fast(50))
+```
+
+**Method 2: Load from Go code**
 
 ```go
 loader := plugin.NewLoader()
 p, err := loader.LoadPath("./plugins/fib.wasm")
 ```
 
-**Method 2: Load by name with search paths**
+**Method 3: Load by name with search paths**
 
 ```go
 loader := plugin.NewLoader()
@@ -91,14 +109,24 @@ Data types:
 
 ### Using from Xxlang
 
+**Load plugin directly with loadPlugin():**
+
 ```xxl
-import "plugin/fib"
+// Load plugin by file path
+var fib = loadPlugin("./plugins/fib.wasm")
 
 println(fib.version)           // "1.0.0-as"
 println(fib.fast(50))          // 12586269025
 println(fib.matrix(92))        // 7540113804746346429
 println(fib.isFib(13))         // true
 println(fib.range_(10))        // [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]
+```
+
+**Or import with search paths (requires setup in Go):**
+
+```xxl
+import "plugin/fib"
+println(fib.fast(50))
 ```
 
 ---

@@ -84,6 +84,7 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(39, "avg")
 	s.DefineBuiltin(40, "reverse")
 	s.DefineBuiltin(41, "runCode")
+	s.DefineBuiltin(42, "loadPlugin")
 	return s
 }
 

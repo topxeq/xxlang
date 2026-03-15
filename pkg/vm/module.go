@@ -167,3 +167,45 @@ func (vm *VM) loadWasmPlugin(path string) (*objects.Module, error) {
 
 	return mod, nil
 }
+
+// loadPluginByPath loads a WASM plugin from a specific file path.
+// This is called by the loadPlugin() built-in function from Xxlang code.
+// Returns the plugin as a Module object that can be used in Xxlang.
+func (vm *VM) loadPluginByPath(wasmPath string) (objects.Object, error) {
+	// Check if already loaded (use absolute path as cache key)
+	absPath := wasmPath
+	if vm.sourcePath != "" && !strings.HasPrefix(wasmPath, "/") {
+		absPath = vm.sourcePath + "/" + wasmPath
+	}
+
+	cacheKey := "wasm:" + absPath
+	if vm.loader.HasModule(cacheKey) {
+		cachedMod, err := vm.loader.Get(cacheKey)
+		if err != nil {
+			return nil, err
+		}
+		return &objects.Module{
+			Name:    cachedMod.Name,
+			Exports: cachedMod.Exports,
+			Globals: cachedMod.Globals,
+		}, nil
+	}
+
+	// Create a plugin loader and load from the specified path
+	loader := plugin.NewLoader()
+	p, err := loader.LoadPath(wasmPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load WASM plugin '%s': %v", wasmPath, err)
+	}
+
+	// Convert plugin to module
+	mod := plugin.ToModule(p)
+
+	// Cache the module
+	vm.loader.Set(cacheKey, &module.Module{
+		Name:    mod.Name,
+		Exports: mod.Exports,
+	})
+
+	return mod, nil
+}
