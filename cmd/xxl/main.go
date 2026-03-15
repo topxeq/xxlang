@@ -3,9 +3,12 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/topxeq/xxlang/pkg/compiler"
 	"github.com/topxeq/xxlang/pkg/lexer"
@@ -68,10 +71,10 @@ func main() {
 		}
 	case "run":
 		if len(os.Args) < 3 {
-			fmt.Println("Usage: xx run <file>")
+			fmt.Println("Usage: xxl run <file|url>")
 			os.Exit(1)
 		}
-		runFile(os.Args[2])
+		runFileOrURL(os.Args[2])
 	case "update":
 		if err := updateCmd(os.Args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -82,10 +85,16 @@ func main() {
 	case "help":
 		printUsage()
 	default:
-		// Unknown subcommand - show error
-		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", os.Args[1])
-		printUsage()
-		os.Exit(1)
+		// Check if it's a file or URL that we can run directly
+		arg := os.Args[1]
+		if isURL(arg) || strings.HasSuffix(arg, ".xxl") || strings.HasSuffix(arg, ".xxb") {
+			runFileOrURL(arg)
+		} else {
+			// Unknown subcommand - show error
+			fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", arg)
+			printUsage()
+			os.Exit(1)
+		}
 	}
 }
 
@@ -94,7 +103,8 @@ func printUsage() {
     fmt.Println()
     fmt.Println("Usage:")
     fmt.Println("  xxl                    Start interactive REPL")
-    fmt.Println("  xxl run <file>         Execute a .xxl file")
+    fmt.Println("  xxl <file|url>         Execute a .xxl file or script from URL")
+    fmt.Println("  xxl run <file|url>     Execute a .xxl file or script from URL")
     fmt.Println("  xxl compile <file>     Compile file to bytecode")
     fmt.Println("  xxl update             Self-update to latest version from GitHub")
     fmt.Println("  xxl version            Print version information")
@@ -107,7 +117,10 @@ func printUsage() {
     fmt.Println()
     fmt.Println("Examples:")
     fmt.Println("  xxl")
+    fmt.Println("  xxl script.xxl")
     fmt.Println("  xxl run script.xxl")
+    fmt.Println("  xxl https://raw.githubusercontent.com/user/repo/main/script.xxl")
+    fmt.Println("  xxl https://gist.githubusercontent.com/user/id/raw/script.xxl")
     fmt.Println("  xxl compile -o program script.xxl")
     fmt.Println("  xxl compile -o program.exe --target windows/amd64 script.xxl")
     fmt.Println("  xxl compile --bytecode script.xxl")
@@ -222,6 +235,55 @@ func (r *REPL) Execute(input string) (objects.Object, error) {
     return v.LastPopped(), nil
 }
 
+// isURL checks if the given string is a URL
+func isURL(s string) bool {
+    return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
+}
+
+// runFileOrURL runs an xxlang source file or script from URL
+func runFileOrURL(source string) {
+    if isURL(source) {
+        runFromURL(source)
+    } else {
+        runFile(source)
+    }
+}
+
+// runFromURL fetches and executes an xxlang script from a URL
+func runFromURL(url string) {
+    fmt.Printf("Fetching script from: %s\n", url)
+
+    // Create HTTP client with timeout
+    client := &http.Client{
+        Timeout: 30 * time.Second,
+    }
+
+    // Fetch the script
+    resp, err := client.Get(url)
+    if err != nil {
+        fmt.Printf("Error fetching URL '%s': %v\n", url, err)
+        os.Exit(1)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        fmt.Printf("Error: HTTP status %d (%s)\n", resp.StatusCode, resp.Status)
+        os.Exit(1)
+    }
+
+    // Read the response body
+    code, err := io.ReadAll(resp.Body)
+    if err != nil {
+        fmt.Printf("Error reading response: %v\n", err)
+        os.Exit(1)
+    }
+
+    fmt.Printf("Executing script (%d bytes)...\n\n", len(code))
+
+    // Execute the code
+    executeCode(string(code), url)
+}
+
 // runFile runs an xxlang source file
 func runFile(filename string) {
     // Get absolute path for module resolution
@@ -244,8 +306,14 @@ func runFile(filename string) {
         os.Exit(1)
     }
 
+    // Execute the code
+    executeCode(string(code), absPath)
+}
+
+// executeCode compiles and executes xxlang source code
+func executeCode(code, sourcePath string) {
     // Lexical analysis
-    l := lexer.New(string(code))
+    l := lexer.New(code)
 
     // Parsing
     p := parser.New(l)
@@ -259,7 +327,7 @@ func runFile(filename string) {
 
     // Compilation
     c := compiler.New()
-    c.SetSource(absPath, string(code)) // Enable source mapping
+    c.SetSource(sourcePath, code) // Enable source mapping
     if err := c.Compile(program); err != nil {
         fmt.Printf("Error: %v\n", err)
         os.Exit(1)
@@ -267,14 +335,14 @@ func runFile(filename string) {
 
     // Create main module for exports
     mainModule := &objects.Module{
-        Name:    absPath,
+        Name:    sourcePath,
         Exports: make(map[string]objects.Object),
     }
 
     // Execution
     bytecode := c.Bytecode()
     v := vm.NewWithGlobalsStore(bytecode, make([]objects.Object, compiler.GlobalsSize))
-    v.SetSourcePath(absPath)
+    v.SetSourcePath(sourcePath)
     v.SetCurrentModule(mainModule)
 
     if err := v.Run(); err != nil {
