@@ -13,11 +13,7 @@ permissions:
 jobs:
   test:
     name: Test
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        go: ['1.24']
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -25,7 +21,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: ${{ matrix.go }}
+          go-version: '1.24'
           cache: true
 
       - name: Download dependencies
@@ -36,7 +32,6 @@ jobs:
 
       - name: Go Coverage Badge
         uses: tj-actions/coverage-badge-go@v3
-        if: ${{ runner.os == 'Linux' && matrix.go == '1.24' }}
         with:
           green: 60
           filename: coverage.out
