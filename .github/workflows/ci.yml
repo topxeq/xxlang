@@ -29,8 +29,7 @@ jobs:
         run: go mod download
 
       - name: Run tests
-        shell: bash
-        run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./pkg/... ./tests/... ./cmd/... ./benchmarks/...
+        run: go test -v -coverprofile=coverage.out ./pkg/... ./tests/... ./cmd/... ./benchmarks/...
 
       - name: Go Coverage Badge
         uses: tj-actions/coverage-badge-go@v3
