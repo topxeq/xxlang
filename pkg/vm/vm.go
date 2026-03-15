@@ -1716,6 +1716,41 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["reverse"],       // 40
 		objects.Builtins["runCode"],       // 41
 		objects.Builtins["loadPlugin"],    // 42
+		// String utilities
+		objects.Builtins["repeat"],        // 43
+		objects.Builtins["lpad"],          // 44
+		objects.Builtins["rpad"],          // 45
+		objects.Builtins["charAt"],        // 46
+		objects.Builtins["trimLeft"],      // 47
+		objects.Builtins["trimRight"],     // 48
+		// Type checking
+		objects.Builtins["isEmpty"],       // 49
+		objects.Builtins["isString"],      // 50
+		objects.Builtins["isNumber"],      // 51
+		objects.Builtins["isInt"],         // 52
+		objects.Builtins["isFloat"],       // 53
+		objects.Builtins["isArray"],       // 54
+		objects.Builtins["isMap"],         // 55
+		objects.Builtins["isBool"],        // 56
+		objects.Builtins["isFunction"],    // 57
+		objects.Builtins["isNull"],        // 58
+		// Math utilities
+		objects.Builtins["round"],         // 59
+		objects.Builtins["clamp"],         // 60
+		objects.Builtins["sign"],          // 61
+		objects.Builtins["random"],        // 62
+		objects.Builtins["randomInt"],     // 63
+		// Array utilities
+		objects.Builtins["unique"],        // 64
+		objects.Builtins["flatten"],       // 65
+		objects.Builtins["without"],       // 66
+		objects.Builtins["take"],          // 67
+		objects.Builtins["drop"],          // 68
+		// Map utilities
+		objects.Builtins["merge"],         // 69
+		objects.Builtins["entries"],       // 70
+		// Format
+		objects.Builtins["format"],        // 71
 	}
 
 	if index < 0 || index >= len(builtins) {

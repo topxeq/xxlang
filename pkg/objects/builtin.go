@@ -4,8 +4,11 @@ package objects
 import (
 	"fmt"
 	"math"
+	"math/rand"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
 
 // BuiltinFunction is the type for built-in functions
@@ -975,6 +978,654 @@ var Builtins = map[string]*Builtin{
             return newError("loadPlugin not available in this context")
         },
     },
+
+    // ============================================================
+    // String Utility Functions
+    // ============================================================
+    "repeat": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 2 {
+                return newError("wrong number of arguments for repeat. got=%d, want=2", len(args))
+            }
+
+            str, ok := args[0].(*String)
+            if !ok {
+                return newError("first argument to 'repeat' must be STRING, got %s", args[0].Type())
+            }
+
+            count, ok := args[1].(*Int)
+            if !ok {
+                return newError("second argument to 'repeat' must be INT, got %s", args[1].Type())
+            }
+
+            if count.Value < 0 {
+                return newError("repeat count cannot be negative")
+            }
+
+            return &String{Value: strings.Repeat(str.Value, int(count.Value))}
+        },
+    },
+    "lpad": {
+        Fn: func(args ...Object) Object {
+            if len(args) < 2 || len(args) > 3 {
+                return newError("wrong number of arguments for lpad. got=%d, want=2 or 3", len(args))
+            }
+
+            str, ok := args[0].(*String)
+            if !ok {
+                return newError("first argument to 'lpad' must be STRING, got %s", args[0].Type())
+            }
+
+            length, ok := args[1].(*Int)
+            if !ok {
+                return newError("second argument to 'lpad' must be INT, got %s", args[1].Type())
+            }
+
+            padChar := " "
+            if len(args) == 3 {
+                pad, ok := args[2].(*String)
+                if !ok {
+                    return newError("third argument to 'lpad' must be STRING, got %s", args[2].Type())
+                }
+                if len(pad.Value) > 0 {
+                    padChar = pad.Value
+                }
+            }
+
+            strLen := len(str.Value)
+            targetLen := int(length.Value)
+            if strLen >= targetLen {
+                return str
+            }
+
+            padLen := targetLen - strLen
+            padding := strings.Repeat(padChar, (padLen+len(padChar)-1)/len(padChar))
+            return &String{Value: padding[:padLen] + str.Value}
+        },
+    },
+    "rpad": {
+        Fn: func(args ...Object) Object {
+            if len(args) < 2 || len(args) > 3 {
+                return newError("wrong number of arguments for rpad. got=%d, want=2 or 3", len(args))
+            }
+
+            str, ok := args[0].(*String)
+            if !ok {
+                return newError("first argument to 'rpad' must be STRING, got %s", args[0].Type())
+            }
+
+            length, ok := args[1].(*Int)
+            if !ok {
+                return newError("second argument to 'rpad' must be INT, got %s", args[1].Type())
+            }
+
+            padChar := " "
+            if len(args) == 3 {
+                pad, ok := args[2].(*String)
+                if !ok {
+                    return newError("third argument to 'rpad' must be STRING, got %s", args[2].Type())
+                }
+                if len(pad.Value) > 0 {
+                    padChar = pad.Value
+                }
+            }
+
+            strLen := len(str.Value)
+            targetLen := int(length.Value)
+            if strLen >= targetLen {
+                return str
+            }
+
+            padLen := targetLen - strLen
+            padding := strings.Repeat(padChar, (padLen+len(padChar)-1)/len(padChar))
+            return &String{Value: str.Value + padding[:padLen]}
+        },
+    },
+    "charAt": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 2 {
+                return newError("wrong number of arguments for charAt. got=%d, want=2", len(args))
+            }
+
+            str, ok := args[0].(*String)
+            if !ok {
+                return newError("first argument to 'charAt' must be STRING, got %s", args[0].Type())
+            }
+
+            index, ok := args[1].(*Int)
+            if !ok {
+                return newError("second argument to 'charAt' must be INT, got %s", args[1].Type())
+            }
+
+            idx := int(index.Value)
+            if idx < 0 || idx >= len(str.Value) {
+                return NULL
+            }
+
+            return &String{Value: string(str.Value[idx])}
+        },
+    },
+    "trimLeft": {
+        Fn: func(args ...Object) Object {
+            if len(args) < 1 || len(args) > 2 {
+                return newError("wrong number of arguments for trimLeft. got=%d, want=1 or 2", len(args))
+            }
+
+            str, ok := args[0].(*String)
+            if !ok {
+                return newError("argument to 'trimLeft' must be STRING, got %s", args[0].Type())
+            }
+
+            cutset := " \t\n\r"
+            if len(args) == 2 {
+                cs, ok := args[1].(*String)
+                if !ok {
+                    return newError("second argument to 'trimLeft' must be STRING, got %s", args[1].Type())
+                }
+                cutset = cs.Value
+            }
+
+            return &String{Value: strings.TrimLeft(str.Value, cutset)}
+        },
+    },
+    "trimRight": {
+        Fn: func(args ...Object) Object {
+            if len(args) < 1 || len(args) > 2 {
+                return newError("wrong number of arguments for trimRight. got=%d, want=1 or 2", len(args))
+            }
+
+            str, ok := args[0].(*String)
+            if !ok {
+                return newError("argument to 'trimRight' must be STRING, got %s", args[0].Type())
+            }
+
+            cutset := " \t\n\r"
+            if len(args) == 2 {
+                cs, ok := args[1].(*String)
+                if !ok {
+                    return newError("second argument to 'trimRight' must be STRING, got %s", args[1].Type())
+                }
+                cutset = cs.Value
+            }
+
+            return &String{Value: strings.TrimRight(str.Value, cutset)}
+        },
+    },
+
+    // ============================================================
+    // Type Checking Functions
+    // ============================================================
+    "isEmpty": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for isEmpty. got=%d, want=1", len(args))
+            }
+
+            switch arg := args[0].(type) {
+            case *String:
+                return &Bool{Value: len(arg.Value) == 0}
+            case *Array:
+                return &Bool{Value: len(arg.Elements) == 0}
+            case *Map:
+                return &Bool{Value: len(arg.Pairs) == 0}
+            case *Null:
+                return TRUE
+            default:
+                return FALSE
+            }
+        },
+    },
+    "isString": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for isString. got=%d, want=1", len(args))
+            }
+            _, ok := args[0].(*String)
+            return &Bool{Value: ok}
+        },
+    },
+    "isNumber": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for isNumber. got=%d, want=1", len(args))
+            }
+            _, isInt := args[0].(*Int)
+            _, isFloat := args[0].(*Float)
+            return &Bool{Value: isInt || isFloat}
+        },
+    },
+    "isInt": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for isInt. got=%d, want=1", len(args))
+            }
+            _, ok := args[0].(*Int)
+            return &Bool{Value: ok}
+        },
+    },
+    "isFloat": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for isFloat. got=%d, want=1", len(args))
+            }
+            _, ok := args[0].(*Float)
+            return &Bool{Value: ok}
+        },
+    },
+    "isArray": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for isArray. got=%d, want=1", len(args))
+            }
+            _, ok := args[0].(*Array)
+            return &Bool{Value: ok}
+        },
+    },
+    "isMap": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for isMap. got=%d, want=1", len(args))
+            }
+            _, ok := args[0].(*Map)
+            return &Bool{Value: ok}
+        },
+    },
+    "isBool": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for isBool. got=%d, want=1", len(args))
+            }
+            _, ok := args[0].(*Bool)
+            return &Bool{Value: ok}
+        },
+    },
+    "isFunction": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for isFunction. got=%d, want=1", len(args))
+            }
+            // Check for known function types
+            switch args[0].(type) {
+            case *Builtin, *CompiledFunction:
+                return TRUE
+            default:
+                // Also check by type name for Closure (from vm package)
+                t := string(args[0].Type())
+                if t == "CLOSURE" || t == "FUNCTION" {
+                    return TRUE
+                }
+                return FALSE
+            }
+        },
+    },
+    "isNull": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for isNull. got=%d, want=1", len(args))
+            }
+            _, ok := args[0].(*Null)
+            return &Bool{Value: ok}
+        },
+    },
+
+    // ============================================================
+    // Math Functions
+    // ============================================================
+    "round": {
+        Fn: func(args ...Object) Object {
+            if len(args) < 1 || len(args) > 2 {
+                return newError("wrong number of arguments for round. got=%d, want=1 or 2", len(args))
+            }
+
+            var val float64
+            switch arg := args[0].(type) {
+            case *Int:
+                return arg
+            case *Float:
+                val = arg.Value
+            default:
+                return newError("argument to 'round' must be INT or FLOAT, got %s", args[0].Type())
+            }
+
+            precision := 0
+            if len(args) == 2 {
+                p, ok := args[1].(*Int)
+                if !ok {
+                    return newError("second argument to 'round' must be INT, got %s", args[1].Type())
+                }
+                precision = int(p.Value)
+            }
+
+            if precision == 0 {
+                return &Int{Value: int64(math.Round(val))}
+            }
+
+            multiplier := math.Pow(10, float64(precision))
+            result := math.Round(val*multiplier) / multiplier
+            return &Float{Value: result}
+        },
+    },
+    "clamp": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 3 {
+                return newError("wrong number of arguments for clamp. got=%d, want=3", len(args))
+            }
+
+            var val, minVal, maxVal float64
+
+            switch arg := args[0].(type) {
+            case *Int:
+                val = float64(arg.Value)
+            case *Float:
+                val = arg.Value
+            default:
+                return newError("first argument to 'clamp' must be numeric, got %s", args[0].Type())
+            }
+
+            switch arg := args[1].(type) {
+            case *Int:
+                minVal = float64(arg.Value)
+            case *Float:
+                minVal = arg.Value
+            default:
+                return newError("second argument to 'clamp' must be numeric, got %s", args[1].Type())
+            }
+
+            switch arg := args[2].(type) {
+            case *Int:
+                maxVal = float64(arg.Value)
+            case *Float:
+                maxVal = arg.Value
+            default:
+                return newError("third argument to 'clamp' must be numeric, got %s", args[2].Type())
+            }
+
+            result := val
+            if result < minVal {
+                result = minVal
+            }
+            if result > maxVal {
+                result = maxVal
+            }
+
+            // Return same type as input
+            if _, isInt := args[0].(*Int); isInt {
+                return &Int{Value: int64(result)}
+            }
+            return &Float{Value: result}
+        },
+    },
+    "sign": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for sign. got=%d, want=1", len(args))
+            }
+
+            switch arg := args[0].(type) {
+            case *Int:
+                if arg.Value > 0 {
+                    return &Int{Value: 1}
+                } else if arg.Value < 0 {
+                    return &Int{Value: -1}
+                }
+                return &Int{Value: 0}
+            case *Float:
+                if arg.Value > 0 {
+                    return &Int{Value: 1}
+                } else if arg.Value < 0 {
+                    return &Int{Value: -1}
+                }
+                return &Int{Value: 0}
+            default:
+                return newError("argument to 'sign' must be numeric, got %s", args[0].Type())
+            }
+        },
+    },
+    "random": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 0 {
+                return newError("wrong number of arguments for random. got=%d, want=0", len(args))
+            }
+            return &Float{Value: float64(randInt63()) / float64(1<<63)}
+        },
+    },
+    "randomInt": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 2 {
+                return newError("wrong number of arguments for randomInt. got=%d, want=2", len(args))
+            }
+
+            min, ok := args[0].(*Int)
+            if !ok {
+                return newError("first argument to 'randomInt' must be INT, got %s", args[0].Type())
+            }
+
+            max, ok := args[1].(*Int)
+            if !ok {
+                return newError("second argument to 'randomInt' must be INT, got %s", args[1].Type())
+            }
+
+            if min.Value > max.Value {
+                return newError("min cannot be greater than max")
+            }
+
+            range_ := max.Value - min.Value + 1
+            result := min.Value + (randInt63() % range_)
+            return &Int{Value: result}
+        },
+    },
+
+    // ============================================================
+    // Array Utility Functions
+    // ============================================================
+    "unique": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for unique. got=%d, want=1", len(args))
+            }
+
+            arr, ok := args[0].(*Array)
+            if !ok {
+                return newError("argument to 'unique' must be ARRAY, got %s", args[0].Type())
+            }
+
+            seen := make(map[string]bool)
+            result := make([]Object, 0)
+
+            for _, elem := range arr.Elements {
+                key := elem.Inspect()
+                if !seen[key] {
+                    seen[key] = true
+                    result = append(result, elem)
+                }
+            }
+
+            return &Array{Elements: result}
+        },
+    },
+    "flatten": {
+        Fn: func(args ...Object) Object {
+            if len(args) < 1 || len(args) > 2 {
+                return newError("wrong number of arguments for flatten. got=%d, want=1 or 2", len(args))
+            }
+
+            arr, ok := args[0].(*Array)
+            if !ok {
+                return newError("argument to 'flatten' must be ARRAY, got %s", args[0].Type())
+            }
+
+            depth := int64(-1) // -1 means infinite depth
+            if len(args) == 2 {
+                d, ok := args[1].(*Int)
+                if !ok {
+                    return newError("second argument to 'flatten' must be INT, got %s", args[1].Type())
+                }
+                depth = d.Value
+            }
+
+            result := flattenArray(arr.Elements, depth)
+            return &Array{Elements: result}
+        },
+    },
+    "without": {
+        Fn: func(args ...Object) Object {
+            if len(args) < 2 {
+                return newError("wrong number of arguments for without. got=%d, want>=2", len(args))
+            }
+
+            arr, ok := args[0].(*Array)
+            if !ok {
+                return newError("first argument to 'without' must be ARRAY, got %s", args[0].Type())
+            }
+
+            excludeSet := make(map[string]bool)
+            for _, arg := range args[1:] {
+                excludeSet[arg.Inspect()] = true
+            }
+
+            result := make([]Object, 0)
+            for _, elem := range arr.Elements {
+                if !excludeSet[elem.Inspect()] {
+                    result = append(result, elem)
+                }
+            }
+
+            return &Array{Elements: result}
+        },
+    },
+    "take": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 2 {
+                return newError("wrong number of arguments for take. got=%d, want=2", len(args))
+            }
+
+            arr, ok := args[0].(*Array)
+            if !ok {
+                return newError("first argument to 'take' must be ARRAY, got %s", args[0].Type())
+            }
+
+            n, ok := args[1].(*Int)
+            if !ok {
+                return newError("second argument to 'take' must be INT, got %s", args[1].Type())
+            }
+
+            count := int(n.Value)
+            if count < 0 {
+                count = 0
+            }
+            if count > len(arr.Elements) {
+                count = len(arr.Elements)
+            }
+
+            return &Array{Elements: arr.Elements[:count]}
+        },
+    },
+    "drop": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 2 {
+                return newError("wrong number of arguments for drop. got=%d, want=2", len(args))
+            }
+
+            arr, ok := args[0].(*Array)
+            if !ok {
+                return newError("first argument to 'drop' must be ARRAY, got %s", args[0].Type())
+            }
+
+            n, ok := args[1].(*Int)
+            if !ok {
+                return newError("second argument to 'drop' must be INT, got %s", args[1].Type())
+            }
+
+            count := int(n.Value)
+            if count < 0 {
+                count = 0
+            }
+            if count > len(arr.Elements) {
+                count = len(arr.Elements)
+            }
+
+            return &Array{Elements: arr.Elements[count:]}
+        },
+    },
+
+    // ============================================================
+    // Map Utility Functions
+    // ============================================================
+    "merge": {
+        Fn: func(args ...Object) Object {
+            if len(args) < 2 {
+                return newError("wrong number of arguments for merge. got=%d, want>=2", len(args))
+            }
+
+            result := make(map[HashKey]MapPair)
+
+            for _, arg := range args {
+                m, ok := arg.(*Map)
+                if !ok {
+                    return newError("all arguments to 'merge' must be MAP, got %s", arg.Type())
+                }
+
+                for key, pair := range m.Pairs {
+                    result[key] = pair
+                }
+            }
+
+            return &Map{Pairs: result}
+        },
+    },
+    "entries": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 1 {
+                return newError("wrong number of arguments for entries. got=%d, want=1", len(args))
+            }
+
+            m, ok := args[0].(*Map)
+            if !ok {
+                return newError("argument to 'entries' must be MAP, got %s", args[0].Type())
+            }
+
+            result := make([]Object, 0, len(m.Pairs))
+            for _, pair := range m.Pairs {
+                result = append(result, &Array{Elements: []Object{pair.Key, pair.Value}})
+            }
+
+            return &Array{Elements: result}
+        },
+    },
+
+    // ============================================================
+    // Utility Functions
+    // ============================================================
+    "format": {
+        Fn: func(args ...Object) Object {
+            if len(args) < 1 {
+                return newError("wrong number of arguments for format. got=%d, want>=1", len(args))
+            }
+
+            format, ok := args[0].(*String)
+            if !ok {
+                return newError("first argument to 'format' must be STRING, got %s", args[0].Type())
+            }
+
+            formatArgs := make([]interface{}, len(args)-1)
+            for i, arg := range args[1:] {
+                switch v := arg.(type) {
+                case *Int:
+                    formatArgs[i] = v.Value
+                case *Float:
+                    formatArgs[i] = v.Value
+                case *String:
+                    formatArgs[i] = v.Value
+                case *Bool:
+                    formatArgs[i] = v.Value
+                default:
+                    formatArgs[i] = v.Inspect()
+                }
+            }
+
+            return &String{Value: fmt.Sprintf(format.Value, formatArgs...)}
+        },
+    },
 }
 
 // RunCodeImpl is the implementation function for runCode, set by the VM
@@ -1008,4 +1659,45 @@ func compareObjects(a, b Object) bool {
         return false
     }
     return a.Inspect() == b.Inspect()
+}
+
+// Random number generator (thread-safe)
+var (
+    randMu   sync.Mutex
+    randSrc  *rand.Rand
+    randOnce sync.Once
+)
+
+// initRand initializes the random source once
+func initRand() {
+    randOnce.Do(func() {
+        randSrc = rand.New(rand.NewSource(time.Now().UnixNano()))
+    })
+}
+
+// randInt63 returns a random int64 in a thread-safe manner
+func randInt63() int64 {
+    initRand()
+    randMu.Lock()
+    defer randMu.Unlock()
+    return randSrc.Int63()
+}
+
+// flattenArray recursively flattens an array to the specified depth
+func flattenArray(elements []Object, depth int64) []Object {
+    result := make([]Object, 0)
+
+    for _, elem := range elements {
+        if arr, ok := elem.(*Array); ok && depth != 0 {
+            newDepth := depth
+            if depth > 0 {
+                newDepth = depth - 1
+            }
+            result = append(result, flattenArray(arr.Elements, newDepth)...)
+        } else {
+            result = append(result, elem)
+        }
+    }
+
+    return result
 }

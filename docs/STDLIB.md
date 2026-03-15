@@ -895,3 +895,196 @@ Throws error if condition is false.
 assert(1 + 1 == 2)
 assert(x > 0, "x must be positive")
 ```
+
+### String Utilities
+
+#### repeat(s, n)
+Returns string repeated n times.
+
+```xxl
+repeat("ab", 3)  // "ababab"
+repeat("x", 5)   // "xxxxx"
+```
+
+#### lpad(s, length, padChar)
+Pads string on the left to specified length.
+
+```xxl
+lpad("5", 4, "0")     // "0005"
+lpad("hello", 10)      // "     hello"
+```
+
+#### rpad(s, length, padChar)
+Pads string on the right to specified length.
+
+```xxl
+rpad("5", 4, "0")      // "5000"
+rpad("hello", 10)      // "hello     "
+```
+
+#### charAt(s, index)
+Returns character at index, or null if out of bounds.
+
+```xxl
+charAt("hello", 1)  // "e"
+charAt("hello", 10) // null
+```
+
+#### trimLeft(s, cutset)
+Removes leading characters.
+
+```xxl
+trimLeft("  hello")          // "hello"
+trimLeft("xxhelloxx", "x")   // "helloxx"
+```
+
+#### trimRight(s, cutset)
+Removes trailing characters.
+
+```xxl
+trimRight("hello  ")         // "hello"
+trimRight("xxhelloxx", "x")  // "xxhello"
+```
+
+### Type Checking
+
+#### isEmpty(value)
+Returns true if value is empty string, array, map, or null.
+
+```xxl
+isEmpty("")          // true
+isEmpty([])          // true
+isEmpty({})          // true
+isEmpty(null)        // true
+isEmpty([1, 2])      // false
+```
+
+#### isString(value), isNumber(value), isInt(value), isFloat(value)
+Returns true if value is of the specified type.
+
+```xxl
+isString("hello")    // true
+isNumber(42)         // true
+isNumber(3.14)       // true
+isInt(42)            // true
+isFloat(3.14)        // true
+```
+
+#### isArray(value), isMap(value), isBool(value), isNull(value), isFunction(value)
+Returns true if value is of the specified type.
+
+```xxl
+isArray([1, 2, 3])     // true
+isMap({"a": 1})         // true
+isBool(true)            // true
+isNull(null)            // true
+isFunction(len)         // true
+```
+
+### Math Utilities
+
+#### round(value, precision)
+Rounds to nearest integer or specified decimal places.
+
+```xxl
+round(3.7)           // 4
+round(3.14159, 2)    // 3.14
+round(3.14159, 4)    // 3.1416
+```
+
+#### clamp(value, min, max)
+Clamps value to range [min, max].
+
+```xxl
+clamp(15, 0, 10)     // 10
+clamp(-5, 0, 10)     // 0
+clamp(5, 0, 10)      // 5
+```
+
+#### sign(value)
+Returns sign of number (-1, 0, or 1).
+
+```xxl
+sign(-42)    // -1
+sign(0)      // 0
+sign(42)     // 1
+```
+
+#### random()
+Returns random float between 0 and 1.
+
+```xxl
+var r = random()  // 0.0 <= r < 1.0
+```
+
+#### randomInt(min, max)
+Returns random integer in range [min, max].
+
+```xxl
+var die = randomInt(1, 6)   // 1, 2, 3, 4, 5, or 6
+```
+
+### Array Utilities
+
+#### unique(arr)
+Returns array with duplicate values removed.
+
+```xxl
+unique([1, 2, 2, 3, 3, 3])  // [1, 2, 3]
+```
+
+#### flatten(arr, depth)
+Flattens nested arrays.
+
+```xxl
+flatten([[1, 2], [3, 4]])           // [1, 2, 3, 4]
+flatten([[[1]], [2]], 1)             // [[1], 2]
+```
+
+#### without(arr, values...)
+Returns array with specified values removed.
+
+```xxl
+without([1, 2, 3, 4], 2, 4)  // [1, 3]
+```
+
+#### take(arr, n)
+Returns first n elements.
+
+```xxl
+take([1, 2, 3, 4, 5], 3)  // [1, 2, 3]
+```
+
+#### drop(arr, n)
+Returns array without first n elements.
+
+```xxl
+drop([1, 2, 3, 4, 5], 2)  // [3, 4, 5]
+```
+
+### Map Utilities
+
+#### merge(map1, map2, ...)
+Merges multiple maps (later maps override earlier).
+
+```xxl
+merge({"a": 1}, {"b": 2})           // {"a": 1, "b": 2}
+merge({"a": 1}, {"a": 2, "b": 3})    // {"a": 2, "b": 3}
+```
+
+#### entries(map)
+Returns array of [key, value] pairs.
+
+```xxl
+entries({"x": 10, "y": 20})  // [["x", 10], ["y", 20]]
+```
+
+### Formatting
+
+#### format(template, args...)
+Formats string with Go-style format specifiers.
+
+```xxl
+format("Hello %s, you are %d", "Alice", 30)  // "Hello Alice, you are 30"
+format("Pi is %.2f", 3.14159)                 // "Pi is 3.14"
+```
