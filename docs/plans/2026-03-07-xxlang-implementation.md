@@ -75,20 +75,20 @@ Xxlang (Chinese: 现象语言) is a line-by-line interpreted scripting language 
 ## Installation
 
 ```bash
-go install github.com/topxeq/xxlang/cmd/xxlang@latest
+go install github.com/topxeq/xxlang/cmd/xxl@latest
 ```
 
 ## Quick Start
 
 ```bash
 # Run a file
-xxlang script.xxl
+xxl script.xxl
 
 # Start REPL
-xxlang -i
+xxl -i
 
 # Evaluate code
-xxlang -e "println(1 + 2);"
+xxl -e "println(1 + 2);"
 ```
 
 ## License

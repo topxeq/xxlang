@@ -16,7 +16,7 @@ examples/scripts/
 ## 运行脚本
 
 ```bash
-xxlang examples/scripts/basics/01_variables.xxl
+xxl examples/scripts/basics/01_variables.xxl
 ```
 
 ## 脚本列表

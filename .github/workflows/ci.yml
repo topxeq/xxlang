@@ -28,13 +28,15 @@ jobs:
         run: go mod download
 
       - name: Run tests
-        run: go test -v -coverprofile=coverage.out ./pkg/... ./tests/... ./cmd/... ./benchmarks/...
+        run: |
+          go test -v -coverprofile=coverage.out ./pkg/... ./tests/... ./cmd/... ./benchmarks/...
+          go tool cover -func coverage.out -o coverage.txt
 
       - name: Go Coverage Badge
         uses: tj-actions/coverage-badge-go@v3
         with:
           green: 60
-          filename: coverage.out
+          filename: coverage.txt
 
       - uses: stefanzweifel/git-auto-commit-action@v5
         id: auto-commit-action

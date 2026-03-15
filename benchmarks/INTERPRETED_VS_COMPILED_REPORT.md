@@ -15,14 +15,14 @@
 
 ### A. 解释运行 (源代码)
 ```bash
-./xxlang run fib_naive.xxl
+./xxl run fib_naive.xxl
 ```
 流程: 源代码 → 词法分析 → 语法分析 → 编译 → 执行
 
 ### B. 字节码运行 (预编译)
 ```bash
-./xxlang compile --bytecode fib_naive.xxl  # 预编译
-./xxlang run fib_naive.xxb                  # 运行
+./xxl compile --bytecode fib_naive.xxl  # 预编译
+./xxl run fib_naive.xxb                  # 运行
 ```
 流程: 字节码 → 反序列化 → 执行 (跳过解析和编译)
 
