@@ -194,26 +194,28 @@ func main() {
 
 ```
 examples/wasm_plugin/
-├── main.go                  # Comprehensive test
-├── test_loader_methods.go   # Loading methods test
+├── main.go                    # Comprehensive test
+├── test_loadplugin_main.go    # loadPlugin() test from Xxlang
 └── plugin/
-    ├── build.sh             # Build script
-    ├── fib.ts               # AssemblyScript (978 bytes)
-    ├── fib.c                # C (~1.5KB)
-    ├── fib.zig              # Zig (~1.3KB)
-    ├── fib.rs               # Rust (~1.3KB)
-    └── fib.go               # TinyGo (~15KB)
+    ├── build.sh               # Build script
+    ├── fib.ts                 # AssemblyScript (978 bytes)
+    ├── fib.c                  # C (~1.5KB)
+    ├── fib.zig                # Zig (~1.3KB)
+    ├── fib.rs                 # Rust (~1.3KB)
+    └── fib.go                 # TinyGo (~15KB)
 ```
 
 ```bash
 cd examples/wasm_plugin
 
-# Build and test
-./plugin/build.sh fib.ts && go run main.go
-./plugin/build.sh fib.rs && go run main.go
+# Build WASM plugin
+./plugin/build.sh fib.ts
 
-# Test loading methods
-go run test_loader_methods.go
+# Test from Go
+go run main.go
+
+# Test loadPlugin() from Xxlang
+go run test_loadplugin_main.go
 ```
 
 ---
