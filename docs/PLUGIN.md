@@ -288,22 +288,26 @@ For larger numbers, use `math/big.Int` in your plugin.
 |----------|------------|-------------|------------|-------|
 | C | Smallest (~1.5KB) | Best | Medium | Most portable, requires clang |
 | Zig | Small (~1.3KB) | Best | Easy | Modern language, excellent WASM support |
-| TinyGo | Medium (~15KB) | Good | Easy | Go syntax, limited Go version support |
+| TinyGo | Medium (~15KB) | Good | Easy | Go syntax, Go 1.19-1.24 only |
+| Standard Go | ~1.8MB | N/A | N/A | ❌ **Does NOT work** - no function exports |
 
 ## WebAssembly Plugins
 
 WASM plugins work on all platforms including Windows, without CGO.
 
-**Important**: WASM plugins require **TinyGo**. Standard Go's `GOOS=wasip1` does NOT work for plugins because:
+**Important**: WASM plugins require **TinyGo**. Standard Go's `GOOS=wasip1` does NOT work for plugins.
 
-1. Go's wasip1 runs `_start` (main) to initialize the runtime
-2. When `main()` returns, Go calls `proc_exit(0)`
-3. WASI specification closes the module after `proc_exit`
-4. Exported functions become unavailable after the module closes
+**Why Standard Go doesn't work:**
 
-Even with `select {}` in main, there's a runtime check that prevents exported functions from being called until `_start` completes its initialization phase. Since `select {}` blocks `_start` forever, the initialization flag is never set.
+| Issue | Standard Go (wasip1) | TinyGo |
+|-------|----------------------|--------|
+| Export custom functions | ❌ Not supported | ✅ Supported |
+| Plugin mode | ❌ Application-only | ✅ Library mode |
+| File size | ~1.8MB | ~15KB |
 
-**TinyGo uses a different architecture** that doesn't have this limitation.
+Standard Go's wasip1 target is designed for **standalone applications** (CLI tools), not libraries/plugins. The `//export` directive is ignored, and only `_start` and `memory` are exported. When `main()` returns, the Go runtime calls `proc_exit(0)`, terminating the module.
+
+**TinyGo uses a different architecture** that supports both application and library modes.
 
 ### Installing TinyGo
 
@@ -434,6 +438,8 @@ export fn call_fast(n: i64) i64 {
 #### Option 3: Using TinyGo
 
 **Note**: TinyGo 0.36 supports Go 1.19-1.24 only. For newer Go versions, use C or Zig instead.
+
+**Do NOT use standard Go** (`GOOS=wasip1 GOARCH=wasm go build`) - it won't work. Standard Go exports only `_start` (entry point), not custom functions.
 
 ```bash
 # Build with TinyGo
