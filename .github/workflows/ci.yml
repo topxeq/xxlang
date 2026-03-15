@@ -30,9 +30,7 @@ jobs:
 
       - name: Run tests
         shell: bash
-        run: |
-          go test -v -race -coverprofile=coverage.out -covermode=atomic ./pkg/... ./tests/... ./cmd/... ./benchmarks/...
-          go tool cover -func coverage.out -o coverage.out
+        run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./pkg/... ./tests/... ./cmd/... ./benchmarks/...
 
       - name: Go Coverage Badge
         uses: tj-actions/coverage-badge-go@v3
