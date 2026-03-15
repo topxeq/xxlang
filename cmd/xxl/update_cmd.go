@@ -1,6 +1,9 @@
 package main
 
 import (
+	"archive/tar"
+	"archive/zip"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -51,7 +54,7 @@ func updateCmd(args []string) error {
 
 	fmt.Printf("Downloading %s...\n", assetName)
 
-	// Download the new binary
+	// Download the archive
 	tempFile, err := downloadFile(assetURL)
 	if err != nil {
 		return fmt.Errorf("failed to download update: %v", err)
@@ -76,6 +79,14 @@ func updateCmd(args []string) error {
 	execDir := filepath.Dir(execPath)
 	targetPath := filepath.Join(execDir, targetName)
 
+	// Extract the binary from the archive
+	fmt.Println("Extracting...")
+	extractedFile, err := extractBinary(tempFile, assetName, targetName)
+	if err != nil {
+		return fmt.Errorf("failed to extract binary: %v", err)
+	}
+	defer os.Remove(extractedFile)
+
 	// Backup the current executable
 	backupPath := execPath + ".backup"
 	if err := copyFile(execPath, backupPath); err != nil {
@@ -84,7 +95,7 @@ func updateCmd(args []string) error {
 	}
 
 	// Replace the executable
-	if err := replaceExecutable(tempFile, targetPath); err != nil {
+	if err := replaceExecutable(extractedFile, targetPath); err != nil {
 		// Try to restore from backup
 		if restoreErr := os.Rename(backupPath, execPath); restoreErr != nil {
 			fmt.Printf("Error: failed to restore backup: %v\n", restoreErr)
@@ -140,38 +151,36 @@ func getLatestRelease() (*GitHubRelease, error) {
 }
 
 // findAssetForPlatform finds the correct asset for the current OS and architecture
+// Now looks for compressed archives: .zip for Windows, .tar.gz for Linux/macOS
 func findAssetForPlatform(release *GitHubRelease) (string, string, error) {
 	// Build expected asset name pattern
-	// Expected format: xxlang-{version}-{os}-{arch}(.exe for windows)
-	// or: xxl-{os}-{arch}(.exe for windows)
+	// Format: xxlang-{os}-{arch}.zip (Windows) or xxlang-{os}-{arch}.tar.gz (Linux/macOS)
 
 	var patterns []string
-	version := strings.TrimPrefix(release.TagName, "v")
 
-	// Try multiple naming patterns
-	patterns = append(patterns, fmt.Sprintf("xxlang-%s-%s-%s", version, runtime.GOOS, runtime.GOARCH))
-	patterns = append(patterns, fmt.Sprintf("xxl-%s-%s", runtime.GOOS, runtime.GOARCH))
-	patterns = append(patterns, fmt.Sprintf("xxlang-%s-%s", runtime.GOOS, runtime.GOARCH))
-
+	// Primary pattern: xxlang-{os}-{arch}.{ext}
 	if runtime.GOOS == "windows" {
-		// Also try with .exe extension
-		patterns = append(patterns, fmt.Sprintf("xxlang-%s-%s-%s.exe", version, runtime.GOOS, runtime.GOARCH))
-		patterns = append(patterns, fmt.Sprintf("xxl-%s-%s.exe", runtime.GOOS, runtime.GOARCH))
-		patterns = append(patterns, fmt.Sprintf("xxlang-%s-%s.exe", runtime.GOOS, runtime.GOARCH))
+		patterns = append(patterns, fmt.Sprintf("xxlang-%s-%s.zip", runtime.GOOS, runtime.GOARCH))
+	} else {
+		patterns = append(patterns, fmt.Sprintf("xxlang-%s-%s.tar.gz", runtime.GOOS, runtime.GOARCH))
 	}
 
 	for _, asset := range release.Assets {
 		// Check if asset matches any pattern
 		for _, pattern := range patterns {
-			if asset.Name == pattern || strings.Contains(asset.Name, pattern) {
+			if asset.Name == pattern {
 				return asset.URL, asset.Name, nil
 			}
 		}
 
-		// Also check if asset name contains OS and arch
-		if strings.Contains(strings.ToLower(asset.Name), runtime.GOOS) &&
-			strings.Contains(strings.ToLower(asset.Name), runtime.GOARCH) {
-			return asset.URL, asset.Name, nil
+		// Also check if asset name contains OS and arch with correct extension
+		assetLower := strings.ToLower(asset.Name)
+		if strings.Contains(assetLower, runtime.GOOS) &&
+			strings.Contains(assetLower, runtime.GOARCH) {
+			if (runtime.GOOS == "windows" && strings.HasSuffix(asset.Name, ".zip")) ||
+				(runtime.GOOS != "windows" && strings.HasSuffix(asset.Name, ".tar.gz")) {
+				return asset.URL, asset.Name, nil
+			}
 		}
 	}
 
@@ -296,6 +305,162 @@ func formatBytes(b int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
+}
+
+// extractBinary extracts the binary from a compressed archive
+func extractBinary(archivePath, archiveName, binaryName string) (string, error) {
+	// Create temp directory for extraction
+	tempDir, err := os.MkdirTemp("", "xxlang-extract-*")
+	if err != nil {
+		return "", err
+	}
+
+	var extractedPath string
+
+	if strings.HasSuffix(archiveName, ".zip") {
+		extractedPath, err = extractZip(archivePath, tempDir, binaryName)
+	} else if strings.HasSuffix(archiveName, ".tar.gz") || strings.HasSuffix(archiveName, ".tgz") {
+		extractedPath, err = extractTarGz(archivePath, tempDir, binaryName)
+	} else {
+		return "", fmt.Errorf("unsupported archive format: %s", archiveName)
+	}
+
+	if err != nil {
+		os.RemoveAll(tempDir)
+		return "", err
+	}
+
+	return extractedPath, nil
+}
+
+// extractZip extracts a zip archive and returns the path to the binary
+func extractZip(zipPath, destDir, binaryName string) (string, error) {
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return "", err
+	}
+	defer r.Close()
+
+	var extractedPath string
+
+	for _, f := range r.File {
+		// Skip directories
+		if f.FileInfo().IsDir() {
+			continue
+		}
+
+		// Get the base name of the file
+		baseName := filepath.Base(f.Name)
+
+		// Look for the binary file
+		if baseName == binaryName || baseName == "xxl" || baseName == "xxl.exe" {
+			// Open the file in the archive
+			rc, err := f.Open()
+			if err != nil {
+				return "", err
+			}
+
+			// Create the destination file
+			destPath := filepath.Join(destDir, binaryName)
+			destFile, err := os.Create(destPath)
+			if err != nil {
+				rc.Close()
+				return "", err
+			}
+
+			// Copy the contents
+			_, err = io.Copy(destFile, rc)
+			rc.Close()
+			destFile.Close()
+
+			if err != nil {
+				return "", err
+			}
+
+			// Set permissions
+			if err := os.Chmod(destPath, 0755); err != nil {
+				return "", err
+			}
+
+			extractedPath = destPath
+			break
+		}
+	}
+
+	if extractedPath == "" {
+		return "", fmt.Errorf("binary '%s' not found in archive", binaryName)
+	}
+
+	return extractedPath, nil
+}
+
+// extractTarGz extracts a tar.gz archive and returns the path to the binary
+func extractTarGz(tarGzPath, destDir, binaryName string) (string, error) {
+	file, err := os.Open(tarGzPath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	gzr, err := gzip.NewReader(file)
+	if err != nil {
+		return "", err
+	}
+	defer gzr.Close()
+
+	tr := tar.NewReader(gzr)
+
+	var extractedPath string
+
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", err
+		}
+
+		// Skip directories
+		if header.Typeflag == tar.TypeDir {
+			continue
+		}
+
+		// Get the base name of the file
+		baseName := filepath.Base(header.Name)
+
+		// Look for the binary file
+		if baseName == binaryName || baseName == "xxl" || baseName == "xxl.exe" {
+			// Create the destination file
+			destPath := filepath.Join(destDir, binaryName)
+			destFile, err := os.Create(destPath)
+			if err != nil {
+				return "", err
+			}
+
+			// Copy the contents
+			_, err = io.Copy(destFile, tr)
+			destFile.Close()
+
+			if err != nil {
+				return "", err
+			}
+
+			// Set permissions from tar header
+			if err := os.Chmod(destPath, os.FileMode(header.Mode)); err != nil {
+				return "", err
+			}
+
+			extractedPath = destPath
+			break
+		}
+	}
+
+	if extractedPath == "" {
+		return "", fmt.Errorf("binary '%s' not found in archive", binaryName)
+	}
+
+	return extractedPath, nil
 }
 
 // copyFile creates a copy of a file
