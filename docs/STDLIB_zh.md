@@ -11,14 +11,15 @@ io.println("你好，世界！")
 
 ## 目录
 
-- [io](#stdio) - 输入输出操作
-- [string](#stdstring) - 字符串工具
-- [math](#stdmath) - 数学函数
-- [array](#stdarray) - 数组工具
-- [json](#stdjson) - JSON 编解码
-- [regex](#stdregex) - 正则表达式
-- [crypto](#stdcrypto) - 加密函数
-- [time](#stdtime) - 时间日期函数
+- [io](#io) - 输入输出操作
+- [os](#os) - 操作系统工具和配置
+- [string](#string) - 字符串工具
+- [math](#math) - 数学函数
+- [array](#array) - 数组工具
+- [json](#json) - JSON 编解码
+- [regex](#regex) - 正则表达式
+- [crypto](#crypto) - 加密函数
+- [time](#time) - 时间日期函数
 
 ---
 
@@ -148,6 +149,225 @@ setEnv("DEBUG", "true")
 ```xxl
 var args = args()
 println(args[0])  // 程序名
+```
+
+---
+
+## os
+
+操作系统工具和配置管理。
+
+### 配置
+
+#### getConfigObject()
+返回 Xxlang 配置对象（映射类型）。配置从 JSON 文件读取，搜索优先级如下：
+
+1. `~/.xxl/settings.json`（用户主目录）
+2. `/.xxl/settings.json`（Linux/Unix 系统）
+3. `C:\.xxl\settings.json`（Windows 系统）
+
+如果未找到配置文件，返回空映射。
+
+```xxl
+import "os"
+var cfg = os.getConfigObject()
+println(cfg["cloudUrlBase"])
+
+// 示例配置文件 (~/.xxl/settings.json):
+// {
+//   "cloudUrlBase": "https://script.topget.org/",
+//   "timeout": 30,
+//   "debug": true
+// }
+```
+
+### 系统信息
+
+#### platform()
+返回当前操作系统名称。
+
+```xxl
+println(os.platform())  // "linux"、"windows"、"darwin"
+```
+
+#### arch()
+返回 CPU 架构。
+
+```xxl
+println(os.arch())  // "amd64"、"arm64"
+```
+
+#### hostname()
+返回系统主机名。
+
+```xxl
+println(os.hostname())
+```
+
+#### home()
+返回用户主目录。
+
+```xxl
+println(os.home())  // "/home/user" 或 "C:\Users\user"
+```
+
+#### temp()
+返回系统临时目录。
+
+```xxl
+println(os.temp())  // Unix 上为 "/tmp"
+```
+
+#### cpus()
+返回 CPU 核心数。
+
+```xxl
+println(os.cpus())  // 8
+```
+
+### 文件系统操作
+
+#### join(paths...)
+连接路径组件。
+
+```xxl
+os.join("a", "b", "c.txt")  // Unix: "a/b/c.txt", Windows: "a\b\c.txt"
+```
+
+#### base(path)
+返回路径的最后一个元素。
+
+```xxl
+os.base("/path/to/file.txt")  // "file.txt"
+```
+
+#### dir(path)
+返回路径的目录部分。
+
+```xxl
+os.dir("/path/to/file.txt")  // "/path/to"
+```
+
+#### ext(path)
+返回文件扩展名。
+
+```xxl
+os.ext("/path/to/file.txt")  // ".txt"
+```
+
+#### abs(path)
+返回绝对路径。
+
+```xxl
+println(os.abs("./file.txt"))  // "/current/dir/file.txt"
+```
+
+#### isAbs(path)
+判断是否为绝对路径。
+
+```xxl
+os.isAbs("/path/to/file")  // true
+os.isAbs("./file")          // false
+```
+
+#### stat(path)
+返回文件信息数组 [名称, 大小, 是否目录, 修改时间]。
+
+```xxl
+var info = os.stat("file.txt")
+println(info[0])  // 名称
+println(info[1])  // 大小（字节）
+println(info[2])  // 是否目录
+println(info[3])  // 修改时间
+```
+
+#### isDir(path)
+判断是否为目录。
+
+```xxl
+os.isDir("/path/to/dir")  // true
+```
+
+#### isFile(path)
+判断是否为文件。
+
+```xxl
+os.isFile("/path/to/file.txt")  // true
+```
+
+#### listDir(path)
+返回目录条目名称数组。
+
+```xxl
+var files = os.listDir(".")
+for (f in files) {
+    println(f)
+}
+```
+
+#### mkdir(path)
+创建目录。
+
+```xxl
+os.mkdir("path/to/new/dir")
+```
+
+#### rename(oldPath, newPath)
+重命名文件或目录。
+
+```xxl
+os.rename("old.txt", "new.txt")
+```
+
+#### copy(srcPath, dstPath)
+复制文件。
+
+```xxl
+os.copy("source.txt", "dest.txt")
+```
+
+#### chmod(path, mode)
+修改文件权限（仅 Unix）。
+
+```xxl
+os.chmod("script.sh", 0o755)
+```
+
+### 进程执行
+
+#### exec(command)
+执行 shell 命令，返回 [输出, 退出码, 错误]。
+
+```xxl
+var result = os.exec("ls -la")
+println(result[0])  // 输出
+println(result[1])  // 退出码
+```
+
+#### shell(command)
+通过系统 shell 执行命令。
+
+```xxl
+var result = os.shell("echo hello")
+println(result[0])  // "hello\n"
+```
+
+### 临时文件
+
+#### tempFile(pattern)
+创建临时文件并返回路径。
+
+```xxl
+var tmp = os.tempFile("myapp-*.txt")
+// 使用文件...
+```
+
+#### tempDir(pattern)
+创建临时目录并返回路径。
+
+```xxl
+var tmpDir = os.tempDir("myapp-*")
+// 使用目录...
 ```
 
 ---

@@ -117,12 +117,43 @@ xxl script.xxl                     # 运行本地脚本（快捷方式）
 xxl run script.xxl                 # 运行源代码
 xxl run script.xxb                 # 运行字节码
 xxl https://example.com/script.xxl # 从 URL 运行脚本
+xxl -cloud basic.xxl               # 从配置的云端 URL 运行脚本
 xxl compile script.xxl             # 编译为可执行文件
 xxl compile --bytecode script.xxl  # 编译为字节码 (.xxb)
 xxl compile -o out.xxb --bytecode script.xxl   # 指定输出路径
 xxl update                         # 自我更新到最新版本
 xxl version                        # 显示版本
 xxl help                           # 显示帮助
+```
+
+## 云端脚本执行
+
+Xxlang 支持通过 `-cloud` 参数从配置的云端 URL 基地址执行脚本。
+
+### 配置
+
+创建 `~/.xxl/settings.json`（Linux 系统也可以是 `/.xxl/settings.json`，Windows 是 `C:\.xxl\settings.json`）：
+
+```json
+{
+  "cloudUrlBase": "https://script.topget.org/"
+}
+```
+
+### 使用
+
+```bash
+xxl -cloud basic.xxl
+```
+
+这将获取并执行 `https://script.topget.org/basic.xxl`。
+
+你也可以在脚本中访问配置：
+
+```xxl
+import "os"
+var cfg = os.getConfigObject()
+println(cfg["cloudUrlBase"])
 ```
 
 ## 字节码编译
