@@ -181,6 +181,35 @@ println(cfg["cloudUrlBase"])
 // }
 ```
 
+#### getConfigStr(name)
+Reads a config string from a `.cfg` file. The file is searched in the following order:
+
+1. `~/.xxl/<name>.cfg` (user home directory)
+2. `/.xxl/<name>.cfg` (Linux/Unix systems)
+3. `C:\.xxl\<name>.cfg` (Windows systems)
+
+Returns `null` if the file is not found.
+
+```xxl
+import "os"
+var token = os.getConfigStr("api_token")
+if (token != null) {
+    println("Token found: " + token)
+}
+```
+
+#### setConfigStr(name, value)
+Writes a config string to a `.cfg` file in the user's home directory (`~/.xxl/<name>.cfg`). Creates the `.xxl` directory if it doesn't exist.
+
+```xxl
+import "os"
+os.setConfigStr("api_token", "my-secret-token")
+
+// Later, read it back
+var token = os.getConfigStr("api_token")
+println(token)  // "my-secret-token"
+```
+
 ### System Information
 
 #### platform()

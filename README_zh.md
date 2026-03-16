@@ -279,6 +279,10 @@ for (item in [1, 2, 3]) {
 
 ### 内置函数
 
+完整的内置函数参考请见 [内置函数参考手册](docs/BUILTINS_zh.md)。
+
+标准库模块请见 [标准库参考手册](docs/STDLIB_zh.md)。
+
 ```xxl
 // 字符串函数
 println(upper("hello"))           // HELLO
