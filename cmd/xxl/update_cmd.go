@@ -166,9 +166,11 @@ func updateCmd(args []string) error {
 }
 
 // getLatestRelease fetches the latest release from GitHub
+// Uses the releases page directly to avoid API rate limits
 func getLatestRelease() (*GitHubRelease, error) {
 	client := newHTTPClient(30 * time.Second)
 
+	// First, try the API (faster, but has rate limits)
 	apiURL := "https://api.github.com/repos/topxeq/xxlang/releases/latest"
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
@@ -184,6 +186,11 @@ func getLatestRelease() (*GitHubRelease, error) {
 	}
 	defer resp.Body.Close()
 
+	// If API returns 403 (rate limited), try alternative method
+	if resp.StatusCode == http.StatusForbidden {
+		return getLatestReleaseFromHTML(client)
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
 	}
@@ -196,6 +203,78 @@ func getLatestRelease() (*GitHubRelease, error) {
 	var release GitHubRelease
 	if err := json.Unmarshal(body, &release); err != nil {
 		return nil, err
+	}
+
+	return &release, nil
+}
+
+// getLatestReleaseFromHTML parses the releases page to get the latest version
+// This is a fallback when API rate limit is hit
+func getLatestReleaseFromHTML(client *http.Client) (*GitHubRelease, error) {
+	// Use the redirect to get the latest tag
+	// https://github.com/topxeq/xxlang/releases/latest redirects to /releases/tag/vX.Y.Z
+	releasesURL := "https://github.com/topxeq/xxlang/releases/latest"
+
+	// Don't follow redirects - we want the Location header
+	clientNoRedirect := &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: &http.Transport{Proxy: http.ProxyFromEnvironment},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	resp, err := clientNoRedirect.Get(releasesURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch releases page: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// We expect a redirect (301 or 302)
+	if resp.StatusCode != http.StatusMovedPermanently && resp.StatusCode != http.StatusFound {
+		return nil, fmt.Errorf("unexpected status %d, expected redirect", resp.StatusCode)
+	}
+
+	// Get the redirect location
+	location := resp.Header.Get("Location")
+	if location == "" {
+		return nil, fmt.Errorf("no redirect location found")
+	}
+
+	// Parse the tag from the location URL
+	// Format: https://github.com/topxeq/xxlang/releases/tag/vX.Y.Z
+	var release GitHubRelease
+	if idx := strings.LastIndex(location, "/tag/"); idx != -1 {
+		release.TagName = location[idx+len("/tag/"):]
+	} else {
+		return nil, fmt.Errorf("could not parse tag from redirect URL: %s", location)
+	}
+
+	// Construct asset URLs directly
+	// Format: https://github.com/topxeq/xxlang/releases/download/vX.Y.Z/xxlang-OS-ARCH.ext
+	downloadBase := fmt.Sprintf("https://github.com/topxeq/xxlang/releases/download/%s/", release.TagName)
+
+	// Add common platform assets
+	platforms := []struct {
+		os, arch, ext string
+	}{
+		{"linux", "amd64", ".tar.gz"},
+		{"linux", "arm64", ".tar.gz"},
+		{"darwin", "amd64", ".tar.gz"},
+		{"darwin", "arm64", ".tar.gz"},
+		{"windows", "amd64", ".zip"},
+		{"windows", "386", ".zip"},
+	}
+
+	for _, p := range platforms {
+		assetName := fmt.Sprintf("xxlang-%s-%s%s", p.os, p.arch, p.ext)
+		release.Assets = append(release.Assets, struct {
+			Name string `json:"name"`
+			URL  string `json:"browser_download_url"`
+		}{
+			Name: assetName,
+			URL:  downloadBase + assetName,
+		})
 	}
 
 	return &release, nil
