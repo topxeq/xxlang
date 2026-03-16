@@ -425,6 +425,33 @@ func init() {
 			"getConfigObj": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				return getConfigObjImpl()
 			}),
+
+			// Config string operations
+			"getConfigStr": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("getConfigStr() takes exactly 1 argument")
+				}
+				name, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("getConfigStr() requires a string argument")
+				}
+				return getConfigStrImpl(name.Value)
+			}),
+
+			"setConfigStr": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 2 {
+					return Error("setConfigStr() takes exactly 2 arguments")
+				}
+				name, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("setConfigStr() requires string arguments")
+				}
+				value, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("setConfigStr() requires string arguments")
+				}
+				return setConfigStrImpl(name.Value, value.Value)
+			}),
 		},
 	})
 }
@@ -544,5 +571,64 @@ func tryReadConfigMap(path string) map[string]interface{} {
 	}
 
 	return cfg
+}
+
+// getConfigStrImpl reads a config string from a .cfg file.
+// Search path priority:
+// 1. ~/.xxl/<name>.cfg (user home directory)
+// 2. /.xxl/<name>.cfg (Linux/Unix systems)
+// 3. C:\.xxl\<name>.cfg (Windows systems)
+// Returns null if the file is not found.
+func getConfigStrImpl(name string) objects.Object {
+	// Try user home directory first
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		configPath := filepath.Join(homeDir, ".xxl", name+".cfg")
+		if data, err := os.ReadFile(configPath); err == nil {
+			return String(string(data))
+		}
+	}
+
+	// Try system-wide config based on OS
+	if runtime.GOOS == "windows" {
+		configPath := filepath.Join("C:", ".xxl", name+".cfg")
+		if data, err := os.ReadFile(configPath); err == nil {
+			return String(string(data))
+		}
+	} else {
+		// Linux/Unix systems
+		configPath := filepath.Join("/", ".xxl", name+".cfg")
+		if data, err := os.ReadFile(configPath); err == nil {
+			return String(string(data))
+		}
+	}
+
+	// No config file found
+	return Null()
+}
+
+// setConfigStrImpl writes a config string to a .cfg file.
+// Creates the file in the user's home directory ~/.xxl/<name>.cfg
+// Creates the .xxl directory if it doesn't exist.
+func setConfigStrImpl(name, value string) objects.Object {
+	// Get user home directory
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return Error("cannot get user home directory: " + err.Error())
+	}
+
+	// Create .xxl directory if it doesn't exist
+	xxlDir := filepath.Join(homeDir, ".xxl")
+	if err := os.MkdirAll(xxlDir, 0755); err != nil {
+		return Error("cannot create config directory: " + err.Error())
+	}
+
+	// Write the config file
+	configPath := filepath.Join(xxlDir, name+".cfg")
+	if err := os.WriteFile(configPath, []byte(value), 0644); err != nil {
+		return Error("cannot write config file: " + err.Error())
+	}
+
+	return Null()
 }
 
