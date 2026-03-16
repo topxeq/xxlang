@@ -139,8 +139,24 @@ var Builtins = map[string]*Builtin{
             }
 
             // Check if argument is an error
-            if _, ok := args[0].(*Error); ok {
-                fmt.Fprintln(os.Stderr, args[0].Inspect())
+            if errObj, ok := args[0].(*Error); ok {
+                if len(args) > 1 {
+                    // Optional message with format support
+                    if msg, ok := args[1].(*String); ok {
+                        // Check if message contains format verbs
+                        if strings.Contains(msg.Value, "%") {
+                            // Use error message as argument for format verbs
+                            fmt.Fprintf(os.Stderr, msg.Value+"\n", errObj.Message)
+                        } else {
+                            // Plain message, just print it
+                            fmt.Fprintln(os.Stderr, msg.Value)
+                        }
+                    } else {
+                        fmt.Fprintln(os.Stderr, args[1].Inspect())
+                    }
+                } else {
+                    fmt.Fprintln(os.Stderr, errObj.Inspect())
+                }
                 os.Exit(1)
             }
 

@@ -128,15 +128,17 @@ pln()                                  // 单独添加换行
 
 **格式化动词：** 与 `pl` 相同。
 
-### checkErr(obj)
+### checkErr(obj, message?)
 
-检查参数是否为错误对象。如果是，则将错误信息打印到标准错误输出并以代码 1 退出。否则不做任何操作。
+检查参数是否为错误对象。如果是，则将错误信息打印到标准错误输出并以代码 1 退出。否则不做任何操作。可选地接受自定义消息参数。如果消息中包含格式化占位符（如 `%v`），则将错误信息作为参数进行格式化输出。
 
 ```xxl
 import "io"
 
 var content = io.readFile("config.json")
-checkErr(content)  // 如果读取失败则退出
+checkErr(content)                        // 使用默认错误消息退出
+checkErr(content, "读取文件失败")          // 使用自定义消息退出
+checkErr(content, "错误: %v")             // 使用格式化消息退出
 // 没有错误则继续执行
 pln("文件加载成功")
 ```

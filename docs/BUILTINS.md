@@ -128,15 +128,17 @@ pln()                                   // Add newline separately
 
 **Format verbs:** Same as `pl`.
 
-### checkErr(obj)
+### checkErr(obj, message?)
 
-Checks if the argument is an error object. If it is, prints the error message to stderr and exits with code 1. Otherwise, does nothing.
+Checks if the argument is an error object. If it is, prints the error message to stderr and exits with code 1. Otherwise, does nothing. Optionally accepts a custom message. If the message contains format verbs like `%v`, the error message is used as the argument.
 
 ```xxl
 import "io"
 
 var content = io.readFile("config.json")
-checkErr(content)  // Exit if file read failed
+checkErr(content)                        // Exit with default error message
+checkErr(content, "Failed to read file") // Exit with custom message
+checkErr(content, "Error: %v")           // Exit with formatted message
 // Continue processing if no error
 pln("File loaded successfully")
 ```
