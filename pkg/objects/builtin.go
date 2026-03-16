@@ -2,9 +2,13 @@
 package objects
 
 import (
+	"crypto/hmac"
 	"crypto/md5"
+	"crypto/sha1"
 	"crypto/sha256"
+	"encoding/base32"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"math"
@@ -14,8 +18,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/pquerna/otp/totp"
 )
 
 // BuiltinFunction is the type for built-in functions
@@ -200,13 +202,34 @@ var Builtins = map[string]*Builtin{
                 return newError("first argument to 'genOtpCode' must be STRING, got %s", args[0].Type())
             }
 
-            // Generate TOTP code
-            code, err := totp.GenerateCode(secret.Value, time.Now())
+            // Decode base32 secret (uppercase, no spaces)
+            encoded := strings.ToUpper(strings.ReplaceAll(secret.Value, " ", ""))
+            decoder := base32.StdEncoding.WithPadding(base32.NoPadding)
+            key, err := decoder.DecodeString(encoded)
             if err != nil {
-                return &Error{Message: err.Error()}
+                return &Error{Message: fmt.Sprintf("base32 decode failed: %v", err)}
             }
 
-            return &String{Value: code}
+            // Calculate time step (30 second intervals)
+            timestamp := time.Now().Unix() / 30
+
+            // Convert timestamp to 8-byte big-endian
+            counter := make([]byte, 8)
+            binary.BigEndian.PutUint64(counter, uint64(timestamp))
+
+            // HMAC-SHA1
+            mac := hmac.New(sha1.New, key)
+            mac.Write(counter)
+            hash := mac.Sum(nil)
+
+            // Dynamic truncation (RFC 4226)
+            offset := hash[len(hash)-1] & 0x0f
+            code := binary.BigEndian.Uint32(hash[offset:offset+4]) & 0x7fffffff
+
+            // Get 6-digit code
+            otp := code % 1000000
+
+            return &String{Value: fmt.Sprintf("%06d", otp)}
         },
     },
     "typeOf": {
