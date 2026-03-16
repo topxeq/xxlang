@@ -2164,6 +2164,41 @@ var Builtins = map[string]*Builtin{
             return defaultValue
         },
     },
+    "switchExists": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 2 {
+                return newError("wrong number of arguments for switchExists. got=%d, want=2", len(args))
+            }
+
+            arr, ok := args[0].(*Array)
+            if !ok {
+                return newError("first argument to 'switchExists' must be ARRAY, got %s", args[0].Type())
+            }
+
+            switchName, ok := args[1].(*String)
+            if !ok {
+                return newError("second argument to 'switchExists' must be STRING, got %s", args[1].Type())
+            }
+
+            // Search for an exact match or a switch with value (e.g., "-verbose" or "-verbose=true")
+            for _, elem := range arr.Elements {
+                str, ok := elem.(*String)
+                if !ok {
+                    continue
+                }
+                // Exact match
+                if str.Value == switchName.Value {
+                    return TRUE
+                }
+                // Match as prefix (e.g., "-verbose=" matches "-verbose=true")
+                if strings.HasPrefix(str.Value, switchName.Value+"=") {
+                    return TRUE
+                }
+            }
+
+            return FALSE
+        },
+    },
 }
 
 // RunCodeImpl is the implementation function for runCode, set by the VM

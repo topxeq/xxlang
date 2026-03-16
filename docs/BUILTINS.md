@@ -471,6 +471,27 @@ if (hasVerbose == "" && includes(argsG, "-verbose")) {
 - The value after the prefix if found
 - The default value if the prefix is not found
 
+### switchExists(array, switchName)
+
+Checks if a switch argument exists in the array. Returns `true` if the switch is found either as an exact match or with a value suffix.
+
+```xxl
+// With argsG = ["script.xxl", "-port=8080", "-verbose", "-debug=true"]
+
+var hasPort = switchExists(argsG, "-port")       // true (matches "-port=8080")
+var hasVerbose = switchExists(argsG, "-verbose") // true (exact match)
+var hasDebug = switchExists(argsG, "-debug")     // true (matches "-debug=true")
+var hasMissing = switchExists(argsG, "-missing") // false
+```
+
+**Parameters:**
+- `array` - An array of strings to search (typically `argsG`)
+- `switchName` - The switch name to look for (e.g., "-verbose")
+
+**Returns:**
+- `true` if the switch exists (either exact match or with `=` suffix)
+- `false` if the switch is not found
+
 ---
 
 ## Utility Functions
