@@ -1792,6 +1792,9 @@ func getBuiltin(index int) *objects.Builtin {
 		// Output utilities
 		objects.Builtins["pl"],            // 100
 		objects.Builtins["prf"],           // 101
+		// Validation utilities
+		objects.Builtins["checkErr"],      // 102
+		objects.Builtins["checkEmpty"],    // 103
 	}
 
 	if index < 0 || index >= len(builtins) {

@@ -157,6 +157,9 @@ func NewSymbolTable() *SymbolTable {
 	// Output utilities
 	s.DefineBuiltin(100, "pl")
 	s.DefineBuiltin(101, "prf")
+	// Validation utilities
+	s.DefineBuiltin(102, "checkErr")
+	s.DefineBuiltin(103, "checkEmpty")
 	return s
 }
 

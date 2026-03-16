@@ -128,7 +128,34 @@ pln()                                  // 单独添加换行
 
 **格式化动词：** 与 `pl` 相同。
 
-格式化打印，末尾自动换行。类似 Go 语言的 `fmt.Printf`，但自动在末尾添加 `\n`。
+### checkErr(obj)
+
+检查参数是否为错误对象。如果是，则将错误信息打印到标准错误输出并以代码 1 退出。否则不做任何操作。
+
+```xxl
+import "io"
+
+var content = io.readFile("config.json")
+checkErr(content)  // 如果读取失败则退出
+// 没有错误则继续执行
+pln("文件加载成功")
+```
+
+### checkEmpty(str, message?)
+
+检查字符串是否为空。如果为空，则以代码 1 退出。可选地接受第二个参数作为错误信息，在退出前打印到标准错误输出。
+
+```xxl
+var name = ""
+checkEmpty(name)                      // 如果为空则静默退出
+checkEmpty(name, "name 不能为空")       // 如果为空则打印消息并退出
+
+var value = "hello"
+checkEmpty(value)  // 不为空，不做任何操作，继续执行
+pln("值: ", value)
+```
+
+### pl(format, args...)
 
 ```xxl
 pl("Hello, World!")                    // Hello, World!

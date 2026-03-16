@@ -128,7 +128,34 @@ pln()                                   // Add newline separately
 
 **Format verbs:** Same as `pl`.
 
-Formatted print with a trailing newline. Similar to Go's `fmt.Printf` but automatically adds `\n` at the end.
+### checkErr(obj)
+
+Checks if the argument is an error object. If it is, prints the error message to stderr and exits with code 1. Otherwise, does nothing.
+
+```xxl
+import "io"
+
+var content = io.readFile("config.json")
+checkErr(content)  // Exit if file read failed
+// Continue processing if no error
+pln("File loaded successfully")
+```
+
+### checkEmpty(str, message?)
+
+Checks if a string is empty. If it is, exits with code 1. Optionally accepts a second argument as an error message to print to stderr before exiting.
+
+```xxl
+var name = ""
+checkEmpty(name)                      // Exit silently if empty
+checkEmpty(name, "name cannot be empty")  // Exit with message if empty
+
+var value = "hello"
+checkEmpty(value)  // Does nothing, continues execution
+pln("Value: ", value)
+```
+
+### pl(format, args...)
 
 ```xxl
 pl("Hello, World!")                    // Hello, World!

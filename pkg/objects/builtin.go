@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -128,6 +129,45 @@ var Builtins = map[string]*Builtin{
             }
 
             fmt.Printf(format.Value, formatArgs...)
+            return NULL
+        },
+    },
+    "checkErr": {
+        Fn: func(args ...Object) Object {
+            if len(args) < 1 {
+                return newError("wrong number of arguments for checkErr. got=%d, want>=1", len(args))
+            }
+
+            // Check if argument is an error
+            if _, ok := args[0].(*Error); ok {
+                fmt.Fprintln(os.Stderr, args[0].Inspect())
+                os.Exit(1)
+            }
+
+            return NULL
+        },
+    },
+    "checkEmpty": {
+        Fn: func(args ...Object) Object {
+            if len(args) < 1 {
+                return newError("wrong number of arguments for checkEmpty. got=%d, want>=1", len(args))
+            }
+
+            str, ok := args[0].(*String)
+            if !ok {
+                return newError("argument to 'checkEmpty' must be STRING, got %s", args[0].Type())
+            }
+
+            if str.Value == "" {
+                if len(args) > 1 {
+                    // Optional error message
+                    if msg, ok := args[1].(*String); ok {
+                        fmt.Fprintln(os.Stderr, msg.Value)
+                    }
+                }
+                os.Exit(1)
+            }
+
             return NULL
         },
     },
