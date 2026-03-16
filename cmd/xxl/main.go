@@ -290,8 +290,6 @@ func runFromCloud(scriptName string) {
     baseURL := strings.TrimSuffix(cloudUrlBase, "/")
     fullURL := baseURL + "/" + scriptName
 
-    fmt.Printf("Fetching script from cloud: %s\n", fullURL)
-
     // Run from the constructed URL
     runFromURL(fullURL)
 }
@@ -307,8 +305,6 @@ func runFileOrURL(source string) {
 
 // runFromURL fetches and executes an xxlang script from a URL
 func runFromURL(url string) {
-    fmt.Printf("Fetching script from: %s\n", url)
-
     // Create HTTP client with timeout
     client := &http.Client{
         Timeout: 30 * time.Second,
@@ -333,8 +329,6 @@ func runFromURL(url string) {
         fmt.Printf("Error reading response: %v\n", err)
         os.Exit(1)
     }
-
-    fmt.Printf("Executing script (%d bytes)...\n\n", len(code))
 
     // Execute the code
     executeCode(string(code), url)
