@@ -3,6 +3,7 @@
 package stdlib
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -419,6 +420,129 @@ func init() {
 					String(pid),
 				)
 			}),
+
+			// Config object
+			"getConfigObject": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				return getConfigObjectImpl()
+			}),
 		},
 	})
 }
+
+// getConfigObjectImpl reads the Xxlang configuration from a JSON file.
+// Search path priority:
+// 1. ~/.xxl/settings.json (user home directory)
+// 2. /.xxl/settings.json (Linux/Unix systems)
+// 3. C:\.xxl\settings.json (Windows systems)
+// Returns an empty map if no config file is found.
+func getConfigObjectImpl() objects.Object {
+	// Try user home directory first
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		configPath := filepath.Join(homeDir, ".xxl", "settings.json")
+		if cfg := tryReadConfigFile(configPath); cfg != nil {
+			return cfg
+		}
+	}
+
+	// Try system-wide config based on OS
+	if runtime.GOOS == "windows" {
+		configPath := filepath.Join("C:", ".xxl", "settings.json")
+		if cfg := tryReadConfigFile(configPath); cfg != nil {
+			return cfg
+		}
+	} else {
+		// Linux/Unix systems
+		configPath := filepath.Join("/", ".xxl", "settings.json")
+		if cfg := tryReadConfigFile(configPath); cfg != nil {
+			return cfg
+		}
+	}
+
+	// No config file found, return empty map
+	return &objects.Map{Pairs: make(map[objects.HashKey]objects.MapPair)}
+}
+
+// tryReadConfigFile attempts to read and parse a config file at the given path.
+// Returns nil if the file doesn't exist or cannot be parsed.
+func tryReadConfigFile(path string) objects.Object {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+
+	var cfg map[string]interface{}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil
+	}
+
+	// Convert to Xxlang map
+	pairs := make(map[objects.HashKey]objects.MapPair)
+	for key, val := range cfg {
+		keyObj := String(key)
+		valObj := jsonToXxlang(val)
+		if errObj, ok := valObj.(*objects.Error); ok {
+			// Skip values that can't be converted
+			_ = errObj
+			continue
+		}
+		pairs[keyObj.HashKey()] = objects.MapPair{
+			Key:   keyObj,
+			Value: valObj,
+		}
+	}
+
+	return &objects.Map{Pairs: pairs}
+}
+
+// GetConfigMap reads the Xxlang configuration and returns it as a Go map.
+// This is useful for accessing config values from Go code before the VM starts.
+// Search path priority:
+// 1. ~/.xxl/settings.json (user home directory)
+// 2. /.xxl/settings.json (Linux/Unix systems)
+// 3. C:\.xxl\settings.json (Windows systems)
+// Returns an empty map if no config file is found.
+func GetConfigMap() map[string]interface{} {
+	// Try user home directory first
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		configPath := filepath.Join(homeDir, ".xxl", "settings.json")
+		if cfg := tryReadConfigMap(configPath); cfg != nil {
+			return cfg
+		}
+	}
+
+	// Try system-wide config based on OS
+	if runtime.GOOS == "windows" {
+		configPath := filepath.Join("C:", ".xxl", "settings.json")
+		if cfg := tryReadConfigMap(configPath); cfg != nil {
+			return cfg
+		}
+	} else {
+		// Linux/Unix systems
+		configPath := filepath.Join("/", ".xxl", "settings.json")
+		if cfg := tryReadConfigMap(configPath); cfg != nil {
+			return cfg
+		}
+	}
+
+	// No config file found, return empty map
+	return make(map[string]interface{})
+}
+
+// tryReadConfigMap attempts to read and parse a config file at the given path.
+// Returns nil if the file doesn't exist or cannot be parsed.
+func tryReadConfigMap(path string) map[string]interface{} {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+
+	var cfg map[string]interface{}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil
+	}
+
+	return cfg
+}
+
