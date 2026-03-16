@@ -181,6 +181,35 @@ println(cfg["cloudUrlBase"])
 // }
 ```
 
+#### getConfigStr(name)
+从 `.cfg` 文件读取配置字符串。文件搜索顺序如下：
+
+1. `~/.xxl/<name>.cfg`（用户主目录）
+2. `/.xxl/<name>.cfg`（Linux/Unix 系统）
+3. `C:\.xxl\<name>.cfg`（Windows 系统）
+
+如果文件不存在，返回 `null`。
+
+```xxl
+import "os"
+var token = os.getConfigStr("api_token")
+if (token != null) {
+    println("找到令牌: " + token)
+}
+```
+
+#### setConfigStr(name, value)
+将配置字符串写入用户主目录下的 `.cfg` 文件（`~/.xxl/<name>.cfg`）。如果 `.xxl` 目录不存在，会自动创建。
+
+```xxl
+import "os"
+os.setConfigStr("api_token", "my-secret-token")
+
+// 之后读取
+var token = os.getConfigStr("api_token")
+println(token)  // "my-secret-token"
+```
+
 ### 系统信息
 
 #### platform()

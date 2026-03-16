@@ -238,6 +238,10 @@ See [Plugin System](docs/PLUGIN.md) for details.
 
 ## Built-in Functions
 
+For a complete reference of all built-in functions, see [Built-in Functions Reference](docs/BUILTINS.md).
+
+For standard library modules, see [Standard Library Reference](docs/STDLIB.md).
+
 ### String Functions
 ```xxl
 upper("hello")              // "HELLO"
