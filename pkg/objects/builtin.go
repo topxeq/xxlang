@@ -2180,18 +2180,13 @@ var Builtins = map[string]*Builtin{
                 return newError("second argument to 'switchExists' must be STRING, got %s", args[1].Type())
             }
 
-            // Search for an exact match or a switch with value (e.g., "-verbose" or "-verbose=true")
+            // Search for an exact match only
             for _, elem := range arr.Elements {
                 str, ok := elem.(*String)
                 if !ok {
                     continue
                 }
-                // Exact match
                 if str.Value == switchName.Value {
-                    return TRUE
-                }
-                // Match as prefix (e.g., "-verbose=" matches "-verbose=true")
-                if strings.HasPrefix(str.Value, switchName.Value+"=") {
                     return TRUE
                 }
             }
