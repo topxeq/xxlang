@@ -4,16 +4,64 @@
 
 ## 目录
 
+- [预置全局变量](#预置全局变量)
 - [基础函数](#基础函数)
 - [字符串函数](#字符串函数)
 - [数学函数](#数学函数)
 - [类型转换函数](#类型转换函数)
 - [数组函数](#数组函数)
 - [映射函数](#映射函数)
+- [命令行参数函数](#命令行参数函数)
 - [工具函数](#工具函数)
 - [动态代码执行](#动态代码执行)
 - [类型方法](#类型方法)
 - [标准库模块](#标准库模块)
+
+---
+
+## 预置全局变量
+
+Xxlang 提供预置的全局变量，在所有脚本中自动可用：
+
+### argsG
+
+包含所有命令行参数的字符串数组（包括程序名和脚本路径）。
+
+```xxl
+// 示例：运行 `xxl script.xxl -- -port=8080 -verbose`
+// argsG 为：["xxl", "script.xxl", "--", "-port=8080", "-verbose"]
+
+println("参数：", argsG)
+println("第一个参数：", argsG[0])
+```
+
+### scriptPathG
+
+当前执行脚本的路径。可能是：
+- 文件路径（执行本地脚本时）
+- URL（执行远程脚本时）
+- 空字符串（REPL 模式或嵌入式运行时）
+
+```xxl
+println("脚本路径：", scriptPathG)
+
+if (scriptPathG == "") {
+    println("运行在 REPL 或嵌入式模式")
+}
+```
+
+### 示例：命令行参数解析
+
+```xxl
+// 解析命令行参数
+var port = getSwitch(argsG, "-port=", "8080")
+var host = getSwitch(argsG, "-host=", "localhost")
+var verbose = includes(argsG, "-verbose")
+
+println("端口：", port)
+println("主机：", host)
+println("详细模式：", verbose)
+```
 
 ---
 
@@ -389,6 +437,39 @@ hasKey({"a": 1}, "b")  // false
 ```xxl
 delete({"a": 1, "b": 2}, "a")  // {"b": 2}
 ```
+
+---
+
+## 命令行参数函数
+
+### getSwitch(array, prefix, default)
+
+在数组中搜索以指定前缀开头的元素，返回前缀后的值。如果未找到，返回默认值。
+
+这对于解析命令行参数特别有用。
+
+```xxl
+// 假设 argsG = ["script.xxl", "-port=8080", "-host=localhost", "-verbose"]
+
+var port = getSwitch(argsG, "-port=", "3000")       // "8080"
+var host = getSwitch(argsG, "-host=", "127.0.0.1")  // "localhost"
+var debug = getSwitch(argsG, "-debug=", "false")    // "false"（未找到）
+
+// 检查标志型参数（前缀后无值）
+var hasVerbose = getSwitch(argsG, "-verbose", "")   // ""（找到了，但没有值）
+if (hasVerbose == "" && includes(argsG, "-verbose")) {
+    println("详细模式已启用")
+}
+```
+
+**参数：**
+- `array` - 要搜索的字符串数组（通常是 `argsG`）
+- `prefix` - 要搜索的前缀（如 "-port="）
+- `default` - 未找到时返回的默认值
+
+**返回值：**
+- 找到时返回前缀后的值
+- 未找到时返回默认值
 
 ---
 

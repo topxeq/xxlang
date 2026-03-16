@@ -4,16 +4,64 @@ This document provides a comprehensive reference for all built-in functions in X
 
 ## Table of Contents
 
+- [Preset Global Variables](#preset-global-variables)
 - [Basic Functions](#basic-functions)
 - [String Functions](#string-functions)
 - [Math Functions](#math-functions)
 - [Type Conversion Functions](#type-conversion-functions)
 - [Array Functions](#array-functions)
 - [Map Functions](#map-functions)
+- [Command Line Argument Functions](#command-line-argument-functions)
 - [Utility Functions](#utility-functions)
 - [Dynamic Code Execution](#dynamic-code-execution)
 - [Type Methods](#type-methods)
 - [Standard Library Modules](#standard-library-modules)
+
+---
+
+## Preset Global Variables
+
+Xxlang provides preset global variables that are automatically available in all scripts:
+
+### argsG
+
+A string array containing all command line arguments (including the program name and script path).
+
+```xxl
+// Example: running `xxl script.xxl -- -port=8080 -verbose`
+// argsG would be: ["xxl", "script.xxl", "--", "-port=8080", "-verbose"]
+
+println("Arguments: ", argsG)
+println("First arg: ", argsG[0])
+```
+
+### scriptPathG
+
+The path of the currently executing script. This can be:
+- A file path when running a local script
+- A URL when running a script from a URL
+- An empty string when in REPL mode or embedded execution
+
+```xxl
+println("Script path: ", scriptPathG)
+
+if (scriptPathG == "") {
+    println("Running in REPL or embedded mode")
+}
+```
+
+### Example: Command Line Argument Parsing
+
+```xxl
+// Parse command line arguments
+var port = getSwitch(argsG, "-port=", "8080")
+var host = getSwitch(argsG, "-host=", "localhost")
+var verbose = includes(argsG, "-verbose")
+
+println("Port: ", port)
+println("Host: ", host)
+println("Verbose: ", verbose)
+```
 
 ---
 
@@ -389,6 +437,39 @@ Returns a new map with the specified key removed.
 ```xxl
 delete({"a": 1, "b": 2}, "a")  // {"b": 2}
 ```
+
+---
+
+## Command Line Argument Functions
+
+### getSwitch(array, prefix, default)
+
+Searches an array for an element that starts with the given prefix and returns the value after the prefix. If not found, returns the default value.
+
+This is particularly useful for parsing command line arguments.
+
+```xxl
+// With argsG = ["script.xxl", "-port=8080", "-host=localhost", "-verbose"]
+
+var port = getSwitch(argsG, "-port=", "3000")      // "8080"
+var host = getSwitch(argsG, "-host=", "127.0.0.1") // "localhost"
+var debug = getSwitch(argsG, "-debug=", "false")   // "false" (not found)
+
+// Check for flag-style arguments (no value after prefix)
+var hasVerbose = getSwitch(argsG, "-verbose", "")  // "" (found, but no value)
+if (hasVerbose == "" && includes(argsG, "-verbose")) {
+    println("Verbose mode enabled")
+}
+```
+
+**Parameters:**
+- `array` - An array of strings to search (typically `argsG`)
+- `prefix` - The prefix to search for (e.g., "-port=")
+- `default` - The default value to return if the prefix is not found
+
+**Returns:**
+- The value after the prefix if found
+- The default value if the prefix is not found
 
 ---
 
