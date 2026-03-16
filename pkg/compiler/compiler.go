@@ -151,6 +151,9 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(95, "shuffle")
 	s.DefineBuiltin(96, "sample")
 	s.DefineBuiltin(97, "chunk")
+	// Command line argument utilities
+	s.DefineBuiltin(98, "getSwitch")
+	s.DefineBuiltin(99, "args")
 	return s
 }
 

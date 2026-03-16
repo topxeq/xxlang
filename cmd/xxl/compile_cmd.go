@@ -94,6 +94,9 @@ func compileCmd(args []string) error {
 
     // Compile
     c := compiler.New()
+    // Define preset global variables before compilation
+    c.DefineGlobal("argsG")
+    c.DefineGlobal("scriptPathG")
     if err := c.Compile(program); err != nil {
         return fmt.Errorf("compile error: %v", err)
     }
