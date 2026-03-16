@@ -152,7 +152,7 @@ xxl -cloud basic.xxl
 
 ```xxl
 import "os"
-var cfg = os.getConfigObject()
+var cfg = os.getConfigObj()
 println(cfg["cloudUrlBase"])
 ```
 

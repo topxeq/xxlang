@@ -422,20 +422,20 @@ func init() {
 			}),
 
 			// Config object
-			"getConfigObject": BuiltinFunc(func(args ...objects.Object) objects.Object {
-				return getConfigObjectImpl()
+			"getConfigObj": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				return getConfigObjImpl()
 			}),
 		},
 	})
 }
 
-// getConfigObjectImpl reads the Xxlang configuration from a JSON file.
+// getConfigObjImpl reads the Xxlang configuration from a JSON file.
 // Search path priority:
 // 1. ~/.xxl/settings.json (user home directory)
 // 2. /.xxl/settings.json (Linux/Unix systems)
 // 3. C:\.xxl\settings.json (Windows systems)
 // Returns an empty map if no config file is found.
-func getConfigObjectImpl() objects.Object {
+func getConfigObjImpl() objects.Object {
 	// Try user home directory first
 	homeDir, err := os.UserHomeDir()
 	if err == nil {

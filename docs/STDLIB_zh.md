@@ -159,7 +159,7 @@ println(args[0])  // 程序名
 
 ### 配置
 
-#### getConfigObject()
+#### getConfigObj()
 返回 Xxlang 配置对象（映射类型）。配置从 JSON 文件读取，搜索优先级如下：
 
 1. `~/.xxl/settings.json`（用户主目录）
@@ -170,7 +170,7 @@ println(args[0])  // 程序名
 
 ```xxl
 import "os"
-var cfg = os.getConfigObject()
+var cfg = os.getConfigObj()
 println(cfg["cloudUrlBase"])
 
 // 示例配置文件 (~/.xxl/settings.json):
