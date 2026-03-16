@@ -359,3 +359,38 @@ func TestRegexErrorCases(t *testing.T) {
 		t.Errorf("find() with int pattern should return Error, got %T", result)
 	}
 }
+
+func TestCompiledRegexType(t *testing.T) {
+	result := callRegexFunc("compile", String(`\d+`))
+	cr, ok := result.(*CompiledRegex)
+	if !ok {
+		t.Fatalf("compile() should return CompiledRegex, got %T", result)
+	}
+
+	// Test Type method
+	if cr.Type() != "COMPILED_REGEX" {
+		t.Errorf("CompiledRegex.Type() = %s, want 'COMPILED_REGEX'", cr.Type())
+	}
+
+	// Test TypeTag method
+	if cr.TypeTag() != objects.TagUnknown {
+		t.Errorf("CompiledRegex.TypeTag() = %d, want TagUnknown", cr.TypeTag())
+	}
+
+	// Test Inspect method
+	expected := "[compiled regex: \\d+]"
+	if cr.Inspect() != expected {
+		t.Errorf("CompiledRegex.Inspect() = %s, want '%s'", cr.Inspect(), expected)
+	}
+
+	// Test ToBool method
+	if cr.ToBool() != objects.TRUE {
+		t.Error("CompiledRegex.ToBool() should be TRUE")
+	}
+
+	// Test HashKey method
+	hk := cr.HashKey()
+	if hk.Type != "COMPILED_REGEX" || hk.Value != 0 {
+		t.Errorf("CompiledRegex.HashKey() = {%s, %d}, want {COMPILED_REGEX, 0}", hk.Type, hk.Value)
+	}
+}

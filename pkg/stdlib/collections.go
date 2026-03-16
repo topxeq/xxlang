@@ -465,7 +465,7 @@ func init() {
 				result := make([]objects.Object, n)
 				copy(result, arr.Elements)
 				for i := n - 1; i > 0; i-- {
-					j := int(simpleRand()) % (i + 1)
+					j := int(simpleRand() % uint64(i+1))
 					result[i], result[j] = result[j], result[i]
 				}
 				return Array(result...)
@@ -491,13 +491,13 @@ func init() {
 					}
 				}
 				if count == 1 {
-					idx := int(simpleRand()) % len(arr.Elements)
+					idx := int(simpleRand() % uint64(len(arr.Elements)))
 					return arr.Elements[idx]
 				}
 				// Return multiple samples
 				result := []objects.Object{}
 				for i := int64(0); i < count && i < int64(len(arr.Elements)); i++ {
-					idx := int(simpleRand()) % len(arr.Elements)
+					idx := int(simpleRand() % uint64(len(arr.Elements)))
 					result = append(result, arr.Elements[idx])
 				}
 				return Array(result...)
