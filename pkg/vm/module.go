@@ -19,7 +19,7 @@ import (
 // loadModuleFile loads, compiles, and executes a module file.
 // It handles caching and circular dependency detection.
 // Supports module types:
-//   - std/* : Standard library modules
+//   - stdlib modules (e.g., "os", "json") : Standard library modules
 //   - plugin/* : WebAssembly plugins by name
 //   - *.wasm : WebAssembly plugins by file path
 //   - *.xxl : xxlang source files
@@ -35,19 +35,17 @@ func (vm *VM) loadModuleFile(resolvedPath string) (*objects.Module, error) {
 	}
 
 	// Check if it's a standard library module
-	if strings.HasPrefix(resolvedPath, "std/") {
-		if stdlib.Has(resolvedPath) {
-			stdMod := stdlib.Get(resolvedPath)
-			if stdMod == nil {
-				return nil, fmt.Errorf("stdlib module not found: %s", resolvedPath)
-			}
-			// Convert stdlib.Module to objects.Module
-			return &objects.Module{
-				Name:    stdMod.Name,
-				Exports: stdMod.Exports,
-				Globals: nil, // stdlib modules don't have isolated globals
-			}, nil
+	if stdlib.Has(resolvedPath) {
+		stdMod := stdlib.Get(resolvedPath)
+		if stdMod == nil {
+			return nil, fmt.Errorf("stdlib module not found: %s", resolvedPath)
 		}
+		// Convert stdlib.Module to objects.Module
+		return &objects.Module{
+			Name:    stdMod.Name,
+			Exports: stdMod.Exports,
+			Globals: nil, // stdlib modules don't have isolated globals
+		}, nil
 	}
 
     // Check cache first

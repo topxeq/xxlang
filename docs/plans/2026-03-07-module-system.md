@@ -150,7 +150,7 @@ func TestResolveRelativePath(t *testing.T) {
 
 func TestResolveBarePath(t *testing.T) {
     // Bare paths (no ./ or ../) should return error for now
-    _, err := Resolve("/project/main.xxl", "std/math")
+    _, err := Resolve("/project/main.xxl", "math")
     if err == nil {
         t.Error("expected error for bare import path")
     }
@@ -1488,7 +1488,7 @@ math.add(1, 2)
 
 - `./math` → resolves to `./math.xxl` relative to current file
 - `../utils` → resolves to parent directory
-- Bare imports like `std/math` reserved for future standard library
+- Bare imports like `math` reserved for future standard library
 ```
 
 **Step 2: Commit**

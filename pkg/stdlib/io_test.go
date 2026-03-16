@@ -10,9 +10,9 @@ import (
 )
 
 func callIOFunc(name string, args ...objects.Object) objects.Object {
-	mod := Get("std/io")
+	mod := Get("io")
 	if mod == nil {
-		panic("std/io module not found")
+		panic("io module not found")
 	}
 	fn, ok := mod.Exports[name].(*objects.Builtin)
 	if !ok {

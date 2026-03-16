@@ -5,24 +5,24 @@
 Xxlang includes a comprehensive standard library organized into modules. All modules are imported using the `import` statement.
 
 ```xxl
-import "std/io"
+import "io"
 io.println("Hello, World!")
 ```
 
 ## Table of Contents
 
-- [std/io](#stdio) - Input/output operations
-- [std/string](#stdstring) - String utilities
-- [std/math](#stdmath) - Mathematical functions
-- [std/array](#stdarray) - Array utilities
-- [std/json](#stdjson) - JSON encoding/decoding
-- [std/regex](#stdregex) - Regular expressions
-- [std/crypto](#stdcrypto) - Cryptographic functions
-- [std/time](#stdtime) - Time and date functions
+- [io](#stdio) - Input/output operations
+- [string](#stdstring) - String utilities
+- [math](#stdmath) - Mathematical functions
+- [array](#stdarray) - Array utilities
+- [json](#stdjson) - JSON encoding/decoding
+- [regex](#stdregex) - Regular expressions
+- [crypto](#stdcrypto) - Cryptographic functions
+- [time](#stdtime) - Time and date functions
 
 ---
 
-## std/io
+## io
 
 Input/output operations for reading, writing, and console interaction.
 
@@ -152,7 +152,7 @@ println(args[0])  // Program name
 
 ---
 
-## std/string
+## string
 
 String manipulation utilities.
 
@@ -244,7 +244,7 @@ indexOf("hello", "x")   // -1
 
 ---
 
-## std/math
+## math
 
 Mathematical functions.
 
@@ -343,7 +343,7 @@ var die = randomInt(1, 6)
 
 ---
 
-## std/array
+## array
 
 Array manipulation utilities.
 
@@ -451,7 +451,7 @@ isEmpty([1])     // false
 
 ---
 
-## std/json
+## json
 
 JSON encoding and decoding.
 
@@ -492,7 +492,7 @@ decode('{"x": 10}')["x"]  // 10
 
 ---
 
-## std/regex
+## regex
 
 Regular expression operations.
 
@@ -534,7 +534,7 @@ split("\\s+", "a  b   c")  // ["a", "b", "c"]
 
 ---
 
-## std/crypto
+## crypto
 
 Cryptographic functions.
 
@@ -631,7 +631,7 @@ randomHex(16)  // "a1b2c3d4..." (32 hex chars)
 
 ---
 
-## std/time
+## time
 
 Time and date functions for working with timestamps and durations.
 
@@ -641,7 +641,7 @@ Time and date functions for working with timestamps and durations.
 Returns current Unix timestamp in seconds.
 
 ```xxl
-import "std/time"
+import "time"
 var ts = time.unix()  // e.g., 1710422400
 ```
 

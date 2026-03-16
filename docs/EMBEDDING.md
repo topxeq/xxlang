@@ -268,7 +268,7 @@ interp := interpreter.New(interpreter.WithStdlib())
 
 // Now Xxlang can import stdlib modules
 interp.Eval(`
-    import "std/math"
+    import "math"
     println(math.sqrt(16))
 `)
 ```

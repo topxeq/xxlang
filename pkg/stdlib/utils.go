@@ -8,7 +8,7 @@ import (
 
 func init() {
 	Register(&Module{
-		Name: "std/utils",
+		Name: "utils",
 		Exports: map[string]objects.Object{
 			// deepCopy creates a deep copy of any object
 			"deepCopy": BuiltinFunc(func(args ...objects.Object) objects.Object {

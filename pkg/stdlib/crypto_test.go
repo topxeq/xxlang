@@ -9,9 +9,9 @@ import (
 )
 
 func callCryptoFunc(name string, args ...objects.Object) objects.Object {
-	mod := Get("std/crypto")
+	mod := Get("crypto")
 	if mod == nil {
-		panic("std/crypto module not found")
+		panic("crypto module not found")
 	}
 	fn, ok := mod.Exports[name].(*objects.Builtin)
 	if !ok {

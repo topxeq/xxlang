@@ -38,7 +38,7 @@ export const VERSION = "1.0"
 |-------------|-------------|
 | `import "./math"` | `./math.xxl` |
 | `import "../utils"` | `../utils.xxl` |
-| `import "std/math"` | Standard library (future) |
+| `import "math"` | Standard library (future) |
 
 Resolution rules:
 1. Relative paths (`./` or `../`) are resolved relative to the importing file

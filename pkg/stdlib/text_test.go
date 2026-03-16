@@ -8,14 +8,14 @@ import (
 )
 
 func TestTextModuleExists(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	if mod == nil {
-		t.Fatal("std/text module not found")
+		t.Fatal("text module not found")
 	}
 }
 
 func TestWordWrap(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["wordWrap"].(*objects.Builtin)
 
 	result := fn.Fn(String("hello world test"), Int(10))
@@ -32,7 +32,7 @@ func TestWordWrap(t *testing.T) {
 }
 
 func TestTruncate(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["truncate"].(*objects.Builtin)
 
 	tests := []struct {
@@ -57,7 +57,7 @@ func TestTruncate(t *testing.T) {
 }
 
 func TestWordCount(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["wordCount"].(*objects.Builtin)
 
 	tests := []struct {
@@ -83,7 +83,7 @@ func TestWordCount(t *testing.T) {
 }
 
 func TestLineCount(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["lineCount"].(*objects.Builtin)
 
 	tests := []struct {
@@ -109,7 +109,7 @@ func TestLineCount(t *testing.T) {
 }
 
 func TestCharCount(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["charCount"].(*objects.Builtin)
 
 	tests := []struct {
@@ -134,7 +134,7 @@ func TestCharCount(t *testing.T) {
 }
 
 func TestByteCount(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["byteCount"].(*objects.Builtin)
 
 	result := fn.Fn(String("hello"))
@@ -148,7 +148,7 @@ func TestByteCount(t *testing.T) {
 }
 
 func TestLines(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["lines"].(*objects.Builtin)
 
 	result := fn.Fn(String("line1\nline2\nline3"))
@@ -163,7 +163,7 @@ func TestLines(t *testing.T) {
 }
 
 func TestJoinLines(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["joinLines"].(*objects.Builtin)
 
 	lines := Array(String("line1"), String("line2"), String("line3"))
@@ -180,7 +180,7 @@ func TestJoinLines(t *testing.T) {
 }
 
 func TestWords(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["words"].(*objects.Builtin)
 
 	result := fn.Fn(String("hello world test"))
@@ -195,7 +195,7 @@ func TestWords(t *testing.T) {
 }
 
 func TestChars(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["chars"].(*objects.Builtin)
 
 	result := fn.Fn(String("abc"))
@@ -210,7 +210,7 @@ func TestChars(t *testing.T) {
 }
 
 func TestTitle(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["title"].(*objects.Builtin)
 
 	result := fn.Fn(String("hello world"))
@@ -225,7 +225,7 @@ func TestTitle(t *testing.T) {
 }
 
 func TestCapitalize(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["capitalize"].(*objects.Builtin)
 
 	tests := []struct {
@@ -250,7 +250,7 @@ func TestCapitalize(t *testing.T) {
 }
 
 func TestSwapCase(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["swapCase"].(*objects.Builtin)
 
 	tests := []struct {
@@ -275,7 +275,7 @@ func TestSwapCase(t *testing.T) {
 }
 
 func TestIsAlphaNum(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["isAlphaNum"].(*objects.Builtin)
 
 	tests := []struct {
@@ -301,7 +301,7 @@ func TestIsAlphaNum(t *testing.T) {
 }
 
 func TestIsAlpha(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["isAlpha"].(*objects.Builtin)
 
 	tests := []struct {
@@ -327,7 +327,7 @@ func TestIsAlpha(t *testing.T) {
 }
 
 func TestIsNumeric(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["isNumeric"].(*objects.Builtin)
 
 	tests := []struct {
@@ -354,7 +354,7 @@ func TestIsNumeric(t *testing.T) {
 }
 
 func TestIsSpace(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["isSpace"].(*objects.Builtin)
 
 	tests := []struct {
@@ -380,7 +380,7 @@ func TestIsSpace(t *testing.T) {
 }
 
 func TestIsBlank(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["isBlank"].(*objects.Builtin)
 
 	tests := []struct {
@@ -406,7 +406,7 @@ func TestIsBlank(t *testing.T) {
 }
 
 func TestRemoveSpaces(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["removeSpaces"].(*objects.Builtin)
 
 	result := fn.Fn(String("hello world test"))
@@ -421,7 +421,7 @@ func TestRemoveSpaces(t *testing.T) {
 }
 
 func TestNormalizeSpace(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["normalizeSpace"].(*objects.Builtin)
 
 	result := fn.Fn(String("hello    world\t\ttest"))
@@ -436,7 +436,7 @@ func TestNormalizeSpace(t *testing.T) {
 }
 
 func TestPadLeft(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["padLeft"].(*objects.Builtin)
 
 	result := fn.Fn(String("42"), Int(5), String("0"))
@@ -451,7 +451,7 @@ func TestPadLeft(t *testing.T) {
 }
 
 func TestPadRight(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["padRight"].(*objects.Builtin)
 
 	result := fn.Fn(String("42"), Int(5), String("."))
@@ -466,7 +466,7 @@ func TestPadRight(t *testing.T) {
 }
 
 func TestIndent(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["indent"].(*objects.Builtin)
 
 	result := fn.Fn(String("line1\nline2"), String("  "))
@@ -482,7 +482,7 @@ func TestIndent(t *testing.T) {
 }
 
 func TestDedent(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["dedent"].(*objects.Builtin)
 
 	result := fn.Fn(String("  line1\n  line2\n    line3"))
@@ -498,7 +498,7 @@ func TestDedent(t *testing.T) {
 }
 
 func TestCenterText(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["centerText"].(*objects.Builtin)
 
 	result := fn.Fn(String("hi"), Int(6))
@@ -514,7 +514,7 @@ func TestCenterText(t *testing.T) {
 }
 
 func TestRepeat(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["repeat"].(*objects.Builtin)
 
 	result := fn.Fn(String("ab"), Int(3))
@@ -529,7 +529,7 @@ func TestRepeat(t *testing.T) {
 }
 
 func TestCharAt(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["charAt"].(*objects.Builtin)
 
 	result := fn.Fn(String("hello"), Int(1))
@@ -544,7 +544,7 @@ func TestCharAt(t *testing.T) {
 }
 
 func TestCharCode(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["charCode"].(*objects.Builtin)
 
 	result := fn.Fn(String("A"), Int(0))
@@ -559,7 +559,7 @@ func TestCharCode(t *testing.T) {
 }
 
 func TestFromCode(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["fromCode"].(*objects.Builtin)
 
 	result := fn.Fn(Int(65))
@@ -574,7 +574,7 @@ func TestFromCode(t *testing.T) {
 }
 
 func TestShellEscape(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["shellEscape"].(*objects.Builtin)
 
 	result := fn.Fn(String("hello world"))
@@ -590,7 +590,7 @@ func TestShellEscape(t *testing.T) {
 }
 
 func TestJsonEscape(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["jsonEscape"].(*objects.Builtin)
 
 	result := fn.Fn(String(`hello "world"`))
@@ -606,7 +606,7 @@ func TestJsonEscape(t *testing.T) {
 }
 
 func TestJsonUnescape(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 	fn := mod.Exports["jsonUnescape"].(*objects.Builtin)
 
 	result := fn.Fn(String(`hello\nworld`))
@@ -622,7 +622,7 @@ func TestJsonUnescape(t *testing.T) {
 }
 
 func TestTextErrors(t *testing.T) {
-	mod := Get("std/text")
+	mod := Get("text")
 
 	tests := []struct {
 		name   string

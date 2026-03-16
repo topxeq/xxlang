@@ -9,9 +9,9 @@ import (
 )
 
 func callMathFunc(name string, args ...objects.Object) objects.Object {
-	mod := Get("std/math")
+	mod := Get("math")
 	if mod == nil {
-		panic("std/math module not found")
+		panic("math module not found")
 	}
 	fn, ok := mod.Exports[name].(*objects.Builtin)
 	if !ok {
@@ -25,9 +25,9 @@ func floatEquals(a, b float64) bool {
 }
 
 func TestMathConstants(t *testing.T) {
-	mod := Get("std/math")
+	mod := Get("math")
 	if mod == nil {
-		t.Fatal("std/math module not found")
+		t.Fatal("math module not found")
 	}
 
 	pi := mod.Exports["PI"].(*objects.Float)

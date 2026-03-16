@@ -34,8 +34,8 @@ func WithLoader(loader *module.Loader) Option {
 }
 
 // WithStdlib enables standard library modules.
-// This registers all stdlib modules (std/math, std/string, etc.)
-// so they can be imported with `import "std/math"`.
+// This registers all stdlib modules (math, string, etc.)
+// so they can be imported with `import "math"`.
 func WithStdlib() Option {
 	return func(i *Interpreter) {
 		i.stdlib = true

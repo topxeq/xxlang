@@ -14,7 +14,7 @@ import (
 
 func init() {
 	Register(&Module{
-		Name: "std/validate",
+		Name: "validate",
 		Exports: map[string]objects.Object{
 			// Check if string is valid email
 			"isEmail": BuiltinFunc(func(args ...objects.Object) objects.Object {

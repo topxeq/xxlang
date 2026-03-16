@@ -10,7 +10,7 @@ import (
 
 func init() {
 	Register(&Module{
-		Name: "std/math",
+		Name: "math",
 		Exports: map[string]objects.Object{
 			// Constants
 			"PI": Float(math.Pi),

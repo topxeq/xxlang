@@ -5,24 +5,24 @@
 Xxlang 包含一个按模块组织的完整标准库。所有模块使用 `import` 语句导入。
 
 ```xxl
-import "std/io"
+import "io"
 io.println("你好，世界！")
 ```
 
 ## 目录
 
-- [std/io](#stdio) - 输入输出操作
-- [std/string](#stdstring) - 字符串工具
-- [std/math](#stdmath) - 数学函数
-- [std/array](#stdarray) - 数组工具
-- [std/json](#stdjson) - JSON 编解码
-- [std/regex](#stdregex) - 正则表达式
-- [std/crypto](#stdcrypto) - 加密函数
-- [std/time](#stdtime) - 时间日期函数
+- [io](#stdio) - 输入输出操作
+- [string](#stdstring) - 字符串工具
+- [math](#stdmath) - 数学函数
+- [array](#stdarray) - 数组工具
+- [json](#stdjson) - JSON 编解码
+- [regex](#stdregex) - 正则表达式
+- [crypto](#stdcrypto) - 加密函数
+- [time](#stdtime) - 时间日期函数
 
 ---
 
-## std/io
+## io
 
 输入输出操作，包括读写和控制台交互。
 
@@ -152,7 +152,7 @@ println(args[0])  // 程序名
 
 ---
 
-## std/string
+## string
 
 字符串操作工具。
 
@@ -244,7 +244,7 @@ indexOf("hello", "x")   // -1
 
 ---
 
-## std/math
+## math
 
 数学函数。
 
@@ -343,7 +343,7 @@ var die = randomInt(1, 6)
 
 ---
 
-## std/array
+## array
 
 数组操作工具。
 
@@ -451,7 +451,7 @@ isEmpty([1])     // false
 
 ---
 
-## std/json
+## json
 
 JSON 编解码。
 
@@ -492,7 +492,7 @@ decode('{"x": 10}')["x"]  // 10
 
 ---
 
-## std/regex
+## regex
 
 正则表达式操作。
 
@@ -534,7 +534,7 @@ split("\\s+", "a  b   c")  // ["a", "b", "c"]
 
 ---
 
-## std/crypto
+## crypto
 
 加密函数。
 
@@ -631,7 +631,7 @@ randomHex(16)  // "a1b2c3d4..." (32个十六进制字符)
 
 ---
 
-## std/time
+## time
 
 处理时间戳和持续时间的时间日期函数。
 
@@ -641,7 +641,7 @@ randomHex(16)  // "a1b2c3d4..." (32个十六进制字符)
 返回当前 Unix 时间戳（秒）。
 
 ```xxl
-import "std/time"
+import "time"
 var ts = time.unix()  // 例如: 1710422400
 ```
 

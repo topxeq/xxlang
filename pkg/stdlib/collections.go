@@ -8,7 +8,7 @@ import (
 
 func init() {
 	Register(&Module{
-		Name: "std/collections",
+		Name: "collections",
 		Exports: map[string]objects.Object{
 			// Set operations (using arrays)
 			"union": BuiltinFunc(func(args ...objects.Object) objects.Object {

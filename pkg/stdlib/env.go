@@ -19,7 +19,7 @@ func SetScriptArgs(args []string) {
 
 func init() {
 	Register(&Module{
-		Name: "std/env",
+		Name: "env",
 		Exports: map[string]objects.Object{
 			// Get environment variable
 			"get": BuiltinFunc(func(args ...objects.Object) objects.Object {

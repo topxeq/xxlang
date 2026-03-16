@@ -12,7 +12,7 @@ import (
 
 func init() {
 	Register(&Module{
-		Name: "std/csv",
+		Name: "csv",
 		Exports: map[string]objects.Object{
 			// Parse CSV string to array of arrays
 			"parse": BuiltinFunc(func(args ...objects.Object) objects.Object {

@@ -725,11 +725,11 @@ chunk([1, 2, 3, 4, 5], 2)     // [[1, 2], [3, 4], [5]]
 使用 `import` 语句导入标准库模块：
 
 ```xxl
-import "std/math"
-import "std/io" { readFile, writeFile }
+import "math"
+import "io" { readFile, writeFile }
 ```
 
-### std/math
+### math
 
 数学函数和常量。
 
@@ -756,7 +756,7 @@ import "std/io" { readFile, writeFile }
 | `max(args...)` | 最大值 | `math.max(3, 1, 2)` |
 | `random()` | 随机数 [0, 1) | `math.random()` |
 
-### std/io
+### io
 
 输入输出操作。
 
@@ -780,7 +780,7 @@ import "std/io" { readFile, writeFile }
 | `setEnv(key, value)` | 设置环境变量 | `io.setEnv("DEBUG", "1")` |
 | `args()` | 获取命令行参数 | `io.args()` |
 
-### std/os
+### os
 
 操作系统工具。
 
@@ -812,7 +812,7 @@ import "std/io" { readFile, writeFile }
 | `tempFile(pattern)` | 创建临时文件 | `os.tempFile("app-*")` |
 | `tempDir(pattern)` | 创建临时目录 | `os.tempDir("app-*")` |
 
-### std/json
+### json
 
 JSON 编解码。
 
@@ -823,7 +823,7 @@ JSON 编解码。
 | `encode(obj)` | 编码为 JSON | `json.encode(obj)` |
 | `decode(str)` | 解码 JSON 字符串 | `json.decode('{"a": 1}')` |
 
-### std/regex
+### regex
 
 正则表达式操作（兼容 PCRE）。
 
@@ -840,7 +840,7 @@ JSON 编解码。
 | `count(pattern, str)` | 计数匹配 | `regex.count("\\d+", "a1b2c3")` |
 | `test(pattern)` | 验证模式 | `regex.test("\\d+")` |
 
-### std/time
+### time
 
 时间和日期操作。
 
@@ -869,7 +869,7 @@ JSON 编解码。
 | `isLeapYear(year)` | 是否闰年 | `time.isLeapYear(2024)` |
 | `daysInMonth(year, month)` | 月天数 | `time.daysInMonth(2024, 2)` |
 
-### std/string
+### string
 
 字符串工具模块。
 
@@ -894,7 +894,7 @@ JSON 编解码。
 | `toString(x)` | 转字符串 | `string.toString(42)` |
 | `reverse(s)` | 反转字符串 | `string.reverse("hello")` |
 
-### std/crypto
+### crypto
 
 加密函数。
 
@@ -909,7 +909,7 @@ JSON 编解码。
 | `hexEncode(s)` | 十六进制编码 | `crypto.hexEncode("hello")` |
 | `hexDecode(s)` | 十六进制解码 | `crypto.hexDecode("68656c6c6f")` |
 
-### std/fmt
+### fmt
 
 格式化工具。
 
@@ -918,7 +918,7 @@ JSON 编解码。
 | `sprintf(format, args...)` | 格式化字符串 | `fmt.sprintf("名字: %s, 年龄: %d", "张三", 25)` |
 | `printf(format, args...)` | 格式化打印 | `fmt.printf("值: %d\n", 42)` |
 
-### std/array
+### array
 
 扩展数组工具。
 
@@ -929,51 +929,51 @@ JSON 编解码。
 | `reduce(arr, fn, init)` | 归约元素 | `array.reduce([1, 2, 3], fn(a, b) { a + b }, 0)` |
 | `forEach(arr, fn)` | 遍历元素 | `array.forEach([1, 2, 3], fn(x) { println(x) })` |
 
-### std/collections
+### collections
 
 集合工具（集合、栈、队列）。
 
-### std/bytes
+### bytes
 
 字节数组操作。
 
-### std/csv
+### csv
 
 CSV 文件解析和写入。
 
-### std/debug
+### debug
 
 调试工具。
 
-### std/encoding
+### encoding
 
 编解码工具（Base64、Hex）。
 
-### std/env
+### env
 
 环境变量工具。
 
-### std/log
+### log
 
 日志工具。
 
-### std/net
+### net
 
 网络工具。
 
-### std/sort
+### sort
 
 高级排序工具。
 
-### std/strconv
+### strconv
 
 字符串转换工具。
 
-### std/text
+### text
 
 文本处理工具。
 
-### std/uuid
+### uuid
 
 UUID 生成。
 

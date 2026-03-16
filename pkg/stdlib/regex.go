@@ -12,7 +12,7 @@ import (
 
 func init() {
 	Register(&Module{
-		Name: "std/regex",
+		Name: "regex",
 		Exports: map[string]objects.Object{
 			// compile compiles a regex pattern and returns a compiled regex object
 			"compile": BuiltinFunc(func(args ...objects.Object) objects.Object {

@@ -2,10 +2,10 @@
 // A simple echo-like utility demonstrating command line argument handling
 // Similar to the Unix 'echo' command
 
-let env = load("std/env")
-let array = load("std/array")
-let string = load("std/string")
-let fmt = load("std/fmt")
+let env = load("env")
+let array = load("array")
+let string = load("string")
+let fmt = load("fmt")
 
 // Parse flags
 let args = env.args()

@@ -8,14 +8,14 @@ import (
 )
 
 func TestStrconvModuleExists(t *testing.T) {
-	mod := Get("std/strconv")
+	mod := Get("strconv")
 	if mod == nil {
-		t.Fatal("std/strconv module not found")
+		t.Fatal("strconv module not found")
 	}
 }
 
 func TestParseInt(t *testing.T) {
-	mod := Get("std/strconv")
+	mod := Get("strconv")
 	fn := mod.Exports["parseInt"].(*objects.Builtin)
 
 	tests := []struct {
@@ -40,7 +40,7 @@ func TestParseInt(t *testing.T) {
 }
 
 func TestParseIntErrors(t *testing.T) {
-	mod := Get("std/strconv")
+	mod := Get("strconv")
 	fn := mod.Exports["parseInt"].(*objects.Builtin)
 
 	// No args
@@ -63,7 +63,7 @@ func TestParseIntErrors(t *testing.T) {
 }
 
 func TestFormatInt(t *testing.T) {
-	mod := Get("std/strconv")
+	mod := Get("strconv")
 	fn := mod.Exports["formatInt"].(*objects.Builtin)
 
 	tests := []struct {
@@ -88,7 +88,7 @@ func TestFormatInt(t *testing.T) {
 }
 
 func TestParseFloat(t *testing.T) {
-	mod := Get("std/strconv")
+	mod := Get("strconv")
 	fn := mod.Exports["parseFloat"].(*objects.Builtin)
 
 	tests := []struct {
@@ -113,7 +113,7 @@ func TestParseFloat(t *testing.T) {
 }
 
 func TestParseFloatErrors(t *testing.T) {
-	mod := Get("std/strconv")
+	mod := Get("strconv")
 	fn := mod.Exports["parseFloat"].(*objects.Builtin)
 
 	result := fn.Fn()
@@ -133,7 +133,7 @@ func TestParseFloatErrors(t *testing.T) {
 }
 
 func TestFormatFloat(t *testing.T) {
-	mod := Get("std/strconv")
+	mod := Get("strconv")
 	fn := mod.Exports["formatFloat"].(*objects.Builtin)
 
 	result := fn.Fn(Float(3.14159), Int(2))
@@ -147,7 +147,7 @@ func TestFormatFloat(t *testing.T) {
 }
 
 func TestParseBool(t *testing.T) {
-	mod := Get("std/strconv")
+	mod := Get("strconv")
 	fn := mod.Exports["parseBool"].(*objects.Builtin)
 
 	tests := []struct {
@@ -173,7 +173,7 @@ func TestParseBool(t *testing.T) {
 }
 
 func TestParseBoolErrors(t *testing.T) {
-	mod := Get("std/strconv")
+	mod := Get("strconv")
 	fn := mod.Exports["parseBool"].(*objects.Builtin)
 
 	result := fn.Fn()
@@ -193,7 +193,7 @@ func TestParseBoolErrors(t *testing.T) {
 }
 
 func TestFormatBool(t *testing.T) {
-	mod := Get("std/strconv")
+	mod := Get("strconv")
 	fn := mod.Exports["formatBool"].(*objects.Builtin)
 
 	tests := []struct {
@@ -217,7 +217,7 @@ func TestFormatBool(t *testing.T) {
 }
 
 func TestQuote(t *testing.T) {
-	mod := Get("std/strconv")
+	mod := Get("strconv")
 	fn := mod.Exports["quote"].(*objects.Builtin)
 
 	result := fn.Fn(String("hello\nworld"))
@@ -231,7 +231,7 @@ func TestQuote(t *testing.T) {
 }
 
 func TestUnquote(t *testing.T) {
-	mod := Get("std/strconv")
+	mod := Get("strconv")
 	fn := mod.Exports["unquote"].(*objects.Builtin)
 
 	result := fn.Fn(String(`"hello\nworld"`))
@@ -245,7 +245,7 @@ func TestUnquote(t *testing.T) {
 }
 
 func TestToString(t *testing.T) {
-	mod := Get("std/strconv")
+	mod := Get("strconv")
 	fn := mod.Exports["toString"].(*objects.Builtin)
 
 	tests := []struct {
@@ -272,7 +272,7 @@ func TestToString(t *testing.T) {
 }
 
 func TestToInt(t *testing.T) {
-	mod := Get("std/strconv")
+	mod := Get("strconv")
 	fn := mod.Exports["toInt"].(*objects.Builtin)
 
 	tests := []struct {
@@ -299,7 +299,7 @@ func TestToInt(t *testing.T) {
 }
 
 func TestToFloat(t *testing.T) {
-	mod := Get("std/strconv")
+	mod := Get("strconv")
 	fn := mod.Exports["toFloat"].(*objects.Builtin)
 
 	tests := []struct {
@@ -326,7 +326,7 @@ func TestToFloat(t *testing.T) {
 }
 
 func TestToBool(t *testing.T) {
-	mod := Get("std/strconv")
+	mod := Get("strconv")
 	fn := mod.Exports["toBool"].(*objects.Builtin)
 
 	tests := []struct {
@@ -358,7 +358,7 @@ func TestToBool(t *testing.T) {
 }
 
 func TestToJSON(t *testing.T) {
-	mod := Get("std/strconv")
+	mod := Get("strconv")
 	fn := mod.Exports["toJSON"].(*objects.Builtin)
 
 	obj := &objects.Map{
@@ -381,7 +381,7 @@ func TestToJSON(t *testing.T) {
 }
 
 func TestToJSONPretty(t *testing.T) {
-	mod := Get("std/strconv")
+	mod := Get("strconv")
 	fn := mod.Exports["toJSONPretty"].(*objects.Builtin)
 
 	obj := &objects.Map{
@@ -403,7 +403,7 @@ func TestToJSONPretty(t *testing.T) {
 }
 
 func TestFormatNumber(t *testing.T) {
-	mod := Get("std/strconv")
+	mod := Get("strconv")
 	fn := mod.Exports["formatNumber"].(*objects.Builtin)
 
 	tests := []struct {
@@ -427,7 +427,7 @@ func TestFormatNumber(t *testing.T) {
 }
 
 func TestFormatBytes(t *testing.T) {
-	mod := Get("std/strconv")
+	mod := Get("strconv")
 	fn := mod.Exports["formatBytes"].(*objects.Builtin)
 
 	tests := []struct {
@@ -453,7 +453,7 @@ func TestFormatBytes(t *testing.T) {
 }
 
 func TestFormatDuration(t *testing.T) {
-	mod := Get("std/strconv")
+	mod := Get("strconv")
 	fn := mod.Exports["formatDuration"].(*objects.Builtin)
 
 	tests := []struct {
@@ -531,7 +531,7 @@ func TestObjectToGoValueMap(t *testing.T) {
 }
 
 func TestStrconvErrors(t *testing.T) {
-	mod := Get("std/strconv")
+	mod := Get("strconv")
 
 	// Test error cases
 	tests := []struct {

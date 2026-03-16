@@ -11,10 +11,10 @@
 //   --file          Input file path
 
 // Load required modules
-let env = load("std/env")
-let array = load("std/array")
-let string = load("std/string")
-let fmt = load("std/fmt")
+let env = load("env")
+let array = load("array")
+let string = load("string")
+let fmt = load("fmt")
 
 // Define version
 let VERSION = "1.0.0"

@@ -13,7 +13,7 @@ import (
 
 func init() {
 	Register(&Module{
-		Name: "std/strconv",
+		Name: "strconv",
 		Exports: map[string]objects.Object{
 			// Integer conversions
 			"parseInt": BuiltinFunc(func(args ...objects.Object) objects.Object {

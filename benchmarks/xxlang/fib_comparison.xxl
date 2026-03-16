@@ -1,5 +1,5 @@
 // Detailed comparison of naive vs optimized fibonacci
-import "std/time"
+import "time"
 
 // ========== Naive recursive (slow) ==========
 func fibNaive(n) {

@@ -8,7 +8,7 @@ import (
 
 func init() {
 	Register(&Module{
-		Name: "std/fp",
+		Name: "fp",
 		Exports: map[string]objects.Object{
 			// Compose functions (right to left)
 			"compose": BuiltinFunc(func(args ...objects.Object) objects.Object {

@@ -11,7 +11,7 @@ import (
 
 func init() {
 	Register(&Module{
-		Name: "std/json",
+		Name: "json",
 		Exports: map[string]objects.Object{
 			"parse": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				if len(args) != 1 {

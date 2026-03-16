@@ -8,9 +8,9 @@ import (
 )
 
 func callArrayFunc(name string, args ...objects.Object) objects.Object {
-	mod := Get("std/array")
+	mod := Get("array")
 	if mod == nil {
-		panic("std/array module not found")
+		panic("array module not found")
 	}
 	fn, ok := mod.Exports[name].(*objects.Builtin)
 	if !ok {

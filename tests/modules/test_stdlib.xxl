@@ -1,9 +1,9 @@
 // Test stdlib module import
-import * as math from "std/math"
-import { PI, E } from "std/math"
+import * as math from "math"
+import { PI, E } from "math"
 
 // Test math module
-println("=== Testing std/math module ===")
+println("=== Testing math module ===")
 println("PI: ", PI)
 println("E: ", E)
 println("abs(-5): ", math.abs(-5))
@@ -17,9 +17,9 @@ println("max(1, 5, 3): ", math.max(1, 5, 3))
 println("min(1, 5, 3): ", math.min(1, 5, 3))
 
 // Test string module
-import * as str from "std/string"
+import * as str from "string"
 
-println("\n=== Testing std/string module ===")
+println("\n=== Testing string module ===")
 println("len(\"hello\"): ", str.len("hello"))
 println("toUpper(\"hello\"): ", str.toUpper("hello"))
 println("toLower(\"HELLO\"): ", str.toLower("HELLO"))
@@ -30,7 +30,7 @@ println("hasPrefix(\"hello\", \"he\"): ", str.hasPrefix("hello", "he"))
 println("hasSuffix(\"hello\", \"lo\"): ", str.hasSuffix("hello", "lo"))
 
 // Test importing specific functions
-import { toUpper, toLower, split, join } from "std/string"
+import { toUpper, toLower, split, join } from "string"
 
 println("\n=== Testing destructured imports ===")
 println("toUpper(\"test\"): ", toUpper("test"))
@@ -42,9 +42,9 @@ println("split(\"a,b,c\", \",\"): ", parts)
 println("join(parts, \"-\"): ", join(parts, "-"))
 
 // Test array module
-import * as arr from "std/array"
+import * as arr from "array"
 
-println("\n=== Testing std/array module ===")
+println("\n=== Testing array module ===")
 var nums = [1, 2, 3, 4, 5]
 println("Original array: ", nums)
 println("len: ", arr.len(nums))
@@ -85,9 +85,9 @@ var nestedArr = [[1, 2], [3, 4], 5]
 println("flatten: ", arr.flatten(nestedArr))
 
 // Test io module
-import * as io from "std/io"
+import * as io from "io"
 
-println("\n=== Testing std/io module ===")
+println("\n=== Testing io module ===")
 println("cwd: ", io.cwd())
 println("args: ", io.args())
 println("exists(\".\"): ", io.exists("."))

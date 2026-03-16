@@ -216,7 +216,7 @@ func fib(n) {
 var _ = fib(10)
 
 // Time the execution
-import "std/time"
+import "time"
 var start = time.unixMs()
 var result1 = fib(35)
 var mid = time.unixMs()
