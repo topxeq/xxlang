@@ -153,6 +153,7 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(97, "chunk")
 	// Command line argument utilities
 	s.DefineBuiltin(98, "getSwitch")
+	s.DefineBuiltin(99, "switchExists")
 	return s
 }
 
