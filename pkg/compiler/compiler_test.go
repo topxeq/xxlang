@@ -469,8 +469,8 @@ func TestFunctionDefinition(t *testing.T) {
 }
 
 func TestFunctionCall(t *testing.T) {
-	// Use a function with side effects (print) so it won't be inlined
-	input := "func f(x) { print(x); return x; } f(42);"
+	// Use a function with side effects (pr) so it won't be inlined
+	input := "func f(x) { pr(x); return x; } f(42);"
 
 	program := parse(input)
 	compiler := New()
@@ -538,8 +538,8 @@ func TestBuiltinFunctions(t *testing.T) {
 		builtin  string
 	}{
 		{`len("hello");`, "len"},
-		{`print("hello");`, "print"},
-		{`println("hello");`, "println"},
+		{`pr("hello");`, "pr"},
+		{`pln("hello");`, "pln"},
 	}
 
 	for _, tt := range tests {

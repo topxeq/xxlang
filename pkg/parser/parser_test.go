@@ -1978,7 +1978,7 @@ func TestTryCatchStatement(t *testing.T) {
 }
 
 func TestTryFinallyStatement(t *testing.T) {
-	input := `try { x = 1 } finally { print("done") }`
+	input := `try { x = 1 } finally { pr("done") }`
 
 	l := lexer.New(input)
 	p := New(l)
@@ -2012,7 +2012,7 @@ func TestTryFinallyStatement(t *testing.T) {
 }
 
 func TestTryCatchFinallyStatement(t *testing.T) {
-	input := `try { throw "err" } catch (e) { print(e) } finally { print("cleanup") }`
+	input := `try { throw "err" } catch (e) { pr(e) } finally { pr("cleanup") }`
 
 	l := lexer.New(input)
 	p := New(l)

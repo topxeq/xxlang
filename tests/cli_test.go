@@ -88,27 +88,27 @@ func TestCLIBasicExecution(t *testing.T) {
 	}{
 		{
 			name:     "integer output",
-			code:     "print(42)",
+			code:     "pr(42)",
 			expected: "42",
 		},
 		{
 			name:     "string output",
-			code:     `print("hello world")`,
+			code:     `pr("hello world")`,
 			expected: "hello world",
 		},
 		{
 			name:     "arithmetic",
-			code:     "print(2 + 3 * 4)",
+			code:     "pr(2 + 3 * 4)",
 			expected: "14",
 		},
 		{
 			name:     "function call",
-			code:     "func add(a, b) { return a + b } print(add(5, 7))",
+			code:     "func add(a, b) { return a + b } pr(add(5, 7))",
 			expected: "12",
 		},
 		{
 			name:     "boolean",
-			code:     "print(true && false)",
+			code:     "pr(true && false)",
 			expected: "false",
 		},
 	}
@@ -172,7 +172,7 @@ func TestCLIMultiStatement(t *testing.T) {
 var a = 10
 var b = 20
 var c = a + b
-print(c)
+pr(c)
 `
 	filePath := createTestFile(t, code)
 	output, err := runXxlang(t, binPath, filePath)
@@ -193,7 +193,7 @@ var sum = 0
 for (var i = 1; i <= 5; i = i + 1) {
     sum = sum + i
 }
-print(sum)
+pr(sum)
 `
 	filePath := createTestFile(t, code)
 	output, err := runXxlang(t, binPath, filePath)
@@ -216,7 +216,7 @@ func fib(n) {
     }
     return fib(n - 1) + fib(n - 2)
 }
-print(fib(15))
+pr(fib(15))
 `
 	filePath := createTestFile(t, code)
 	output, err := runXxlang(t, binPath, filePath)
@@ -243,9 +243,9 @@ func makeCounter() {
 }
 
 var c = makeCounter()
-print(c())
-print(c())
-print(c())
+pr(c())
+pr(c())
+pr(c())
 `
 	filePath := createTestFile(t, code)
 	output, err := runXxlang(t, binPath, filePath)
@@ -268,7 +268,7 @@ var sum = 0
 for (var i = 0; i < len(arr); i = i + 1) {
     sum = sum + arr[i]
 }
-print(sum)
+pr(sum)
 `
 	filePath := createTestFile(t, code)
 	output, err := runXxlang(t, binPath, filePath)
@@ -289,7 +289,7 @@ var person = {
     "name": "Alice",
     "age": 30
 }
-print(person["name"])
+pr(person["name"])
 `
 	filePath := createTestFile(t, code)
 	output, err := runXxlang(t, binPath, filePath)
@@ -310,17 +310,17 @@ func TestCLIBuiltinFunctions(t *testing.T) {
 		code     string
 		expected string
 	}{
-		{"len string", `print(len("hello"))`, "5"},
-		{"len array", `print(len([1, 2, 3]))`, "3"},
-		{"typeOf int", `print(typeOf(42))`, "INT"},
-		{"typeOf string", `print(typeOf("hello"))`, "STRING"},
-		{"upper", `print(upper("hello"))`, "HELLO"},
-		{"lower", `print(lower("HELLO"))`, "hello"},
-		{"abs", `print(abs(-42))`, "42"},
-		{"sqrt", `print(sqrt(16))`, "4"},
-		{"pow", `print(pow(2, 8))`, "256"},
-		{"min", `print(min(3, 7))`, "3"},
-		{"max", `print(max(3, 7))`, "7"},
+		{"len string", `pr(len("hello"))`, "5"},
+		{"len array", `pr(len([1, 2, 3]))`, "3"},
+		{"typeOf int", `pr(typeOf(42))`, "INT"},
+		{"typeOf string", `pr(typeOf("hello"))`, "STRING"},
+		{"upper", `pr(upper("hello"))`, "HELLO"},
+		{"lower", `pr(lower("HELLO"))`, "hello"},
+		{"abs", `pr(abs(-42))`, "42"},
+		{"sqrt", `pr(sqrt(16))`, "4"},
+		{"pow", `pr(pow(2, 8))`, "256"},
+		{"min", `pr(min(3, 7))`, "3"},
+		{"max", `pr(max(3, 7))`, "7"},
 	}
 
 	for _, tt := range tests {
@@ -358,8 +358,8 @@ func bubbleSort(arr) {
 
 var numbers = [64, 34, 25, 12, 22, 11, 90]
 var sorted = bubbleSort(numbers)
-print(sorted[0])
-print(sorted[len(sorted) - 1])
+pr(sorted[0])
+pr(sorted[len(sorted) - 1])
 `
 	filePath := createTestFile(t, code)
 	output, err := runXxlang(t, binPath, filePath)

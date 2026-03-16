@@ -523,9 +523,9 @@ func TestDivisionByZero(t *testing.T) {
 func TestBuiltinPrint(t *testing.T) {
 	// Just ensure print and println don't error
 	tests := []string{
-		`print("hello");`,
-		`println("hello");`,
-		`print(1, 2, 3);`,
+		`pr("hello");`,
+		`pln("hello");`,
+		`pr(1, 2, 3);`,
 	}
 
 	for _, input := range tests {
