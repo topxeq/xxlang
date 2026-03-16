@@ -57,13 +57,13 @@ func TestDeepCopy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mod := Get("std/utils")
+			mod := Get("utils")
 			if mod == nil {
-				t.Fatal("std/utils module not found")
+				t.Fatal("utils module not found")
 			}
 			fn, ok := mod.Exports["deepCopy"]
 			if !ok {
-				t.Fatal("deepCopy not found in std/utils")
+				t.Fatal("deepCopy not found in utils")
 			}
 			builtin := fn.(*objects.Builtin)
 			result := builtin.Fn(tt.input)
@@ -83,7 +83,7 @@ func TestDeepCopy(t *testing.T) {
 }
 
 func TestDeepCopyMap(t *testing.T) {
-	mod := Get("std/utils")
+	mod := Get("utils")
 	fn := mod.Exports["deepCopy"].(*objects.Builtin)
 
 	// Create a map
@@ -111,7 +111,7 @@ func TestDeepCopyMap(t *testing.T) {
 }
 
 func TestShallowCopy(t *testing.T) {
-	mod := Get("std/utils")
+	mod := Get("utils")
 	fn := mod.Exports["shallowCopy"].(*objects.Builtin)
 
 	tests := []struct {
@@ -162,7 +162,7 @@ func TestShallowCopy(t *testing.T) {
 }
 
 func TestDeepMerge(t *testing.T) {
-	mod := Get("std/utils")
+	mod := Get("utils")
 	fn := mod.Exports["deepMerge"].(*objects.Builtin)
 
 	target := &objects.Map{
@@ -205,7 +205,7 @@ func TestDeepMerge(t *testing.T) {
 }
 
 func TestDeepMergeNested(t *testing.T) {
-	mod := Get("std/utils")
+	mod := Get("utils")
 	fn := mod.Exports["deepMerge"].(*objects.Builtin)
 
 	target := &objects.Map{
@@ -246,7 +246,7 @@ func TestDeepMergeNested(t *testing.T) {
 }
 
 func TestDeepEquals(t *testing.T) {
-	mod := Get("std/utils")
+	mod := Get("utils")
 	fn := mod.Exports["deepEquals"].(*objects.Builtin)
 
 	tests := []struct {
@@ -289,7 +289,7 @@ func TestDeepEquals(t *testing.T) {
 }
 
 func TestPick(t *testing.T) {
-	mod := Get("std/utils")
+	mod := Get("utils")
 	fn := mod.Exports["pick"].(*objects.Builtin)
 
 	m := &objects.Map{
@@ -317,7 +317,7 @@ func TestPick(t *testing.T) {
 }
 
 func TestOmit(t *testing.T) {
-	mod := Get("std/utils")
+	mod := Get("utils")
 	fn := mod.Exports["omit"].(*objects.Builtin)
 
 	m := &objects.Map{
@@ -345,7 +345,7 @@ func TestOmit(t *testing.T) {
 }
 
 func TestKeys(t *testing.T) {
-	mod := Get("std/utils")
+	mod := Get("utils")
 	fn := mod.Exports["keys"].(*objects.Builtin)
 
 	m := &objects.Map{
@@ -367,7 +367,7 @@ func TestKeys(t *testing.T) {
 }
 
 func TestValues(t *testing.T) {
-	mod := Get("std/utils")
+	mod := Get("utils")
 	fn := mod.Exports["values"].(*objects.Builtin)
 
 	m := &objects.Map{
@@ -389,7 +389,7 @@ func TestValues(t *testing.T) {
 }
 
 func TestEntries(t *testing.T) {
-	mod := Get("std/utils")
+	mod := Get("utils")
 	fn := mod.Exports["entries"].(*objects.Builtin)
 
 	m := &objects.Map{
@@ -419,7 +419,7 @@ func TestEntries(t *testing.T) {
 }
 
 func TestFromEntries(t *testing.T) {
-	mod := Get("std/utils")
+	mod := Get("utils")
 	fn := mod.Exports["fromEntries"].(*objects.Builtin)
 
 	entries := Array(
@@ -444,7 +444,7 @@ func TestFromEntries(t *testing.T) {
 }
 
 func TestType(t *testing.T) {
-	mod := Get("std/utils")
+	mod := Get("utils")
 	fn := mod.Exports["type"].(*objects.Builtin)
 
 	tests := []struct {
@@ -473,7 +473,7 @@ func TestType(t *testing.T) {
 }
 
 func TestIsPrimitive(t *testing.T) {
-	mod := Get("std/utils")
+	mod := Get("utils")
 	fn := mod.Exports["isPrimitive"].(*objects.Builtin)
 
 	tests := []struct {
@@ -502,7 +502,7 @@ func TestIsPrimitive(t *testing.T) {
 }
 
 func TestIsEmpty(t *testing.T) {
-	mod := Get("std/utils")
+	mod := Get("utils")
 	fn := mod.Exports["isEmpty"].(*objects.Builtin)
 
 	tests := []struct {
@@ -534,7 +534,7 @@ func TestIsEmpty(t *testing.T) {
 }
 
 func TestSize(t *testing.T) {
-	mod := Get("std/utils")
+	mod := Get("utils")
 	fn := mod.Exports["size"].(*objects.Builtin)
 
 	tests := []struct {
@@ -687,7 +687,7 @@ func TestOmitKeysInternal(t *testing.T) {
 }
 
 func TestUtilsModuleErrors(t *testing.T) {
-	mod := Get("std/utils")
+	mod := Get("utils")
 
 	// Test argument errors
 	tests := []struct {

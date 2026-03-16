@@ -11,7 +11,7 @@ import (
 
 func init() {
 	Register(&Module{
-		Name: "std/bytes",
+		Name: "bytes",
 		Exports: map[string]objects.Object{
 			// Create byte array from string
 			"fromString": BuiltinFunc(func(args ...objects.Object) objects.Object {

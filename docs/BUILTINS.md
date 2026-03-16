@@ -725,11 +725,11 @@ All types have the following universal methods:
 Import standard library modules with the `import` statement:
 
 ```xxl
-import "std/math"
-import "std/io" { readFile, writeFile }
+import "math"
+import "io" { readFile, writeFile }
 ```
 
-### std/math
+### math
 
 Mathematical functions and constants.
 
@@ -756,7 +756,7 @@ Mathematical functions and constants.
 | `max(args...)` | Maximum of values | `math.max(3, 1, 2)` |
 | `random()` | Random number [0, 1) | `math.random()` |
 
-### std/io
+### io
 
 Input/output operations.
 
@@ -780,7 +780,7 @@ Input/output operations.
 | `setEnv(key, value)` | Set environment variable | `io.setEnv("DEBUG", "1")` |
 | `args()` | Get command line arguments | `io.args()` |
 
-### std/os
+### os
 
 Operating system utilities.
 
@@ -812,7 +812,7 @@ Operating system utilities.
 | `tempFile(pattern)` | Create temp file | `os.tempFile("app-*")` |
 | `tempDir(pattern)` | Create temp directory | `os.tempDir("app-*")` |
 
-### std/json
+### json
 
 JSON encoding and decoding.
 
@@ -823,7 +823,7 @@ JSON encoding and decoding.
 | `encode(obj)` | Encode to JSON | `json.encode(obj)` |
 | `decode(str)` | Decode JSON string | `json.decode('{"a": 1}')` |
 
-### std/regex
+### regex
 
 Regular expression operations (PCRE compatible).
 
@@ -840,7 +840,7 @@ Regular expression operations (PCRE compatible).
 | `count(pattern, str)` | Count matches | `regex.count("\\d+", "a1b2c3")` |
 | `test(pattern)` | Validate pattern | `regex.test("\\d+")` |
 
-### std/time
+### time
 
 Time and date operations.
 
@@ -869,7 +869,7 @@ Time and date operations.
 | `isLeapYear(year)` | Check leap year | `time.isLeapYear(2024)` |
 | `daysInMonth(year, month)` | Days in month | `time.daysInMonth(2024, 2)` |
 
-### std/string
+### string
 
 String utilities module.
 
@@ -894,7 +894,7 @@ String utilities module.
 | `toString(x)` | Convert to string | `string.toString(42)` |
 | `reverse(s)` | Reverse string | `string.reverse("hello")` |
 
-### std/crypto
+### crypto
 
 Cryptographic functions.
 
@@ -909,7 +909,7 @@ Cryptographic functions.
 | `hexEncode(s)` | Hex encode | `crypto.hexEncode("hello")` |
 | `hexDecode(s)` | Hex decode | `crypto.hexDecode("68656c6c6f")` |
 
-### std/fmt
+### fmt
 
 Formatting utilities.
 
@@ -918,7 +918,7 @@ Formatting utilities.
 | `sprintf(format, args...)` | Format string | `fmt.sprintf("Name: %s, Age: %d", "John", 25)` |
 | `printf(format, args...)` | Print formatted | `fmt.printf("Value: %d\n", 42)` |
 
-### std/array
+### array
 
 Extended array utilities.
 
@@ -929,51 +929,51 @@ Extended array utilities.
 | `reduce(arr, fn, init)` | Reduce elements | `array.reduce([1, 2, 3], fn(a, b) { a + b }, 0)` |
 | `forEach(arr, fn)` | Iterate elements | `array.forEach([1, 2, 3], fn(x) { println(x) })` |
 
-### std/collections
+### collections
 
 Collection utilities (sets, stacks, queues).
 
-### std/bytes
+### bytes
 
 Byte array operations.
 
-### std/csv
+### csv
 
 CSV file parsing and writing.
 
-### std/debug
+### debug
 
 Debugging utilities.
 
-### std/encoding
+### encoding
 
 Encoding/decoding utilities (Base64, Hex).
 
-### std/env
+### env
 
 Environment variable utilities.
 
-### std/log
+### log
 
 Logging utilities.
 
-### std/net
+### net
 
 Network utilities.
 
-### std/sort
+### sort
 
 Advanced sorting utilities.
 
-### std/strconv
+### strconv
 
 String conversion utilities.
 
-### std/text
+### text
 
 Text processing utilities.
 
-### std/uuid
+### uuid
 
 UUID generation.
 

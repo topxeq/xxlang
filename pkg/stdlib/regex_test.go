@@ -8,9 +8,9 @@ import (
 )
 
 func callRegexFunc(name string, args ...objects.Object) objects.Object {
-	mod := Get("std/regex")
+	mod := Get("regex")
 	if mod == nil {
-		panic("std/regex module not found")
+		panic("regex module not found")
 	}
 	fn, ok := mod.Exports[name].(*objects.Builtin)
 	if !ok {

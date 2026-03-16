@@ -55,7 +55,7 @@ func logMessage(level logLevel, args []objects.Object) string {
 
 func init() {
 	Register(&Module{
-		Name: "std/log",
+		Name: "log",
 		Exports: map[string]objects.Object{
 			// Debug level log
 			"debug": BuiltinFunc(func(args ...objects.Object) objects.Object {

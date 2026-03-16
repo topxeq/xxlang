@@ -13,7 +13,7 @@ import (
 
 func init() {
 	Register(&Module{
-		Name: "std/uuid",
+		Name: "uuid",
 		Exports: map[string]objects.Object{
 			// Generate v4 UUID
 			"v4": BuiltinFunc(func(args ...objects.Object) objects.Object {

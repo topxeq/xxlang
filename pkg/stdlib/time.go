@@ -10,7 +10,7 @@ import (
 
 func init() {
 	Register(&Module{
-		Name: "std/time",
+		Name: "time",
 		Exports: map[string]objects.Object{
 			// unix returns the current Unix timestamp in seconds
 			"unix": BuiltinFunc(func(args ...objects.Object) objects.Object {

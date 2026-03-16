@@ -12,7 +12,7 @@ import (
 
 func init() {
 	Register(&Module{
-		Name: "std/fmt",
+		Name: "fmt",
 		Exports: map[string]objects.Object{
 			// Sprintf-style formatting
 			"sprintf": BuiltinFunc(func(args ...objects.Object) objects.Object {

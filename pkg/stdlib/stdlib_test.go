@@ -8,7 +8,7 @@ import (
 )
 
 func TestRegistry(t *testing.T) {
-	modules := []string{"std/math", "std/string", "std/array", "std/io"}
+	modules := []string{"math", "string", "array", "io"}
 
 	for _, name := range modules {
 		if !Has(name) {

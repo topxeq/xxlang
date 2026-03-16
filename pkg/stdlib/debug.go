@@ -13,7 +13,7 @@ import (
 
 func init() {
 	Register(&Module{
-		Name: "std/debug",
+		Name: "debug",
 		Exports: map[string]objects.Object{
 			// Type information
 			"type": BuiltinFunc(func(args ...objects.Object) objects.Object {

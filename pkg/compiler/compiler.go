@@ -1262,12 +1262,12 @@ func (c *Compiler) compileImportStatement(node *parser.ImportStatement) error {
 		// Pop the original module reference
 		c.emit(OpPop)
 	} else {
-		// Simple import: import "std/time" or import "./math"
+		// Simple import: import "time" or import "./math"
 		// Auto-bind module name extracted from path
 		path := node.Path.Value
 
 		// Extract module name from path
-		// Examples: "std/time" -> "time", "./math" -> "math", "math" -> "math"
+		// Examples: "time" -> "time", "./math" -> "math", "math" -> "math"
 		moduleName := extractModuleName(path)
 
 		if moduleName != "" {
@@ -2008,7 +2008,7 @@ func (c *Compiler) compileThrowStatement(node *parser.ThrowStatement) error {
 }
 
 // extractModuleName extracts a module name from a path for auto-binding.
-// Examples: "std/time" -> "time", "./math" -> "math", "math" -> "math"
+// Examples: "time" -> "time", "./math" -> "math", "math" -> "math"
 // Returns empty string if a valid name cannot be extracted.
 func extractModuleName(modulePath string) string {
 	// Clean the path
@@ -2018,7 +2018,7 @@ func extractModuleName(modulePath string) string {
 	base := path.Base(modulePath)
 
 	// Remove common prefixes
-	// "std/time" -> "time"
+	// "time" -> "time"
 	// "plugin/mysql" -> "mysql"
 	if base == "." || base == ".." || base == "" {
 		return ""

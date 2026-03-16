@@ -12,7 +12,7 @@ import (
 
 func init() {
 	Register(&Module{
-		Name: "std/encoding",
+		Name: "encoding",
 		Exports: map[string]objects.Object{
 			// Base64 encoding
 			"base64Encode": BuiltinFunc(func(args ...objects.Object) objects.Object {

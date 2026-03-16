@@ -8,9 +8,9 @@ import (
 )
 
 func callJSONFunc(name string, args ...objects.Object) objects.Object {
-	mod := Get("std/json")
+	mod := Get("json")
 	if mod == nil {
-		panic("std/json module not found")
+		panic("json module not found")
 	}
 	fn, ok := mod.Exports[name].(*objects.Builtin)
 	if !ok {

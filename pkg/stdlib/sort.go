@@ -10,7 +10,7 @@ import (
 
 func init() {
 	Register(&Module{
-		Name: "std/sort",
+		Name: "sort",
 		Exports: map[string]objects.Object{
 			// Sort numbers ascending
 			"numbers": BuiltinFunc(func(args ...objects.Object) objects.Object {

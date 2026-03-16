@@ -19,7 +19,7 @@ func fib(n) {
 }
 
 // Test with timing
-import "std/time"
+import "time"
 
 // Warmup
 var _ = fib(10)

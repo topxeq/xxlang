@@ -12,7 +12,7 @@ import (
 
 func init() {
 	Register(&Module{
-		Name: "std/io",
+		Name: "io",
 		Exports: map[string]objects.Object{
 			"print": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				for _, arg := range args {

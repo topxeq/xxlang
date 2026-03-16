@@ -66,7 +66,7 @@ xxlang examples/scripts/cmdline/echo.xxl -e "Line1\nLine2\tTabbed"
 ### Get Arguments
 
 ```xxl
-let env = load("std/env")
+let env = load("env")
 let args = env.args()  // Returns array of all arguments
 // args[0] is the program name/first script
 ```
@@ -112,7 +112,7 @@ let verbose = hasFlag("--verbose")
 
 ## Related Standard Library Modules
 
-- `std/env` - Environment variables and process info
-- `std/array` - Array manipulation for argument handling
-- `std/string` - String parsing and manipulation
-- `std/fmt` - Formatted output
+- `env` - Environment variables and process info
+- `array` - Array manipulation for argument handling
+- `string` - String parsing and manipulation
+- `fmt` - Formatted output

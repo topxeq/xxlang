@@ -5,7 +5,7 @@ Xxlang 提供了一套标准库模块，可以通过 `import` 语句导入使用
 ## 导入语法
 
 ```xxl
-import "std/modulename"
+import "modulename"
 
 // 使用模块中的函数
 modulename.functionName()
@@ -13,12 +13,12 @@ modulename.functionName()
 
 ## 可用模块
 
-### std/io - 输入输出
+### io - 输入输出
 
 文件读写和控制台输入输出。
 
 ```xxl
-import "std/io"
+import "io"
 
 // 控制台输出
 io.print("Hello")
@@ -50,12 +50,12 @@ var args = io.args()
 io.exit(0)
 ```
 
-### std/time - 时间函数
+### time - 时间函数
 
 时间获取、格式化和休眠。
 
 ```xxl
-import "std/time"
+import "time"
 
 // 获取时间戳
 var ts = time.unix()        // 秒
@@ -95,10 +95,10 @@ var isLeap = time.isLeapYear(2024)
 var days = time.daysInMonth(2024, 2)  // 29
 ```
 
-### std/math - 数学函数
+### math - 数学函数
 
 ```xxl
-import "std/math"
+import "math"
 
 // 基本运算
 var a = math.abs(-5)        // 5
@@ -132,10 +132,10 @@ var pi = math.PI
 var e = math.E
 ```
 
-### std/string - 字符串工具
+### string - 字符串工具
 
 ```xxl
-import "std/string"
+import "string"
 
 // 构建
 var s = string.build("Hello", " ", "World")
@@ -166,10 +166,10 @@ var hasPre = string.hasPrefix("hello", "he")
 var hasSuf = string.hasSuffix("hello", "lo")
 ```
 
-### std/array - 数组工具
+### array - 数组工具
 
 ```xxl
-import "std/array"
+import "array"
 
 // 映射
 var doubled = array.map([1, 2, 3], func(x) { return x * 2 })
@@ -195,10 +195,10 @@ var flat = array.flatten([[1, 2], [3, 4]])
 var unique = array.unique([1, 2, 2, 3])
 ```
 
-### std/json - JSON 处理
+### json - JSON 处理
 
 ```xxl
-import "std/json"
+import "json"
 
 // 编码
 var s = json.encode({"name": "test", "value": 42})
@@ -208,10 +208,10 @@ var obj = json.decode("{\"name\": \"test\"}")
 var name = obj.name
 ```
 
-### std/regex - 正则表达式
+### regex - 正则表达式
 
 ```xxl
-import "std/regex"
+import "regex"
 
 // 匹配
 var matched = regex.match("hello world", "hello")
@@ -226,10 +226,10 @@ var replaced = regex.replace("hello 123", "\\d+", "456")
 var parts = regex.split("a1b2c3", "\\d+")
 ```
 
-### std/crypto - 加密
+### crypto - 加密
 
 ```xxl
-import "std/crypto"
+import "crypto"
 
 // 哈希
 var md5 = crypto.md5("hello")
@@ -249,8 +249,8 @@ var raw = crypto.hexDecode(hex)
 ### 计时程序
 
 ```xxl
-import "std/time"
-import "std/io"
+import "time"
+import "io"
 
 var start = time.unixMs()
 
@@ -267,8 +267,8 @@ io.println("Elapsed: " + string(elapsed) + "ms")
 ### 读取配置文件
 
 ```xxl
-import "std/io"
-import "std/json"
+import "io"
+import "json"
 
 var configStr = io.readFile("config.json")
 var config = json.decode(configStr)
@@ -280,8 +280,8 @@ io.println("Port: " + string(config.port))
 ### 日志记录
 
 ```xxl
-import "std/io"
-import "std/time"
+import "io"
+import "time"
 
 func log(message) {
     var timestamp = time.format("2006-01-02 15:04:05")
@@ -295,6 +295,6 @@ log("Done")
 
 ## 注意事项
 
-1. 所有标准库模块都以 `std/` 开头
-2. 导入后使用模块名（不含 `std/`）作为前缀调用函数
+1. 所有标准库模块都以 `` 开头
+2. 导入后使用模块名（不含 ``）作为前缀调用函数
 3. 某些函数可能返回 Error 对象，请检查返回值

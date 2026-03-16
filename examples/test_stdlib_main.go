@@ -15,11 +15,11 @@ func main() {
 
 	interp := interpreter.New(interpreter.WithStdlib())
 
-	// Test std/os
-	fmt.Println("1. std/os module")
+	// Test os
+	fmt.Println("1. os module")
 	fmt.Println("-------------------------------------------")
 	testOS := `
-import "std/os"
+import "os"
 
 println("Platform: " + os.platform())
 println("Arch: " + os.arch())
@@ -41,12 +41,12 @@ println("Is absolute: " + os.isAbs("/path/to/file"))
 		fmt.Printf("Error: %v\n", err)
 	}
 
-	// Test std/encoding
+	// Test encoding
 	fmt.Println()
-	fmt.Println("2. std/encoding module")
+	fmt.Println("2. encoding module")
 	fmt.Println("-------------------------------------------")
 	testEncoding := `
-import "std/encoding"
+import "encoding"
 
 var original = "Hello, World!"
 var b64 = encoding.base64Encode(original)
@@ -69,12 +69,12 @@ println("Parse URL: scheme=" + urlParts[0] + " host=" + urlParts[1] + " path=" +
 		fmt.Printf("Error: %v\n", err)
 	}
 
-	// Test std/uuid
+	// Test uuid
 	fmt.Println()
-	fmt.Println("3. std/uuid module")
+	fmt.Println("3. uuid module")
 	fmt.Println("-------------------------------------------")
 	testUUID := `
-import "std/uuid"
+import "uuid"
 
 println("UUID v4: " + uuid.v4())
 println("UUID v4 short: " + uuid.v4Short())
@@ -89,12 +89,12 @@ println("Is valid UUID: " + uuid.isValid("550e8400-e29b-41d4-a716-446655440000")
 		fmt.Printf("Error: %v\n", err)
 	}
 
-	// Test std/strconv
+	// Test strconv
 	fmt.Println()
-	fmt.Println("4. std/strconv module")
+	fmt.Println("4. strconv module")
 	fmt.Println("-------------------------------------------")
 	testStrconv := `
-import "std/strconv"
+import "strconv"
 
 // Type conversions
 println("parseInt('42'): " + strconv.parseInt("42").toStr())
@@ -121,12 +121,12 @@ println("formatDuration(3661500): " + strconv.formatDuration(3661500))
 		fmt.Printf("Error: %v\n", err)
 	}
 
-	// Test std/math
+	// Test math
 	fmt.Println()
-	fmt.Println("5. std/math module")
+	fmt.Println("5. math module")
 	fmt.Println("-------------------------------------------")
 	testMath := `
-import "std/math"
+import "math"
 
 println("PI: " + math.PI)
 println("E: " + math.E)
@@ -146,12 +146,12 @@ println("max(3, 5): " + math.max(3, 5))
 		fmt.Printf("Error: %v\n", err)
 	}
 
-	// Test std/net (basic test without actual network calls)
+	// Test net (basic test without actual network calls)
 	fmt.Println()
-	fmt.Println("6. std/net module")
+	fmt.Println("6. net module")
 	fmt.Println("-------------------------------------------")
 	testNet := `
-import "std/net"
+import "net"
 
 println("isOK(200): " + net.isOK(200))
 println("isOK(404): " + net.isOK(404))
@@ -164,12 +164,12 @@ println("isServerError(500): " + net.isServerError(500))
 		fmt.Printf("Error: %v\n", err)
 	}
 
-	// Test std/io
+	// Test io
 	fmt.Println()
-	fmt.Println("7. std/io module")
+	fmt.Println("7. io module")
 	fmt.Println("-------------------------------------------")
 	testIO := `
-import "std/io"
+import "io"
 
 println("Current dir: " + io.cwd())
 var args = io.args()
@@ -186,12 +186,12 @@ println("PATH exists: " + (path != "" && path != null).toStr())
 		fmt.Printf("Error: %v\n", err)
 	}
 
-	// Test std/string
+	// Test string
 	fmt.Println()
-	fmt.Println("8. std/string module")
+	fmt.Println("8. string module")
 	fmt.Println("-------------------------------------------")
 	testString := `
-import "std/string"
+import "string"
 
 var s = "Hello, World!"
 println("len: " + string.len(s))
@@ -210,12 +210,12 @@ println("reverse: " + string.reverse("hello"))
 		fmt.Printf("Error: %v\n", err)
 	}
 
-	// Test std/array
+	// Test array
 	fmt.Println()
-	fmt.Println("9. std/array module")
+	fmt.Println("9. array module")
 	fmt.Println("-------------------------------------------")
 	testArray := `
-import "std/array"
+import "array"
 
 var arr = [3, 1, 4, 1, 5, 9, 2, 6]
 println("len: " + array.len(arr))

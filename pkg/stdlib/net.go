@@ -17,7 +17,7 @@ var httpClient = &http.Client{
 
 func init() {
 	Register(&Module{
-		Name: "std/net",
+		Name: "net",
 		Exports: map[string]objects.Object{
 			// HTTP GET
 			"get": BuiltinFunc(func(args ...objects.Object) objects.Object {
@@ -148,7 +148,7 @@ func init() {
 				return Array(Int(int64(resp.StatusCode)), headers)
 			}),
 
-			// Download file - returns content (use std/io.writeFile to save)
+			// Download file - returns content (use io.writeFile to save)
 			"download": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				if len(args) != 1 {
 					return Error("download() takes exactly 1 argument")

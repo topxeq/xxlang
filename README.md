@@ -201,11 +201,11 @@ for (item in [1, 2, 3]) {
 
 ```xxl
 // Import standard library
-import "std/math"
+import "math"
 println(math.sqrt(16))
 
 // Import specific functions
-import "std/io" { readFile, writeFile }
+import "io" { readFile, writeFile }
 ```
 
 ### Plugin System

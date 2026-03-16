@@ -20,7 +20,7 @@ import (
 
 func init() {
 	Register(&Module{
-		Name: "std/crypto",
+		Name: "crypto",
 		Exports: map[string]objects.Object{
 			// Hash functions
 			"md5": BuiltinFunc(func(args ...objects.Object) objects.Object {

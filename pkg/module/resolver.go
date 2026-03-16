@@ -6,6 +6,8 @@ import (
 	"errors"
 	"path/filepath"
 	"strings"
+
+	"github.com/topxeq/xxlang/pkg/stdlib"
 )
 
 var (
@@ -19,14 +21,14 @@ var (
 
 // Resolve resolves an import path relative to the importer.
 // It handles:
-//   - Standard library paths starting with "std/" -> returns as-is
+//   - Standard library modules (e.g., "os", "json") -> returns as-is
 //   - Plugin paths starting with "plugin/" -> returns as-is
 //   - Absolute paths and relative paths -> resolves to file path
 //   - .wasm extension -> returns as-is (WASM plugin)
 //   - Other paths -> adds .xxl extension if not present (Xxlang module)
 func Resolve(importerPath, importPath string) (string, error) {
 	// Check if it's a standard library module
-	if strings.HasPrefix(importPath, "std/") {
+	if stdlib.Has(importPath) {
 		return importPath, nil
 	}
 

@@ -9,17 +9,17 @@ import (
 )
 
 func TestTimeModuleRegistered(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	if mod == nil {
-		t.Fatal("std/time module not registered")
+		t.Fatal("time module not registered")
 	}
-	if mod.Name != "std/time" {
-		t.Errorf("module name = %s, want std/time", mod.Name)
+	if mod.Name != "time" {
+		t.Errorf("module name = %s, want time", mod.Name)
 	}
 }
 
 func TestTimeUnix(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	fn, ok := mod.Exports["unix"].(*objects.Builtin)
 	if !ok {
 		t.Fatal("unix not found or not a builtin")
@@ -40,7 +40,7 @@ func TestTimeUnix(t *testing.T) {
 }
 
 func TestTimeUnixMs(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	fn, ok := mod.Exports["unixMs"].(*objects.Builtin)
 	if !ok {
 		t.Fatal("unixMs not found or not a builtin")
@@ -61,7 +61,7 @@ func TestTimeUnixMs(t *testing.T) {
 }
 
 func TestTimeNow(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	fn, ok := mod.Exports["now"].(*objects.Builtin)
 	if !ok {
 		t.Fatal("now not found or not a builtin")
@@ -93,7 +93,7 @@ func TestTimeNow(t *testing.T) {
 }
 
 func TestTimeYear(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	fn, ok := mod.Exports["year"].(*objects.Builtin)
 	if !ok {
 		t.Fatal("year not found or not a builtin")
@@ -112,7 +112,7 @@ func TestTimeYear(t *testing.T) {
 }
 
 func TestTimeMonth(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	fn, ok := mod.Exports["month"].(*objects.Builtin)
 	if !ok {
 		t.Fatal("month not found or not a builtin")
@@ -131,7 +131,7 @@ func TestTimeMonth(t *testing.T) {
 }
 
 func TestTimeDay(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	fn, ok := mod.Exports["day"].(*objects.Builtin)
 	if !ok {
 		t.Fatal("day not found or not a builtin")
@@ -150,7 +150,7 @@ func TestTimeDay(t *testing.T) {
 }
 
 func TestTimeHour(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	fn, ok := mod.Exports["hour"].(*objects.Builtin)
 	if !ok {
 		t.Fatal("hour not found or not a builtin")
@@ -168,7 +168,7 @@ func TestTimeHour(t *testing.T) {
 }
 
 func TestTimeMinute(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	fn, ok := mod.Exports["minute"].(*objects.Builtin)
 	if !ok {
 		t.Fatal("minute not found or not a builtin")
@@ -186,7 +186,7 @@ func TestTimeMinute(t *testing.T) {
 }
 
 func TestTimeSecond(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	fn, ok := mod.Exports["second"].(*objects.Builtin)
 	if !ok {
 		t.Fatal("second not found or not a builtin")
@@ -204,7 +204,7 @@ func TestTimeSecond(t *testing.T) {
 }
 
 func TestTimeWeekday(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	fn, ok := mod.Exports["weekday"].(*objects.Builtin)
 	if !ok {
 		t.Fatal("weekday not found or not a builtin")
@@ -222,7 +222,7 @@ func TestTimeWeekday(t *testing.T) {
 }
 
 func TestTimeSleep(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	fn, ok := mod.Exports["sleep"].(*objects.Builtin)
 	if !ok {
 		t.Fatal("sleep not found or not a builtin")
@@ -243,7 +243,7 @@ func TestTimeSleep(t *testing.T) {
 }
 
 func TestTimeSleepErrors(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	fn, ok := mod.Exports["sleep"].(*objects.Builtin)
 	if !ok {
 		t.Fatal("sleep not found or not a builtin")
@@ -263,7 +263,7 @@ func TestTimeSleepErrors(t *testing.T) {
 }
 
 func TestTimeSleepSec(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	fn, ok := mod.Exports["sleepSec"].(*objects.Builtin)
 	if !ok {
 		t.Fatal("sleepSec not found or not a builtin")
@@ -277,7 +277,7 @@ func TestTimeSleepSec(t *testing.T) {
 }
 
 func TestTimeFormat(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	fn, ok := mod.Exports["format"].(*objects.Builtin)
 	if !ok {
 		t.Fatal("format not found or not a builtin")
@@ -298,7 +298,7 @@ func TestTimeFormat(t *testing.T) {
 }
 
 func TestTimeFormatUnix(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	fn, ok := mod.Exports["formatUnix"].(*objects.Builtin)
 	if !ok {
 		t.Fatal("formatUnix not found or not a builtin")
@@ -320,7 +320,7 @@ func TestTimeFormatUnix(t *testing.T) {
 }
 
 func TestTimeParse(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	fn, ok := mod.Exports["parse"].(*objects.Builtin)
 	if !ok {
 		t.Fatal("parse not found or not a builtin")
@@ -342,7 +342,7 @@ func TestTimeParse(t *testing.T) {
 }
 
 func TestTimeParseError(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	fn, ok := mod.Exports["parse"].(*objects.Builtin)
 	if !ok {
 		t.Fatal("parse not found or not a builtin")
@@ -358,7 +358,7 @@ func TestTimeParseError(t *testing.T) {
 }
 
 func TestTimeSince(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	fn, ok := mod.Exports["since"].(*objects.Builtin)
 	if !ok {
 		t.Fatal("since not found or not a builtin")
@@ -380,7 +380,7 @@ func TestTimeSince(t *testing.T) {
 }
 
 func TestTimeAddDays(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	fn, ok := mod.Exports["addDays"].(*objects.Builtin)
 	if !ok {
 		t.Fatal("addDays not found or not a builtin")
@@ -400,7 +400,7 @@ func TestTimeAddDays(t *testing.T) {
 }
 
 func TestTimeAddMonths(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	fn, ok := mod.Exports["addMonths"].(*objects.Builtin)
 	if !ok {
 		t.Fatal("addMonths not found or not a builtin")
@@ -414,7 +414,7 @@ func TestTimeAddMonths(t *testing.T) {
 }
 
 func TestTimeAddYears(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	fn, ok := mod.Exports["addYears"].(*objects.Builtin)
 	if !ok {
 		t.Fatal("addYears not found or not a builtin")
@@ -428,7 +428,7 @@ func TestTimeAddYears(t *testing.T) {
 }
 
 func TestTimeIsLeapYear(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	fn, ok := mod.Exports["isLeapYear"].(*objects.Builtin)
 	if !ok {
 		t.Fatal("isLeapYear not found or not a builtin")
@@ -459,7 +459,7 @@ func TestTimeIsLeapYear(t *testing.T) {
 }
 
 func TestTimeDaysInMonth(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	fn, ok := mod.Exports["daysInMonth"].(*objects.Builtin)
 	if !ok {
 		t.Fatal("daysInMonth not found or not a builtin")
@@ -490,7 +490,7 @@ func TestTimeDaysInMonth(t *testing.T) {
 }
 
 func TestTimeAllExportsExist(t *testing.T) {
-	mod := Get("std/time")
+	mod := Get("time")
 	expectedExports := []string{
 		"unix", "unixMs", "unixNano", "now",
 		"year", "month", "day", "hour", "minute", "second", "weekday",

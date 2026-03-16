@@ -75,7 +75,7 @@ xxlang version
 | `CLOSURE` | Function with captured variables | See closures section |
 | `CLASS` | Class definition | `class Point { ... }` |
 | `INSTANCE` | Class instance | `new Point(1, 2)` |
-| `MODULE` | Imported module | `import "std/math"` |
+| `MODULE` | Imported module | `import "math"` |
 | `BUILTIN` | Built-in function | `len`, `print`, `typeOf` |
 
 ### Type Checking
@@ -828,15 +828,15 @@ class Child : Parent {
 
 ```xxl
 // Import standard library
-import "std/math"
+import "math"
 println(math.sqrt(16))
 
 // Import with alias
-import "std/io" as io
+import "io" as io
 io.println("Hello")
 
 // Import specific functions
-import "std/string" { upper, lower }
+import "string" { upper, lower }
 println(upper("hello"))
 
 // Import from relative path
@@ -881,7 +881,7 @@ Module paths are resolved based on prefix and file extension:
 
 | Path Format | Description | Example |
 |-------------|-------------|---------|
-| `std/xxx` | Standard library module | `import "std/math"` |
+| `xxx` | Standard library module | `import "math"` |
 | `plugin/xxx` | WASM plugin by name | `import "plugin/fib"` |
 | `*.wasm` | WASM plugin by file path | `import * as fib from "./fib.wasm"` |
 | `./xxx` or `../xxx` | Relative path module | `import * as utils from "./utils"` |
@@ -920,13 +920,13 @@ Xxlang includes several standard library modules:
 
 | Module | Description |
 |--------|-------------|
-| `std/io` | Input/output operations |
-| `std/string` | String manipulation |
-| `std/math` | Mathematical functions |
-| `std/array` | Array utilities |
-| `std/json` | JSON parsing and encoding |
-| `std/regex` | Regular expressions |
-| `std/crypto` | Cryptographic functions |
+| `io` | Input/output operations |
+| `string` | String manipulation |
+| `math` | Mathematical functions |
+| `array` | Array utilities |
+| `json` | JSON parsing and encoding |
+| `regex` | Regular expressions |
+| `crypto` | Cryptographic functions |
 
 See [STDLIB.md](STDLIB.md) for complete documentation.
 

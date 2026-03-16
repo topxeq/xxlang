@@ -8,9 +8,9 @@ import (
 )
 
 func callStringFunc(name string, args ...objects.Object) objects.Object {
-	mod := Get("std/string")
+	mod := Get("string")
 	if mod == nil {
-		panic("std/string module not found")
+		panic("string module not found")
 	}
 	fn, ok := mod.Exports[name].(*objects.Builtin)
 	if !ok {

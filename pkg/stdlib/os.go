@@ -16,7 +16,7 @@ import (
 
 func init() {
 	Register(&Module{
-		Name: "std/os",
+		Name: "os",
 		Exports: map[string]objects.Object{
 			// Path operations
 			"join": BuiltinFunc(func(args ...objects.Object) objects.Object {

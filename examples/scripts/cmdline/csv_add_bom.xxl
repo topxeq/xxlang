@@ -2,7 +2,7 @@
 // Add UTF-8 BOM to CSV file if not present
 // BOM (Byte Order Mark) for UTF-8 is: 0xEF 0xBB 0xBF
 
-import "std/io"
+import "io"
 
 // UTF-8 BOM bytes
 var BOM = [239, 187, 191]

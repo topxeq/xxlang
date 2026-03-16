@@ -13,7 +13,7 @@ import (
 
 func init() {
 	Register(&Module{
-		Name: "std/text",
+		Name: "text",
 		Exports: map[string]objects.Object{
 			// Word wrap text
 			"wordWrap": BuiltinFunc(func(args ...objects.Object) objects.Object {
