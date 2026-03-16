@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -2163,15 +2162,6 @@ var Builtins = map[string]*Builtin{
 
             // Not found, return the default value
             return defaultValue
-        },
-    },
-    "args": {
-        Fn: func(args ...Object) Object {
-            result := make([]Object, len(os.Args))
-            for i, arg := range os.Args {
-                result[i] = &String{Value: arg}
-            }
-            return &Array{Elements: result}
         },
     },
 }

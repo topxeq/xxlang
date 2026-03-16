@@ -1788,7 +1788,6 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["chunk"],         // 97
 		// Command line argument utilities
 		objects.Builtins["getSwitch"],     // 98
-		objects.Builtins["args"],          // 99
 	}
 
 	if index < 0 || index >= len(builtins) {
