@@ -81,6 +81,12 @@ func main() {
 		}
 	}
 
+	// Check for -cloud flag
+	if len(interpreterArgs) >= 2 && interpreterArgs[0] == "-cloud" {
+		runFromCloud(interpreterArgs[1])
+		return
+	}
+
 	switch interpreterArgs[0] {
 	case "compile":
 		if err := compileCmd(interpreterArgs[1:]); err != nil {
@@ -124,6 +130,7 @@ func printUsage() {
     fmt.Println("  xxl <file|url> [-- args...] Execute a .xxl file or script from URL")
     fmt.Println("  xxl run <file|url> [-- args...]")
     fmt.Println("                              Execute a .xxl file or script from URL")
+    fmt.Println("  xxl -cloud <script>         Execute script from cloud URL base")
     fmt.Println("  xxl compile <file>          Compile file to bytecode")
     fmt.Println("  xxl update                  Self-update to latest version from GitHub")
     fmt.Println("  xxl version                 Print version information")
@@ -133,6 +140,7 @@ func printUsage() {
     fmt.Println("  -o, --output path     Output path for compiled file")
     fmt.Println("      --target os/arch  Cross-compile for target OS/architecture")
     fmt.Println("      --bytecode        Output as bytecode (.xxb) instead of executable")
+    fmt.Println("  -cloud <script>       Execute script from configured cloudUrlBase")
     fmt.Println()
     fmt.Println("Script Arguments:")
     fmt.Println("  Use '--' to separate interpreter arguments from script arguments.")
@@ -147,6 +155,7 @@ func printUsage() {
     fmt.Println("  xxl compile -o program script.xxl")
     fmt.Println("  xxl compile -o program.exe --target windows/amd64 script.xxl")
     fmt.Println("  xxl compile --bytecode script.xxl")
+    fmt.Println("  xxl -cloud basic.xxl")
     fmt.Println("  xxl update")
 }
 
@@ -261,6 +270,30 @@ func (r *REPL) Execute(input string) (objects.Object, error) {
 // isURL checks if the given string is a URL
 func isURL(s string) bool {
     return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
+}
+
+// runFromCloud fetches and executes a script from the cloud URL base configured in settings
+func runFromCloud(scriptName string) {
+    // Get config map
+    cfg := stdlib.GetConfigMap()
+
+    // Get cloudUrlBase from config
+    cloudUrlBase, ok := cfg["cloudUrlBase"].(string)
+    if !ok || cloudUrlBase == "" {
+        fmt.Fprintln(os.Stderr, "Error: cloudUrlBase not configured in settings.json")
+        fmt.Fprintln(os.Stderr, "Please add a 'cloudUrlBase' field to your ~/.xxl/settings.json file")
+        os.Exit(1)
+    }
+
+    // Construct full URL
+    // Ensure the base URL ends with / and the script name is appended
+    baseURL := strings.TrimSuffix(cloudUrlBase, "/")
+    fullURL := baseURL + "/" + scriptName
+
+    fmt.Printf("Fetching script from cloud: %s\n", fullURL)
+
+    // Run from the constructed URL
+    runFromURL(fullURL)
 }
 
 // runFileOrURL runs an xxlang source file or script from URL
