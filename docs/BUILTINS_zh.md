@@ -177,9 +177,9 @@ pln("您的 OTP: ", otp)
 
 **注意：** 密钥必须是 TOTP 验证器应用使用的有效 base32 编码字符串。
 
-### typeOf(obj)
+### typeOf(obj, detailed?)
 
-返回对象的类型字符串。
+返回对象的类型字符串。当 `detailed=true` 时，对实例对象返回类名而非 "INSTANCE"。
 
 ```xxl
 typeOf(42)        // "INT"
@@ -188,6 +188,12 @@ typeOf([1, 2])    // "ARRAY"
 typeOf({"a": 1})  // "MAP"
 typeOf(true)      // "BOOL"
 typeOf(null)      // "NULL"
+
+// 对于类实例
+class Person { var name = "" }
+var p = new Person()
+typeOf(p)           // "INSTANCE"
+typeOf(p, true)     // "Person"（返回类名）
 ```
 
 ---

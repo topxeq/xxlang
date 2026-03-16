@@ -234,10 +234,28 @@ var Builtins = map[string]*Builtin{
     },
     "typeOf": {
         Fn: func(args ...Object) Object {
-            if len(args) != 1 {
-                return newError("wrong number of arguments for typeOf. got=%d, want=1", len(args))
+            if len(args) < 1 {
+                return newError("wrong number of arguments for typeOf. got=%d, want>=1", len(args))
             }
-            return &String{Value: string(args[0].Type())}
+
+            obj := args[0]
+
+            // Check if detailed mode requested
+            detailed := false
+            if len(args) > 1 {
+                if b, ok := args[1].(*Bool); ok {
+                    detailed = b.Value
+                }
+            }
+
+            // For instances with detailed mode, return class name
+            if detailed {
+                if inst, ok := obj.(*Instance); ok {
+                    return &String{Value: inst.Class.Name}
+                }
+            }
+
+            return &String{Value: string(obj.Type())}
         },
     },
 

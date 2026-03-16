@@ -177,9 +177,9 @@ pln("Your OTP: ", otp)
 
 **Note:** The secret must be a valid base32-encoded string as used by TOTP authenticator apps.
 
-### typeOf(obj)
+### typeOf(obj, detailed?)
 
-Returns the type of an object as a string.
+Returns the type of an object as a string. With `detailed=true`, returns the class name for instances instead of "INSTANCE".
 
 ```xxl
 typeOf(42)        // "INT"
@@ -188,6 +188,12 @@ typeOf([1, 2])    // "ARRAY"
 typeOf({"a": 1})  // "MAP"
 typeOf(true)      // "BOOL"
 typeOf(null)      // "NULL"
+
+// For class instances
+class Person { var name = "" }
+var p = new Person()
+typeOf(p)           // "INSTANCE"
+typeOf(p, true)     // "Person" (returns class name)
 ```
 
 ---
