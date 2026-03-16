@@ -43,8 +43,8 @@ func NewSymbolTable() *SymbolTable {
 	}
 	// Define built-in functions
 	s.DefineBuiltin(0, "len")
-	s.DefineBuiltin(1, "print")
-	s.DefineBuiltin(2, "println")
+	s.DefineBuiltin(1, "pr")
+	s.DefineBuiltin(2, "pln")
 	s.DefineBuiltin(3, "typeOf")
 	s.DefineBuiltin(4, "substr")
 	s.DefineBuiltin(5, "split")
@@ -156,6 +156,7 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(99, "switchExists")
 	// Output utilities
 	s.DefineBuiltin(100, "pl")
+	s.DefineBuiltin(101, "prf")
 	return s
 }
 

@@ -77,23 +77,56 @@ len([1, 2, 3])    // 3
 len({"a": 1})     // 1
 ```
 
-### print(args...)
+### pr(args...)
 
 Prints arguments to stdout without a newline.
 
 ```xxl
-print("Hello", " ", "World")  // Hello World
+pr("Hello", " ", "World")  // Hello World
 ```
 
-### println(args...)
+### pln(args...)
 
 Prints arguments to stdout with a trailing newline.
 
 ```xxl
-println("Hello", "World")  // Hello World
+pln("Hello", "World")  // Hello World
 ```
 
 ### pl(format, args...)
+
+Formatted print with a trailing newline. Similar to Go's `fmt.Printf` but automatically adds `\n` at the end.
+
+```xxl
+pl("Hello, World!")                    // Hello, World!
+pl("Name: %s, Age: %d", "Alice", 30)   // Name: Alice, Age: 30
+pl("Value: %.2f", 3.14159)             // Value: 3.14
+pl("Bool: %v, Int: %d", true, 42)      // Bool: true, Int: 42
+```
+
+**Format verbs:**
+- `%s` - String
+- `%d` - Integer (decimal)
+- `%f` - Float
+- `%.Nf` - Float with N decimal places
+- `%v` - Default format for any value
+- `%t` - Boolean (true/false)
+- `%x` - Integer (hexadecimal)
+- `%o` - Integer (octal)
+- `%b` - Integer (binary)
+- `%%` - Literal percent sign
+
+### prf(format, args...)
+
+Formatted print without a trailing newline. Equivalent to Go's `fmt.Printf`.
+
+```xxl
+prf("Name: %s, Age: %d", "Alice", 30)  // Name: Alice, Age: 30 (no newline)
+prf("Value: %.2f", 3.14159)             // Value: 3.14 (no newline)
+pln()                                   // Add newline separately
+```
+
+**Format verbs:** Same as `pl`.
 
 Formatted print with a trailing newline. Similar to Go's `fmt.Printf` but automatically adds `\n` at the end.
 

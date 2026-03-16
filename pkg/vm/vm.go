@@ -1678,8 +1678,8 @@ func objectsEqual(a, b objects.Object) bool {
 func getBuiltin(index int) *objects.Builtin {
 	builtins := []*objects.Builtin{
 		objects.Builtins["len"],           // 0
-		objects.Builtins["print"],         // 1
-		objects.Builtins["println"],       // 2
+		objects.Builtins["pr"],            // 1
+		objects.Builtins["pln"],           // 2
 		objects.Builtins["typeOf"],        // 3
 		objects.Builtins["substr"],        // 4
 		objects.Builtins["split"],         // 5
@@ -1791,6 +1791,7 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["switchExists"],  // 99
 		// Output utilities
 		objects.Builtins["pl"],            // 100
+		objects.Builtins["prf"],           // 101
 	}
 
 	if index < 0 || index >= len(builtins) {

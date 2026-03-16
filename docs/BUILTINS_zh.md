@@ -77,23 +77,56 @@ len([1, 2, 3])    // 3
 len({"a": 1})     // 1
 ```
 
-### print(args...)
+### pr(args...)
 
 打印参数到标准输出，不换行。
 
 ```xxl
-print("Hello", " ", "World")  // Hello World
+pr("Hello", " ", "World")  // Hello World
 ```
 
-### println(args...)
+### pln(args...)
 
 打印参数到标准输出，末尾换行。
 
 ```xxl
-println("Hello", "World")  // Hello World
+pln("Hello", "World")  // Hello World
 ```
 
 ### pl(format, args...)
+
+格式化打印，末尾自动换行。类似 Go 语言的 `fmt.Printf`，但自动在末尾添加 `\n`。
+
+```xxl
+pl("Hello, World!")                    // Hello, World!
+pl("姓名: %s, 年龄: %d", "张三", 30)      // 姓名: 张三, 年龄: 30
+pl("数值: %.2f", 3.14159)               // 数值: 3.14
+pl("布尔: %v, 整数: %d", true, 42)       // 布尔: true, 整数: 42
+```
+
+**格式化动词：**
+- `%s` - 字符串
+- `%d` - 整数（十进制）
+- `%f` - 浮点数
+- `%.Nf` - 浮点数保留 N 位小数
+- `%v` - 任意值的默认格式
+- `%t` - 布尔值 (true/false)
+- `%x` - 整数（十六进制）
+- `%o` - 整数（八进制）
+- `%b` - 整数（二进制）
+- `%%` - 百分号字面量
+
+### prf(format, args...)
+
+格式化打印，不自动换行。等效于 Go 语言的 `fmt.Printf`。
+
+```xxl
+prf("姓名: %s, 年龄: %d", "张三", 30)  // 姓名: 张三, 年龄: 30（无换行）
+prf("数值: %.2f", 3.14159)             // 数值: 3.14（无换行）
+pln()                                  // 单独添加换行
+```
+
+**格式化动词：** 与 `pl` 相同。
 
 格式化打印，末尾自动换行。类似 Go 语言的 `fmt.Printf`，但自动在末尾添加 `\n`。
 

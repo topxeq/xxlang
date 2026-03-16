@@ -52,7 +52,7 @@ var Builtins = map[string]*Builtin{
             }
         },
     },
-    "print": {
+    "pr": {
         Fn: func(args ...Object) Object {
             for _, arg := range args {
                 fmt.Print(arg.Inspect())
@@ -60,7 +60,7 @@ var Builtins = map[string]*Builtin{
             return NULL
         },
     },
-    "println": {
+    "pln": {
         Fn: func(args ...Object) Object {
             for _, arg := range args {
                 fmt.Print(arg.Inspect())
@@ -97,6 +97,37 @@ var Builtins = map[string]*Builtin{
             }
 
             fmt.Printf(format.Value+"\n", formatArgs...)
+            return NULL
+        },
+    },
+    "prf": {
+        Fn: func(args ...Object) Object {
+            if len(args) < 1 {
+                return newError("wrong number of arguments for prf. got=%d, want>=1", len(args))
+            }
+
+            format, ok := args[0].(*String)
+            if !ok {
+                return newError("first argument to 'prf' must be STRING, got %s", args[0].Type())
+            }
+
+            formatArgs := make([]interface{}, len(args)-1)
+            for i, arg := range args[1:] {
+                switch v := arg.(type) {
+                case *Int:
+                    formatArgs[i] = v.Value
+                case *Float:
+                    formatArgs[i] = v.Value
+                case *String:
+                    formatArgs[i] = v.Value
+                case *Bool:
+                    formatArgs[i] = v.Value
+                default:
+                    formatArgs[i] = v.Inspect()
+                }
+            }
+
+            fmt.Printf(format.Value, formatArgs...)
             return NULL
         },
     },
