@@ -159,7 +159,7 @@ Operating system utilities and configuration management.
 
 ### Configuration
 
-#### getConfigObject()
+#### getConfigObj()
 Returns the Xxlang configuration as a map object. The configuration is read from a JSON file with the following search priority:
 
 1. `~/.xxl/settings.json` (user home directory)
@@ -170,7 +170,7 @@ Returns an empty map if no configuration file is found.
 
 ```xxl
 import "os"
-var cfg = os.getConfigObject()
+var cfg = os.getConfigObj()
 println(cfg["cloudUrlBase"])
 
 // Example config file (~/.xxl/settings.json):

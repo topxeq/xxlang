@@ -306,7 +306,7 @@ You can also access the config from within scripts:
 
 ```xxl
 import "os"
-var cfg = os.getConfigObject()
+var cfg = os.getConfigObj()
 println(cfg["cloudUrlBase"])
 ```
 
