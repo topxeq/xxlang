@@ -473,15 +473,16 @@ if (hasVerbose == "" && includes(argsG, "-verbose")) {
 
 ### switchExists(array, switchName)
 
-检查开关参数是否存在于数组中。如果找到精确匹配或带值后缀的开关，返回 `true`。
+检查开关参数是否存在于数组中，要求精确匹配。只有当元素完全匹配开关名称时才返回 `true`。
 
 ```xxl
 // 假设 argsG = ["script.xxl", "-port=8080", "-verbose", "-debug=true"]
 
-var hasPort = switchExists(argsG, "-port")       // true（匹配 "-port=8080"）
-var hasVerbose = switchExists(argsG, "-verbose") // true（精确匹配）
-var hasDebug = switchExists(argsG, "-debug")     // true（匹配 "-debug=true"）
-var hasMissing = switchExists(argsG, "-missing") // false
+var hasPort = switchExists(argsG, "-port")         // false（无精确匹配）
+var hasPortEq = switchExists(argsG, "-port=8080")  // true（精确匹配）
+var hasVerbose = switchExists(argsG, "-verbose")   // true（精确匹配）
+var hasDebug = switchExists(argsG, "-debug")       // false（无精确匹配）
+var hasDebugEq = switchExists(argsG, "-debug=true") // true（精确匹配）
 ```
 
 **参数：**
@@ -489,7 +490,7 @@ var hasMissing = switchExists(argsG, "-missing") // false
 - `switchName` - 要查找的开关名称（如 "-verbose"）
 
 **返回值：**
-- `true` 如果开关存在（精确匹配或带 `=` 后缀）
+- `true` 如果开关精确匹配存在
 - `false` 如果未找到
 
 ---
