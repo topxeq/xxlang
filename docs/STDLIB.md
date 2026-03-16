@@ -11,14 +11,15 @@ io.println("Hello, World!")
 
 ## Table of Contents
 
-- [io](#stdio) - Input/output operations
-- [string](#stdstring) - String utilities
-- [math](#stdmath) - Mathematical functions
-- [array](#stdarray) - Array utilities
-- [json](#stdjson) - JSON encoding/decoding
-- [regex](#stdregex) - Regular expressions
-- [crypto](#stdcrypto) - Cryptographic functions
-- [time](#stdtime) - Time and date functions
+- [io](#io) - Input/output operations
+- [os](#os) - Operating system utilities and configuration
+- [string](#string) - String utilities
+- [math](#math) - Mathematical functions
+- [array](#array) - Array utilities
+- [json](#json) - JSON encoding/decoding
+- [regex](#regex) - Regular expressions
+- [crypto](#crypto) - Cryptographic functions
+- [time](#time) - Time and date functions
 
 ---
 
@@ -148,6 +149,225 @@ Returns command-line arguments as array.
 ```xxl
 var args = args()
 println(args[0])  // Program name
+```
+
+---
+
+## os
+
+Operating system utilities and configuration management.
+
+### Configuration
+
+#### getConfigObject()
+Returns the Xxlang configuration as a map object. The configuration is read from a JSON file with the following search priority:
+
+1. `~/.xxl/settings.json` (user home directory)
+2. `/.xxl/settings.json` (Linux/Unix systems)
+3. `C:\.xxl\settings.json` (Windows systems)
+
+Returns an empty map if no configuration file is found.
+
+```xxl
+import "os"
+var cfg = os.getConfigObject()
+println(cfg["cloudUrlBase"])
+
+// Example config file (~/.xxl/settings.json):
+// {
+//   "cloudUrlBase": "https://script.topget.org/",
+//   "timeout": 30,
+//   "debug": true
+// }
+```
+
+### System Information
+
+#### platform()
+Returns the current operating system name.
+
+```xxl
+println(os.platform())  // "linux", "windows", "darwin"
+```
+
+#### arch()
+Returns the CPU architecture.
+
+```xxl
+println(os.arch())  // "amd64", "arm64"
+```
+
+#### hostname()
+Returns the system hostname.
+
+```xxl
+println(os.hostname())
+```
+
+#### home()
+Returns the user's home directory.
+
+```xxl
+println(os.home())  // "/home/user" or "C:\Users\user"
+```
+
+#### temp()
+Returns the system temporary directory.
+
+```xxl
+println(os.temp())  // "/tmp" on Unix
+```
+
+#### cpus()
+Returns the number of CPU cores.
+
+```xxl
+println(os.cpus())  // 8
+```
+
+### File System Operations
+
+#### join(paths...)
+Joins path components.
+
+```xxl
+os.join("a", "b", "c.txt")  // "a/b/c.txt" (Unix) or "a\b\c.txt" (Windows)
+```
+
+#### base(path)
+Returns the last element of a path.
+
+```xxl
+os.base("/path/to/file.txt")  // "file.txt"
+```
+
+#### dir(path)
+Returns the directory part of a path.
+
+```xxl
+os.dir("/path/to/file.txt")  // "/path/to"
+```
+
+#### ext(path)
+Returns the file extension.
+
+```xxl
+os.ext("/path/to/file.txt")  // ".txt"
+```
+
+#### abs(path)
+Returns the absolute path.
+
+```xxl
+println(os.abs("./file.txt"))  // "/current/dir/file.txt"
+```
+
+#### isAbs(path)
+Returns true if path is absolute.
+
+```xxl
+os.isAbs("/path/to/file")  // true
+os.isAbs("./file")          // false
+```
+
+#### stat(path)
+Returns file information as an array [name, size, isDir, modTime].
+
+```xxl
+var info = os.stat("file.txt")
+println(info[0])  // name
+println(info[1])  // size in bytes
+println(info[2])  // is directory?
+println(info[3])  // modification time
+```
+
+#### isDir(path)
+Returns true if path is a directory.
+
+```xxl
+os.isDir("/path/to/dir")  // true
+```
+
+#### isFile(path)
+Returns true if path is a file.
+
+```xxl
+os.isFile("/path/to/file.txt")  // true
+```
+
+#### listDir(path)
+Returns array of directory entry names.
+
+```xxl
+var files = os.listDir(".")
+for (f in files) {
+    println(f)
+}
+```
+
+#### mkdir(path)
+Creates a directory.
+
+```xxl
+os.mkdir("path/to/new/dir")
+```
+
+#### rename(oldPath, newPath)
+Renames a file or directory.
+
+```xxl
+os.rename("old.txt", "new.txt")
+```
+
+#### copy(srcPath, dstPath)
+Copies a file.
+
+```xxl
+os.copy("source.txt", "dest.txt")
+```
+
+#### chmod(path, mode)
+Changes file permissions (Unix only).
+
+```xxl
+os.chmod("script.sh", 0o755)
+```
+
+### Process Execution
+
+#### exec(command)
+Executes a shell command and returns [output, exitCode, error].
+
+```xxl
+var result = os.exec("ls -la")
+println(result[0])  // output
+println(result[1])  // exit code
+```
+
+#### shell(command)
+Executes a command through the system shell.
+
+```xxl
+var result = os.shell("echo hello")
+println(result[0])  // "hello\n"
+```
+
+### Temporary Files
+
+#### tempFile(pattern)
+Creates a temporary file and returns its path.
+
+```xxl
+var tmp = os.tempFile("myapp-*.txt")
+// Use the file...
+```
+
+#### tempDir(pattern)
+Creates a temporary directory and returns its path.
+
+```xxl
+var tmpDir = os.tempDir("myapp-*")
+// Use the directory...
 ```
 
 ---

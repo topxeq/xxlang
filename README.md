@@ -271,12 +271,43 @@ xxl script.xxl                # Run local script (shortcut)
 xxl run script.xxl            # Run source script
 xxl run script.xxb            # Run compiled bytecode
 xxl https://example.com/script.xxl  # Run script from URL
+xxl -cloud basic.xxl          # Run script from configured cloud URL base
 xxl compile script.xxl        # Compile to executable wrapper
 xxl compile --bytecode script.xxl   # Compile to bytecode (.xxb)
 xxl compile -o out.xxb --bytecode script.xxl   # Compile with output path
 xxl update                    # Self-update to latest version
 xxl version                   # Show version
 xxl help                      # Show help
+```
+
+## Cloud Script Execution
+
+Xxlang supports executing scripts from a configured cloud URL base using the `-cloud` flag.
+
+### Configuration
+
+Create `~/.xxl/settings.json` (or `/.xxl/settings.json` on Linux, `C:\.xxl\settings.json` on Windows):
+
+```json
+{
+  "cloudUrlBase": "https://script.topget.org/"
+}
+```
+
+### Usage
+
+```bash
+xxl -cloud basic.xxl
+```
+
+This fetches and executes `https://script.topget.org/basic.xxl`.
+
+You can also access the config from within scripts:
+
+```xxl
+import "os"
+var cfg = os.getConfigObject()
+println(cfg["cloudUrlBase"])
 ```
 
 ## Bytecode Compilation
