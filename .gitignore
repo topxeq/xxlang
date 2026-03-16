@@ -1,5 +1,6 @@
 # Binaries
 /xxlang
+/xxl
 *.exe
 *.exe~
 *.dll
