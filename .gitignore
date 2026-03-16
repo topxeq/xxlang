@@ -26,6 +26,16 @@
 # Claude Code
 .claude/
 MEMORY.md
+CLAUDE.md
 
-# Development
+# Development / Planning
 task.md
+task*.md
+TEST_REPORT.md
+docs/plans/
+docs/superpowers/
+docs/AWESOME_GO_SUBMISSION.md
+
+# Benchmark reports
+benchmarks/*.md
+!benchmarks/README.md
