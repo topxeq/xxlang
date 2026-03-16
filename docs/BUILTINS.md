@@ -93,6 +93,29 @@ Prints arguments to stdout with a trailing newline.
 println("Hello", "World")  // Hello World
 ```
 
+### pl(format, args...)
+
+Formatted print with a trailing newline. Similar to Go's `fmt.Printf` but automatically adds `\n` at the end.
+
+```xxl
+pl("Hello, World!")                    // Hello, World!
+pl("Name: %s, Age: %d", "Alice", 30)   // Name: Alice, Age: 30
+pl("Value: %.2f", 3.14159)             // Value: 3.14
+pl("Bool: %v, Int: %d", true, 42)      // Bool: true, Int: 42
+```
+
+**Format verbs:**
+- `%s` - String
+- `%d` - Integer (decimal)
+- `%f` - Float
+- `%.Nf` - Float with N decimal places
+- `%v` - Default format for any value
+- `%t` - Boolean (true/false)
+- `%x` - Integer (hexadecimal)
+- `%o` - Integer (octal)
+- `%b` - Integer (binary)
+- `%%` - Literal percent sign
+
 ### typeOf(obj)
 
 Returns the type of an object as a string.
