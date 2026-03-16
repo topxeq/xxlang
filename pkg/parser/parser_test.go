@@ -2171,3 +2171,428 @@ try {
 		t.Fatal("inner try should have catch clause")
 	}
 }
+
+// ============================================
+// Switch Statement Tests
+// ============================================
+
+func TestSwitchStatement(t *testing.T) {
+	input := `
+switch (x) {
+	case 1:
+		print("one")
+	case 2:
+		print("two")
+	default:
+		print("other")
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	testProgramStatements(t, program, 1)
+
+	switchStmt, ok := program.Statements[0].(*SwitchStatement)
+	if !ok {
+		t.Fatalf("stmt not *SwitchStatement. got=%T", program.Statements[0])
+	}
+
+	if len(switchStmt.Cases) != 2 {
+		t.Fatalf("expected 2 cases, got %d", len(switchStmt.Cases))
+	}
+
+	if switchStmt.Default == nil {
+		t.Fatal("expected default clause")
+	}
+}
+
+func TestSwitchStatementWithoutDefault(t *testing.T) {
+	input := `
+switch (x) {
+	case 1:
+		print("one")
+	case 2:
+		print("two")
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	switchStmt, ok := program.Statements[0].(*SwitchStatement)
+	if !ok {
+		t.Fatalf("stmt not *SwitchStatement. got=%T", program.Statements[0])
+	}
+
+	if len(switchStmt.Cases) != 2 {
+		t.Fatalf("expected 2 cases, got %d", len(switchStmt.Cases))
+	}
+
+	if switchStmt.Default != nil {
+		t.Fatal("expected no default clause")
+	}
+}
+
+func TestSwitchStatementWithMultipleStatements(t *testing.T) {
+	input := `
+switch (x) {
+	case 1:
+		print("one")
+		print("uno")
+		break
+	case 2:
+		print("two")
+		print("dos")
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	switchStmt, ok := program.Statements[0].(*SwitchStatement)
+	if !ok {
+		t.Fatalf("stmt not *SwitchStatement. got=%T", program.Statements[0])
+	}
+
+	if len(switchStmt.Cases) != 2 {
+		t.Fatalf("expected 2 cases, got %d", len(switchStmt.Cases))
+	}
+
+	// First case should have 3 statements in the block
+	if len(switchStmt.Cases[0].Consequence.Statements) != 3 {
+		t.Fatalf("expected 3 statements in first case, got %d", len(switchStmt.Cases[0].Consequence.Statements))
+	}
+}
+
+func TestSwitchStatementErrorUnclosed(t *testing.T) {
+	// Parser may handle unclosed switch gracefully (EOF closes it)
+	input := `switch (x) { case 1: print("one")`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	// Just verify it parses without crashing
+	_ = program
+}
+
+func TestSwitchStatementErrorMultipleDefault(t *testing.T) {
+	input := `
+switch (x) {
+	default:
+		print("first")
+	default:
+		print("second")
+}
+`
+	l := lexer.New(input)
+	p := New(l)
+	_ = p.ParseProgram()
+	if len(p.errors) == 0 {
+		t.Error("expected parse error for multiple default clauses")
+	}
+}
+
+func TestSwitchStatementErrorCaseAfterDefault(t *testing.T) {
+	input := `
+switch (x) {
+	default:
+		print("default")
+	case 1:
+		print("one")
+}
+`
+	l := lexer.New(input)
+	p := New(l)
+	_ = p.ParseProgram()
+	if len(p.errors) == 0 {
+		t.Error("expected parse error for case after default")
+	}
+}
+
+// ============================================
+// Ternary Expression Tests
+// ============================================
+
+func TestTernaryExpression(t *testing.T) {
+	input := `x > 0 ? "positive" : "non-positive"`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	testProgramStatements(t, program, 1)
+
+	exprStmt, ok := program.Statements[0].(*ExpressionStatement)
+	if !ok {
+		t.Fatalf("stmt not *ExpressionStatement. got=%T", program.Statements[0])
+	}
+
+	ternary, ok := exprStmt.Expression.(*TernaryExpression)
+	if !ok {
+		t.Fatalf("expression not *TernaryExpression. got=%T", exprStmt.Expression)
+	}
+
+	if ternary.Condition == nil {
+		t.Fatal("expected condition expression")
+	}
+	if ternary.Consequent == nil {
+		t.Fatal("expected consequent expression")
+	}
+	if ternary.Alternative == nil {
+		t.Fatal("expected alternative expression")
+	}
+}
+
+func TestTernaryExpressionNested(t *testing.T) {
+	input := `x > 0 ? x > 10 ? "big" : "small" : "non-positive"`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	exprStmt, ok := program.Statements[0].(*ExpressionStatement)
+	if !ok {
+		t.Fatalf("stmt not *ExpressionStatement. got=%T", program.Statements[0])
+	}
+
+	outerTernary, ok := exprStmt.Expression.(*TernaryExpression)
+	if !ok {
+		t.Fatalf("expression not *TernaryExpression. got=%T", exprStmt.Expression)
+	}
+
+	// Consequent should be another ternary
+	innerTernary, ok := outerTernary.Consequent.(*TernaryExpression)
+	if !ok {
+		t.Fatalf("consequent not *TernaryExpression. got=%T", outerTernary.Consequent)
+	}
+
+	_ = innerTernary
+}
+
+func TestTernaryExpressionWithFunctionCall(t *testing.T) {
+	input := `condition ? foo() : bar()`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	exprStmt, ok := program.Statements[0].(*ExpressionStatement)
+	if !ok {
+		t.Fatalf("stmt not *ExpressionStatement. got=%T", program.Statements[0])
+	}
+
+	ternary, ok := exprStmt.Expression.(*TernaryExpression)
+	if !ok {
+		t.Fatalf("expression not *TernaryExpression. got=%T", exprStmt.Expression)
+	}
+
+	// Check consequent is a call expression
+	_, ok = ternary.Consequent.(*CallExpression)
+	if !ok {
+		t.Fatalf("consequent not *CallExpression. got=%T", ternary.Consequent)
+	}
+
+	// Check alternative is a call expression
+	_, ok = ternary.Alternative.(*CallExpression)
+	if !ok {
+		t.Fatalf("alternative not *CallExpression. got=%T", ternary.Alternative)
+	}
+}
+
+func TestTernaryExpressionErrorMissingColon(t *testing.T) {
+	input := `x > 0 ? "positive"`
+
+	l := lexer.New(input)
+	p := New(l)
+	_ = p.ParseProgram()
+	if len(p.errors) == 0 {
+		t.Error("expected parse error for missing colon in ternary")
+	}
+}
+
+// ============================================
+// C-Style For Loop Additional Tests
+// ============================================
+
+func TestCStyleForLoopWithoutInit(t *testing.T) {
+	input := `for (; i < 10; i = i + 1) { print(i) }`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Statements[0].(*ForStatement)
+	if !ok {
+		t.Fatalf("expected ForStatement, got %T", program.Statements[0])
+	}
+
+	// Init should be nil, condition and update should be set
+	if stmt.Init != nil {
+		t.Error("expected nil Init")
+	}
+	if stmt.Condition == nil {
+		t.Error("expected Condition expression")
+	}
+	if stmt.Update == nil {
+		t.Error("expected Update statement")
+	}
+}
+
+func TestCStyleForLoopWithoutCondition(t *testing.T) {
+	input := `for (var i = 0; ; i = i + 1) { if (i > 10) { break } }`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Statements[0].(*ForStatement)
+	if !ok {
+		t.Fatalf("expected ForStatement, got %T", program.Statements[0])
+	}
+
+	// Init and update should be set, condition should be nil
+	if stmt.Init == nil {
+		t.Error("expected Init statement")
+	}
+	if stmt.Condition != nil {
+		t.Error("expected nil Condition")
+	}
+	if stmt.Update == nil {
+		t.Error("expected Update statement")
+	}
+}
+
+func TestCStyleForLoopWithoutUpdate(t *testing.T) {
+	input := `for (var i = 0; i < 10; ) { print(i); i = i + 1 }`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Statements[0].(*ForStatement)
+	if !ok {
+		t.Fatalf("expected ForStatement, got %T", program.Statements[0])
+	}
+
+	// Init and condition should be set, update should be nil
+	if stmt.Init == nil {
+		t.Error("expected Init statement")
+	}
+	if stmt.Condition == nil {
+		t.Error("expected Condition expression")
+	}
+	if stmt.Update != nil {
+		t.Error("expected nil Update")
+	}
+}
+
+func TestCStyleForLoopInfinite(t *testing.T) {
+	input := `for (;;) { break }`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Statements[0].(*ForStatement)
+	if !ok {
+		t.Fatalf("expected ForStatement, got %T", program.Statements[0])
+	}
+
+	// All should be nil
+	if stmt.Init != nil {
+		t.Error("expected nil Init")
+	}
+	if stmt.Condition != nil {
+		t.Error("expected nil Condition")
+	}
+	if stmt.Update != nil {
+		t.Error("expected nil Update")
+	}
+}
+
+func TestCStyleForLoopWithConstInit(t *testing.T) {
+	input := `for (const i = 0; i < 10; i = i + 1) { print(i) }`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Statements[0].(*ForStatement)
+	if !ok {
+		t.Fatalf("expected ForStatement, got %T", program.Statements[0])
+	}
+
+	// Init should be a const statement
+	_, ok = stmt.Init.(*ConstStatement)
+	if !ok {
+		t.Fatalf("expected Init to be *ConstStatement, got %T", stmt.Init)
+	}
+}
+
+// ============================================
+// Additional Expression Tests
+// ============================================
+
+func TestPostfixExpressionOnIndex(t *testing.T) {
+	input := `arr[i]++`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	exprStmt, ok := program.Statements[0].(*ExpressionStatement)
+	if !ok {
+		t.Fatalf("stmt not *ExpressionStatement. got=%T", program.Statements[0])
+	}
+
+	postfix, ok := exprStmt.Expression.(*PostfixExpression)
+	if !ok {
+		t.Fatalf("expression not *PostfixExpression. got=%T", exprStmt.Expression)
+	}
+
+	// Check that the left side is an index expression
+	_, ok = postfix.Left.(*IndexExpression)
+	if !ok {
+		t.Fatalf("left not *IndexExpression. got=%T", postfix.Left)
+	}
+}
+
+func TestCompoundAssignmentWithIndex(t *testing.T) {
+	input := `arr[i] += 1`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	exprStmt, ok := program.Statements[0].(*ExpressionStatement)
+	if !ok {
+		t.Fatalf("stmt not *ExpressionStatement. got=%T", program.Statements[0])
+	}
+
+	compound, ok := exprStmt.Expression.(*CompoundAssignmentExpression)
+	if !ok {
+		t.Fatalf("expression not *CompoundAssignmentExpression. got=%T", exprStmt.Expression)
+	}
+
+	// Check that the left side is an index expression
+	_, ok = compound.Left.(*IndexExpression)
+	if !ok {
+		t.Fatalf("left not *IndexExpression. got=%T", compound.Left)
+	}
+}

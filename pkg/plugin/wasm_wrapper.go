@@ -87,7 +87,9 @@ func (p *WasmPlugin) wrapFunction(fn api.Function, name string) *objects.Builtin
 
 			// Handle different function signatures
 			switch name {
-			case "call_fast", "call_matrix":
+			case "call_fast", "call_matrix", "call_fib", "call_factorial",
+				"call_abs", "call_neg", "call_square", "call_triangle",
+				"call_triangular", "call_sum_squares", "call_count_primes":
 				// Single int64 argument, single int64 result
 				if len(args) != 1 {
 					return &objects.Error{Message: fmt.Sprintf("%s requires 1 argument", name)}
@@ -106,10 +108,33 @@ func (p *WasmPlugin) wrapFunction(fn api.Function, name string) *objects.Builtin
 				}
 				return &objects.Int{Value: int64(results[0])}
 
-			case "call_isFib":
-				// Single int64 argument, returns int32 (0 or 1)
+			case "call_add", "call_sub", "call_mul", "call_div",
+				"call_gcd", "call_lcm", "call_pow", "call_max", "call_min",
+				"call_binomial":
+				// Two int64 arguments, single int64 result
+				if len(args) != 2 {
+					return &objects.Error{Message: fmt.Sprintf("%s requires 2 arguments", name)}
+				}
+				a, ok1 := args[0].(*objects.Int)
+				b, ok2 := args[1].(*objects.Int)
+				if !ok1 || !ok2 {
+					return &objects.Error{Message: "arguments must be integers"}
+				}
+
+				results, err := fn.Call(ctx, uint64(a.Value), uint64(b.Value))
+				if err != nil {
+					return &objects.Error{Message: err.Error()}
+				}
+				if len(results) == 0 {
+					return &objects.Error{Message: "function returned no result"}
+				}
+				return &objects.Int{Value: int64(results[0])}
+
+			case "call_isFib", "call_is_even", "call_is_odd",
+				"call_is_prime", "call_is_square":
+				// Single int64 argument, returns int32 (0 or 1) -> bool
 				if len(args) != 1 {
-					return &objects.Error{Message: "isFib requires 1 argument"}
+					return &objects.Error{Message: fmt.Sprintf("%s requires 1 argument", name)}
 				}
 				n, ok := args[0].(*objects.Int)
 				if !ok {

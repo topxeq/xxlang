@@ -334,3 +334,341 @@ func TestRandInt63(t *testing.T) {
 		}
 	}
 }
+
+// ============================================================
+// NewInt Edge Cases Tests
+// ============================================================
+
+func TestNewIntCached(t *testing.T) {
+	// Test values within cache range
+	n1 := NewInt(0)
+	n2 := NewInt(0)
+	if n1 != n2 {
+		t.Error("NewInt(0) should return cached value")
+	}
+
+	n1 = NewInt(100)
+	n2 = NewInt(100)
+	if n1 != n2 {
+		t.Error("NewInt(100) should return cached value")
+	}
+
+	n1 = NewInt(-100)
+	n2 = NewInt(-100)
+	if n1 != n2 {
+		t.Error("NewInt(-100) should return cached value")
+	}
+}
+
+func TestNewIntNotCached(t *testing.T) {
+	// Test values outside cache range
+	n1 := NewInt(100000)
+	n2 := NewInt(100000)
+	// These should be different objects (not cached)
+	if n1 == n2 {
+		t.Error("NewInt(100000) should not be cached")
+	}
+	if n1.Value != 100000 || n2.Value != 100000 {
+		t.Error("NewInt values incorrect")
+	}
+}
+
+// ============================================================
+// deepCopyObject Tests
+// ============================================================
+
+func TestDeepCopyInt(t *testing.T) {
+	n := NewInt(42)
+	copied := deepCopyObject(n)
+	copiedInt, ok := copied.(*Int)
+	if !ok {
+		t.Fatalf("deepCopyObject(Int) should return Int, got %T", copied)
+	}
+	if copiedInt.Value != 42 {
+		t.Errorf("deepCopyObject(Int).Value = %d, want 42", copiedInt.Value)
+	}
+	// Should be a different object for large values
+	large := &Int{Value: 100000}
+	copiedLarge := deepCopyObject(large)
+	if large == copiedLarge {
+		t.Error("deepCopyObject should create new object for large Int")
+	}
+}
+
+func TestDeepCopyFloat(t *testing.T) {
+	f := &Float{Value: 3.14}
+	copied := deepCopyObject(f)
+	copiedFloat, ok := copied.(*Float)
+	if !ok {
+		t.Fatalf("deepCopyObject(Float) should return Float, got %T", copied)
+	}
+	if copiedFloat.Value != 3.14 {
+		t.Errorf("deepCopyObject(Float).Value = %f, want 3.14", copiedFloat.Value)
+	}
+}
+
+func TestDeepCopyString(t *testing.T) {
+	s := &String{Value: "hello"}
+	copied := deepCopyObject(s)
+	copiedStr, ok := copied.(*String)
+	if !ok {
+		t.Fatalf("deepCopyObject(String) should return String, got %T", copied)
+	}
+	if copiedStr.Value != "hello" {
+		t.Errorf("deepCopyObject(String).Value = %s, want hello", copiedStr.Value)
+	}
+}
+
+func TestDeepCopyBool(t *testing.T) {
+	copiedTrue := deepCopyObject(TRUE)
+	if copiedTrue != TRUE {
+		t.Error("deepCopyObject(TRUE) should return TRUE")
+	}
+
+	copiedFalse := deepCopyObject(FALSE)
+	if copiedFalse != FALSE {
+		t.Error("deepCopyObject(FALSE) should return FALSE")
+	}
+}
+
+func TestDeepCopyNull(t *testing.T) {
+	copied := deepCopyObject(NULL)
+	if copied != NULL {
+		t.Error("deepCopyObject(NULL) should return NULL")
+	}
+}
+
+func TestDeepCopyArray(t *testing.T) {
+	arr := &Array{Elements: []Object{
+		NewInt(1),
+		NewInt(2),
+		&String{Value: "test"},
+	}}
+	copied := deepCopyObject(arr)
+	copiedArr, ok := copied.(*Array)
+	if !ok {
+		t.Fatalf("deepCopyObject(Array) should return Array, got %T", copied)
+	}
+	if len(copiedArr.Elements) != 3 {
+		t.Errorf("deepCopyObject(Array) length = %d, want 3", len(copiedArr.Elements))
+	}
+	// Verify it's a deep copy
+	if arr == copiedArr {
+		t.Error("deepCopyObject should create new Array object")
+	}
+}
+
+func TestDeepCopyMap(t *testing.T) {
+	m := &Map{Pairs: map[HashKey]MapPair{
+		(&String{Value: "a"}).HashKey(): {Key: &String{Value: "a"}, Value: NewInt(1)},
+		(&String{Value: "b"}).HashKey(): {Key: &String{Value: "b"}, Value: NewInt(2)},
+	}}
+	copied := deepCopyObject(m)
+	copiedMap, ok := copied.(*Map)
+	if !ok {
+		t.Fatalf("deepCopyObject(Map) should return Map, got %T", copied)
+	}
+	if len(copiedMap.Pairs) != 2 {
+		t.Errorf("deepCopyObject(Map) length = %d, want 2", len(copiedMap.Pairs))
+	}
+}
+
+func TestDeepCopyBuiltin(t *testing.T) {
+	// Builtins and functions should be returned as-is
+	fn := &Builtin{Fn: func(args ...Object) Object { return NULL }}
+	copied := deepCopyObject(fn)
+	if copied != fn {
+		t.Error("deepCopyObject(Builtin) should return same object")
+	}
+}
+
+// ============================================================
+// shallowCopyObject Tests
+// ============================================================
+
+func TestShallowCopyArray(t *testing.T) {
+	arr := &Array{Elements: []Object{NewInt(1), NewInt(2)}}
+	copied := shallowCopyObject(arr)
+	copiedArr, ok := copied.(*Array)
+	if !ok {
+		t.Fatalf("shallowCopyObject(Array) should return Array, got %T", copied)
+	}
+	if len(copiedArr.Elements) != 2 {
+		t.Errorf("shallowCopyObject(Array) length = %d, want 2", len(copiedArr.Elements))
+	}
+	// Elements should be same references (shallow copy)
+	if copiedArr.Elements[0] != arr.Elements[0] {
+		t.Error("shallowCopyObject should not copy elements")
+	}
+}
+
+func TestShallowCopyMap(t *testing.T) {
+	m := &Map{Pairs: map[HashKey]MapPair{
+		(&String{Value: "a"}).HashKey(): {Key: &String{Value: "a"}, Value: NewInt(1)},
+	}}
+	copied := shallowCopyObject(m)
+	copiedMap, ok := copied.(*Map)
+	if !ok {
+		t.Fatalf("shallowCopyObject(Map) should return Map, got %T", copied)
+	}
+	if len(copiedMap.Pairs) != 1 {
+		t.Errorf("shallowCopyObject(Map) length = %d, want 1", len(copiedMap.Pairs))
+	}
+}
+
+func TestShallowCopyPrimitive(t *testing.T) {
+	// Primitives should be returned as-is
+	n := NewInt(42)
+	copied := shallowCopyObject(n)
+	if copied != n {
+		t.Error("shallowCopyObject(Int) should return same object")
+	}
+}
+
+// ============================================================
+// deepEquals Tests
+// ============================================================
+
+func TestDeepEqualsInts(t *testing.T) {
+	a := NewInt(42)
+	b := NewInt(42)
+	if !deepEquals(a, b) {
+		t.Error("deepEquals(42, 42) should be true")
+	}
+
+	c := NewInt(100)
+	if deepEquals(a, c) {
+		t.Error("deepEquals(42, 100) should be false")
+	}
+}
+
+func TestDeepEqualsFloats(t *testing.T) {
+	a := &Float{Value: 3.14}
+	b := &Float{Value: 3.14}
+	if !deepEquals(a, b) {
+		t.Error("deepEquals(3.14, 3.14) should be true")
+	}
+
+	c := &Float{Value: 2.71}
+	if deepEquals(a, c) {
+		t.Error("deepEquals(3.14, 2.71) should be false")
+	}
+}
+
+func TestDeepEqualsStrings(t *testing.T) {
+	a := &String{Value: "hello"}
+	b := &String{Value: "hello"}
+	if !deepEquals(a, b) {
+		t.Error("deepEquals('hello', 'hello') should be true")
+	}
+
+	c := &String{Value: "world"}
+	if deepEquals(a, c) {
+		t.Error("deepEquals('hello', 'world') should be false")
+	}
+}
+
+func TestDeepEqualsBools(t *testing.T) {
+	if !deepEquals(TRUE, TRUE) {
+		t.Error("deepEquals(TRUE, TRUE) should be true")
+	}
+	if deepEquals(TRUE, FALSE) {
+		t.Error("deepEquals(TRUE, FALSE) should be false")
+	}
+}
+
+func TestDeepEqualsNulls(t *testing.T) {
+	if !deepEquals(NULL, NULL) {
+		t.Error("deepEquals(NULL, NULL) should be true")
+	}
+}
+
+func TestDeepEqualsArrays(t *testing.T) {
+	a := &Array{Elements: []Object{NewInt(1), NewInt(2)}}
+	b := &Array{Elements: []Object{NewInt(1), NewInt(2)}}
+	if !deepEquals(a, b) {
+		t.Error("deepEquals([1,2], [1,2]) should be true")
+	}
+
+	c := &Array{Elements: []Object{NewInt(1), NewInt(3)}}
+	if deepEquals(a, c) {
+		t.Error("deepEquals([1,2], [1,3]) should be false")
+	}
+
+	d := &Array{Elements: []Object{NewInt(1)}}
+	if deepEquals(a, d) {
+		t.Error("deepEquals([1,2], [1]) should be false")
+	}
+}
+
+func TestDeepEqualsMaps(t *testing.T) {
+	a := &Map{Pairs: map[HashKey]MapPair{
+		(&String{Value: "a"}).HashKey(): {Key: &String{Value: "a"}, Value: NewInt(1)},
+	}}
+	b := &Map{Pairs: map[HashKey]MapPair{
+		(&String{Value: "a"}).HashKey(): {Key: &String{Value: "a"}, Value: NewInt(1)},
+	}}
+	if !deepEquals(a, b) {
+		t.Error("deepEquals({a:1}, {a:1}) should be true")
+	}
+
+	c := &Map{Pairs: map[HashKey]MapPair{
+		(&String{Value: "a"}).HashKey(): {Key: &String{Value: "a"}, Value: NewInt(2)},
+	}}
+	if deepEquals(a, c) {
+		t.Error("deepEquals({a:1}, {a:2}) should be false")
+	}
+}
+
+func TestDeepEqualsDifferentTypes(t *testing.T) {
+	a := NewInt(42)
+	b := &Float{Value: 42.0}
+	if deepEquals(a, b) {
+		t.Error("deepEquals(int, float) should be false")
+	}
+}
+
+// ============================================================
+// flattenArray Tests
+// ============================================================
+
+func TestFlattenArray(t *testing.T) {
+	// Test flattening one level
+	elements := []Object{
+		NewInt(1),
+		&Array{Elements: []Object{NewInt(2), NewInt(3)}},
+		NewInt(4),
+	}
+	result := flattenArray(elements, 1)
+	if len(result) != 4 {
+		t.Errorf("flattenArray(depth=1) length = %d, want 4", len(result))
+	}
+}
+
+func TestFlattenArrayDeep(t *testing.T) {
+	// Test deep flattening
+	elements := []Object{
+		&Array{Elements: []Object{
+			&Array{Elements: []Object{NewInt(1), NewInt(2)}},
+			NewInt(3),
+		}},
+		NewInt(4),
+	}
+	result := flattenArray(elements, -1) // -1 means unlimited depth
+	if len(result) != 4 {
+		t.Errorf("flattenArray(depth=-1) length = %d, want 4", len(result))
+	}
+}
+
+func TestFlattenArrayZeroDepth(t *testing.T) {
+	// Test with depth 0 (no flattening)
+	elements := []Object{
+		NewInt(1),
+		&Array{Elements: []Object{NewInt(2), NewInt(3)}},
+		NewInt(4),
+	}
+	result := flattenArray(elements, 0)
+	if len(result) != 3 {
+		t.Errorf("flattenArray(depth=0) length = %d, want 3", len(result))
+	}
+}
