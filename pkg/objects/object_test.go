@@ -309,3 +309,28 @@ func TestNewInt(t *testing.T) {
 		t.Errorf("NewInt(10000).Value = %d, want 10000", n.Value)
 	}
 }
+
+// ============================================================
+// Null ToBool Tests
+// ============================================================
+
+func TestNullToBool(t *testing.T) {
+	// NULL.ToBool() should return FALSE
+	if NULL.ToBool() != FALSE {
+		t.Error("NULL.ToBool() should return FALSE")
+	}
+}
+
+// ============================================================
+// Random Functions Tests
+// ============================================================
+
+func TestRandInt63(t *testing.T) {
+	// Call randInt63 multiple times to test the random functions
+	for i := 0; i < 10; i++ {
+		n := randInt63()
+		if n < 0 {
+			t.Errorf("randInt63() = %d, should be non-negative", n)
+		}
+	}
+}

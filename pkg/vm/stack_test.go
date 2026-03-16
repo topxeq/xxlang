@@ -197,3 +197,71 @@ func TestStackLen(t *testing.T) {
 		t.Errorf("expected empty stack after pop, got length %d", s.Len())
 	}
 }
+
+func TestStackPopSkipGC(t *testing.T) {
+	s := NewStack()
+
+	// Push values
+	s.Push(&objects.Int{Value: 1})
+	s.Push(&objects.Int{Value: 2})
+	s.Push(&objects.Int{Value: 3})
+
+	// PopSkipGC should work like Pop but without clearing the reference
+	popped := s.PopSkipGC()
+	if popped.(*objects.Int).Value != 3 {
+		t.Errorf("PopSkipGC: expected 3, got %d", popped.(*objects.Int).Value)
+	}
+
+	// Check length decreased
+	if s.Len() != 2 {
+		t.Errorf("PopSkipGC should decrease length, got %d", s.Len())
+	}
+
+	// Verify LastPopped was set
+	if s.LastPopped().(*objects.Int).Value != 3 {
+		t.Error("PopSkipGC should set LastPopped")
+	}
+}
+
+func TestStackSetTop(t *testing.T) {
+	s := NewStack()
+
+	// SetTop on empty stack should do nothing
+	s.SetTop(&objects.Int{Value: 999})
+	if s.Len() != 0 {
+		t.Errorf("SetTop on empty stack should not change length, got %d", s.Len())
+	}
+
+	// Push values
+	s.Push(&objects.Int{Value: 1})
+	s.Push(&objects.Int{Value: 2})
+
+	// SetTop should replace top element
+	s.SetTop(&objects.Int{Value: 42})
+	top := s.Top()
+	if top.(*objects.Int).Value != 42 {
+		t.Errorf("SetTop: expected 42, got %d", top.(*objects.Int).Value)
+	}
+
+	// Length should not change
+	if s.Len() != 2 {
+		t.Errorf("SetTop should not change length, got %d", s.Len())
+	}
+}
+
+func TestStackLastPopped(t *testing.T) {
+	s := NewStack()
+
+	// LastPopped on new stack
+	if s.LastPopped() != nil {
+		t.Errorf("LastPopped on new stack should be nil, got %v", s.LastPopped())
+	}
+
+	// Push and pop
+	s.Push(&objects.Int{Value: 42})
+	s.Pop()
+
+	if s.LastPopped().(*objects.Int).Value != 42 {
+		t.Errorf("LastPopped: expected 42, got %v", s.LastPopped())
+	}
+}
