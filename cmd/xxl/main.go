@@ -36,10 +36,29 @@ type REPL struct {
 
 // NewREPL creates a new REPL session
 func NewREPL() *REPL {
+	st := compiler.NewSymbolTable()
+
+	// Define preset global variables
+	argsGSymbol := st.Define("argsG")
+	scriptPathGSymbol := st.Define("scriptPathG")
+
+	// Initialize globals array
+	globals := make([]objects.Object, compiler.GlobalsSize)
+
+	// Set argsG - command line arguments as string array
+	argsElements := make([]objects.Object, len(os.Args))
+	for i, arg := range os.Args {
+		argsElements[i] = &objects.String{Value: arg}
+	}
+	globals[argsGSymbol.Index] = &objects.Array{Elements: argsElements}
+
+	// Set scriptPathG - empty for REPL mode
+	globals[scriptPathGSymbol.Index] = &objects.String{Value: ""}
+
 	return &REPL{
-		symbolTable: compiler.NewSymbolTable(),
+		symbolTable: st,
 		constants:   make([]objects.Object, 0),
-		globals:     make([]objects.Object, compiler.GlobalsSize),
+		globals:     globals,
 		history:     make([]string, 0),
 	}
 }
@@ -377,6 +396,9 @@ func executeCode(code, sourcePath string) {
 
     // Compilation
     c := compiler.New()
+    // Define preset global variables before compilation
+    argsGSymbol := c.DefineGlobal("argsG")
+    scriptPathGSymbol := c.DefineGlobal("scriptPathG")
     c.SetSource(sourcePath, code) // Enable source mapping
     if err := c.Compile(program); err != nil {
         fmt.Printf("Error: %v\n", err)
@@ -389,9 +411,22 @@ func executeCode(code, sourcePath string) {
         Exports: make(map[string]objects.Object),
     }
 
+    // Prepare globals array with preset values
+    globals := make([]objects.Object, compiler.GlobalsSize)
+
+    // Set argsG - command line arguments as string array
+    argsElements := make([]objects.Object, len(os.Args))
+    for i, arg := range os.Args {
+        argsElements[i] = &objects.String{Value: arg}
+    }
+    globals[argsGSymbol.Index] = &objects.Array{Elements: argsElements}
+
+    // Set scriptPathG - script path (empty string if not available)
+    globals[scriptPathGSymbol.Index] = &objects.String{Value: sourcePath}
+
     // Execution
     bytecode := c.Bytecode()
-    v := vm.NewWithGlobalsStore(bytecode, make([]objects.Object, compiler.GlobalsSize))
+    v := vm.NewWithGlobalsStore(bytecode, globals)
     v.SetSourcePath(sourcePath)
     v.SetCurrentModule(mainModule)
 
@@ -431,8 +466,21 @@ func runBytecodeFile(filename string) {
         Exports: make(map[string]objects.Object),
     }
 
+    // Prepare globals array with preset values
+    globals := make([]objects.Object, compiler.GlobalsSize)
+
+    // Set argsG - command line arguments as string array (index 0)
+    argsElements := make([]objects.Object, len(os.Args))
+    for i, arg := range os.Args {
+        argsElements[i] = &objects.String{Value: arg}
+    }
+    globals[0] = &objects.Array{Elements: argsElements}
+
+    // Set scriptPathG - script path (index 1)
+    globals[1] = &objects.String{Value: filename}
+
     // Execution
-    v := vm.NewWithGlobalsStore(bytecode, make([]objects.Object, compiler.GlobalsSize))
+    v := vm.NewWithGlobalsStore(bytecode, globals)
     v.SetSourcePath(filename)
     v.SetCurrentModule(mainModule)
 

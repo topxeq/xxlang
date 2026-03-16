@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -2123,6 +2124,54 @@ var Builtins = map[string]*Builtin{
             }
 
             return &Array{Elements: chunks}
+        },
+    },
+
+    // ============================================================
+    // Command Line Argument Functions
+    // ============================================================
+    "getSwitch": {
+        Fn: func(args ...Object) Object {
+            if len(args) != 3 {
+                return newError("wrong number of arguments for getSwitch. got=%d, want=3", len(args))
+            }
+
+            arr, ok := args[0].(*Array)
+            if !ok {
+                return newError("first argument to 'getSwitch' must be ARRAY, got %s", args[0].Type())
+            }
+
+            prefix, ok := args[1].(*String)
+            if !ok {
+                return newError("second argument to 'getSwitch' must be STRING, got %s", args[1].Type())
+            }
+
+            // Third argument is the default value
+            defaultValue := args[2]
+
+            // Search for an element that starts with the prefix
+            for _, elem := range arr.Elements {
+                str, ok := elem.(*String)
+                if !ok {
+                    continue
+                }
+                if strings.HasPrefix(str.Value, prefix.Value) {
+                    // Return the value after the prefix
+                    return &String{Value: strings.TrimPrefix(str.Value, prefix.Value)}
+                }
+            }
+
+            // Not found, return the default value
+            return defaultValue
+        },
+    },
+    "args": {
+        Fn: func(args ...Object) Object {
+            result := make([]Object, len(os.Args))
+            for i, arg := range os.Args {
+                result[i] = &String{Value: arg}
+            }
+            return &Array{Elements: result}
         },
     },
 }
