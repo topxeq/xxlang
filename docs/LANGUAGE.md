@@ -61,7 +61,7 @@ xxlang version
 |------|-------------|---------|
 | `INT` | 64-bit integer | `42`, `-5`, `0` |
 | `FLOAT` | 64-bit float | `3.14`, `-2.5`, `1.0e10` |
-| `STRING` | UTF-8 string | `"hello"`, `"world\n"` |
+| `STRING` | UTF-8 string | `"hello"`, `` `raw string` `` |
 | `BOOL` | Boolean | `true`, `false` |
 | `NULL` | Null value | `null` |
 
@@ -89,6 +89,53 @@ typeOf(null)      // "NULL"
 typeOf([1, 2])    // "ARRAY"
 typeOf({"a": 1})  // "MAP"
 typeOf(func() {}) // "FUNCTION"
+```
+
+## Strings
+
+Xxlang supports two types of string literals:
+
+### Double-Quoted Strings
+
+Standard strings with escape sequence support:
+
+```xxl
+var s1 = "hello"
+var s2 = "line1\nline2"       // \n = newline
+var s3 = "tab\there"          // \t = tab
+var s4 = "quote: \"hello\""   // \" = quote
+```
+
+**Escape sequences:**
+- `\n` - Newline
+- `\t` - Tab
+- `\r` - Carriage return
+- `\\` - Backslash
+- `\"` - Double quote
+- `\0` - Null character
+
+### Raw Strings (Backtick)
+
+Raw strings do not process escape sequences, making them ideal for:
+- Multi-line text
+- File paths (Windows)
+- Regular expressions
+- Text containing backslashes or quotes
+
+```xxl
+// Multi-line string
+var text = `line1
+line2
+line3`
+
+// Windows path (no escape processing)
+var path = `C:\Users\test\file.txt`
+
+// Text with quotes
+var msg = `He said "hello" to me`
+
+// Regex pattern
+var pattern = `\d+\.\d+`
 ```
 
 ## Variables

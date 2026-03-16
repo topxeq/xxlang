@@ -581,13 +581,12 @@ func TestNextToken_UnterminatedString(t *testing.T) {
 }
 
 func TestNextToken_IllegalCharacters(t *testing.T) {
-	input := `@ # $ ` + "`"
+	input := `@ # $`
 
 	expected := []Token{
 		{Type: TokenIllegal, Literal: "@"},
 		{Type: TokenIllegal, Literal: "#"},
 		{Type: TokenIllegal, Literal: "$"},
-		{Type: TokenIllegal, Literal: "`"},
 		{Type: TokenEOF, Literal: ""},
 	}
 
@@ -846,6 +845,30 @@ func TestNextToken_EscapeAtEndOfString(t *testing.T) {
 	}
 	if tok.Literal != "test\\" {
 		t.Fatalf("wrong literal. expected=%q, got=%q", "test\\", tok.Literal)
+	}
+}
+
+func TestNextToken_RawString(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{`hello`, "hello"},
+		{"line1\nline2", "line1\nline2"},
+		{`C:\Users\test`, `C:\Users\test`},
+		{`He said "hi"`, `He said "hi"`},
+	}
+
+	for i, tt := range tests {
+		l := New("`" + tt.input + "`")
+		tok := l.NextToken()
+
+		if tok.Type != TokenString {
+			t.Fatalf("tests[%d] - wrong token type. expected=%q, got=%q", i, TokenString, tok.Type)
+		}
+		if tok.Literal != tt.expected {
+			t.Fatalf("tests[%d] - wrong literal. expected=%q, got=%q", i, tt.expected, tok.Literal)
+		}
 	}
 }
 

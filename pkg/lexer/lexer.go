@@ -210,6 +210,12 @@ func (l *Lexer) NextToken() Token {
 		tok.Line = line
 		tok.Column = column
 		return tok // readString already advanced past closing quote, don't readChar again
+	case '`':
+		tok.Type = TokenString
+		tok.Literal = l.readRawString()
+		tok.Line = line
+		tok.Column = column
+		return tok // readRawString already advanced past closing backtick, don't readChar again
 	case 0:
 		tok.Literal = ""
 		tok.Type = TokenEOF
@@ -310,6 +316,23 @@ func (l *Lexer) readString() string {
 	}
 
 	l.readChar() // skip closing quote (or handle EOF)
+
+	return string(result)
+}
+
+// readRawString reads a raw string literal (backtick string)
+// No escape sequences are processed, newlines are preserved
+func (l *Lexer) readRawString() string {
+	var result []byte
+
+	l.readChar() // skip opening backtick
+
+	for l.ch != '`' && l.ch != 0 {
+		result = append(result, l.ch)
+		l.readChar()
+	}
+
+	l.readChar() // skip closing backtick (or handle EOF)
 
 	return string(result)
 }
