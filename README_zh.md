@@ -29,7 +29,10 @@ Xxlang 是一个基于字节码虚拟机的脚本语言，使用 Go 语言实现
 **Linux / macOS:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/topxeq/xxlang/master/install.sh | bash
-# 或使用 wget
+```
+
+或使用 wget：
+```bash
 wget -qO- https://raw.githubusercontent.com/topxeq/xxlang/master/install.sh | bash
 ```
 
