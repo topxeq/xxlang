@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pquerna/otp/totp"
 )
 
 // BuiltinFunction is the type for built-in functions
@@ -185,6 +187,26 @@ var Builtins = map[string]*Builtin{
             }
 
             return NULL
+        },
+    },
+    "genOtpCode": {
+        Fn: func(args ...Object) Object {
+            if len(args) < 1 {
+                return newError("wrong number of arguments for genOtpCode. got=%d, want>=1", len(args))
+            }
+
+            secret, ok := args[0].(*String)
+            if !ok {
+                return newError("first argument to 'genOtpCode' must be STRING, got %s", args[0].Type())
+            }
+
+            // Generate TOTP code
+            code, err := totp.GenerateCode(secret.Value, time.Now())
+            if err != nil {
+                return &Error{Message: err.Error()}
+            }
+
+            return &String{Value: code}
         },
     },
     "typeOf": {

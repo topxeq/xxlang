@@ -157,6 +157,26 @@ checkEmpty(value)  // Does nothing, continues execution
 pln("Value: ", value)
 ```
 
+### genOtpCode(secret)
+
+Generates a TOTP (Time-based One-Time Password) code from a base32-encoded secret. Returns the 6-digit OTP code as a string, or an error object if the secret is invalid.
+
+```xxl
+// Generate OTP code from a TOTP secret
+var code = genOtpCode("JBSWY3DPEHPK3PXP")
+pln("OTP Code: ", code)  // e.g., "398139"
+
+// Check for errors
+checkErr(code, "Failed to generate OTP: %v")
+
+// Use with authenticator apps (Google Authenticator, Authy, etc.)
+var secret = "HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ"
+var otp = genOtpCode(secret)
+pln("Your OTP: ", otp)
+```
+
+**Note:** The secret must be a valid base32-encoded string as used by TOTP authenticator apps.
+
 ### typeOf(obj)
 
 Returns the type of an object as a string.

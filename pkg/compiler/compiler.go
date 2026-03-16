@@ -160,6 +160,8 @@ func NewSymbolTable() *SymbolTable {
 	// Validation utilities
 	s.DefineBuiltin(102, "checkErr")
 	s.DefineBuiltin(103, "checkEmpty")
+	// OTP utilities
+	s.DefineBuiltin(104, "genOtpCode")
 	return s
 }
 

@@ -157,6 +157,26 @@ checkEmpty(value)  // 不为空，不做任何操作，继续执行
 pln("值: ", value)
 ```
 
+### genOtpCode(secret)
+
+从 base32 编码的密钥生成 TOTP（基于时间的一次性密码）代码。返回 6 位数字的 OTP 代码字符串，如果密钥无效则返回错误对象。
+
+```xxl
+// 从 TOTP 密钥生成 OTP 代码
+var code = genOtpCode("JBSWY3DPEHPK3PXP")
+pln("OTP 代码: ", code)  // 例如："398139"
+
+// 检查错误
+checkErr(code, "生成 OTP 失败: %v")
+
+// 配合验证器应用使用（Google Authenticator、Authy 等）
+var secret = "HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ"
+var otp = genOtpCode(secret)
+pln("您的 OTP: ", otp)
+```
+
+**注意：** 密钥必须是 TOTP 验证器应用使用的有效 base32 编码字符串。
+
 ### typeOf(obj)
 
 返回对象的类型字符串。
