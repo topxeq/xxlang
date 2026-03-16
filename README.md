@@ -37,7 +37,10 @@ Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language impleme
 **Linux / macOS:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/topxeq/xxlang/master/install.sh | bash
-# or with wget
+```
+
+or with wget:
+```bash
 wget -qO- https://raw.githubusercontent.com/topxeq/xxlang/master/install.sh | bash
 ```
 
