@@ -1048,3 +1048,82 @@ func TestWasmCloseWithNilModule(t *testing.T) {
 		t.Errorf("Close with nil module returned error: %v", err)
 	}
 }
+
+// TestLoadPathInvalidWASM tests LoadPath with invalid WASM content
+func TestLoadPathInvalidWASM(t *testing.T) {
+	// Create a temp file with invalid WASM content
+	tmpFile, err := os.CreateTemp("", "invalid*.wasm")
+	if err != nil {
+		t.Skip("could not create temp file")
+	}
+	defer os.Remove(tmpFile.Name())
+
+	// Write invalid content
+	tmpFile.WriteString("not a valid wasm file")
+	tmpFile.Close()
+
+	loader := NewLoader()
+	p, err := loader.LoadPath(tmpFile.Name())
+	if err == nil {
+		t.Error("expected error for invalid WASM file")
+		if p != nil {
+			closePlugin(p)
+		}
+	}
+	if p != nil {
+		t.Errorf("expected nil plugin, got %v", p)
+	}
+}
+
+// TestLoadPluginWASMNonExistent tests loading non-existent WASM file
+func TestLoadPluginWASMNonExistent(t *testing.T) {
+	_, err := loadPluginWASM("/nonexistent/path/to/plugin.wasm")
+	if err == nil {
+		t.Error("expected error for non-existent WASM file")
+	}
+}
+
+// TestReadInt64ArrayFromMemoryEmpty tests readInt64ArrayFromMemory with empty array
+func TestReadInt64ArrayFromMemoryEmpty(t *testing.T) {
+	// Test with nil module (count 0)
+	result := readInt64ArrayFromMemory(nil, 0, 0)
+	if result != nil {
+		t.Errorf("readInt64ArrayFromMemory(nil, 0, 0) = %v, expected nil", result)
+	}
+}
+
+// TestWasmPlugin_NameMethod tests the Name method
+func TestWasmPlugin_NameMethod(t *testing.T) {
+	names := []string{"fib", "math", "test_plugin", ""}
+	for _, name := range names {
+		wp := &WasmPlugin{name: name}
+		if wp.Name() != name {
+			t.Errorf("Name() = %q, expected %q", wp.Name(), name)
+		}
+	}
+}
+
+// TestWasmPlugin_NewWasmPluginFunction tests NewWasmPlugin
+func TestWasmPlugin_NewWasmPluginFunction(t *testing.T) {
+	wp := NewWasmPlugin("test", nil, nil)
+	if wp == nil {
+		t.Fatal("NewWasmPlugin returned nil")
+	}
+	if wp.Name() != "test" {
+		t.Errorf("Name() = %q, expected 'test'", wp.Name())
+	}
+}
+
+// TestWasmPlugin_CloseNilRuntime tests Close with nil runtime
+func TestWasmPlugin_CloseNilRuntime(t *testing.T) {
+	wp := &WasmPlugin{
+		name:   "test",
+		module: nil,
+		rt:     nil,
+	}
+
+	err := wp.Close(context.Background())
+	if err != nil {
+		t.Errorf("Close() returned error: %v", err)
+	}
+}

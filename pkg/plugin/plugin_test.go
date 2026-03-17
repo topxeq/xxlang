@@ -424,3 +424,209 @@ func TestLoader_Concurrent(t *testing.T) {
 		<-done
 	}
 }
+
+// ============================================
+// Additional LoadPath tests
+// ============================================
+
+func TestLoader_LoadPath_NilPaths(t *testing.T) {
+	loader := NewLoader()
+	loader.SetPaths(nil)
+
+	p, err := loader.LoadPath("/nonexistent/plugin.wasm")
+	if err == nil {
+		t.Error("expected error for nil paths")
+	}
+	if p != nil {
+		t.Errorf("expected nil plugin, got %v", p)
+	}
+}
+
+func TestLoader_LoadPath_EmptyPath(t *testing.T) {
+	loader := NewLoader()
+
+	p, err := loader.LoadPath("")
+	if err == nil {
+		t.Error("expected error for empty path")
+	}
+	if p != nil {
+		t.Errorf("expected nil plugin, got %v", p)
+	}
+}
+
+func TestLoader_Load_WithPluginExtension(t *testing.T) {
+	Registry.Lock()
+	Registry.plugins = make(map[string]Plugin)
+	Registry.Unlock()
+
+	loader := NewLoader()
+	loader.SetPaths([]string{"/nonexistent"})
+
+	// Test loading plugin with explicit .plugin extension
+	p, err := loader.Load("myplugin.plugin")
+	if err == nil {
+		t.Error("expected error for non-existent plugin")
+	}
+	if p != nil {
+		t.Errorf("expected nil plugin, got %v", p)
+	}
+}
+
+func TestLoader_Load_WithWasmExtension(t *testing.T) {
+	Registry.Lock()
+	Registry.plugins = make(map[string]Plugin)
+	Registry.Unlock()
+
+	loader := NewLoader()
+	loader.SetPaths([]string{"/nonexistent"})
+
+	// Test loading plugin with explicit .wasm extension
+	p, err := loader.Load("myplugin.wasm")
+	if err == nil {
+		t.Error("expected error for non-existent plugin")
+	}
+	if p != nil {
+		t.Errorf("expected nil plugin, got %v", p)
+	}
+}
+
+func TestLoader_Load_WithSoExtension(t *testing.T) {
+	Registry.Lock()
+	Registry.plugins = make(map[string]Plugin)
+	Registry.Unlock()
+
+	loader := NewLoader()
+	loader.SetPaths([]string{"/nonexistent"})
+
+	// Test loading plugin with .so extension
+	p, err := loader.Load("myplugin.so")
+	if err == nil {
+		t.Error("expected error for non-existent plugin")
+	}
+	if p != nil {
+		t.Errorf("expected nil plugin, got %v", p)
+	}
+}
+
+func TestLoader_LoadPath_RegisteredPlugin(t *testing.T) {
+	// Register a plugin
+	Registry.Lock()
+	Registry.plugins = make(map[string]Plugin)
+	Registry.plugins["test_registered"] = &mockPlugin{
+		name: "test_registered",
+		exports: map[string]objects.Object{"x": &objects.Int{Value: 1}},
+	}
+	Registry.Unlock()
+
+	loader := NewLoader()
+	// LoadPath should work even for registered plugins
+	p, err := loader.Load("test_registered")
+	if err != nil {
+		t.Errorf("expected no error for registered plugin, got %v", err)
+	}
+	if p == nil {
+		t.Error("expected plugin, got nil")
+	}
+	if p.Name() != "test_registered" {
+		t.Errorf("expected name 'test_registered', got %q", p.Name())
+	}
+}
+
+func TestLoader_LoadPath_StatError(t *testing.T) {
+	loader := NewLoader()
+
+	// Try to load from a path that can't be accessed
+	p, err := loader.LoadPath("/root/some_nonexistent_plugin.wasm")
+	if err == nil {
+		t.Error("expected error for inaccessible path")
+	}
+	if p != nil {
+		t.Errorf("expected nil plugin, got %v", p)
+	}
+}
+
+// TestLoader_Load_MultiplePaths tests searching through multiple paths
+func TestLoader_Load_MultiplePaths(t *testing.T) {
+	Registry.Lock()
+	Registry.plugins = make(map[string]Plugin)
+	Registry.Unlock()
+
+	loader := NewLoader()
+	loader.SetPaths([]string{
+		"/nonexistent/path1",
+		"/nonexistent/path2",
+		"/nonexistent/path3",
+	})
+
+	p, err := loader.Load("test")
+	if err == nil {
+		t.Error("expected error for plugin not in any path")
+	}
+	if p != nil {
+		t.Errorf("expected nil plugin, got %v", p)
+	}
+}
+
+// TestToModule_NilExports tests ToModule with nil exports
+func TestToModule_NilExports(t *testing.T) {
+	p := &mockPlugin{
+		name:    "nil_exports",
+		exports: nil,
+	}
+
+	m := ToModule(p)
+	if m == nil {
+		t.Fatal("expected module, got nil")
+	}
+	if m.Name != "nil_exports" {
+		t.Errorf("expected name 'nil_exports', got %q", m.Name)
+	}
+	// Exports can be nil if the plugin returns nil
+}
+
+// TestPlugin_RegistryConcurrent tests concurrent access to the registry
+func TestPlugin_RegistryConcurrent(t *testing.T) {
+	Registry.Lock()
+	Registry.plugins = make(map[string]Plugin)
+	Registry.Unlock()
+
+	done := make(chan bool)
+
+	// Concurrent writes
+	for i := 0; i < 5; i++ {
+		go func(id int) {
+			name := fmt.Sprintf("plugin_%d", id)
+			Register(&mockPlugin{name: name})
+			done <- true
+		}(i)
+	}
+
+	// Concurrent reads
+	for i := 0; i < 5; i++ {
+		go func(id int) {
+			name := fmt.Sprintf("plugin_%d", id)
+			_ = Has(name)
+			done <- true
+		}(i)
+	}
+
+	// Wait for all operations
+	for i := 0; i < 10; i++ {
+		<-done
+	}
+}
+
+// TestList_EmptyRegistry tests List with empty registry
+func TestList_EmptyRegistry(t *testing.T) {
+	Registry.Lock()
+	Registry.plugins = make(map[string]Plugin)
+	Registry.Unlock()
+
+	list := List()
+	if list == nil {
+		t.Error("expected non-nil list")
+	}
+	if len(list) != 0 {
+		t.Errorf("expected empty list, got %v", list)
+	}
+}
