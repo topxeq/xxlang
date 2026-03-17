@@ -64,7 +64,7 @@ func (vm *VM) executeClosure() error {
 		Fn:        fn,
 		FreeVars:  make([]objects.Object, numFree),
 		Constants: vm.constants, // Store the constants from this VM
-		Globals:   globals,       // Store globals for module-level variable access
+		Globals:   globals,      // Store globals for module-level variable access
 	}
 
 	// Pop the free variables from stack and store them in the closure

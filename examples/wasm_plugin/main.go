@@ -4,13 +4,15 @@
 // WASM plugins work on all platforms including Windows, without CGO.
 //
 // Build the plugin:
-//   cd plugin && ./build.sh fib.ts    # AssemblyScript (smallest)
-//   cd plugin && ./build.sh fib.rs    # Rust
-//   cd plugin && ./build.sh fib.zig   # Zig
-//   cd plugin && ./build.sh fib.c     # C
+//
+//	cd plugin && ./build.sh fib.ts    # AssemblyScript (smallest)
+//	cd plugin && ./build.sh fib.rs    # Rust
+//	cd plugin && ./build.sh fib.zig   # Zig
+//	cd plugin && ./build.sh fib.c     # C
 //
 // Run this example:
-//   go run main.go
+//
+//	go run main.go
 package main
 
 import (

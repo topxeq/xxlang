@@ -4,7 +4,8 @@
 // 插件提供高性能的斐波那契计算功能，供 Xxlang 代码调用
 //
 // 使用方式：
-//   作为静态插件：在 Go 程序中 import 此包，插件自动注册
+//
+//	作为静态插件：在 Go 程序中 import 此包，插件自动注册
 package fibplugin
 
 import (

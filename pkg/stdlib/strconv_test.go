@@ -363,7 +363,7 @@ func TestToJSON(t *testing.T) {
 
 	obj := &objects.Map{
 		Pairs: map[objects.HashKey]objects.MapPair{
-			String("name").HashKey(): {Key: String("name"), Value: String("test")},
+			String("name").HashKey():  {Key: String("name"), Value: String("test")},
 			String("value").HashKey(): {Key: String("value"), Value: Int(42)},
 		},
 	}

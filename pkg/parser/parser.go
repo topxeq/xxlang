@@ -10,49 +10,49 @@ import (
 
 // Operator precedence constants
 const (
-	_ int = iota
-	LOWEST      // lowest precedence for expression parsing
-	TERNARY     // ? : (right-associative)
-	ASSIGN      // =, +=, -= (right-associative, binds after LOWEST)
-	OR          // ||
-	AND         // &&
-	EQUALS      // ==, !=
-	LESSGREATER // <, >, <=, >=
-	SUM         // +, -
-	PRODUCT     // *, /, %
-	PREFIX      // !, -
-	CALL        // fn()
-	INDEX       // arr[i]
-	DOT         // obj.field
+	_           int = iota
+	LOWEST          // lowest precedence for expression parsing
+	TERNARY         // ? : (right-associative)
+	ASSIGN          // =, +=, -= (right-associative, binds after LOWEST)
+	OR              // ||
+	AND             // &&
+	EQUALS          // ==, !=
+	LESSGREATER     // <, >, <=, >=
+	SUM             // +, -
+	PRODUCT         // *, /, %
+	PREFIX          // !, -
+	CALL            // fn()
+	INDEX           // arr[i]
+	DOT             // obj.field
 )
 
 // precedence maps token types to their precedence
 var precedence = map[lexer.TokenType]int{
-	lexer.TokenOr:          OR,
-	lexer.TokenAnd:         AND,
-	lexer.TokenEqual:       EQUALS,
-	lexer.TokenNotEqual:    EQUALS,
-	lexer.TokenLT:          LESSGREATER,
-	lexer.TokenGT:          LESSGREATER,
-	lexer.TokenLTE:         LESSGREATER,
-	lexer.TokenGTE:         LESSGREATER,
-	lexer.TokenPlus:        SUM,
-	lexer.TokenMinus:       SUM,
-	lexer.TokenAsterisk:    PRODUCT,
-	lexer.TokenSlash:       PRODUCT,
-	lexer.TokenPercent:     PRODUCT,
-	lexer.TokenLParen:      CALL,
-	lexer.TokenLBracket:    INDEX,
-	lexer.TokenDot:         DOT,
-	lexer.TokenAssign:      ASSIGN,
-	lexer.TokenPlusAssign:  ASSIGN,
-	lexer.TokenMinusAssign: ASSIGN,
+	lexer.TokenOr:             OR,
+	lexer.TokenAnd:            AND,
+	lexer.TokenEqual:          EQUALS,
+	lexer.TokenNotEqual:       EQUALS,
+	lexer.TokenLT:             LESSGREATER,
+	lexer.TokenGT:             LESSGREATER,
+	lexer.TokenLTE:            LESSGREATER,
+	lexer.TokenGTE:            LESSGREATER,
+	lexer.TokenPlus:           SUM,
+	lexer.TokenMinus:          SUM,
+	lexer.TokenAsterisk:       PRODUCT,
+	lexer.TokenSlash:          PRODUCT,
+	lexer.TokenPercent:        PRODUCT,
+	lexer.TokenLParen:         CALL,
+	lexer.TokenLBracket:       INDEX,
+	lexer.TokenDot:            DOT,
+	lexer.TokenAssign:         ASSIGN,
+	lexer.TokenPlusAssign:     ASSIGN,
+	lexer.TokenMinusAssign:    ASSIGN,
 	lexer.TokenAsteriskAssign: ASSIGN,
-	lexer.TokenSlashAssign: ASSIGN,
-	lexer.TokenPercentAssign: ASSIGN,
-	lexer.TokenIncrement:   CALL, // Postfix ++ has high precedence
-	lexer.TokenDecrement:   CALL, // Postfix -- has high precedence
-	lexer.TokenQuestion:    TERNARY, // Ternary operator ?:
+	lexer.TokenSlashAssign:    ASSIGN,
+	lexer.TokenPercentAssign:  ASSIGN,
+	lexer.TokenIncrement:      CALL,    // Postfix ++ has high precedence
+	lexer.TokenDecrement:      CALL,    // Postfix -- has high precedence
+	lexer.TokenQuestion:       TERNARY, // Ternary operator ?:
 }
 
 // Parser parses tokens into an AST
@@ -977,14 +977,15 @@ func (p *Parser) parseClassStatement() *ClassStatement {
 }
 
 // parseSwitchStatement parses a switch statement
-// switch (expression) {
-//     case value1:
-//         statements
-//     case value2:
-//         statements
-//     default:
-//         statements
-// }
+//
+//	switch (expression) {
+//	    case value1:
+//	        statements
+//	    case value2:
+//	        statements
+//	    default:
+//	        statements
+//	}
 func (p *Parser) parseSwitchStatement() *SwitchStatement {
 	stmt := &SwitchStatement{Token: p.curToken}
 
@@ -1092,13 +1093,16 @@ func (p *Parser) parseCaseBody() *BlockStatement {
 }
 
 // parseTryStatement parses a try-catch-finally statement
-// try {
-//     statements
-// } catch (e) {
-//     statements
-// } finally {
-//     statements
-// }
+//
+//	try {
+//	    statements
+//	} catch (e) {
+//
+//	    statements
+//	} finally {
+//
+//	    statements
+//	}
 func (p *Parser) parseTryStatement() *TryStatement {
 	stmt := &TryStatement{Token: p.curToken}
 

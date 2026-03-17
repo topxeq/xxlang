@@ -8,9 +8,9 @@
 //	tinygo build -o fib.wasm -target=wasi fib.go
 //
 // Standard Go's GOOS=wasip1 does NOT work for plugins because:
-// 1. When main() returns, Go calls proc_exit(0) which closes the module
-// 2. Even with select{} in main, there's a runtime check that prevents
-//    exported functions from being called until _start completes
+//  1. When main() returns, Go calls proc_exit(0) which closes the module
+//  2. Even with select{} in main, there's a runtime check that prevents
+//     exported functions from being called until _start completes
 //
 // TinyGo uses a different architecture that allows exported functions
 // to remain callable after initialization.

@@ -16,19 +16,19 @@ const (
 	OpDup                    // Duplicate top of stack
 
 	// Arithmetic operations
-	OpAdd  // Addition
-	OpSub  // Subtraction
-	OpMul  // Multiplication
-	OpDiv  // Division
-	OpMod  // Modulo
-	OpNeg  // Unary minus (negation)
+	OpAdd // Addition
+	OpSub // Subtraction
+	OpMul // Multiplication
+	OpDiv // Division
+	OpMod // Modulo
+	OpNeg // Unary minus (negation)
 
 	// Comparison operations
-	OpEqual       // Equality check
-	OpNotEqual    // Inequality check
-	OpLess        // Less than
-	OpGreater     // Greater than
-	OpLessEqual   // Less than or equal
+	OpEqual        // Equality check
+	OpNotEqual     // Inequality check
+	OpLess         // Less than
+	OpGreater      // Greater than
+	OpLessEqual    // Less than or equal
 	OpGreaterEqual // Greater than or equal
 
 	// Logical operations
@@ -50,17 +50,17 @@ const (
 	OpPopScope  // Pop scope
 
 	// Superinstructions (combined operations for performance)
-	OpGetLocalAdd    // Get two locals and add
-	OpGetLocalSub    // Get two locals and subtract
-	OpGetLocalMul    // Get two locals and multiply
-	OpConstantAdd    // Load two constants and add
-	OpConstantSub    // Load two constants and subtract
-	OpConstantMul    // Load two constants and multiply
+	OpGetLocalAdd // Get two locals and add
+	OpGetLocalSub // Get two locals and subtract
+	OpGetLocalMul // Get two locals and multiply
+	OpConstantAdd // Load two constants and add
+	OpConstantSub // Load two constants and subtract
+	OpConstantMul // Load two constants and multiply
 
 	// Type-specialized instructions (for hot path optimization)
-	OpIncLocal       // Increment local variable by 1 (optimized for loop counters)
-	OpDecLocal       // Decrement local variable by 1
-	OpAddLocalConst  // Add constant to local variable
+	OpIncLocal      // Increment local variable by 1 (optimized for loop counters)
+	OpDecLocal      // Decrement local variable by 1
+	OpAddLocalConst // Add constant to local variable
 
 	// Control flow operations
 	OpJump        // Unconditional jump
@@ -72,10 +72,10 @@ const (
 	OpClosure     // Create closure with captured variables
 
 	// Collection operations
-	OpArray   // Create array from stack elements
-	OpMap     // Create map from stack elements
-	OpIndex   // Index into array/map
-	OpSetIndex // Set index in array/map
+	OpArray     // Create array from stack elements
+	OpMap       // Create map from stack elements
+	OpIndex     // Index into array/map
+	OpSetIndex  // Set index in array/map
 	OpIndexSafe // Index into array without bounds check (safe context)
 
 	// Method/Field operations
@@ -127,12 +127,12 @@ var definitions = map[Opcode]*Definition{
 	OpDup:      {"OpDup", []int{}},
 
 	// Arithmetic operations
-	OpAdd:  {"OpAdd", []int{}},
-	OpSub:  {"OpSub", []int{}},
-	OpMul:  {"OpMul", []int{}},
-	OpDiv:  {"OpDiv", []int{}},
-	OpMod:  {"OpMod", []int{}},
-	OpNeg:  {"OpNeg", []int{}},
+	OpAdd: {"OpAdd", []int{}},
+	OpSub: {"OpSub", []int{}},
+	OpMul: {"OpMul", []int{}},
+	OpDiv: {"OpDiv", []int{}},
+	OpMod: {"OpMod", []int{}},
+	OpNeg: {"OpNeg", []int{}},
 
 	// Comparison operations
 	OpEqual:        {"OpEqual", []int{}},
@@ -167,11 +167,11 @@ var definitions = map[Opcode]*Definition{
 	OpCall:        {"OpCall", []int{1}},        // 1-byte argument count
 	OpTailCall:    {"OpTailCall", []int{1}},    // 1-byte argument count
 	OpReturn:      {"OpReturn", []int{}},
-	OpClosure:     {"OpClosure", []int{2, 1}},  // 2-byte constant index, 1-byte num free
+	OpClosure:     {"OpClosure", []int{2, 1}}, // 2-byte constant index, 1-byte num free
 
 	// Collection operations
-	OpArray:     {"OpArray", []int{2}},    // 2-byte element count
-	OpMap:       {"OpMap", []int{2}},      // 2-byte pair count
+	OpArray:     {"OpArray", []int{2}}, // 2-byte element count
+	OpMap:       {"OpMap", []int{2}},   // 2-byte pair count
 	OpIndex:     {"OpIndex", []int{}},
 	OpSetIndex:  {"OpSetIndex", []int{}},
 	OpIndexSafe: {"OpIndexSafe", []int{}}, // No bounds check
@@ -219,8 +219,8 @@ var definitions = map[Opcode]*Definition{
 	OpConstantMul: {"OpConstantMul", []int{2, 2}},
 
 	// Type-specialized instructions
-	OpIncLocal:      {"OpIncLocal", []int{1}},      // 1-byte: local index
-	OpDecLocal:      {"OpDecLocal", []int{1}},      // 1-byte: local index
+	OpIncLocal:      {"OpIncLocal", []int{1}},         // 1-byte: local index
+	OpDecLocal:      {"OpDecLocal", []int{1}},         // 1-byte: local index
 	OpAddLocalConst: {"OpAddLocalConst", []int{1, 2}}, // 1-byte local index, 2-byte constant index
 }
 

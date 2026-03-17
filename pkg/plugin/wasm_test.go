@@ -751,10 +751,10 @@ func TestWasmPluginSumSquares(t *testing.T) {
 		expected int64
 	}{
 		{1, 1},
-		{2, 5},      // 1 + 4
-		{3, 14},     // 1 + 4 + 9
-		{5, 55},     // 1 + 4 + 9 + 16 + 25
-		{10, 385},   // 1 + 4 + 9 + ... + 100
+		{2, 5},    // 1 + 4
+		{3, 14},   // 1 + 4 + 9
+		{5, 55},   // 1 + 4 + 9 + 16 + 25
+		{10, 385}, // 1 + 4 + 9 + ... + 100
 	}
 
 	for _, tt := range tests {
@@ -785,8 +785,8 @@ func TestWasmPluginCountPrimes(t *testing.T) {
 	}{
 		{1, 0},
 		{2, 1},
-		{10, 4},    // 2, 3, 5, 7
-		{20, 8},    // 2, 3, 5, 7, 11, 13, 17, 19
+		{10, 4}, // 2, 3, 5, 7
+		{20, 8}, // 2, 3, 5, 7, 11, 13, 17, 19
 		{100, 25},
 	}
 
@@ -987,7 +987,7 @@ func TestReadInt64ArrayFromMemory(t *testing.T) {
 	testValues := []int64{100, 200, 300, 400, 500}
 	offset := uint32(300)
 	for i, v := range testValues {
-		mem.WriteUint64Le(offset + uint32(i*8), uint64(v))
+		mem.WriteUint64Le(offset+uint32(i*8), uint64(v))
 	}
 
 	result := readInt64ArrayFromMemory(wp.module, offset, uint32(len(testValues)))

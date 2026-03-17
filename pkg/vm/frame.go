@@ -11,13 +11,13 @@ import (
 // Frame represents a call frame for function execution
 type Frame struct {
 	Fn          *compiler.CompiledFunction
-	IP          int               // Instruction pointer (index into Instructions)
-	BasePointer int               // Stack base pointer for this frame
-	Locals      []objects.Object  // Local variables
-	FreeVars    []objects.Object  // Free variables (captured from closure)
-	Constants   []objects.Object  // Constants for this frame (from closure or VM)
-	Globals     []objects.Object  // Globals for this frame (from closure's module or VM)
-	This        objects.Object    // 'this' for method calls
+	IP          int              // Instruction pointer (index into Instructions)
+	BasePointer int              // Stack base pointer for this frame
+	Locals      []objects.Object // Local variables
+	FreeVars    []objects.Object // Free variables (captured from closure)
+	Constants   []objects.Object // Constants for this frame (from closure or VM)
+	Globals     []objects.Object // Globals for this frame (from closure's module or VM)
+	This        objects.Object   // 'this' for method calls
 }
 
 // Frame pool for reducing allocations

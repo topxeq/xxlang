@@ -240,10 +240,10 @@ func objectToSerializable(obj objects.Object) (serializableObject, error) {
 		return serializableObject{
 			Type: "compiled_function",
 			Value: serializableCompiledFunction{
-				Instructions:   o.Instructions,
-				NumLocals:      o.NumLocals,
-				NumParameters:  o.NumParameters,
-				FreeVariables:  freeVars,
+				Instructions:  o.Instructions,
+				NumLocals:     o.NumLocals,
+				NumParameters: o.NumParameters,
+				FreeVariables: freeVars,
 			},
 		}, nil
 
@@ -348,10 +348,10 @@ func decodeCompiledFunction(data serializableCompiledFunction) (*CompiledFunctio
 		}
 	}
 	return &CompiledFunction{
-		Instructions:   data.Instructions,
-		NumLocals:      data.NumLocals,
-		NumParameters:  data.NumParameters,
-		FreeVariables:  freeVars,
+		Instructions:  data.Instructions,
+		NumLocals:     data.NumLocals,
+		NumParameters: data.NumParameters,
+		FreeVariables: freeVars,
 	}, nil
 }
 

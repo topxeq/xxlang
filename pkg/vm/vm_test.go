@@ -950,8 +950,8 @@ func TestStringIndexing(t *testing.T) {
 	}{
 		{`"hello"[0];`, "h"},
 		{`"hello"[4];`, "o"},
-		{`"hello"[10];`, nil},  // out of bounds returns null
-		{`"hello"[-1];`, nil},  // negative returns null
+		{`"hello"[10];`, nil}, // out of bounds returns null
+		{`"hello"[-1];`, nil}, // negative returns null
 		{`var s = "abc"; s[1];`, "b"},
 	}
 

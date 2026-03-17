@@ -40,9 +40,9 @@ func TestStringLen(t *testing.T) {
 
 func TestStringToUpperLower(t *testing.T) {
 	tests := []struct {
-		input  string
-		upper  string
-		lower  string
+		input string
+		upper string
+		lower string
 	}{
 		{"hello", "HELLO", "hello"},
 		{"HELLO", "HELLO", "hello"},

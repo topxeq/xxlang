@@ -185,9 +185,9 @@ func TestNullLiteral(t *testing.T) {
 
 func TestArithmeticExpressions(t *testing.T) {
 	tests := []struct {
-		input          string
-		expectedOps    []Opcode
-		numConstants   int
+		input        string
+		expectedOps  []Opcode
+		numConstants int
 	}{
 		{"1 + 2;", []Opcode{OpConstant, OpConstant, OpAdd, OpPop}, 2},
 		{"5 - 3;", []Opcode{OpConstant, OpConstant, OpSub, OpPop}, 2},
@@ -223,8 +223,8 @@ func TestArithmeticExpressions(t *testing.T) {
 
 func TestComparisonExpressions(t *testing.T) {
 	tests := []struct {
-		input       string
-		expectedOp  Opcode
+		input      string
+		expectedOp Opcode
 	}{
 		{"1 < 2;", OpLess},
 		{"2 > 1;", OpGreater},
@@ -252,8 +252,8 @@ func TestComparisonExpressions(t *testing.T) {
 
 func TestLogicalExpressions(t *testing.T) {
 	tests := []struct {
-		input       string
-		expectedOp  Opcode
+		input      string
+		expectedOp Opcode
 	}{
 		{"true && false;", OpAnd},
 		{"true || false;", OpOr},
@@ -305,8 +305,8 @@ func TestArrayLiterals(t *testing.T) {
 
 func TestVariableDeclarations(t *testing.T) {
 	tests := []struct {
-		input      string
-		varName    string
+		input   string
+		varName string
 	}{
 		{"var x = 5;", "x"},
 		{"var y = 1 + 2;", "y"},
@@ -424,9 +424,9 @@ func TestForInLoop(t *testing.T) {
 
 func TestFunctionDefinition(t *testing.T) {
 	tests := []struct {
-		input         string
-		numParams     int
-		hasReturn     bool
+		input     string
+		numParams int
+		hasReturn bool
 	}{
 		{"func f() { }", 0, false},
 		{"func f(x) { return x; }", 1, true},
@@ -534,8 +534,8 @@ func TestAssignmentExpression(t *testing.T) {
 
 func TestBuiltinFunctions(t *testing.T) {
 	tests := []struct {
-		input    string
-		builtin  string
+		input   string
+		builtin string
 	}{
 		{`len("hello");`, "len"},
 		{`pr("hello");`, "pr"},
@@ -861,8 +861,8 @@ func TestImportStatement_Destructuring(t *testing.T) {
 
 func TestImportStatement_ModulePath(t *testing.T) {
 	tests := []struct {
-		input    string
-		path     string
+		input string
+		path  string
 	}{
 		{`import "./math";`, "./math"},
 		{`import "../utils";`, "../utils"},
@@ -1216,9 +1216,9 @@ func TestCompiler_UndefinedVariable(t *testing.T) {
 
 func TestCompiler_OpcodeVerification(t *testing.T) {
 	tests := []struct {
-		name        string
-		input       string
-		expectedOp  Opcode
+		name       string
+		input      string
+		expectedOp Opcode
 	}{
 		{"constant load", "42;", OpConstant},
 		{"addition", "1 + 2;", OpAdd},
@@ -1468,14 +1468,14 @@ func TestSerializeWithCompiledFunction(t *testing.T) {
 	fn := &CompiledFunction{
 		Instructions:  []byte{byte(OpConstant), 0, byte(OpReturn)},
 		NumLocals:     0,
-		NumParameters:  0,
+		NumParameters: 0,
 		FreeVariables: []Symbol{},
 	}
 
 	// Create bytecode with compiled function in constants
 	bytecode := &Bytecode{
 		Instructions: []byte{byte(OpConstant), 0, byte(OpCall), 0, byte(OpPop)},
-		Constants:   []objects.Object{fn},
+		Constants:    []objects.Object{fn},
 	}
 
 	serialized, err := bytecode.Serialize()

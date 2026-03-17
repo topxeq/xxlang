@@ -740,10 +740,10 @@ func (ds *DefaultStatement) String() string {
 
 // TryStatement represents a try-catch-finally statement
 type TryStatement struct {
-	Token     lexer.Token // The 'try' token
-	Block     *BlockStatement
-	Catch     *CatchStatement
-	Finally   *FinallyStatement
+	Token   lexer.Token // The 'try' token
+	Block   *BlockStatement
+	Catch   *CatchStatement
+	Finally *FinallyStatement
 }
 
 func (ts *TryStatement) statementNode() {}
@@ -771,9 +771,9 @@ func (ts *TryStatement) String() string {
 
 // CatchStatement represents a catch statement
 type CatchStatement struct {
-	Token       lexer.Token // The 'catch' token
-	Exception   *Identifier
-	Block       *BlockStatement
+	Token     lexer.Token // The 'catch' token
+	Exception *Identifier
+	Block     *BlockStatement
 }
 
 func (cs *CatchStatement) statementNode() {}
@@ -842,11 +842,11 @@ func (ts *ThrowStatement) String() string {
 
 // ImportStatement represents an import statement
 type ImportStatement struct {
-	Token lexer.Token // The 'import' token
-	Name  *Identifier      // Default import name (import math from ...)
-	Path  *StringLiteral   // Module path
-	Alias *Identifier      // Namespace alias (import * as math from ...)
-	Names []*Identifier    // Destructured names (import { add, sub } from ...)
+	Token lexer.Token    // The 'import' token
+	Name  *Identifier    // Default import name (import math from ...)
+	Path  *StringLiteral // Module path
+	Alias *Identifier    // Namespace alias (import * as math from ...)
+	Names []*Identifier  // Destructured names (import { add, sub } from ...)
 }
 
 func (is *ImportStatement) statementNode() {}
@@ -906,11 +906,11 @@ func (es *ExportStatement) String() string {
 
 // ClassStatement represents a class declaration
 type ClassStatement struct {
-	Token       lexer.Token // The 'class' token
-	Name        *Identifier
-	SuperClass  *Identifier
-	Methods     []*FunctionLiteral
-	Fields      []*VarStatement
+	Token      lexer.Token // The 'class' token
+	Name       *Identifier
+	SuperClass *Identifier
+	Methods    []*FunctionLiteral
+	Fields     []*VarStatement
 }
 
 func (cs *ClassStatement) statementNode() {}
@@ -1149,7 +1149,7 @@ func (afl *ArrowFunctionLiteral) String() string {
 
 // SpreadExpression represents spread operator (...)
 type SpreadExpression struct {
-	Token     lexer.Token // The '...' token
+	Token      lexer.Token // The '...' token
 	Expression Expression
 }
 
@@ -1167,9 +1167,9 @@ func (se *SpreadExpression) String() string {
 
 // TernaryExpression represents a ternary conditional expression
 type TernaryExpression struct {
-	Token      lexer.Token // The '?' token
-	Condition  Expression
-	Consequent Expression
+	Token       lexer.Token // The '?' token
+	Condition   Expression
+	Consequent  Expression
 	Alternative Expression
 }
 

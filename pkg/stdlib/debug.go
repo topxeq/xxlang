@@ -44,10 +44,10 @@ func init() {
 				var m runtime.MemStats
 				runtime.ReadMemStats(&m)
 				return Array(
-					Int(int64(m.Alloc)),       // bytes allocated
-					Int(int64(m.TotalAlloc)),  // total bytes allocated
-					Int(int64(m.Sys)),         // bytes from OS
-					Int(int64(m.NumGC)),       // number of GCs
+					Int(int64(m.Alloc)),      // bytes allocated
+					Int(int64(m.TotalAlloc)), // total bytes allocated
+					Int(int64(m.Sys)),        // bytes from OS
+					Int(int64(m.NumGC)),      // number of GCs
 				)
 			}),
 

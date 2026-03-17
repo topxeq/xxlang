@@ -12,8 +12,8 @@ func TestOptimizer_FoldConstants_Integers(t *testing.T) {
 	// Create bytecode: OpConstant(0), OpConstant(1), OpAdd
 	// OpConstant uses 2-byte big-endian index
 	input := []byte{
-		byte(OpConstant), 0, 0,  // constant index 0 (big-endian)
-		byte(OpConstant), 0, 1,  // constant index 1 (big-endian)
+		byte(OpConstant), 0, 0, // constant index 0 (big-endian)
+		byte(OpConstant), 0, 1, // constant index 1 (big-endian)
 		byte(OpAdd),
 	}
 	constants := []objects.Object{objects.NewInt(1), objects.NewInt(2)}
@@ -63,8 +63,8 @@ func TestOptimizer_GenerateSuperinstructions_ConstantAdd(t *testing.T) {
 	// Create bytecode: OpConstant(0), OpConstant(1), OpAdd
 	// OpConstant uses 2-byte big-endian index
 	input := []byte{
-		byte(OpConstant), 0, 0,  // constant index 0
-		byte(OpConstant), 0, 1,  // constant index 1
+		byte(OpConstant), 0, 0, // constant index 0
+		byte(OpConstant), 0, 1, // constant index 1
 		byte(OpAdd),
 	}
 	constants := []objects.Object{objects.NewInt(10), objects.NewInt(20)}
@@ -87,9 +87,9 @@ func TestOptimizer_FullOptimization(t *testing.T) {
 	// Test that Optimize() runs both passes
 	constants := []objects.Object{objects.NewInt(5), objects.NewInt(3)}
 	input := []byte{
-		byte(OpConstant), 0, 0,  // push 5 (index 0)
-		byte(OpConstant), 0, 1,  // push 3 (index 1)
-		byte(OpAdd),             // add -> would be folded to 8
+		byte(OpConstant), 0, 0, // push 5 (index 0)
+		byte(OpConstant), 0, 1, // push 3 (index 1)
+		byte(OpAdd), // add -> would be folded to 8
 	}
 	bytecode := &Bytecode{Instructions: input, Constants: constants}
 
@@ -148,7 +148,7 @@ func TestStackEffectOf_Superinstructions(t *testing.T) {
 		op       Opcode
 		expected int
 	}{
-		{OpConstantAdd, -1},  // pop 2, push 1
+		{OpConstantAdd, -1}, // pop 2, push 1
 		{OpConstantSub, -1},
 		{OpConstantMul, -1},
 		{OpGetLocalAdd, -1},
@@ -206,9 +206,9 @@ func TestStackEffectOf_Map(t *testing.T) {
 func TestFindCallInstruction_Simple(t *testing.T) {
 	// Create bytecode: OpGetGlobal 0, OpConstant 0, OpCall 1
 	instructions := []byte{
-		byte(OpGetGlobal), 0, 0,  // callee at position 0
-		byte(OpConstant), 0, 0,   // arg at position 3
-		byte(OpCall), 1,          // call at position 6
+		byte(OpGetGlobal), 0, 0, // callee at position 0
+		byte(OpConstant), 0, 0, // arg at position 3
+		byte(OpCall), 1, // call at position 6
 	}
 
 	optimizer := &Optimizer{}

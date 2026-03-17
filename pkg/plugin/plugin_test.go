@@ -513,7 +513,7 @@ func TestLoader_LoadPath_RegisteredPlugin(t *testing.T) {
 	Registry.Lock()
 	Registry.plugins = make(map[string]Plugin)
 	Registry.plugins["test_registered"] = &mockPlugin{
-		name: "test_registered",
+		name:    "test_registered",
 		exports: map[string]objects.Object{"x": &objects.Int{Value: 1}},
 	}
 	Registry.Unlock()

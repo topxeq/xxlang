@@ -8,22 +8,22 @@ type ObjectType string
 
 // Object types
 const (
-	NullType    ObjectType = "NULL"
-	IntType     ObjectType = "INT"
-	FloatType   ObjectType = "FLOAT"
-	StringType  ObjectType = "STRING"
-	BoolType    ObjectType = "BOOL"
-	ArrayType   ObjectType = "ARRAY"
-	MapType     ObjectType = "MAP"
+	NullType     ObjectType = "NULL"
+	IntType      ObjectType = "INT"
+	FloatType    ObjectType = "FLOAT"
+	StringType   ObjectType = "STRING"
+	BoolType     ObjectType = "BOOL"
+	ArrayType    ObjectType = "ARRAY"
+	MapType      ObjectType = "MAP"
 	FunctionType ObjectType = "FUNCTION"
-	BuiltinType ObjectType = "BUILTIN"
-	BytesType   ObjectType = "BYTES"
-	ClassType   ObjectType = "CLASS"
+	BuiltinType  ObjectType = "BUILTIN"
+	BytesType    ObjectType = "BYTES"
+	ClassType    ObjectType = "CLASS"
 	InstanceType ObjectType = "INSTANCE"
-	ErrorType   ObjectType = "ERROR"
-	ReturnType  ObjectType = "RETURN"
-	ClosureType ObjectType = "CLOSURE"
-	ModuleType  ObjectType = "MODULE"
+	ErrorType    ObjectType = "ERROR"
+	ReturnType   ObjectType = "RETURN"
+	ClosureType  ObjectType = "CLOSURE"
+	ModuleType   ObjectType = "MODULE"
 )
 
 // TypeTag is a fast integer type identifier for hot path checks

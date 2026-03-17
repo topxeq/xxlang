@@ -36,12 +36,14 @@ func nullIfZero(obj objects.Object) objects.Object {
 
 // intResult creates an Int result, using cache for small values
 // This is inlined for hot path arithmetic operations
+//
 //go:noinline
 func intResult(val int64) objects.Object {
 	return objects.NewInt(val)
 }
 
 // floatResult creates a Float result
+//
 //go:noinline
 func floatResult(val float64) objects.Object {
 	return &objects.Float{Value: val}

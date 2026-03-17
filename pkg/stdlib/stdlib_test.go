@@ -22,7 +22,7 @@ func TestRegistry(t *testing.T) {
 		}
 
 		if mod.Name != name {
-				t.Errorf("module name mismatch: got %s, want %s", mod.Name, name)
+			t.Errorf("module name mismatch: got %s, want %s", mod.Name, name)
 		}
 
 		if len(mod.Exports) == 0 {

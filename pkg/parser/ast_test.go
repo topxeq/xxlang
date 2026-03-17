@@ -579,8 +579,8 @@ func TestNamedFunctionLiteralString(t *testing.T) {
 
 func TestForInStatementString(t *testing.T) {
 	fis := &ForInStatement{
-		Token: lexer.Token{Type: lexer.TokenFor, Literal: "for"},
-		Value: &Identifier{Token: lexer.Token{Type: lexer.TokenIdent, Literal: "x"}, Value: "x"},
+		Token:    lexer.Token{Type: lexer.TokenFor, Literal: "for"},
+		Value:    &Identifier{Token: lexer.Token{Type: lexer.TokenIdent, Literal: "x"}, Value: "x"},
 		Iterable: &Identifier{Token: lexer.Token{Type: lexer.TokenIdent, Literal: "arr"}, Value: "arr"},
 		Body: &BlockStatement{
 			Token: lexer.Token{Type: lexer.TokenLBrace, Literal: "{"},
@@ -600,9 +600,9 @@ func TestForInStatementString(t *testing.T) {
 
 func TestForInStatementWithKeyString(t *testing.T) {
 	fis := &ForInStatement{
-		Token: lexer.Token{Type: lexer.TokenFor, Literal: "for"},
-		Key:   &Identifier{Token: lexer.Token{Type: lexer.TokenIdent, Literal: "i"}, Value: "i"},
-		Value: &Identifier{Token: lexer.Token{Type: lexer.TokenIdent, Literal: "x"}, Value: "x"},
+		Token:    lexer.Token{Type: lexer.TokenFor, Literal: "for"},
+		Key:      &Identifier{Token: lexer.Token{Type: lexer.TokenIdent, Literal: "i"}, Value: "i"},
+		Value:    &Identifier{Token: lexer.Token{Type: lexer.TokenIdent, Literal: "x"}, Value: "x"},
 		Iterable: &Identifier{Token: lexer.Token{Type: lexer.TokenIdent, Literal: "arr"}, Value: "arr"},
 		Body: &BlockStatement{
 			Token: lexer.Token{Type: lexer.TokenLBrace, Literal: "{"},

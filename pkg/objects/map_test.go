@@ -83,5 +83,5 @@ func TestMap_Methods(t *testing.T) {
 			}
 			compareObjectsForTest(t, result, tt.expected)
 		})
-    }
+	}
 }

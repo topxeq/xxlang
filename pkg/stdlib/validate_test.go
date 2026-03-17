@@ -475,8 +475,8 @@ func TestValidateIsTime(t *testing.T) {
 		{"23:59", true},
 		{"00:00", true},
 		{"12:30:45", true},
-		{"24:00", false}, // Invalid hour
-		{"12:60", false}, // Invalid minute
+		{"24:00", false},    // Invalid hour
+		{"12:60", false},    // Invalid minute
 		{"12:30:60", false}, // Invalid second
 		{"", false},
 	}
@@ -537,11 +537,11 @@ func TestValidateIsCreditCard(t *testing.T) {
 		input    string
 		expected bool
 	}{
-		{"4532015112830366", true},  // Valid Visa
-		{"5425233430109903", true},  // Valid MasterCard
-		{"374245455400126", true},   // Valid Amex
-		{"1234567812345678", false}, // Invalid (fails Luhn)
-		{"1234", false},             // Too short
+		{"4532015112830366", true},     // Valid Visa
+		{"5425233430109903", true},     // Valid MasterCard
+		{"374245455400126", true},      // Valid Amex
+		{"1234567812345678", false},    // Invalid (fails Luhn)
+		{"1234", false},                // Too short
 		{"abcd-efgh-ijkl-mnop", false}, // Non-numeric
 	}
 

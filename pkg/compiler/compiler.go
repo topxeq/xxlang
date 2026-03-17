@@ -29,10 +29,10 @@ type Symbol struct {
 
 // SymbolTable manages symbol definitions and resolution
 type SymbolTable struct {
-	Outer         *SymbolTable
-	Store         map[string]Symbol
+	Outer          *SymbolTable
+	Store          map[string]Symbol
 	NumDefinitions int
-	FreeSymbols   []Symbol
+	FreeSymbols    []Symbol
 }
 
 // NewSymbolTable creates a new symbol table
@@ -250,20 +250,20 @@ type InlineableFuncInfo struct {
 type Bytecode struct {
 	Instructions      []byte
 	Constants         []objects.Object
-	SourceMap         *SourceMap // Maps instruction positions to source locations
+	SourceMap         *SourceMap                  // Maps instruction positions to source locations
 	InlineableGlobals map[int]*InlineableFuncInfo // Global index -> inlineable function info
 }
 
 // CompiledFunction represents a compiled function
 type CompiledFunction struct {
-	Instructions   []byte
-	NumLocals      int
-	NumParameters  int
-	FreeVariables  []Symbol // Free variables captured from outer scope
+	Instructions  []byte
+	NumLocals     int
+	NumParameters int
+	FreeVariables []Symbol // Free variables captured from outer scope
 
 	// Inlining support
-	IsInlineable   bool     // True if function body is a single return expression
-	InlineBody     []byte   // Inlined bytecode (without return)
+	IsInlineable bool   // True if function body is a single return expression
+	InlineBody   []byte // Inlined bytecode (without return)
 }
 
 // Type returns the object type
@@ -273,7 +273,9 @@ func (cf *CompiledFunction) Type() objects.ObjectType { return objects.FunctionT
 func (cf *CompiledFunction) TypeTag() objects.TypeTag { return objects.TagFunction }
 
 // Inspect returns the string representation
-func (cf *CompiledFunction) Inspect() string { return fmt.Sprintf("CompiledFunction[%d]", len(cf.Instructions)) }
+func (cf *CompiledFunction) Inspect() string {
+	return fmt.Sprintf("CompiledFunction[%d]", len(cf.Instructions))
+}
 
 // ToBool converts to boolean
 func (cf *CompiledFunction) ToBool() *objects.Bool { return objects.TRUE }
@@ -321,8 +323,8 @@ type Compiler struct {
 
 // loopContext tracks break/continue positions within a loop
 type loopContext struct {
-	continuePos int     // Position to jump to for continue (set after body is compiled)
-	breakPos    []int   // Positions of break jumps to patch
+	continuePos   int   // Position to jump to for continue (set after body is compiled)
+	breakPos      []int // Positions of break jumps to patch
 	continueJumps []int // Positions of continue jumps to patch (for for-loops)
 }
 

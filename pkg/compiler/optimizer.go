@@ -541,7 +541,7 @@ func stackEffectOf(op Opcode, instructions []byte, pos int) int {
 	case OpMap:
 		if pos+2 < len(instructions) {
 			count := int(instructions[pos+1])<<8 | int(instructions[pos+2]) // number of pairs
-			return 1 - count*2 // pops count*2 elements, pushes map
+			return 1 - count*2                                              // pops count*2 elements, pushes map
 		}
 		return 0
 
@@ -842,8 +842,8 @@ func (o *Optimizer) transformGeneralBody(body []byte, numParams int) []byte {
 }
 
 type getLocalPattern struct {
-	isSequential bool   // Params accessed in order: 0, 1, 2, ...
-	indices      []int  // Order of parameter access
+	isSequential bool  // Params accessed in order: 0, 1, 2, ...
+	indices      []int // Order of parameter access
 }
 
 // analyzeGetLocalPattern analyzes the pattern of OpGetLocal in a body
