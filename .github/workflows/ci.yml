@@ -27,6 +27,18 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Build WASM test plugin
+        run: |
+          mkdir -p pkg/plugin/testdata/target/wasm32-unknown-unknown/release
+          cd examples/wasm_plugin/plugin
+          rustc --target wasm32-unknown-unknown -O --crate-type cdylib -o testplugin.wasm testplugin.rs
+          cp testplugin.wasm ../../../pkg/plugin/testdata/target/wasm32-unknown-unknown/release/
+
       - name: Run tests
         run: |
           go test -v -coverprofile=coverage.out ./pkg/... ./tests/... ./cmd/... ./benchmarks/...

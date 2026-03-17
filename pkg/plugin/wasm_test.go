@@ -17,6 +17,7 @@ func getWASMPath(t *testing.T) string {
 	paths := []string{
 		"testdata/target/wasm32-unknown-unknown/release/testplugin.wasm",
 		"../plugin/testdata/target/wasm32-unknown-unknown/release/testplugin.wasm",
+		"../../examples/wasm_plugin/plugin/fib.wasm",
 	}
 
 	for _, p := range paths {
