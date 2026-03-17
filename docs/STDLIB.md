@@ -14,6 +14,7 @@ io.println("Hello, World!")
 - [io](#io) - Input/output operations
 - [os](#os) - Operating system utilities and configuration
 - [string](#string) - String utilities
+- [stringbuilder](#stringbuilder) - Efficient string concatenation
 - [math](#math) - Mathematical functions
 - [array](#array) - Array utilities
 - [json](#json) - JSON encoding/decoding
@@ -489,6 +490,130 @@ Returns index of first occurrence, or -1.
 ```xxl
 indexOf("hello", "l")   // 2
 indexOf("hello", "x")   // -1
+```
+
+---
+
+## stringbuilder
+
+Efficient string concatenation using a mutable string builder. Unlike regular string concatenation which creates a new string each time, StringBuilder uses an internal buffer for better performance.
+
+#### create(capacity?)
+Creates a new StringBuilder instance. Optional capacity parameter pre-allocates buffer size.
+
+```xxl
+import "stringbuilder"
+
+// Create empty builder
+var sb = stringbuilder.create()
+
+// Create with initial capacity
+var sb2 = stringbuilder.create(1000)
+```
+
+#### isStringBuilder(obj)
+Returns true if the object is a StringBuilder.
+
+```xxl
+var sb = stringbuilder.create()
+stringbuilder.isStringBuilder(sb)   // true
+stringbuilder.isStringBuilder(42)   // false
+```
+
+### StringBuilder Methods
+
+#### write(str)
+Appends a string to the builder. Returns the number of bytes written.
+
+```xxl
+var sb = stringbuilder.create()
+sb.write("Hello")
+sb.write(" ")
+sb.write("World")
+pln(sb.toString())  // "Hello World"
+```
+
+#### writeLine(str)
+Appends a string followed by a newline.
+
+```xxl
+var sb = stringbuilder.create()
+sb.writeLine("Line 1")
+sb.writeLine("Line 2")
+pln(sb.toString())
+// Line 1
+// Line 2
+```
+
+#### toString()
+Returns the accumulated string.
+
+```xxl
+var sb = stringbuilder.create()
+sb.write("test")
+var result = sb.toString()  // "test"
+```
+
+#### len()
+Returns the current length of the accumulated string.
+
+```xxl
+var sb = stringbuilder.create()
+sb.write("Hello")
+pln(sb.len())  // 5
+```
+
+#### isEmpty()
+Returns true if the builder is empty.
+
+```xxl
+var sb = stringbuilder.create()
+pln(sb.isEmpty())  // true
+sb.write("test")
+pln(sb.isEmpty())  // false
+```
+
+#### clear()
+Clears all content from the builder.
+
+```xxl
+var sb = stringbuilder.create()
+sb.write("Hello")
+sb.clear()
+pln(sb.len())  // 0
+```
+
+#### reset()
+Alias for `clear()`. Resets the builder to empty state.
+
+```xxl
+var sb = stringbuilder.create()
+sb.write("Hello")
+sb.reset()
+pln(sb.isEmpty())  // true
+```
+
+#### grow(n)
+Pre-allocates buffer capacity for better performance when the final size is known.
+
+```xxl
+var sb = stringbuilder.create()
+sb.grow(1000)  // Pre-allocate 1000 bytes
+sb.write("Hello")
+```
+
+### Performance Example
+
+```xxl
+import "stringbuilder"
+
+// Efficient string building
+var sb = stringbuilder.create()
+for (var i = 0; i < 1000; i = i + 1) {
+    sb.writeLine("Line " + str(i))
+}
+var result = sb.toString()
+pln("Total lines:", result.len())
 ```
 
 ---

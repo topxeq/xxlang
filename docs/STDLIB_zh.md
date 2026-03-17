@@ -14,6 +14,7 @@ io.println("你好，世界！")
 - [io](#io) - 输入输出操作
 - [os](#os) - 操作系统工具和配置
 - [string](#string) - 字符串工具
+- [stringbuilder](#stringbuilder) - 高效字符串拼接
 - [math](#math) - 数学函数
 - [array](#array) - 数组工具
 - [json](#json) - JSON 编解码
@@ -489,6 +490,130 @@ endsWith("hello", "lo")  // true
 ```xxl
 indexOf("hello", "l")   // 2
 indexOf("hello", "x")   // -1
+```
+
+---
+
+## stringbuilder
+
+高效字符串拼接器，使用可变字符串构建器。与每次都创建新字符串的普通字符串拼接不同，StringBuilder 使用内部缓冲区以获得更好的性能。
+
+#### create(capacity?)
+创建新的 StringBuilder 实例。可选的 capacity 参数用于预分配缓冲区大小。
+
+```xxl
+import "stringbuilder"
+
+// 创建空构建器
+var sb = stringbuilder.create()
+
+// 创建指定容量的构建器
+var sb2 = stringbuilder.create(1000)
+```
+
+#### isStringBuilder(obj)
+检查对象是否为 StringBuilder。
+
+```xxl
+var sb = stringbuilder.create()
+stringbuilder.isStringBuilder(sb)   // true
+stringbuilder.isStringBuilder(42)   // false
+```
+
+### StringBuilder 方法
+
+#### write(str)
+追加字符串到构建器。返回写入的字节数。
+
+```xxl
+var sb = stringbuilder.create()
+sb.write("你好")
+sb.write(" ")
+sb.write("世界")
+pln(sb.toString())  // "你好 世界"
+```
+
+#### writeLine(str)
+追加字符串并换行。
+
+```xxl
+var sb = stringbuilder.create()
+sb.writeLine("第一行")
+sb.writeLine("第二行")
+pln(sb.toString())
+// 第一行
+// 第二行
+```
+
+#### toString()
+返回累积的字符串。
+
+```xxl
+var sb = stringbuilder.create()
+sb.write("测试")
+var result = sb.toString()  // "测试"
+```
+
+#### len()
+返回当前累积字符串的长度。
+
+```xxl
+var sb = stringbuilder.create()
+sb.write("你好")
+pln(sb.len())  // 6 (UTF-8编码)
+```
+
+#### isEmpty()
+检查构建器是否为空。
+
+```xxl
+var sb = stringbuilder.create()
+pln(sb.isEmpty())  // true
+sb.write("测试")
+pln(sb.isEmpty())  // false
+```
+
+#### clear()
+清空构建器中的所有内容。
+
+```xxl
+var sb = stringbuilder.create()
+sb.write("你好")
+sb.clear()
+pln(sb.len())  // 0
+```
+
+#### reset()
+`clear()` 的别名。重置构建器为空状态。
+
+```xxl
+var sb = stringbuilder.create()
+sb.write("你好")
+sb.reset()
+pln(sb.isEmpty())  // true
+```
+
+#### grow(n)
+预分配缓冲区容量，当已知最终大小时可提高性能。
+
+```xxl
+var sb = stringbuilder.create()
+sb.grow(1000)  // 预分配 1000 字节
+sb.write("你好")
+```
+
+### 性能示例
+
+```xxl
+import "stringbuilder"
+
+// 高效字符串构建
+var sb = stringbuilder.create()
+for (var i = 0; i < 1000; i = i + 1) {
+    sb.writeLine("第 " + str(i) + " 行")
+}
+var result = sb.toString()
+pln("总字符数:", result.len())
 ```
 
 ---
