@@ -920,3 +920,508 @@ func TestBuiltinTypeOfDetailed(t *testing.T) {
 	result = fn.Fn(inst, TRUE)
 	compareObjectsForTest(t, result, &String{Value: "TestClass"})
 }
+
+// Tests for additional builtins to improve coverage
+
+func TestBuiltinIsFunctions(t *testing.T) {
+	tests := []struct {
+		name     string
+		fn       string
+		arg      Object
+		expected Object
+	}{
+		{"isInt", "isInt", &Int{Value: 42}, TRUE},
+		{"isInt_false", "isInt", &String{Value: "42"}, FALSE},
+		{"isFloat", "isFloat", &Float{Value: 3.14}, TRUE},
+		{"isFloat_false", "isFloat", &Int{Value: 42}, FALSE},
+		{"isString", "isString", &String{Value: "hello"}, TRUE},
+		{"isString_false", "isString", &Int{Value: 42}, FALSE},
+		{"isArray", "isArray", &Array{Elements: []Object{}}, TRUE},
+		{"isArray_false", "isArray", &Int{Value: 42}, FALSE},
+		{"isMap", "isMap", &Map{Pairs: map[HashKey]MapPair{}}, TRUE},
+		{"isMap_false", "isMap", &Int{Value: 42}, FALSE},
+		{"isBool", "isBool", TRUE, TRUE},
+		{"isBool_false", "isBool", &Int{Value: 42}, FALSE},
+		{"isFunction", "isFunction", &Builtin{Fn: func(...Object) Object { return NULL }}, TRUE},
+		{"isFunction_false", "isFunction", &Int{Value: 42}, FALSE},
+		{"isNull", "isNull", NULL, TRUE},
+		{"isNull_false", "isNull", &Int{Value: 42}, FALSE},
+		{"isNumber", "isNumber", &Int{Value: 42}, TRUE},
+		{"isNumber_float", "isNumber", &Float{Value: 3.14}, TRUE},
+		{"isNumber_false", "isNumber", &String{Value: "42"}, FALSE},
+		{"isEmpty", "isEmpty", &String{Value: ""}, TRUE},
+		{"isEmpty_false", "isEmpty", &String{Value: "x"}, FALSE},
+		{"isEmpty_array", "isEmpty", &Array{Elements: []Object{}}, TRUE},
+		{"isAlpha", "isAlpha", &String{Value: "abc"}, TRUE},
+		{"isAlpha_false", "isAlpha", &String{Value: "abc123"}, FALSE},
+		{"isDigit", "isDigit", &String{Value: "123"}, TRUE},
+		{"isDigit_false", "isDigit", &String{Value: "abc"}, FALSE},
+		{"isAlphaNum", "isAlphaNum", &String{Value: "abc123"}, TRUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fn, ok := Builtins[tt.fn]
+			if !ok {
+				t.Fatalf("%s builtin not found", tt.fn)
+			}
+			result := fn.Fn(tt.arg)
+			compareObjectsForTest(t, result, tt.expected)
+		})
+	}
+}
+
+func TestBuiltinStringFunctions(t *testing.T) {
+	// charAt
+	fn, ok := Builtins["charAt"]
+	if !ok {
+		t.Fatal("charAt builtin not found")
+	}
+	result := fn.Fn(&String{Value: "hello"}, &Int{Value: 1})
+	compareObjectsForTest(t, result, &String{Value: "e"})
+
+	// repeat
+	fn, ok = Builtins["repeat"]
+	if !ok {
+		t.Fatal("repeat builtin not found")
+	}
+	result = fn.Fn(&String{Value: "ab"}, &Int{Value: 3})
+	compareObjectsForTest(t, result, &String{Value: "ababab"})
+
+	// lpad
+	fn, ok = Builtins["lpad"]
+	if !ok {
+		t.Fatal("lpad builtin not found")
+	}
+	result = fn.Fn(&String{Value: "5"}, &Int{Value: 3}, &String{Value: "0"})
+	compareObjectsForTest(t, result, &String{Value: "005"})
+
+	// rpad
+	fn, ok = Builtins["rpad"]
+	if !ok {
+		t.Fatal("rpad builtin not found")
+	}
+	result = fn.Fn(&String{Value: "5"}, &Int{Value: 3}, &String{Value: "0"})
+	compareObjectsForTest(t, result, &String{Value: "500"})
+
+	// trimLeft
+	fn, ok = Builtins["trimLeft"]
+	if !ok {
+		t.Fatal("trimLeft builtin not found")
+	}
+	result = fn.Fn(&String{Value: "  hello  "})
+	compareObjectsForTest(t, result, &String{Value: "hello  "})
+
+	// trimRight
+	fn, ok = Builtins["trimRight"]
+	if !ok {
+		t.Fatal("trimRight builtin not found")
+	}
+	result = fn.Fn(&String{Value: "  hello  "})
+	compareObjectsForTest(t, result, &String{Value: "  hello"})
+
+	// trimPrefix
+	fn, ok = Builtins["trimPrefix"]
+	if !ok {
+		t.Fatal("trimPrefix builtin not found")
+	}
+	result = fn.Fn(&String{Value: "hello world"}, &String{Value: "hello "})
+	compareObjectsForTest(t, result, &String{Value: "world"})
+
+	// trimSuffix
+	fn, ok = Builtins["trimSuffix"]
+	if !ok {
+		t.Fatal("trimSuffix builtin not found")
+	}
+	result = fn.Fn(&String{Value: "hello world"}, &String{Value: " world"})
+	compareObjectsForTest(t, result, &String{Value: "hello"})
+
+	// format
+	fn, ok = Builtins["format"]
+	if !ok {
+		t.Fatal("format builtin not found")
+	}
+	result = fn.Fn(&String{Value: "%s=%d"}, &String{Value: "count"}, &Int{Value: 42})
+	compareObjectsForTest(t, result, &String{Value: "count=42"})
+
+	// hexEncode
+	fn, ok = Builtins["hexEncode"]
+	if !ok {
+		t.Fatal("hexEncode builtin not found")
+	}
+	result = fn.Fn(&String{Value: "hello"})
+	if result.Type() != StringType {
+		t.Errorf("expected string, got %s", result.Type())
+	}
+
+	// hexDecode
+	fn, ok = Builtins["hexDecode"]
+	if !ok {
+		t.Fatal("hexDecode builtin not found")
+	}
+	result = fn.Fn(&String{Value: "68656c6c6f"})
+	compareObjectsForTest(t, result, &String{Value: "hello"})
+}
+
+func TestBuiltinArrayFunctions(t *testing.T) {
+	// chunk
+	fn, ok := Builtins["chunk"]
+	if !ok {
+		t.Fatal("chunk builtin not found")
+	}
+	arr := &Array{Elements: []Object{&Int{Value: 1}, &Int{Value: 2}, &Int{Value: 3}, &Int{Value: 4}}}
+	result := fn.Fn(arr, &Int{Value: 2})
+	chunked, ok := result.(*Array)
+	if !ok {
+		t.Fatalf("expected Array, got %s", result.Type())
+	}
+	if len(chunked.Elements) != 2 {
+		t.Errorf("expected 2 chunks, got %d", len(chunked.Elements))
+	}
+
+	// clamp
+	fn, ok = Builtins["clamp"]
+	if !ok {
+		t.Fatal("clamp builtin not found")
+	}
+	result = fn.Fn(&Int{Value: 5}, &Int{Value: 1}, &Int{Value: 10})
+	compareObjectsForTest(t, result, &Int{Value: 5})
+	result = fn.Fn(&Int{Value: 0}, &Int{Value: 1}, &Int{Value: 10})
+	compareObjectsForTest(t, result, &Int{Value: 1})
+	result = fn.Fn(&Int{Value: 15}, &Int{Value: 1}, &Int{Value: 10})
+	compareObjectsForTest(t, result, &Int{Value: 10})
+
+	// count - counts substring occurrences in a string
+	fn, ok = Builtins["count"]
+	if !ok {
+		t.Fatal("count builtin not found")
+	}
+	result = fn.Fn(&String{Value: "hello hello hello"}, &String{Value: "hello"})
+	compareObjectsForTest(t, result, &Int{Value: 3})
+
+	// drop
+	fn, ok = Builtins["drop"]
+	if !ok {
+		t.Fatal("drop builtin not found")
+	}
+	arr = &Array{Elements: []Object{&Int{Value: 1}, &Int{Value: 2}, &Int{Value: 3}}}
+	result = fn.Fn(arr, &Int{Value: 2})
+	compareObjectsForTest(t, result, &Array{Elements: []Object{&Int{Value: 3}}})
+
+	// take
+	fn, ok = Builtins["take"]
+	if !ok {
+		t.Fatal("take builtin not found")
+	}
+	arr = &Array{Elements: []Object{&Int{Value: 1}, &Int{Value: 2}, &Int{Value: 3}}}
+	result = fn.Fn(arr, &Int{Value: 2})
+	compareObjectsForTest(t, result, &Array{Elements: []Object{&Int{Value: 1}, &Int{Value: 2}}})
+
+	// entries
+	fn, ok = Builtins["entries"]
+	if !ok {
+		t.Fatal("entries builtin not found")
+	}
+	m := &Map{Pairs: map[HashKey]MapPair{}}
+	key := &String{Value: "a"}
+	m.Pairs[key.HashKey()] = MapPair{Key: key, Value: &Int{Value: 1}}
+	result = fn.Fn(m)
+	entries, ok := result.(*Array)
+	if !ok {
+		t.Fatalf("expected Array, got %s", result.Type())
+	}
+	if len(entries.Elements) != 1 {
+		t.Errorf("expected 1 entry, got %d", len(entries.Elements))
+	}
+
+	// find
+	fn, ok = Builtins["find"]
+	if !ok {
+		t.Fatal("find builtin not found")
+	}
+	arr = &Array{Elements: []Object{&Int{Value: 1}, &Int{Value: 2}, &Int{Value: 3}}}
+	result = fn.Fn(arr, &Int{Value: 2})
+	compareObjectsForTest(t, result, &Int{Value: 2})
+	result = fn.Fn(arr, &Int{Value: 99})
+	compareObjectsForTest(t, result, NULL)
+
+	// findIndex
+	fn, ok = Builtins["findIndex"]
+	if !ok {
+		t.Fatal("findIndex builtin not found")
+	}
+	result = fn.Fn(arr, &Int{Value: 2})
+	compareObjectsForTest(t, result, &Int{Value: 1})
+	result = fn.Fn(arr, &Int{Value: 99})
+	compareObjectsForTest(t, result, &Int{Value: -1})
+
+	// includes
+	fn, ok = Builtins["includes"]
+	if !ok {
+		t.Fatal("includes builtin not found")
+	}
+	result = fn.Fn(arr, &Int{Value: 2})
+	compareObjectsForTest(t, result, TRUE)
+	result = fn.Fn(arr, &Int{Value: 99})
+	compareObjectsForTest(t, result, FALSE)
+
+	// merge
+	fn, ok = Builtins["merge"]
+	if !ok {
+		t.Fatal("merge builtin not found")
+	}
+	m1 := &Map{Pairs: map[HashKey]MapPair{}}
+	m1.Pairs[key.HashKey()] = MapPair{Key: key, Value: &Int{Value: 1}}
+	m2 := &Map{Pairs: map[HashKey]MapPair{}}
+	key2 := &String{Value: "b"}
+	m2.Pairs[key2.HashKey()] = MapPair{Key: key2, Value: &Int{Value: 2}}
+	result = fn.Fn(m1, m2)
+	merged, ok := result.(*Map)
+	if !ok {
+		t.Fatalf("expected Map, got %s", result.Type())
+	}
+	if len(merged.Pairs) != 2 {
+		t.Errorf("expected 2 pairs, got %d", len(merged.Pairs))
+	}
+
+	// sample
+	fn, ok = Builtins["sample"]
+	if !ok {
+		t.Fatal("sample builtin not found")
+	}
+	arr = &Array{Elements: []Object{&Int{Value: 1}, &Int{Value: 2}, &Int{Value: 3}}}
+	result = fn.Fn(arr, &Int{Value: 2})
+	sampled, ok := result.(*Array)
+	if !ok {
+		t.Fatalf("expected Array, got %s", result.Type())
+	}
+	if len(sampled.Elements) != 2 {
+		t.Errorf("expected 2 samples, got %d", len(sampled.Elements))
+	}
+
+	// shuffle
+	fn, ok = Builtins["shuffle"]
+	if !ok {
+		t.Fatal("shuffle builtin not found")
+	}
+	arr = &Array{Elements: []Object{&Int{Value: 1}, &Int{Value: 2}, &Int{Value: 3}}}
+	result = fn.Fn(arr)
+	shuffled, ok := result.(*Array)
+	if !ok {
+		t.Fatalf("expected Array, got %s", result.Type())
+	}
+	if len(shuffled.Elements) != 3 {
+		t.Errorf("expected 3 elements, got %d", len(shuffled.Elements))
+	}
+
+	// unique
+	fn, ok = Builtins["unique"]
+	if !ok {
+		t.Fatal("unique builtin not found")
+	}
+	arr = &Array{Elements: []Object{&Int{Value: 1}, &Int{Value: 2}, &Int{Value: 1}, &Int{Value: 2}}}
+	result = fn.Fn(arr)
+	unique, ok := result.(*Array)
+	if !ok {
+		t.Fatalf("expected Array, got %s", result.Type())
+	}
+	if len(unique.Elements) != 2 {
+		t.Errorf("expected 2 unique elements, got %d", len(unique.Elements))
+	}
+
+	// without
+	fn, ok = Builtins["without"]
+	if !ok {
+		t.Fatal("without builtin not found")
+	}
+	arr = &Array{Elements: []Object{&Int{Value: 1}, &Int{Value: 2}, &Int{Value: 3}}}
+	result = fn.Fn(arr, &Int{Value: 2})
+	compareObjectsForTest(t, result, &Array{Elements: []Object{&Int{Value: 1}, &Int{Value: 3}}})
+}
+
+func TestBuiltinMathFunctions(t *testing.T) {
+	// round
+	fn, ok := Builtins["round"]
+	if !ok {
+		t.Fatal("round builtin not found")
+	}
+	result := fn.Fn(&Float{Value: 3.5})
+	compareObjectsForTest(t, result, &Int{Value: 4})
+	result = fn.Fn(&Float{Value: 3.4})
+	compareObjectsForTest(t, result, &Int{Value: 3})
+
+	// sign
+	fn, ok = Builtins["sign"]
+	if !ok {
+		t.Fatal("sign builtin not found")
+	}
+	result = fn.Fn(&Int{Value: -5})
+	compareObjectsForTest(t, result, &Int{Value: -1})
+	result = fn.Fn(&Int{Value: 0})
+	compareObjectsForTest(t, result, &Int{Value: 0})
+	result = fn.Fn(&Int{Value: 5})
+	compareObjectsForTest(t, result, &Int{Value: 1})
+
+	// random
+	fn, ok = Builtins["random"]
+	if !ok {
+		t.Fatal("random builtin not found")
+	}
+	result = fn.Fn()
+	f, ok := result.(*Float)
+	if !ok {
+		t.Fatalf("expected Float, got %s", result.Type())
+	}
+	if f.Value < 0 || f.Value >= 1 {
+		t.Errorf("random should be in [0, 1), got %v", f.Value)
+	}
+
+	// randomInt
+	fn, ok = Builtins["randomInt"]
+	if !ok {
+		t.Fatal("randomInt builtin not found")
+	}
+	result = fn.Fn(&Int{Value: 0}, &Int{Value: 10})
+	i, ok := result.(*Int)
+	if !ok {
+		t.Fatalf("expected Int, got %s", result.Type())
+	}
+	if i.Value < 0 || i.Value > 10 {
+		t.Errorf("randomInt should be in [0, 10], got %v", i.Value)
+	}
+}
+
+func TestBuiltinTimeFunctions(t *testing.T) {
+	// now
+	fn, ok := Builtins["now"]
+	if !ok {
+		t.Fatal("now builtin not found")
+	}
+	result := fn.Fn()
+	_, ok = result.(*Int)
+	if !ok {
+		t.Fatalf("expected Int, got %s", result.Type())
+	}
+
+	// nowMs
+	fn, ok = Builtins["nowMs"]
+	if !ok {
+		t.Fatal("nowMs builtin not found")
+	}
+	result = fn.Fn()
+	_, ok = result.(*Int)
+	if !ok {
+		t.Fatalf("expected Int, got %s", result.Type())
+	}
+
+	// sleep - just test it exists, don't actually sleep
+	fn, ok = Builtins["sleep"]
+	if !ok {
+		t.Fatal("sleep builtin not found")
+	}
+	// Skip actual sleep test to keep tests fast
+}
+
+func TestBuiltinUtilityFunctions(t *testing.T) {
+	// uuid
+	fn, ok := Builtins["uuid"]
+	if !ok {
+		t.Fatal("uuid builtin not found")
+	}
+	result := fn.Fn()
+	s, ok := result.(*String)
+	if !ok {
+		t.Fatalf("expected String, got %s", result.Type())
+	}
+	if len(s.Value) != 36 {
+		t.Errorf("expected UUID length 36, got %d", len(s.Value))
+	}
+
+	// getSwitch - takes array, prefix string, and default value
+	fn, ok = Builtins["getSwitch"]
+	if !ok {
+		t.Fatal("getSwitch builtin not found")
+	}
+	switchArr := &Array{Elements: []Object{&String{Value: "color:red"}, &String{Value: "size:large"}}}
+	result = fn.Fn(switchArr, &String{Value: "color:"}, &String{Value: "default"})
+	compareObjectsForTest(t, result, &String{Value: "red"})
+	result = fn.Fn(switchArr, &String{Value: "shape:"}, &String{Value: "default"})
+	compareObjectsForTest(t, result, &String{Value: "default"})
+
+	// switchExists - takes array and switch name
+	fn, ok = Builtins["switchExists"]
+	if !ok {
+		t.Fatal("switchExists builtin not found")
+	}
+	switchArr = &Array{Elements: []Object{&String{Value: "verbose"}, &String{Value: "debug"}}}
+	result = fn.Fn(switchArr, &String{Value: "verbose"})
+	compareObjectsForTest(t, result, TRUE)
+	result = fn.Fn(switchArr, &String{Value: "quiet"})
+	compareObjectsForTest(t, result, FALSE)
+
+	// pr (print)
+	fn, ok = Builtins["pr"]
+	if !ok {
+		t.Fatal("pr builtin not found")
+	}
+	result = fn.Fn(&String{Value: "test"})
+	compareObjectsForTest(t, result, NULL)
+
+	// pl (print line)
+	fn, ok = Builtins["pl"]
+	if !ok {
+		t.Fatal("pl builtin not found")
+	}
+	result = fn.Fn(&String{Value: "test"})
+	compareObjectsForTest(t, result, NULL)
+
+	// pln (print line with newline)
+	fn, ok = Builtins["pln"]
+	if !ok {
+		t.Fatal("pln builtin not found")
+	}
+	result = fn.Fn()
+	compareObjectsForTest(t, result, NULL)
+
+	// prf (printf)
+	fn, ok = Builtins["prf"]
+	if !ok {
+		t.Fatal("prf builtin not found")
+	}
+	result = fn.Fn(&String{Value: "%s"}, &String{Value: "test"})
+	compareObjectsForTest(t, result, NULL)
+}
+
+func TestBuiltinRunCodeAndLoadPlugin(t *testing.T) {
+	// runCode - test with mock
+	fn, ok := Builtins["runCode"]
+	if !ok {
+		t.Fatal("runCode builtin not found")
+	}
+
+	// Set mock implementation
+	prev := SetRunCodeImpl(func(code string, args *Map) (Object, error) {
+		return &Int{Value: 42}, nil
+	})
+	defer SetRunCodeImpl(prev)
+
+	result := fn.Fn(&String{Value: "return 42"})
+	compareObjectsForTest(t, result, &Int{Value: 42})
+
+	// loadPlugin - test with mock
+	fn, ok = Builtins["loadPlugin"]
+	if !ok {
+		t.Fatal("loadPlugin builtin not found")
+	}
+
+	prevPlugin := SetLoadPluginImpl(func(path string) (Object, error) {
+		return &Map{Pairs: map[HashKey]MapPair{}}, nil
+	})
+	defer SetLoadPluginImpl(prevPlugin)
+
+	result = fn.Fn(&String{Value: "test.wasm"})
+	_, ok = result.(*Map)
+	if !ok {
+		t.Fatalf("expected Map, got %s", result.Type())
+	}
+}

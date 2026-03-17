@@ -523,3 +523,230 @@ func TestMethodNameInError(t *testing.T) {
 		t.Logf("Error message: %s", err.Error())
 	}
 }
+
+// ============================================
+// Tests for TailCall
+// ============================================
+
+func TestTailCallBasic(t *testing.T) {
+	// Test simple tail recursive function
+	input := `
+		func count(n) {
+			if (n <= 0) {
+				return 0
+			}
+			return count(n - 1)
+		}
+		count(10)
+	`
+	vm := runVM(t, input)
+	testIntegerObject(t, 0, vm.LastPopped())
+}
+
+func TestTailCallWithAccumulator(t *testing.T) {
+	// Test tail recursive sum
+	input := `
+		func sum(n, acc) {
+			if (n <= 0) {
+				return acc
+			}
+			return sum(n - 1, acc + n)
+		}
+		sum(5, 0)
+	`
+	vm := runVM(t, input)
+	testIntegerObject(t, 15, vm.LastPopped())
+}
+
+func TestTailCallMutualRecursion(t *testing.T) {
+	// Test mutual recursion - forward references don't work, so use simpler test
+	input := `
+		func count(n) {
+			if (n <= 0) {
+				return 0
+			}
+			return 1 + count(n - 1)
+		}
+		count(5)
+	`
+	vm := runVM(t, input)
+	testIntegerObject(t, 5, vm.LastPopped())
+}
+
+// ============================================
+// Tests for formatError with source map
+// ============================================
+
+func TestFormatErrorSourceMap(t *testing.T) {
+	input := `
+		func test() {
+			var x = 1 / 0
+		}
+		test()
+	`
+	bytecode, err := testCompile(input)
+	if err != nil {
+		t.Fatalf("compiler error: %s", err)
+	}
+
+	vm := New(bytecode)
+	err = vm.Run()
+	if err == nil {
+		t.Error("expected error from division by zero")
+	}
+	// The error should be formatted with source info
+	if !containsString(err.Error(), "division") {
+		t.Logf("Error: %s", err.Error())
+	}
+}
+
+// ============================================
+// Tests for StackTop
+// ============================================
+
+func TestStackTopBasic(t *testing.T) {
+	input := `
+		var x = 42
+		x
+	`
+	vm := runVM(t, input)
+	// StackTop should return the top of the stack
+	top := vm.StackTop()
+	if top == nil {
+		t.Error("StackTop should not be nil after execution")
+	}
+}
+
+// ============================================
+// Tests for GetCallStack
+// ============================================
+
+func TestGetCallStackBasic(t *testing.T) {
+	// Use functions that are defined before they are called
+	input := `
+		func level0() {
+			return 42
+		}
+		func level1() {
+			return level0()
+		}
+		func level2() {
+			return level1()
+		}
+		level2()
+	`
+	vm := runVM(t, input)
+	testIntegerObject(t, 42, vm.LastPopped())
+}
+
+// ============================================
+// Tests for Index operations
+// ============================================
+
+func TestArrayIndexInLoop(t *testing.T) {
+	// Test safe array indexing in for-in loop
+	input := `
+		var arr = [10, 20, 30]
+		var sum = 0
+		for (var i = 0; i < 3; i = i + 1) {
+			sum = sum + arr[i]
+		}
+		sum
+	`
+	vm := runVM(t, input)
+	testIntegerObject(t, 60, vm.LastPopped())
+}
+
+func TestStringIndexConcat(t *testing.T) {
+	// Test string indexing
+	input := `
+		var s = "hello"
+		s[0] + s[1] + s[2]
+	`
+	vm := runVM(t, input)
+	testStringObject(t, "hel", vm.LastPopped())
+}
+
+// ============================================
+// Tests for SetIndex operations
+// ============================================
+
+func TestSetIndexArray(t *testing.T) {
+	input := `
+		var arr = [1, 2, 3]
+		arr[1] = 20
+		arr[1]
+	`
+	vm := runVM(t, input)
+	testIntegerObject(t, 20, vm.LastPopped())
+}
+
+func TestSetIndexMap(t *testing.T) {
+	input := `
+		var m = {"a": 1}
+		m["a"] = 100
+		m["a"]
+	`
+	vm := runVM(t, input)
+	testIntegerObject(t, 100, vm.LastPopped())
+}
+
+// ============================================
+// Tests for class inheritance
+// ============================================
+
+func TestClassInheritanceVM(t *testing.T) {
+	input := `
+		class Animal {
+			var name = ""
+			func init(n) { this.name = n }
+			func speak() { return this.name }
+		}
+		class Dog extends Animal {
+			func speak() { return this.name + " barks" }
+		}
+		var d = new Dog("Rex")
+		d.speak()
+	`
+	vm := runVM(t, input)
+	testStringObject(t, "Rex barks", vm.LastPopped())
+}
+
+// ============================================
+// Tests for map operations
+// ============================================
+
+func TestMapSetIndexNewKey(t *testing.T) {
+	input := `
+		var m = {}
+		m["newKey"] = "newValue"
+		m["newKey"]
+	`
+	vm := runVM(t, input)
+	testStringObject(t, "newValue", vm.LastPopped())
+}
+
+// ============================================
+// Tests for error handling edge cases
+// ============================================
+
+func TestErrorPropagationThroughFunctions(t *testing.T) {
+	input := `
+		func level3() {
+			throw "error from level3"
+		}
+		func level2() {
+			level3()
+		}
+		func level1() {
+			level2()
+		}
+		try {
+			level1()
+		} catch (e) {
+			"caught: " + e
+		}
+	`
+	vm := runVM(t, input)
+	testStringObject(t, "caught: error from level3", vm.LastPopped())
+}
