@@ -938,17 +938,48 @@ Module paths are resolved based on prefix and file extension:
 
 ## Error Handling
 
-### Try-Catch-Finally
+Xxlang provides comprehensive exception handling with `try`, `catch`, `finally`, and `throw`.
+
+### Basic Try-Catch
 
 ```xxl
 try {
     var result = riskyOperation()
+    pln(result)
 } catch (err) {
-    println("Error: " + err)
-} finally {
-    println("Cleanup")
+    pln("Caught error: ", err)
 }
 ```
+
+### Try-Finally (without catch)
+
+Use `finally` alone for cleanup code that must run regardless of success or failure:
+
+```xxl
+var file = openFile("data.txt")
+try {
+    processFile(file)
+} finally {
+    file.close()  // Always executes
+}
+```
+
+### Full Try-Catch-Finally
+
+```xxl
+try {
+    var result = divide(10, 0)
+    pln(result)
+} catch (err) {
+    pln("Error: ", err)
+} finally {
+    pln("Cleanup completed")
+}
+```
+
+**Execution order:**
+1. If no error: try block → finally block
+2. If error occurs: try block (until error) → catch block → finally block
 
 ### Throw Statement
 
@@ -959,7 +990,201 @@ func divide(a, b) {
     }
     return a / b
 }
+
+func validateAge(age) {
+    if (age < 0) {
+        throw "age cannot be negative"
+    }
+    if (age > 150) {
+        throw "age seems invalid: " + age
+    }
+    return true
+}
 ```
+
+You can throw any value (string, number, object):
+
+```xxl
+throw "error message"      // String
+throw 404                  // Number
+throw {"code": 500}        // Map
+```
+
+### Nested Try-Catch
+
+Exception handlers can be nested. Each `try` creates its own exception handler:
+
+```xxl
+try {
+    try {
+        throw "inner error"
+    } catch (e) {
+        pln("Inner caught: ", e)
+    }
+} catch (e) {
+    pln("Outer caught: ", e)  // Not executed
+}
+// Output: Inner caught: inner error
+```
+
+### Re-throwing Exceptions
+
+Catch and re-throw to add context:
+
+```xxl
+try {
+    try {
+        throw "file not found"
+    } catch (e) {
+        throw "config error: " + e  // Re-throw with context
+    }
+} catch (e) {
+    pln(e)  // Output: config error: file not found
+}
+```
+
+### Finally Overrides Exception
+
+If `finally` throws an exception, it replaces the original:
+
+```xxl
+try {
+    try {
+        throw "first error"
+    } finally {
+        throw "second error"  // Replaces "first error"
+    }
+} catch (e) {
+    pln(e)  // Output: second error
+}
+```
+
+### Resource Cleanup Pattern
+
+Use `finally` for guaranteed cleanup:
+
+```xxl
+func processFile(filename) {
+    var file = openFile(filename)
+    var success = false
+    try {
+        var data = file.read()
+        processData(data)
+        success = true
+    } catch (err) {
+        pln("Processing failed: ", err)
+    } finally {
+        file.close()
+        if (!success) {
+            deleteTempFiles()
+        }
+    }
+}
+```
+
+### WithFile Pattern (Recommended for Resource Management)
+
+Encapsulate resource management in a helper function:
+
+```xxl
+func withFile(filename, callback) {
+    var file = openFile(filename)
+    try {
+        return callback(file)
+    } finally {
+        file.close()
+    }
+}
+
+// Usage - automatic cleanup guaranteed
+withFile("data.txt", func(f) {
+    var content = f.read()
+    pln(content)
+    // file.close() is automatically called
+})
+```
+
+### Multiple Resources
+
+Chain `withFile` for multiple resources:
+
+```xxl
+func withFile(filename, callback) {
+    var file = openFile(filename)
+    try {
+        return callback(file)
+    } finally {
+        file.close()
+    }
+}
+
+// Multiple files with automatic cleanup
+withFile("input.txt", func(input) {
+    withFile("output.txt", func(output) {
+        var data = input.read()
+        output.write(process(data))
+    })
+})
+```
+
+### Exception Propagation
+
+Uncaught exceptions propagate up the call stack:
+
+```xxl
+func level3() {
+    throw "error at level 3"
+}
+
+func level2() {
+    level3()  // No catch, exception propagates
+}
+
+func level1() {
+    try {
+        level2()
+    } catch (e) {
+        pln("Caught at level1: ", e)
+    }
+}
+
+level1()  // Output: Caught at level1: error at level 3
+```
+
+### Summary Table
+
+| Clause | Required? | Purpose |
+|--------|-----------|---------|
+| `try` | Yes | Contains code that might throw |
+| `catch (var)` | Optional* | Handles the exception |
+| `finally` | Optional* | Cleanup code (always runs) |
+
+*At least one of `catch` or `finally` must be present.
+
+### Best Practices
+
+1. **Use specific error messages**: Include context in thrown errors
+   ```xxl
+   throw "file '" + filename + "' not found"
+   ```
+
+2. **Clean up in finally**: Always release resources in `finally`
+   ```xxl
+   try { ... } finally { resource.close() }
+   ```
+
+3. **Use withFile pattern**: Encapsulate resource management
+   ```xxl
+   withFile("data.txt", func(f) { /* use f */ })
+   ```
+
+4. **Don't catch everything silently**: Log or re-throw errors
+   ```xxl
+   catch (e) {
+       log(e)
+       throw e  // Re-throw if you can't handle it
+   }
+   ```
 
 ## Standard Library
 
