@@ -940,11 +940,32 @@ sha256("hello")  // "2cf24dba5fb0a30e26e83b2ac5b9e29e..."
 sha512("hello")  // "9b71d224bd62f3785d96d46ad3ea3d..."
 ```
 
-#### hmac(algorithm, key, message)
-返回 HMAC 哈希。
+#### hmacMd5(key, data)
+返回 HMAC-MD5 哈希。
 
 ```xxl
-hmac("sha256", "secret", "message")  // 十六进制字符串
+hmacMd5("secret", "message")  // 十六进制字符串
+```
+
+#### hmacSha1(key, data)
+返回 HMAC-SHA1 哈希。
+
+```xxl
+hmacSha1("secret", "message")  // 十六进制字符串
+```
+
+#### hmacSha256(key, data)
+返回 HMAC-SHA256 哈希。
+
+```xxl
+hmacSha256("secret", "message")  // 十六进制字符串
+```
+
+#### hmacSha512(key, data)
+返回 HMAC-SHA512 哈希。
+
+```xxl
+hmacSha512("secret", "message")  // 十六进制字符串
 ```
 
 #### base64Encode(s)
@@ -1001,6 +1022,20 @@ var bytes = randomBytes(16)
 
 ```xxl
 randomHex(16)  // "a1b2c3d4..." (32个十六进制字符)
+```
+
+#### randomBase64(n)
+返回 n 个随机字节的 base64 字符串。
+
+```xxl
+randomBase64(16)  // 随机 base64 编码字符串
+```
+
+#### uuid()
+生成随机 UUID (v4) 字符串。
+
+```xxl
+uuid()  // "550e8400-e29b-41d4-a716-446655440000"
 ```
 
 ---

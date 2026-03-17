@@ -940,11 +940,32 @@ Returns SHA512 hash as hex string.
 sha512("hello")  // "9b71d224bd62f3785d96d46ad3ea3d..."
 ```
 
-#### hmac(algorithm, key, message)
-Returns HMAC hash.
+#### hmacMd5(key, data)
+Returns HMAC-MD5 hash.
 
 ```xxl
-hmac("sha256", "secret", "message")  // Hex string
+hmacMd5("secret", "message")  // Hex string
+```
+
+#### hmacSha1(key, data)
+Returns HMAC-SHA1 hash.
+
+```xxl
+hmacSha1("secret", "message")  // Hex string
+```
+
+#### hmacSha256(key, data)
+Returns HMAC-SHA256 hash.
+
+```xxl
+hmacSha256("secret", "message")  // Hex string
+```
+
+#### hmacSha512(key, data)
+Returns HMAC-SHA512 hash.
+
+```xxl
+hmacSha512("secret", "message")  // Hex string
 ```
 
 #### base64Encode(s)
@@ -1001,6 +1022,20 @@ Returns n random bytes as hex string.
 
 ```xxl
 randomHex(16)  // "a1b2c3d4..." (32 hex chars)
+```
+
+#### randomBase64(n)
+Returns n random bytes as base64 string.
+
+```xxl
+randomBase64(16)  // Random base64 encoded string
+```
+
+#### uuid()
+Generates a random UUID (v4) string.
+
+```xxl
+uuid()  // "550e8400-e29b-41d4-a716-446655440000"
 ```
 
 ---

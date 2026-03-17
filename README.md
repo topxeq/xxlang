@@ -1,5 +1,5 @@
 # Xxlang
-![Coverage](https://img.shields.io/badge/Coverage-71.4%25-brightgreen)
+![Coverage](https://img.shields.io/badge/Coverage-67.9%25-yellow)
 
 [中文文档](README_zh.md)
 
@@ -27,6 +27,7 @@ Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language impleme
 - [Built-in Functions](docs/BUILTINS.md) - Global built-in functions
 - [Standard Library](docs/STDLIB.md) - Standard library modules (os, json, math, etc.)
 - [Code Examples](docs/EXAMPLES.md) - Common scenarios code examples
+- [Variable Scope](docs/SCOPE.md) - Variable scope and closure behavior
 - [Embedding Guide](docs/EMBEDDING.md) - Using Xxlang in Go applications
 - [Plugin System](docs/PLUGIN.md) - Writing native Go plugins for high performance
 - [Performance Benchmarks](benchmarks/RESULTS.md) - Performance analysis
