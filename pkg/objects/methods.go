@@ -9,13 +9,14 @@ import (
 
 // TypeMethods maps ObjectType -> methodName -> *Builtin
 var TypeMethods = map[ObjectType]map[string]*Builtin{
-	IntType:    intMethods,
-	FloatType:  floatMethods,
-	StringType: stringMethods,
-	ArrayType:  arrayMethods,
-	MapType:    mapMethods,
-	BoolType:   boolMethods,
-	NullType:   nullMethods,
+	IntType:         intMethods,
+	FloatType:       floatMethods,
+	StringType:      stringMethods,
+	ArrayType:       arrayMethods,
+	MapType:         mapMethods,
+	BoolType:        boolMethods,
+	NullType:        nullMethods,
+	StringBuilderType: stringBuilderMethods,
 }
 
 // GetMethod returns the builtin method for the given object type and method name
@@ -531,4 +532,110 @@ var boolMethods = map[string]*Builtin{
 var nullMethods = map[string]*Builtin{
 	"typeOf": {Fn: universalTypeOf},
 	"toStr":  {Fn: universalToStr},
+}
+
+// ============================================================
+// StringBuilder Methods
+// ============================================================
+
+var stringBuilderMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"len": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for len. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*StringBuilder)
+		if !ok {
+			return newError("receiver for len must be STRING_BUILDER, got %s", args[0].Type())
+		}
+		return &Int{Value: int64(self.Len())}
+	}},
+	"write": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for write. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*StringBuilder)
+		if !ok {
+			return newError("receiver for write must be STRING_BUILDER, got %s", args[0].Type())
+		}
+		str, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for write must be STRING, got %s", args[1].Type())
+		}
+		n := self.Write(str.Value)
+		return &Int{Value: int64(n)}
+	}},
+	"writeLine": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for writeLine. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*StringBuilder)
+		if !ok {
+			return newError("receiver for writeLine must be STRING_BUILDER, got %s", args[0].Type())
+		}
+		str, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for writeLine must be STRING, got %s", args[1].Type())
+		}
+		n := self.WriteLine(str.Value)
+		return &Int{Value: int64(n)}
+	}},
+	"toString": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toString. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*StringBuilder)
+		if !ok {
+			return newError("receiver for toString must be STRING_BUILDER, got %s", args[0].Type())
+		}
+		return &String{Value: self.String()}
+	}},
+	"clear": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for clear. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*StringBuilder)
+		if !ok {
+			return newError("receiver for clear must be STRING_BUILDER, got %s", args[0].Type())
+		}
+		self.Clear()
+		return NULL
+	}},
+	"reset": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for reset. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*StringBuilder)
+		if !ok {
+			return newError("receiver for reset must be STRING_BUILDER, got %s", args[0].Type())
+		}
+		self.Reset()
+		return NULL
+	}},
+	"grow": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for grow. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*StringBuilder)
+		if !ok {
+			return newError("receiver for grow must be STRING_BUILDER, got %s", args[0].Type())
+		}
+		n, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for grow must be INT, got %s", args[1].Type())
+		}
+		self.Grow(int(n.Value))
+		return NULL
+	}},
+	"isEmpty": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for isEmpty. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*StringBuilder)
+		if !ok {
+			return newError("receiver for isEmpty must be STRING_BUILDER, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.Len() == 0}
+	}},
 }
