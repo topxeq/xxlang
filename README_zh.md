@@ -18,6 +18,7 @@ Xxlang 是一个基于字节码虚拟机的脚本语言，使用 Go 语言实现
 - [语言参考](docs/LANGUAGE.md) - 完整的语言语法和特性
 - [内置函数](docs/BUILTINS_zh.md) - 全局内置函数
 - [标准库](docs/STDLIB_zh.md) - 标准库模块（os、json、math 等）
+- [代码示例](docs/EXAMPLES_zh.md) - 常用场景代码示例
 - [嵌入指南](docs/EMBEDDING.md) - 在 Go 应用中使用 Xxlang
 - [插件系统](docs/PLUGIN.md) - 编写原生 Go 插件实现高性能
 - [性能测试](benchmarks/RESULTS.md) - 性能分析

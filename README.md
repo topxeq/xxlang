@@ -26,6 +26,7 @@ Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language impleme
 - [Language Reference](docs/LANGUAGE.md) - Complete language syntax and features
 - [Built-in Functions](docs/BUILTINS.md) - Global built-in functions
 - [Standard Library](docs/STDLIB.md) - Standard library modules (os, json, math, etc.)
+- [Code Examples](docs/EXAMPLES.md) - Common scenarios code examples
 - [Embedding Guide](docs/EMBEDDING.md) - Using Xxlang in Go applications
 - [Plugin System](docs/PLUGIN.md) - Writing native Go plugins for high performance
 - [Performance Benchmarks](benchmarks/RESULTS.md) - Performance analysis
