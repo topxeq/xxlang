@@ -321,6 +321,17 @@ func TestStringBuilder_Methods(t *testing.T) {
 	})
 }
 
+func TestStringBuilder_Cap(t *testing.T) {
+	sb := NewStringBuilder()
+	sb.Write("Hello")
+	// Cap returns the current length of the builder's content
+	// since strings.Builder doesn't expose Cap directly
+	cap := sb.Cap()
+	if cap != 5 {
+		t.Errorf("expected cap 5, got %d", cap)
+	}
+}
+
 func TestStringBuilder_MethodErrors(t *testing.T) {
 	t.Run("write wrong arg type", func(t *testing.T) {
 		sb := NewStringBuilder()

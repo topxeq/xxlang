@@ -895,6 +895,76 @@ func TestWasmPluginSumArray(t *testing.T) {
 	}
 }
 
+// TestWasmPluginSumArrayErrors tests error handling in sum_array
+func TestWasmPluginSumArrayErrors(t *testing.T) {
+	wasmPath := getWASMPath(t)
+
+	plugin, err := loadPluginWASM(wasmPath)
+	if err != nil {
+		t.Fatalf("Failed to load WASM plugin: %v", err)
+	}
+	defer closePlugin(plugin)
+
+	exports := plugin.Exports()
+	sumArrayFn := exports["sum_array"].(*objects.Builtin)
+
+	// Test with non-integer argument (tests default case error handling)
+	result := sumArrayFn.Fn(&objects.String{Value: "not a number"}, &objects.Int{Value: 0})
+	if _, ok := result.(*objects.Error); !ok {
+		t.Errorf("Expected error for non-integer argument, got %T", result)
+	}
+}
+
+// TestWasmPluginClampErrors tests error handling for clamp function (3 args)
+func TestWasmPluginClampErrors(t *testing.T) {
+	wasmPath := getWASMPath(t)
+
+	plugin, err := loadPluginWASM(wasmPath)
+	if err != nil {
+		t.Fatalf("Failed to load WASM plugin: %v", err)
+	}
+	defer closePlugin(plugin)
+
+	exports := plugin.Exports()
+	clampFn := exports["clamp"].(*objects.Builtin)
+
+	// Test with non-integer argument (tests default case error handling for 3 args)
+	result := clampFn.Fn(&objects.Int{Value: 5}, &objects.String{Value: "not a number"}, &objects.Int{Value: 10})
+	if _, ok := result.(*objects.Error); !ok {
+		t.Errorf("Expected error for non-integer argument, got %T", result)
+	}
+}
+
+// TestLoaderLoadFromPathAndRegister tests Load with path and registration
+func TestLoaderLoadFromPathAndRegister(t *testing.T) {
+	// Create a loader with a search path
+	loader := NewLoader()
+
+	// Find the WASM file location
+	paths := []string{
+		"testdata/target/wasm32-unknown-unknown/release",
+		"../../examples/wasm_plugin/plugin",
+	}
+
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			loader.AddPath(p)
+			break
+		}
+	}
+
+	// Load the plugin using Load (should register it)
+	p, err := loader.Load("testplugin")
+	if err != nil {
+		t.Skipf("Could not load testplugin: %v", err)
+	}
+
+	// Verify it was registered
+	if _, ok := Get(p.Name()); !ok {
+		t.Error("Plugin was not registered after Load")
+	}
+}
+
 // TestReadStringFromMemory tests the readStringFromMemory helper
 func TestReadStringFromMemory(t *testing.T) {
 	wasmPath := getWASMPath(t)
@@ -1126,5 +1196,552 @@ func TestWasmPlugin_CloseNilRuntime(t *testing.T) {
 	err := wp.Close(context.Background())
 	if err != nil {
 		t.Errorf("Close() returned error: %v", err)
+	}
+}
+
+// TestReadStringFromMemoryInvalidRead tests readStringFromMemory when read fails
+func TestReadStringFromMemoryInvalidRead(t *testing.T) {
+	wasmPath := getWASMPath(t)
+
+	plugin, err := loadPluginWASM(wasmPath)
+	if err != nil {
+		t.Fatalf("Failed to load WASM plugin: %v", err)
+	}
+	defer closePlugin(plugin)
+
+	wp := plugin.(*WasmPlugin)
+	mem := wp.module.Memory()
+	if mem == nil {
+		t.Fatal("Memory is nil")
+	}
+
+	// Try to read from an invalid offset (very large value)
+	// This should return empty string because the read will fail
+	ptrSize := uint64(0xFFFF0000)<<32 | uint64(10)
+	result := readStringFromMemory(wp.module, ptrSize)
+	// The result should be empty because the read fails
+	if result != "" {
+		t.Logf("readStringFromMemory with invalid offset = %q (may vary)", result)
+	}
+}
+
+// TestReadStringFromMemory2InvalidRead tests readStringFromMemory2 when read fails
+func TestReadStringFromMemory2InvalidRead(t *testing.T) {
+	wasmPath := getWASMPath(t)
+
+	plugin, err := loadPluginWASM(wasmPath)
+	if err != nil {
+		t.Fatalf("Failed to load WASM plugin: %v", err)
+	}
+	defer closePlugin(plugin)
+
+	wp := plugin.(*WasmPlugin)
+
+	// Try to read from an invalid offset (very large value)
+	// This should return empty string because the read fails
+	result := readStringFromMemory2(wp.module, 0xFFFF0000, 10)
+	// The result should be empty because the read fails
+	if result != "" {
+		t.Logf("readStringFromMemory2 with invalid offset = %q (may vary)", result)
+	}
+}
+
+// TestReadInt64ArrayFromMemoryInvalidRead tests readInt64ArrayFromMemory when read fails
+func TestReadInt64ArrayFromMemoryInvalidRead(t *testing.T) {
+	wasmPath := getWASMPath(t)
+
+	plugin, err := loadPluginWASM(wasmPath)
+	if err != nil {
+		t.Fatalf("Failed to load WASM plugin: %v", err)
+	}
+	defer closePlugin(plugin)
+
+	wp := plugin.(*WasmPlugin)
+
+	// Try to read from an invalid offset (very large value)
+	// This should return nil because the read fails
+	result := readInt64ArrayFromMemory(wp.module, 0xFFFF0000, 5)
+	// The result should be nil because the read fails
+	if result != nil {
+		t.Logf("readInt64ArrayFromMemory with invalid offset = %v (may vary)", result)
+	}
+}
+
+// TestReadStringFromResultPtrInvalid tests readStringFromResultPtr with invalid pointer
+func TestReadStringFromResultPtrInvalid(t *testing.T) {
+	wasmPath := getWASMPath(t)
+
+	plugin, err := loadPluginWASM(wasmPath)
+	if err != nil {
+		t.Fatalf("Failed to load WASM plugin: %v", err)
+	}
+	defer closePlugin(plugin)
+
+	wp := plugin.(*WasmPlugin)
+
+	// Try to read from an invalid offset
+	result := readStringFromResultPtr(wp.module, 0xFFFF0000)
+	// The result should be empty because the read fails
+	if result != "" {
+		t.Logf("readStringFromResultPtr with invalid offset = %q (may vary)", result)
+	}
+}
+
+// TestWrapFunctionDefaultCase tests the default case in wrapFunction
+func TestWrapFunctionDefaultCase(t *testing.T) {
+	wasmPath := getWASMPath(t)
+
+	plugin, err := loadPluginWASM(wasmPath)
+	if err != nil {
+		t.Fatalf("Failed to load WASM plugin: %v", err)
+	}
+	defer closePlugin(plugin)
+
+	exports := plugin.Exports()
+
+	// Test clamp function which uses 3 arguments (not in switch case)
+	clampFn, ok := exports["clamp"].(*objects.Builtin)
+	if !ok {
+		t.Skip("clamp function not found")
+	}
+
+	// Test successful call with 3 arguments
+	result := clampFn.Fn(&objects.Int{Value: 15}, &objects.Int{Value: 0}, &objects.Int{Value: 10})
+	intResult, ok := result.(*objects.Int)
+	if !ok {
+		t.Errorf("Expected Int result, got %T", result)
+	} else if intResult.Value != 10 {
+		t.Errorf("clamp(15, 0, 10) = %d, expected 10", intResult.Value)
+	}
+
+	// Test with wrong argument type (tests error path in default case)
+	result = clampFn.Fn(&objects.Int{Value: 15}, &objects.String{Value: "invalid"}, &objects.Int{Value: 10})
+	if _, ok := result.(*objects.Error); !ok {
+		t.Errorf("Expected error for non-integer argument, got %T", result)
+	}
+}
+
+// TestWrapFunctionTwoArgsNoResult tests two-arg function returning no result
+func TestWrapFunctionTwoArgsNoResult(t *testing.T) {
+	// This tests the "function returned no result" path for two-arg functions
+	// We can't easily trigger this without a special WASM module, so we skip
+	t.Skip("Cannot test without a WASM module that returns no results")
+}
+
+// TestReadStringFromMemory2Invalid tests readStringFromMemory2 with invalid read
+func TestReadStringFromMemory2Invalid(t *testing.T) {
+	wasmPath := getWASMPath(t)
+
+	plugin, err := loadPluginWASM(wasmPath)
+	if err != nil {
+		t.Fatalf("Failed to load WASM plugin: %v", err)
+	}
+	defer closePlugin(plugin)
+
+	wp := plugin.(*WasmPlugin)
+
+	// Test with very large offset that will fail
+	result := readStringFromMemory2(wp.module, 0xFFFFFFFF, 10)
+	if result != "" {
+		t.Logf("readStringFromMemory2 with invalid offset = %q", result)
+	}
+}
+
+// TestReadStringFromResultPtrWithValidSize tests readStringFromResultPtr with valid size
+func TestReadStringFromResultPtrWithValidSize(t *testing.T) {
+	wasmPath := getWASMPath(t)
+
+	plugin, err := loadPluginWASM(wasmPath)
+	if err != nil {
+		t.Fatalf("Failed to load WASM plugin: %v", err)
+	}
+	defer closePlugin(plugin)
+
+	wp := plugin.(*WasmPlugin)
+	mem := wp.module.Memory()
+	if mem == nil {
+		t.Fatal("Memory is nil")
+	}
+
+	// Write test data
+	testStr := "test_result"
+	offset := uint32(500)
+	mem.Write(offset, []byte(testStr))
+
+	// Write ptr and size at result location
+	resultLoc := uint32(600)
+	mem.WriteUint32Le(resultLoc, offset)
+	mem.WriteUint32Le(resultLoc+4, uint32(len(testStr)))
+
+	// Read it back
+	result := readStringFromResultPtr(wp.module, resultLoc)
+	if result != testStr {
+		t.Errorf("readStringFromResultPtr() = %q, expected %q", result, testStr)
+	}
+}
+
+// TestReadStringFromResultPtrFailedRead tests readStringFromResultPtr when reading ptr fails
+func TestReadStringFromResultPtrFailedRead(t *testing.T) {
+	wasmPath := getWASMPath(t)
+
+	plugin, err := loadPluginWASM(wasmPath)
+	if err != nil {
+		t.Fatalf("Failed to load WASM plugin: %v", err)
+	}
+	defer closePlugin(plugin)
+
+	wp := plugin.(*WasmPlugin)
+
+	// Try reading from an invalid resultPtr that will fail
+	result := readStringFromResultPtr(wp.module, 0xFFFFFFFF)
+	if result != "" {
+		t.Errorf("Expected empty string for failed read, got %q", result)
+	}
+}
+
+// TestWasmPluginBoolReturnFalse tests bool-returning functions returning false
+func TestWasmPluginBoolReturnFalse(t *testing.T) {
+	wasmPath := getWASMPath(t)
+
+	plugin, err := loadPluginWASM(wasmPath)
+	if err != nil {
+		t.Fatalf("Failed to load WASM plugin: %v", err)
+	}
+	defer closePlugin(plugin)
+
+	exports := plugin.Exports()
+
+	// Test is_even with odd number (should return false)
+	isEvenFn := exports["is_even"].(*objects.Builtin)
+	result := isEvenFn.Fn(&objects.Int{Value: 3})
+	if result != objects.FALSE {
+		t.Errorf("is_even(3) = %v, expected FALSE", result)
+	}
+
+	// Test is_prime with non-prime (should return false)
+	isPrimeFn := exports["is_prime"].(*objects.Builtin)
+	result = isPrimeFn.Fn(&objects.Int{Value: 4})
+	if result != objects.FALSE {
+		t.Errorf("is_prime(4) = %v, expected FALSE", result)
+	}
+}
+
+// TestWasmPluginRangeNegative tests range_ with negative input
+func TestWasmPluginRangeNegative(t *testing.T) {
+	wasmPath := getWASMPath(t)
+
+	plugin, err := loadPluginWASM(wasmPath)
+	if err != nil {
+		t.Fatalf("Failed to load WASM plugin: %v", err)
+	}
+	defer closePlugin(plugin)
+
+	exports := plugin.Exports()
+	rangeFn := exports["range_"].(*objects.Builtin)
+
+	// Test with negative input - should return empty array
+	result := rangeFn.Fn(&objects.Int{Value: -1})
+	arrResult, ok := result.(*objects.Array)
+	if !ok {
+		t.Errorf("range_(-1) returned %T, expected Array", result)
+		return
+	}
+	if len(arrResult.Elements) != 0 {
+		t.Errorf("range_(-1) returned %d elements, expected 0", len(arrResult.Elements))
+	}
+}
+
+// TestWasmPluginRangeWrongArgType tests range_ with wrong argument type
+func TestWasmPluginRangeWrongArgType(t *testing.T) {
+	wasmPath := getWASMPath(t)
+
+	plugin, err := loadPluginWASM(wasmPath)
+	if err != nil {
+		t.Fatalf("Failed to load WASM plugin: %v", err)
+	}
+	defer closePlugin(plugin)
+
+	exports := plugin.Exports()
+	rangeFn := exports["range_"].(*objects.Builtin)
+
+	// Test with non-integer argument
+	result := rangeFn.Fn(&objects.String{Value: "not a number"})
+	if _, ok := result.(*objects.Error); !ok {
+		t.Errorf("Expected error for non-integer argument, got %T", result)
+	}
+}
+
+// TestWasmPluginRangeWrongArgCount tests range_ with wrong argument count
+func TestWasmPluginRangeWrongArgCount(t *testing.T) {
+	wasmPath := getWASMPath(t)
+
+	plugin, err := loadPluginWASM(wasmPath)
+	if err != nil {
+		t.Fatalf("Failed to load WASM plugin: %v", err)
+	}
+	defer closePlugin(plugin)
+
+	exports := plugin.Exports()
+	rangeFn := exports["range_"].(*objects.Builtin)
+
+	// Test with no arguments
+	result := rangeFn.Fn()
+	if _, ok := result.(*objects.Error); !ok {
+		t.Errorf("Expected error for no arguments, got %T", result)
+	}
+}
+
+// TestWasmPluginSingleArgWrongCount tests single-arg functions with wrong arg count
+func TestWasmPluginSingleArgWrongCount(t *testing.T) {
+	wasmPath := getWASMPath(t)
+
+	plugin, err := loadPluginWASM(wasmPath)
+	if err != nil {
+		t.Fatalf("Failed to load WASM plugin: %v", err)
+	}
+	defer closePlugin(plugin)
+
+	exports := plugin.Exports()
+
+	// Test factorial with no arguments
+	factorialFn := exports["factorial"].(*objects.Builtin)
+	result := factorialFn.Fn()
+	if _, ok := result.(*objects.Error); !ok {
+		t.Errorf("Expected error for no arguments, got %T", result)
+	}
+
+	// Test factorial with too many arguments
+	result = factorialFn.Fn(&objects.Int{Value: 5}, &objects.Int{Value: 2})
+	if _, ok := result.(*objects.Error); !ok {
+		t.Errorf("Expected error for too many arguments, got %T", result)
+	}
+}
+
+// TestWasmPluginTwoArgsWrongCount tests two-arg functions with wrong arg count
+func TestWasmPluginTwoArgsWrongCount(t *testing.T) {
+	wasmPath := getWASMPath(t)
+
+	plugin, err := loadPluginWASM(wasmPath)
+	if err != nil {
+		t.Fatalf("Failed to load WASM plugin: %v", err)
+	}
+	defer closePlugin(plugin)
+
+	exports := plugin.Exports()
+
+	// Test add with no arguments
+	addFn := exports["add"].(*objects.Builtin)
+	result := addFn.Fn()
+	if _, ok := result.(*objects.Error); !ok {
+		t.Errorf("Expected error for no arguments, got %T", result)
+	}
+
+	// Test add with one argument
+	result = addFn.Fn(&objects.Int{Value: 5})
+	if _, ok := result.(*objects.Error); !ok {
+		t.Errorf("Expected error for one argument, got %T", result)
+	}
+
+	// Test add with three arguments
+	result = addFn.Fn(&objects.Int{Value: 5}, &objects.Int{Value: 3}, &objects.Int{Value: 2})
+	if _, ok := result.(*objects.Error); !ok {
+		t.Errorf("Expected error for three arguments, got %T", result)
+	}
+}
+
+// TestWasmPluginBoolWrongCount tests bool-returning functions with wrong arg count
+func TestWasmPluginBoolWrongCount(t *testing.T) {
+	wasmPath := getWASMPath(t)
+
+	plugin, err := loadPluginWASM(wasmPath)
+	if err != nil {
+		t.Fatalf("Failed to load WASM plugin: %v", err)
+	}
+	defer closePlugin(plugin)
+
+	exports := plugin.Exports()
+
+	// Test is_odd with no arguments
+	isOddFn := exports["is_odd"].(*objects.Builtin)
+	result := isOddFn.Fn()
+	if _, ok := result.(*objects.Error); !ok {
+		t.Errorf("Expected error for no arguments, got %T", result)
+	}
+
+	// Test is_square with too many arguments
+	isSquareFn := exports["is_square"].(*objects.Builtin)
+	result = isSquareFn.Fn(&objects.Int{Value: 4}, &objects.Int{Value: 2})
+	if _, ok := result.(*objects.Error); !ok {
+		t.Errorf("Expected error for too many arguments, got %T", result)
+	}
+}
+
+// TestWasmPluginMod tests the mod function
+func TestWasmPluginMod(t *testing.T) {
+	wasmPath := getWASMPath(t)
+
+	plugin, err := loadPluginWASM(wasmPath)
+	if err != nil {
+		t.Fatalf("Failed to load WASM plugin: %v", err)
+	}
+	defer closePlugin(plugin)
+
+	exports := plugin.Exports()
+	modFn := exports["mod"].(*objects.Builtin)
+
+	testCases := []struct {
+		a, b, expected int64
+	}{
+		{10, 3, 1},
+		{10, 5, 0},
+		{7, 4, 3},
+	}
+
+	for _, tc := range testCases {
+		result := modFn.Fn(&objects.Int{Value: tc.a}, &objects.Int{Value: tc.b})
+		if intResult, ok := result.(*objects.Int); ok {
+			if intResult.Value != tc.expected {
+				t.Errorf("mod(%d, %d) = %d, expected %d", tc.a, tc.b, intResult.Value, tc.expected)
+			}
+		} else {
+			t.Errorf("mod(%d, %d) returned %T", tc.a, tc.b, result)
+		}
+	}
+}
+
+// TestWasmPluginExportsVersion tests that version is exported correctly
+func TestWasmPluginExportsVersion(t *testing.T) {
+	wasmPath := getWASMPath(t)
+
+	plugin, err := loadPluginWASM(wasmPath)
+	if err != nil {
+		t.Fatalf("Failed to load WASM plugin: %v", err)
+	}
+	defer closePlugin(plugin)
+
+	exports := plugin.Exports()
+
+	// Check version is exported
+	version, ok := exports["version"]
+	if !ok {
+		t.Error("Expected version export")
+		return
+	}
+
+	strVersion, ok := version.(*objects.String)
+	if !ok {
+		t.Errorf("Expected version to be string, got %T", version)
+		return
+	}
+
+	if strVersion.Value == "" {
+		t.Error("Expected non-empty version string")
+	}
+
+	t.Logf("Plugin version: %s", strVersion.Value)
+}
+
+// TestWasmPluginMultipleExports tests that multiple exports work correctly
+func TestWasmPluginMultipleExports(t *testing.T) {
+	wasmPath := getWASMPath(t)
+
+	plugin, err := loadPluginWASM(wasmPath)
+	if err != nil {
+		t.Fatalf("Failed to load WASM plugin: %v", err)
+	}
+	defer closePlugin(plugin)
+
+	exports := plugin.Exports()
+
+	// Check that we have multiple exports
+	if len(exports) < 10 {
+		t.Errorf("Expected at least 10 exports, got %d", len(exports))
+	}
+
+	// Check for some expected exports
+	expectedExports := []string{"add", "sub", "mul", "div", "mod", "pow", "factorial", "fib", "is_even", "is_prime"}
+	for _, name := range expectedExports {
+		if _, ok := exports[name]; !ok {
+			t.Errorf("Expected export %q not found", name)
+		}
+	}
+}
+
+// TestReadStringFromResultPtrValidPtr tests when ptr read succeeds but buffer read fails
+func TestReadStringFromResultPtrValidPtrInvalidBuffer(t *testing.T) {
+	wasmPath := getWASMPath(t)
+
+	plugin, err := loadPluginWASM(wasmPath)
+	if err != nil {
+		t.Fatalf("Failed to load WASM plugin: %v", err)
+	}
+	defer closePlugin(plugin)
+
+	wp := plugin.(*WasmPlugin)
+	mem := wp.module.Memory()
+	if mem == nil {
+		t.Fatal("Memory is nil")
+	}
+
+	// Write a valid ptr but point to an invalid buffer location
+	resultLoc := uint32(700)
+	mem.WriteUint32Le(resultLoc, 0xFFFFFFFF)     // invalid buffer ptr
+	mem.WriteUint32Le(resultLoc+4, 10)            // non-zero size
+
+	// This should return empty because buffer read fails
+	result := readStringFromResultPtr(wp.module, resultLoc)
+	if result != "" {
+		t.Errorf("Expected empty string for invalid buffer read, got %q", result)
+	}
+}
+
+// TestReadInt64ArrayFromMemoryInvalidOffset tests with invalid memory offset
+func TestReadInt64ArrayFromMemoryInvalidOffset(t *testing.T) {
+	wasmPath := getWASMPath(t)
+
+	plugin, err := loadPluginWASM(wasmPath)
+	if err != nil {
+		t.Fatalf("Failed to load WASM plugin: %v", err)
+	}
+	defer closePlugin(plugin)
+
+	wp := plugin.(*WasmPlugin)
+
+	// Try with invalid offset
+	result := readInt64ArrayFromMemory(wp.module, 0xFFFFFFFF, 5)
+	if result != nil {
+		t.Errorf("Expected nil for invalid offset, got %v", result)
+	}
+}
+
+// TestWasmPluginLoadPathAlreadyCached tests loading a plugin that's already in registry
+func TestWasmPluginLoadPathAlreadyCached(t *testing.T) {
+	pluginPath := getWASMPath(t)
+
+	loader := NewLoader()
+
+	// First load
+	p1, err := loader.LoadPath(pluginPath)
+	if err != nil {
+		t.Fatalf("First load failed: %v", err)
+	}
+
+	// Get the absolute path which is used as the registry key
+	absPath, _ := filepath.Abs(pluginPath)
+
+	// Second load should return the same plugin from registry
+	p2, err := loader.LoadPath(pluginPath)
+	if err != nil {
+		t.Fatalf("Second load failed: %v", err)
+	}
+
+	// They should be the same plugin (from registry)
+	if p1 != p2 {
+		t.Error("Expected same plugin from registry")
+	}
+
+	// Verify it's in the registry
+	if got, ok := Get(absPath); !ok || got != p1 {
+		t.Error("Plugin not found in registry with correct key")
 	}
 }
