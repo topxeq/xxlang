@@ -76,7 +76,7 @@ xxlang version
 | `CLASS` | Class definition | `class Point { ... }` |
 | `INSTANCE` | Class instance | `new Point(1, 2)` |
 | `MODULE` | Imported module | `import "math"` |
-| `BUILTIN` | Built-in function | `len`, `print`, `typeOf` |
+| `BUILTIN` | Built-in function | `len`, `pln`, `typeOf` |
 
 ### Type Checking
 

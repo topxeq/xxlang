@@ -1,5 +1,5 @@
 # Xxlang
-![Coverage](https://img.shields.io/badge/Coverage-61.6%25-brightgreen)
+![Coverage](https://img.shields.io/badge/Coverage-81.8%25-brightgreen)
 
 [中文文档](README_zh.md)
 
@@ -159,8 +159,8 @@ func makeCounter() {
 }
 
 var counter = makeCounter()
-println(counter())  // 1
-println(counter())  // 2
+pln(counter())  // 1
+pln(counter())  // 2
 ```
 
 ### Classes and OOP
@@ -187,19 +187,19 @@ var p3 = p1.add(p2)
 ```xxl
 // If-else
 if (x > 0) {
-    println("positive")
+    pln("positive")
 } else {
-    println("non-positive")
+    pln("non-positive")
 }
 
 // For loop
 for (var i = 0; i < 5; i = i + 1) {
-    println(i)
+    pln(i)
 }
 
 // For-in loop
 for (item in [1, 2, 3]) {
-    println(item)
+    pln(item)
 }
 ```
 
@@ -208,7 +208,7 @@ for (item in [1, 2, 3]) {
 ```xxl
 // Import standard library
 import "math"
-println(math.sqrt(16))
+pln(math.sqrt(16))
 
 // Import specific functions
 import "io" { readFile, writeFile }
@@ -223,8 +223,8 @@ Write native Go plugins for high-performance operations:
 import "plugin/fib"
 
 // Call Go functions from Xxlang
-println(fib.fast(50))      // 12586269025
-println(fib.matrix(92))    // Largest Fibonacci in int64 range
+pln(fib.fast(50))      // 12586269025
+pln(fib.matrix(92))    // Largest Fibonacci in int64 range
 ```
 
 **Two plugin types available:**
@@ -317,7 +317,7 @@ You can also access the config from within scripts:
 ```xxl
 import "os"
 var cfg = os.getConfigObj()
-println(cfg["cloudUrlBase"])
+pln(cfg["cloudUrlBase"])
 ```
 
 ## Bytecode Compilation
@@ -469,6 +469,20 @@ interp.Eval("goFib(100000)")  // Microseconds, not seconds!
 | Go function | 25 µs | **260,000x** |
 
 See [docs/EMBEDDING.md](docs/EMBEDDING.md) for complete examples.
+
+## Built-in Functions List
+
+Xxlang provides 40+ built-in functions:
+
+| Category | Functions |
+|----------|-----------|
+| Output | `pln`, `pr`, `pl`, `prf` |
+| General | `len`, `typeOf` |
+| String | `substr`, `split`, `join`, `trim`, `upper`, `lower`, `containsStr`, `replace`, `startsWith`, `endsWith` |
+| Math | `abs`, `floor`, `ceil`, `sqrt`, `pow`, `min`, `max` |
+| Type Conversion | `int`, `float`, `string` |
+| Array | `push`, `pop`, `first`, `last`, `rest`, `concat`, `indexOf`, `containsArr`, `sort`, `sum`, `avg`, `reverse` |
+| Map | `keys`, `values`, `hasKey`, `delete` |
 
 ## License
 
