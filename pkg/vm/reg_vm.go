@@ -120,14 +120,92 @@ func (vm *RegVM) popFrame() *RegFrame {
 	return vm.frames[vm.frameIndex]
 }
 
-// LastPopped returns the last popped value
+// LastPopped returns the last popped value from temp stack
+// Note: For register VM, prefer LastResult() which returns from ReturnRegister
 func (vm *RegVM) LastPopped() Value {
 	return vm.tempStack.LastPopped()
+}
+
+// LastResult returns the value in the ReturnRegister
+// This is the preferred method for getting results from the register VM
+func (vm *RegVM) LastResult() Value {
+	frame := vm.currentFrame()
+	if frame == nil {
+		return ValueNull
+	}
+	return frame.Registers[compiler.ReturnRegister]
 }
 
 // Globals returns the globals array
 func (vm *RegVM) Globals() []Value {
 	return vm.globals
+}
+
+// GlobalsAsObjects returns the globals as objects.Object slice
+func (vm *RegVM) GlobalsAsObjects() []objects.Object {
+	result := make([]objects.Object, len(vm.globals))
+	for i, v := range vm.globals {
+		result[i] = v.ToObject()
+	}
+	return result
+}
+
+// LastPoppedObject returns the result as objects.Object
+// For register VM, this returns the value from ReturnRegister or the most likely result register
+func (vm *RegVM) LastPoppedObject() objects.Object {
+	frame := vm.currentFrame()
+	if frame == nil {
+		return objects.NULL
+	}
+
+	// Check ReturnRegister first (for function/builtin calls)
+	result := frame.Registers[compiler.ReturnRegister]
+	if !result.IsNull() {
+		return result.ToObject()
+	}
+
+	// Find all non-null registers and their types
+	var lastCollectionReg int = -1
+	var lastNonCollectionReg int = -1
+
+	for i := 0; i < 16; i++ { // Check first 16 registers
+		val := frame.Registers[i]
+		if val.IsNull() {
+			continue
+		}
+		obj := val.ToObject()
+		switch obj.(type) {
+		case *objects.Array, *objects.Map:
+			// Collection types are typically results
+			lastCollectionReg = i
+		default:
+			lastNonCollectionReg = i
+		}
+	}
+
+	// Prefer collection types as they are typically the result
+	if lastCollectionReg >= 0 {
+		return frame.Registers[lastCollectionReg].ToObject()
+	}
+
+	// For non-collection types, the highest register usually has the result
+	// (arithmetic operations store result in a new register)
+	if lastNonCollectionReg >= 0 {
+		return frame.Registers[lastNonCollectionReg].ToObject()
+	}
+
+	// Fallback to tempStack for mixed mode
+	return vm.tempStack.LastPopped().ToObject()
+}
+
+// NewRegVMWithObjectGlobals creates a register VM with globals as objects.Object
+func NewRegVMWithObjectGlobals(bytecode *compiler.Bytecode, globals []objects.Object) *RegVM {
+	// Convert objects.Object to Value
+	valueGlobals := make([]Value, len(globals))
+	for i, obj := range globals {
+		valueGlobals[i] = NewObject(obj)
+	}
+	return NewRegVMWithGlobals(bytecode, valueGlobals)
 }
 
 // SetSourcePath sets the source file path
@@ -414,8 +492,97 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 	case compiler.OpRegCall:
 		return vm.handleRegCall(frame, code)
 
+	case compiler.OpRegBuiltin:
+		builtinIdx, numArgs := DecodeReg2(code, frame.IP)
+		frame.IP += 3
+		return vm.handleRegBuiltin(int(builtinIdx), int(numArgs), frame)
+
 	case compiler.OpRegReturn:
 		return vm.handleRegReturn(frame)
+
+	// Collection operations
+	case compiler.OpRegArray:
+		dst, startReg, count := DecodeReg3(code, frame.IP)
+		elements := make([]objects.Object, count)
+		for i := 0; i < int(count); i++ {
+			elements[i] = regs[int(startReg)+i].ToObject()
+		}
+		regs[dst] = NewObject(&objects.Array{Elements: elements})
+		frame.IP += 4
+
+	case compiler.OpRegMap:
+		dst, startReg, count := DecodeReg3(code, frame.IP)
+		pairs := make(map[objects.HashKey]objects.MapPair)
+		for i := 0; i < int(count); i++ {
+			keyObj := regs[int(startReg)+i*2].ToObject()
+			valObj := regs[int(startReg)+i*2+1].ToObject()
+			pairs[keyObj.HashKey()] = objects.MapPair{Key: keyObj, Value: valObj}
+		}
+		regs[dst] = NewObject(&objects.Map{Pairs: pairs})
+		frame.IP += 4
+
+	case compiler.OpRegIndex:
+		dst, objReg, keyReg := DecodeReg3(code, frame.IP)
+		obj := regs[objReg].ToObject()
+		key := regs[keyReg].ToObject()
+
+		var result objects.Object
+		switch o := obj.(type) {
+		case *objects.Array:
+			idx, ok := key.(*objects.Int)
+			if !ok {
+				return fmt.Errorf("array index must be integer")
+			}
+			if idx.Value < 0 || idx.Value >= int64(len(o.Elements)) {
+				return fmt.Errorf("array index out of bounds: %d", idx.Value)
+			}
+			result = o.Elements[idx.Value]
+		case *objects.Map:
+			hashKey := key.HashKey()
+			pair, ok := o.Pairs[hashKey]
+			if !ok {
+				result = objects.NULL
+			} else {
+				result = pair.Value
+			}
+		case *objects.String:
+			idx, ok := key.(*objects.Int)
+			if !ok {
+				return fmt.Errorf("string index must be integer")
+			}
+			if idx.Value < 0 || idx.Value >= int64(len(o.Value)) {
+				return fmt.Errorf("string index out of bounds: %d", idx.Value)
+			}
+			result = &objects.String{Value: string(o.Value[idx.Value])}
+		default:
+			return fmt.Errorf("cannot index type %s", obj.Type())
+		}
+		regs[dst] = NewObject(result)
+		frame.IP += 4
+
+	case compiler.OpRegSetIndex:
+		objReg, keyReg, valReg := DecodeReg3(code, frame.IP)
+		obj := regs[objReg].ToObject()
+		key := regs[keyReg].ToObject()
+		val := regs[valReg].ToObject()
+
+		switch o := obj.(type) {
+		case *objects.Array:
+			idx, ok := key.(*objects.Int)
+			if !ok {
+				return fmt.Errorf("array index must be integer")
+			}
+			if idx.Value < 0 || idx.Value >= int64(len(o.Elements)) {
+				return fmt.Errorf("array index out of bounds: %d", idx.Value)
+			}
+			o.Elements[idx.Value] = val
+		case *objects.Map:
+			hashKey := key.HashKey()
+			o.Pairs[hashKey] = objects.MapPair{Key: key, Value: val}
+		default:
+			return fmt.Errorf("cannot set index on type %s", obj.Type())
+		}
+		frame.IP += 4
 
 	// Literals
 	case compiler.OpRegNull:
@@ -556,6 +723,28 @@ func (vm *RegVM) callCompiledFunction(fn *compiler.CompiledFunction, numArgs int
 
 // callBuiltin calls a built-in function
 func (vm *RegVM) callBuiltin(builtin *objects.Builtin, numArgs int, frame *RegFrame) error {
+	// Collect arguments from R0-R7
+	args := make([]objects.Object, numArgs)
+	for i := 0; i < numArgs; i++ {
+		args[i] = frame.Registers[i].ToObject()
+	}
+
+	// Call the builtin
+	result := builtin.Fn(args...)
+
+	// Store result in return register
+	frame.Registers[compiler.ReturnRegister] = NewObject(result)
+	return nil
+}
+
+// handleRegBuiltin handles OpRegBuiltin - direct builtin call
+func (vm *RegVM) handleRegBuiltin(builtinIdx, numArgs int, frame *RegFrame) error {
+	// Get the builtin function
+	builtin := getBuiltin(builtinIdx)
+	if builtin == nil {
+		return fmt.Errorf("builtin function not found: %d", builtinIdx)
+	}
+
 	// Collect arguments from R0-R7
 	args := make([]objects.Object, numArgs)
 	for i := 0; i < numArgs; i++ {

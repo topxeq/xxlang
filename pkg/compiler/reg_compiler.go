@@ -109,7 +109,11 @@ func (c *RegCompiler) compileProgram(p *parser.Program) (int, error) {
 			return 0, err
 		}
 	}
-	return lastReg, nil
+	// Move the last result to the ReturnRegister so it can be retrieved by the VM
+	if lastReg != ReturnRegister {
+		c.emitRegMove(ReturnRegister, lastReg)
+	}
+	return ReturnRegister, nil
 }
 
 // compileIntegerLiteral compiles an integer literal
@@ -501,6 +505,32 @@ func (c *RegCompiler) compileFunctionLiteral(n *parser.FunctionLiteral) (int, er
 
 // compileCallExpression compiles a function call
 func (c *RegCompiler) compileCallExpression(n *parser.CallExpression) (int, error) {
+	// Check if this is a direct builtin call (e.g., len("hello"))
+	if ident, ok := n.Function.(*parser.Identifier); ok {
+		symbol, ok := c.symbolTable.Resolve(ident.Value)
+		if ok && symbol.Scope == BuiltinScope {
+			// This is a builtin - use OpRegBuiltin directly
+			// Compile arguments into R0-R7
+			for i, arg := range n.Arguments {
+				argReg, err := c.Compile(arg)
+				if err != nil {
+					return 0, err
+				}
+				// Move to argument register position (R0-R7)
+				if argReg != i {
+					c.emitRegMove(i, argReg)
+					c.freeTempReg(argReg)
+				}
+				// Don't free if argReg == i, the value is already in the right place
+			}
+
+			// Emit builtin call
+			c.emitRegBuiltin(symbol.Index, len(n.Arguments))
+			return ReturnRegister, nil
+		}
+	}
+
+	// Regular function call
 	// Compile function
 	funcReg, err := c.Compile(n.Function)
 	if err != nil {
@@ -788,6 +818,10 @@ func (c *RegCompiler) emitRegCall(funcReg, numArgs int) {
 	c.instructions = append(c.instructions, MakeRegInstruction2(OpRegCall, funcReg, numArgs)...)
 }
 
+func (c *RegCompiler) emitRegBuiltin(builtinIdx, numArgs int) {
+	c.instructions = append(c.instructions, MakeRegInstruction2(OpRegBuiltin, builtinIdx, numArgs)...)
+}
+
 func (c *RegCompiler) emitRegReturn(reg int) {
 	c.instructions = append(c.instructions, MakeRegInstruction1(OpRegReturn, reg)...)
 }
@@ -846,6 +880,26 @@ func (c *RegCompiler) DefineGlobal(name string) {
 // ResolveSymbol resolves a symbol
 func (c *RegCompiler) ResolveSymbol(name string) (Symbol, bool) {
 	return c.symbolTable.Resolve(name)
+}
+
+// SetSymbolTable sets the symbol table for persistent compilation
+func (c *RegCompiler) SetSymbolTable(st *SymbolTable) {
+	c.symbolTable = st
+}
+
+// SetConstants sets the constants pool for persistent compilation
+func (c *RegCompiler) SetConstants(constants []objects.Object) {
+	c.constants = constants
+}
+
+// SymbolTable returns the current symbol table
+func (c *RegCompiler) SymbolTable() *SymbolTable {
+	return c.symbolTable
+}
+
+// Constants returns the current constants pool
+func (c *RegCompiler) Constants() []objects.Object {
+	return c.constants
 }
 
 // SetSourceFile sets the source file for error reporting
