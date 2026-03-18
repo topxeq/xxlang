@@ -1,0 +1,730 @@
+// pkg/vm/reg_vm.go
+// Register-based Virtual Machine implementation
+package vm
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/topxeq/xxlang/pkg/compiler"
+	"github.com/topxeq/xxlang/pkg/lexer"
+	"github.com/topxeq/xxlang/pkg/module"
+	"github.com/topxeq/xxlang/pkg/objects"
+	"github.com/topxeq/xxlang/pkg/parser"
+)
+
+// RegVM is a register-based virtual machine
+type RegVM struct {
+	constants     []Value          // Constant pool (as Values)
+	frames        []*RegFrame      // Call frames
+	frameIndex    int              // Current frame index
+	globals       []Value          // Global variables
+	loader        *module.Loader   // Module loader
+	currentModule *objects.Module  // Current module context
+	sourcePath    string           // Source file path
+	sourceMap     *compiler.SourceMap
+
+	// Object constants (for non-Value types like strings, arrays, maps)
+	objConstants []objects.Object
+
+	// Exception handling
+	handlers []ExceptionHandler
+
+	// Inline cache for method lookups
+	methodCache [InlineCacheSize]InlineCacheEntry
+
+	// Temp stack for complex expressions that don't fit in registers
+	tempStack *ValueStack
+}
+
+// NewRegVM creates a new register-based VM
+func NewRegVM(bytecode *compiler.Bytecode) *RegVM {
+	// Convert constants to Values
+	constants := make([]Value, len(bytecode.Constants))
+	for i, c := range bytecode.Constants {
+		constants[i] = NewObject(c)
+	}
+
+	mainFn := &compiler.CompiledFunction{
+		Instructions:  bytecode.Instructions,
+		NumLocals:     0,
+		NumParameters: 0,
+	}
+	mainFrame := NewRegFrame(mainFn)
+	mainFrame.Constants = constants
+	mainFrame.Globals = make([]Value, GlobalsSize)
+
+	frames := make([]*RegFrame, MaxFrames)
+	frames[0] = mainFrame
+
+	return &RegVM{
+		constants:   constants,
+		objConstants: bytecode.Constants,
+		frames:      frames,
+		frameIndex:  1,
+		globals:     make([]Value, GlobalsSize),
+		loader:      module.NewLoader(),
+		sourceMap:   bytecode.SourceMap,
+		tempStack:   NewValueStack(),
+	}
+}
+
+// NewRegVMWithGlobals creates a register VM with custom globals
+func NewRegVMWithGlobals(bytecode *compiler.Bytecode, globals []Value) *RegVM {
+	constants := make([]Value, len(bytecode.Constants))
+	for i, c := range bytecode.Constants {
+		constants[i] = NewObject(c)
+	}
+
+	mainFn := &compiler.CompiledFunction{
+		Instructions:  bytecode.Instructions,
+		NumLocals:     0,
+		NumParameters: 0,
+	}
+	mainFrame := NewRegFrame(mainFn)
+	mainFrame.Constants = constants
+	mainFrame.Globals = globals
+
+	frames := make([]*RegFrame, MaxFrames)
+	frames[0] = mainFrame
+
+	return &RegVM{
+		constants:   constants,
+		objConstants: bytecode.Constants,
+		frames:      frames,
+		frameIndex:  1,
+		globals:     globals,
+		loader:      module.NewLoader(),
+		sourceMap:   bytecode.SourceMap,
+		tempStack:   NewValueStack(),
+	}
+}
+
+// currentFrame returns the current frame
+func (vm *RegVM) currentFrame() *RegFrame {
+	return vm.frames[vm.frameIndex-1]
+}
+
+// pushFrame pushes a new frame onto the call stack
+func (vm *RegVM) pushFrame(frame *RegFrame) {
+	if vm.frameIndex >= MaxFrames {
+		panic("stack overflow")
+	}
+	vm.frames[vm.frameIndex] = frame
+	vm.frameIndex++
+}
+
+// popFrame pops a frame from the call stack
+func (vm *RegVM) popFrame() *RegFrame {
+	vm.frameIndex--
+	return vm.frames[vm.frameIndex]
+}
+
+// LastPopped returns the last popped value
+func (vm *RegVM) LastPopped() Value {
+	return vm.tempStack.LastPopped()
+}
+
+// Globals returns the globals array
+func (vm *RegVM) Globals() []Value {
+	return vm.globals
+}
+
+// SetSourcePath sets the source file path
+func (vm *RegVM) SetSourcePath(path string) {
+	vm.sourcePath = path
+}
+
+// SetLoader sets the module loader
+func (vm *RegVM) SetLoader(loader *module.Loader) {
+	vm.loader = loader
+}
+
+// SetCurrentModule sets the current module context
+func (vm *RegVM) SetCurrentModule(mod *objects.Module) {
+	vm.currentModule = mod
+}
+
+// Run executes the bytecode in the register VM
+func (vm *RegVM) Run() error {
+	// Register callbacks for dynamic code execution
+	prevCallback := objects.SetRunCodeImpl(func(code string, args *objects.Map) (objects.Object, error) {
+		return RunCodeInRegVM(code, args, vm)
+	})
+	defer objects.SetRunCodeImpl(prevCallback)
+
+	prevLoadPlugin := objects.SetLoadPluginImpl(func(path string) (objects.Object, error) {
+		return vm.loadPluginByPath(path)
+	})
+	defer objects.SetLoadPluginImpl(prevLoadPlugin)
+
+	frame := vm.currentFrame()
+	code := frame.Instructions()
+
+	for frame.IP < len(code) {
+		op := compiler.Opcode(code[frame.IP])
+
+		// Check if this is a register-based opcode
+		if compiler.IsRegisterOpcode(op) {
+			if err := vm.executeRegInstruction(op, frame, code); err != nil {
+				return err
+			}
+			frame = vm.currentFrame()
+			code = frame.Instructions()
+			continue
+		}
+
+		// Fall back to stack-based instruction (for mixed bytecode)
+		frame.IP++
+		switch op {
+		case compiler.OpConstant:
+			if err := vm.executeConstant(frame, code); err != nil {
+				return err
+			}
+		case compiler.OpPop:
+			vm.tempStack.Pop()
+		case compiler.OpAdd:
+			if err := vm.executeValueBinaryOp(func(a, b Value) (Value, error) {
+				result, ok := a.Add(b)
+				if !ok {
+					return ValueNull, fmt.Errorf("type error in addition")
+				}
+				return result, nil
+			}); err != nil {
+				return err
+			}
+		case compiler.OpSub:
+			if err := vm.executeValueBinaryOp(func(a, b Value) (Value, error) {
+				result, ok := a.Sub(b)
+				if !ok {
+					return ValueNull, fmt.Errorf("type error in subtraction")
+				}
+				return result, nil
+			}); err != nil {
+				return err
+			}
+		case compiler.OpMul:
+			if err := vm.executeValueBinaryOp(func(a, b Value) (Value, error) {
+				result, ok := a.Mul(b)
+				if !ok {
+					return ValueNull, fmt.Errorf("type error in multiplication")
+				}
+				return result, nil
+			}); err != nil {
+				return err
+			}
+		case compiler.OpDiv:
+			if err := vm.executeValueBinaryOp(func(a, b Value) (Value, error) {
+				if b.IsInt() && b.GetInt() == 0 {
+					return ValueNull, fmt.Errorf("division by zero")
+				}
+				result, ok := a.Div(b)
+				if !ok {
+					return ValueNull, fmt.Errorf("type error in division")
+				}
+				return result, nil
+			}); err != nil {
+				return err
+			}
+		case compiler.OpReturn:
+			return vm.handleRegReturn(frame)
+		default:
+			return fmt.Errorf("unhandled stack opcode %d in register VM", op)
+		}
+		frame = vm.currentFrame()
+		code = frame.Instructions()
+	}
+
+	return nil
+}
+
+// executeRegInstruction executes a single register-based instruction
+func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code []byte) error {
+	regs := &frame.Registers
+
+	switch op {
+	// Arithmetic operations
+	case compiler.OpRegAdd:
+		dst, src1, src2 := DecodeReg3(code, frame.IP)
+		result, ok := regs[src1].Add(regs[src2])
+		if !ok {
+			return fmt.Errorf("type error in addition")
+		}
+		regs[dst] = result
+		frame.IP += 4
+
+	case compiler.OpRegSub:
+		dst, src1, src2 := DecodeReg3(code, frame.IP)
+		result, ok := regs[src1].Sub(regs[src2])
+		if !ok {
+			return fmt.Errorf("type error in subtraction")
+		}
+		regs[dst] = result
+		frame.IP += 4
+
+	case compiler.OpRegMul:
+		dst, src1, src2 := DecodeReg3(code, frame.IP)
+		result, ok := regs[src1].Mul(regs[src2])
+		if !ok {
+			return fmt.Errorf("type error in multiplication")
+		}
+		regs[dst] = result
+		frame.IP += 4
+
+	case compiler.OpRegDiv:
+		dst, src1, src2 := DecodeReg3(code, frame.IP)
+		if regs[src2].IsInt() && regs[src2].GetInt() == 0 {
+			return fmt.Errorf("division by zero")
+		}
+		result, ok := regs[src1].Div(regs[src2])
+		if !ok {
+			return fmt.Errorf("type error in division")
+		}
+		regs[dst] = result
+		frame.IP += 4
+
+	case compiler.OpRegMod:
+		dst, src1, src2 := DecodeReg3(code, frame.IP)
+		result, ok := regs[src1].Mod(regs[src2])
+		if !ok {
+			return fmt.Errorf("type error in modulo")
+		}
+		regs[dst] = result
+		frame.IP += 4
+
+	case compiler.OpRegNeg:
+		dst, src := DecodeReg2(code, frame.IP)
+		result, ok := regs[src].Neg()
+		if !ok {
+			return fmt.Errorf("type error in negation")
+		}
+		regs[dst] = result
+		frame.IP += 3
+
+	case compiler.OpRegAnd:
+		dst, src1, src2 := DecodeReg3(code, frame.IP)
+		regs[dst] = ValueBool(regs[src1].IsTruthy() && regs[src2].IsTruthy())
+		frame.IP += 4
+
+	case compiler.OpRegOr:
+		dst, src1, src2 := DecodeReg3(code, frame.IP)
+		regs[dst] = ValueBool(regs[src1].IsTruthy() || regs[src2].IsTruthy())
+		frame.IP += 4
+
+	case compiler.OpRegNot:
+		dst, src := DecodeReg2(code, frame.IP)
+		regs[dst] = ValueBool(!regs[src].IsTruthy())
+		frame.IP += 3
+
+	// Comparison operations
+	case compiler.OpRegLess:
+		dst, src1, src2 := DecodeReg3(code, frame.IP)
+		regs[dst] = regs[src1].LessValue(regs[src2])
+		frame.IP += 4
+
+	case compiler.OpRegLessEqual:
+		dst, src1, src2 := DecodeReg3(code, frame.IP)
+		regs[dst] = regs[src1].LessEqual(regs[src2])
+		frame.IP += 4
+
+	case compiler.OpRegGreater:
+		dst, src1, src2 := DecodeReg3(code, frame.IP)
+		regs[dst] = regs[src1].GreaterValue(regs[src2])
+		frame.IP += 4
+
+	case compiler.OpRegGreaterEqual:
+		dst, src1, src2 := DecodeReg3(code, frame.IP)
+		regs[dst] = regs[src1].GreaterEqual(regs[src2])
+		frame.IP += 4
+
+	case compiler.OpRegEqual:
+		dst, src1, src2 := DecodeReg3(code, frame.IP)
+		regs[dst] = regs[src1].EqualValue(regs[src2])
+		frame.IP += 4
+
+	case compiler.OpRegNotEqual:
+		dst, src1, src2 := DecodeReg3(code, frame.IP)
+		regs[dst] = regs[src1].NotEqualValue(regs[src2])
+		frame.IP += 4
+
+	// Data movement
+	case compiler.OpRegMove:
+		dst, src := DecodeReg2(code, frame.IP)
+		regs[dst] = regs[src]
+		frame.IP += 3
+
+	case compiler.OpRegLoadConst:
+		dst, constIdx := DecodeConst(code, frame.IP)
+		regs[dst] = frame.Constants[constIdx]
+		frame.IP += 4
+
+	case compiler.OpRegLoadGlobal:
+		dst, globalIdx := DecodeConst(code, frame.IP)
+		regs[dst] = frame.Globals[globalIdx]
+		frame.IP += 4
+
+	case compiler.OpRegStoreGlobal:
+		src, globalIdx := DecodeConst(code, frame.IP)
+		frame.Globals[globalIdx] = regs[src]
+		frame.IP += 4
+
+	// Local variable operations
+	case compiler.OpRegLoadLocal:
+		dst, localIdx := DecodeReg2(code, frame.IP)
+		regs[dst] = frame.Locals[localIdx]
+		frame.IP += 3
+
+	case compiler.OpRegStoreLocal:
+		src, localIdx := DecodeReg2(code, frame.IP)
+		frame.Locals[localIdx] = regs[src]
+		frame.IP += 3
+
+	case compiler.OpRegLoadFree:
+		dst, freeIdx := DecodeReg2(code, frame.IP)
+		regs[dst] = frame.FreeVars[freeIdx]
+		frame.IP += 3
+
+	case compiler.OpRegStoreFree:
+		src, freeIdx := DecodeReg2(code, frame.IP)
+		frame.FreeVars[freeIdx] = regs[src]
+		frame.IP += 3
+
+	// Control flow
+	case compiler.OpRegJump:
+		offset := DecodeJump(code, frame.IP)
+		frame.IP += offset
+
+	case compiler.OpRegJumpIfTrue:
+		condReg, offset := DecodeJumpCond(code, frame.IP)
+		if regs[condReg].IsTruthy() {
+			frame.IP += offset
+		} else {
+			frame.IP += 4
+		}
+
+	case compiler.OpRegJumpIfFalse:
+		condReg, offset := DecodeJumpCond(code, frame.IP)
+		if !regs[condReg].IsTruthy() {
+			frame.IP += offset
+		} else {
+			frame.IP += 4
+		}
+
+	// Function operations
+	case compiler.OpRegCall:
+		return vm.handleRegCall(frame, code)
+
+	case compiler.OpRegReturn:
+		return vm.handleRegReturn(frame)
+
+	// Literals
+	case compiler.OpRegNull:
+		dst := DecodeReg1(code, frame.IP)
+		regs[dst] = ValueNull
+		frame.IP += 2
+
+	case compiler.OpRegTrue:
+		dst := DecodeReg1(code, frame.IP)
+		regs[dst] = ValueTrue
+		frame.IP += 2
+
+	case compiler.OpRegFalse:
+		dst := DecodeReg1(code, frame.IP)
+		regs[dst] = ValueFalse
+		frame.IP += 2
+
+	// Superinstructions
+	case compiler.OpRegAddConst:
+		dst, src, constIdx := decodeRegConst(code, frame.IP)
+		result, ok := regs[src].Add(frame.Constants[constIdx])
+		if !ok {
+			return fmt.Errorf("type error in addition with constant")
+		}
+		regs[dst] = result
+		frame.IP += 5
+
+	case compiler.OpRegSubConst:
+		dst, src, constIdx := decodeRegConst(code, frame.IP)
+		result, ok := regs[src].Sub(frame.Constants[constIdx])
+		if !ok {
+			return fmt.Errorf("type error in subtraction with constant")
+		}
+		regs[dst] = result
+		frame.IP += 5
+
+	case compiler.OpRegMulConst:
+		dst, src, constIdx := decodeRegConst(code, frame.IP)
+		result, ok := regs[src].Mul(frame.Constants[constIdx])
+		if !ok {
+			return fmt.Errorf("type error in multiplication with constant")
+		}
+		regs[dst] = result
+		frame.IP += 5
+
+	case compiler.OpRegIncLocal:
+		localIdx := DecodeReg1(code, frame.IP)
+		result, ok := frame.Locals[localIdx].Add(NewInt(1))
+		if ok {
+			frame.Locals[localIdx] = result
+		}
+		frame.IP += 2
+
+	case compiler.OpRegDecLocal:
+		localIdx := DecodeReg1(code, frame.IP)
+		result, ok := frame.Locals[localIdx].Sub(NewInt(1))
+		if ok {
+			frame.Locals[localIdx] = result
+		}
+		frame.IP += 2
+
+	default:
+		return fmt.Errorf("unknown register opcode: %d", op)
+	}
+
+	return nil
+}
+
+// handleRegCall handles function calls
+func (vm *RegVM) handleRegCall(frame *RegFrame, code []byte) error {
+	funcReg, numArgs := DecodeCall(code, frame.IP)
+	frame.IP += 3
+
+	fn := frame.Registers[funcReg]
+	if fn.IsNull() {
+		return fmt.Errorf("cannot call null")
+	}
+
+	// Get the function object
+	obj := fn.ToObject()
+	switch fnObj := obj.(type) {
+	case *Closure:
+		return vm.callClosure(fnObj, int(numArgs), frame)
+	case *compiler.CompiledFunction:
+		return vm.callCompiledFunction(fnObj, int(numArgs), frame)
+	case *objects.Builtin:
+		return vm.callBuiltin(fnObj, int(numArgs), frame)
+	default:
+		return fmt.Errorf("cannot call %s", obj.Type())
+	}
+}
+
+// callClosure calls a closure function
+func (vm *RegVM) callClosure(closure *Closure, numArgs int, callerFrame *RegFrame) error {
+	fn := closure.Fn
+	if numArgs != fn.NumParameters {
+		return fmt.Errorf("wrong number of arguments: want=%d, got=%d", fn.NumParameters, numArgs)
+	}
+
+	// Create new frame
+	newFrame := NewRegFrame(fn)
+	newFrame.Constants = callerFrame.Constants
+	newFrame.Globals = callerFrame.Globals
+
+	// Copy arguments from caller's R0-R7 to callee's R0-R7
+	for i := 0; i < numArgs && i < compiler.NumArgRegisters; i++ {
+		newFrame.Registers[i] = callerFrame.Registers[i]
+	}
+
+	// Set up free variables from closure
+	for i, free := range closure.FreeVars {
+		newFrame.FreeVars[i] = NewObject(free)
+	}
+
+	vm.pushFrame(newFrame)
+	return nil
+}
+
+// callCompiledFunction calls a compiled function
+func (vm *RegVM) callCompiledFunction(fn *compiler.CompiledFunction, numArgs int, callerFrame *RegFrame) error {
+	if numArgs != fn.NumParameters {
+		return fmt.Errorf("wrong number of arguments: want=%d, got=%d", fn.NumParameters, numArgs)
+	}
+
+	// Create new frame
+	newFrame := NewRegFrame(fn)
+	newFrame.Constants = callerFrame.Constants
+	newFrame.Globals = callerFrame.Globals
+
+	// Copy arguments
+	for i := 0; i < numArgs && i < compiler.NumArgRegisters; i++ {
+		newFrame.Registers[i] = callerFrame.Registers[i]
+	}
+
+	vm.pushFrame(newFrame)
+	return nil
+}
+
+// callBuiltin calls a built-in function
+func (vm *RegVM) callBuiltin(builtin *objects.Builtin, numArgs int, frame *RegFrame) error {
+	// Collect arguments from R0-R7
+	args := make([]objects.Object, numArgs)
+	for i := 0; i < numArgs; i++ {
+		args[i] = frame.Registers[i].ToObject()
+	}
+
+	// Call the builtin
+	result := builtin.Fn(args...)
+
+	// Store result in return register
+	frame.Registers[compiler.ReturnRegister] = NewObject(result)
+	return nil
+}
+
+// handleRegReturn handles return statements
+func (vm *RegVM) handleRegReturn(frame *RegFrame) error {
+	// Get return value from return register
+	returnValue := frame.Registers[compiler.ReturnRegister]
+
+	// Pop the frame
+	vm.popFrame()
+
+	if vm.frameIndex == 0 {
+		// Main function returning
+		return nil
+	}
+
+	// Store return value in caller's return register
+	callerFrame := vm.currentFrame()
+	callerFrame.Registers[compiler.ReturnRegister] = returnValue
+
+	return nil
+}
+
+// executeConstant handles OpConstant for mixed mode
+func (vm *RegVM) executeConstant(frame *RegFrame, code []byte) error {
+	constIdx := int(code[frame.IP])<<8 | int(code[frame.IP+1])
+	frame.IP += 2
+	vm.tempStack.Push(frame.Constants[constIdx])
+	return nil
+}
+
+// executeValueBinaryOp executes a binary operation using the temp stack
+func (vm *RegVM) executeValueBinaryOp(op func(a, b Value) (Value, error)) error {
+	b := vm.tempStack.Pop()
+	a := vm.tempStack.Pop()
+	result, err := op(a, b)
+	if err != nil {
+		return err
+	}
+	vm.tempStack.Push(result)
+	return nil
+}
+
+// decodeRegConst decodes dst, src, constIdx format
+func decodeRegConst(code []byte, ip int) (dst, src byte, constIdx int) {
+	return code[ip+1], code[ip+2], int(code[ip+3])<<8 | int(code[ip+4])
+}
+
+// loadPluginByPath loads a WASM plugin
+func (vm *RegVM) loadPluginByPath(wasmPath string) (objects.Object, error) {
+	// Use the existing VM's loadPluginByPath implementation
+	// Create a temporary VM to use its plugin loading
+	tempVM := &VM{
+		loader:     vm.loader,
+		sourcePath: vm.sourcePath,
+	}
+	return tempVM.loadPluginByPath(wasmPath)
+}
+
+// RunCodeInRegVM executes code in the register VM context
+func RunCodeInRegVM(code string, args *objects.Map, regVM *RegVM) (objects.Object, error) {
+	// Lexical analysis
+	l := lexer.New(code)
+
+	// Parsing
+	p := parser.New(l)
+	program := p.ParseProgram()
+
+	// Check for parser errors
+	if len(p.Errors()) > 0 {
+		return nil, fmt.Errorf("parse error: %s", p.Errors()[0])
+	}
+
+	// Create a new compiler
+	c := compiler.New()
+
+	// If args are provided, define them as globals before compilation
+	if args != nil && len(args.Pairs) > 0 {
+		for _, pair := range args.Pairs {
+			key, ok := pair.Key.(*objects.String)
+			if !ok {
+				return nil, fmt.Errorf("argument keys must be strings")
+			}
+			c.DefineGlobal(key.Value)
+		}
+	}
+
+	if err := c.Compile(program); err != nil {
+		return nil, fmt.Errorf("compile error: %v", err)
+	}
+
+	bytecode := c.Bytecode()
+
+	// Create a new globals array for this execution
+	newGlobals := make([]Value, compiler.GlobalsSize)
+
+	// Set argument values in globals
+	if args != nil {
+		for _, pair := range args.Pairs {
+			key := pair.Key.(*objects.String)
+			// Find the symbol to get its index
+			symbol, ok := c.ResolveSymbol(key.Value)
+			if ok && symbol.Scope == compiler.GlobalScope {
+				newGlobals[symbol.Index] = NewObject(pair.Value)
+			}
+		}
+	}
+
+	// Create a new register VM with the prepared globals
+	newVM := NewRegVMWithGlobals(bytecode, newGlobals)
+
+	// Share the loader if available
+	if regVM.loader != nil {
+		newVM.SetLoader(regVM.loader)
+	}
+
+	if err := newVM.Run(); err != nil {
+		return nil, fmt.Errorf("runtime error: %v", err)
+	}
+
+	return newVM.LastPopped().ToObject(), nil
+}
+
+// GetCallStack returns the current call stack
+func (vm *RegVM) GetCallStack() string {
+	var sb strings.Builder
+	sb.WriteString("Call Stack:\n")
+
+	for i := vm.frameIndex - 1; i >= 0; i-- {
+		frame := vm.frames[i]
+		ip := frame.IP
+
+		var location string
+		if vm.sourceMap != nil {
+			if loc, ok := vm.sourceMap.Get(ip); ok {
+				if vm.sourceMap.SourceFile != "" {
+					location = fmt.Sprintf("%s:%d:%d", vm.sourceMap.SourceFile, loc.Line, loc.Column)
+				} else {
+					location = fmt.Sprintf("line %d:%d", loc.Line, loc.Column)
+				}
+			}
+		}
+
+		if location == "" {
+			location = fmt.Sprintf("instruction %d", ip)
+		}
+
+		if i == 0 {
+			sb.WriteString(fmt.Sprintf("  at <main> (%s)\n", location))
+		} else {
+			sb.WriteString(fmt.Sprintf("  at function#%d (%s)\n", i, location))
+		}
+	}
+
+	return sb.String()
+}
+
+// StackTop returns the top of the temp stack
+func (vm *RegVM) StackTop() Value {
+	return vm.tempStack.Top()
+}

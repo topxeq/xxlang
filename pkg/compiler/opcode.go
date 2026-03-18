@@ -151,6 +151,96 @@ const (
 	OpValueGetLocalLess    // Get two locals and compare less (Value path)
 	OpValueGetLocalGreater // Get two locals and compare greater (Value path)
 	OpValueGetLocalEqual   // Get two locals and compare equal (Value path)
+
+	// ============================================================================
+	// REGISTER-BASED OPERATIONS (New VM architecture)
+	// ============================================================================
+	// Fixed 4-byte format: opcode(8) | dst(8) | src1(8) | src2(8)
+	// Extended format: opcode(8) | reg(8) | const_idx(16)
+
+	// Register arithmetic: R[dst] = R[src1] op R[src2]
+	OpRegAdd    // R[dst] = R[src1] + R[src2]
+	OpRegSub    // R[dst] = R[src1] - R[src2]
+	OpRegMul    // R[dst] = R[src1] * R[src2]
+	OpRegDiv    // R[dst] = R[src1] / R[src2]
+	OpRegMod    // R[dst] = R[src1] % R[src2]
+	OpRegNeg    // R[dst] = -R[src1] (src2 unused)
+	OpRegAnd    // R[dst] = R[src1] && R[src2]
+	OpRegOr     // R[dst] = R[src1] || R[src2]
+	OpRegNot    // R[dst] = !R[src1] (src2 unused)
+
+	// Register comparison: R[dst] = R[src1] op R[src2] (result is boolean)
+	OpRegLess        // R[dst] = R[src1] < R[src2]
+	OpRegLessEqual   // R[dst] = R[src1] <= R[src2]
+	OpRegGreater     // R[dst] = R[src1] > R[src2]
+	OpRegGreaterEqual // R[dst] = R[src1] >= R[src2]
+	OpRegEqual       // R[dst] = R[src1] == R[src2]
+	OpRegNotEqual    // R[dst] = R[src1] != R[src2]
+
+	// Register data movement (extended format: opcode | reg(8) | idx(16))
+	OpRegLoadConst  // R[dst] = Constants[idx]
+	OpRegLoadGlobal // R[dst] = Globals[idx]
+	OpRegStoreGlobal // Globals[idx] = R[src]
+	OpRegMove       // R[dst] = R[src] (src2 unused, but format consistent)
+
+	// Register local variable operations
+	OpRegLoadLocal  // R[dst] = Locals[idx]
+	OpRegStoreLocal // Locals[idx] = R[src]
+	OpRegLoadFree   // R[dst] = FreeVars[idx]
+	OpRegStoreFree  // FreeVars[idx] = R[src]
+
+	// Register control flow (extended format for jump offsets)
+	OpRegJump        // IP += offset (signed 16-bit)
+	OpRegJumpIfTrue  // if R[cond] then IP += offset
+	OpRegJumpIfFalse // if !R[cond] then IP += offset
+
+	// Register function call convention
+	// R0-R7: argument registers
+	// RRet (255): return value register
+	OpRegCall   // Call function, args in R0-R7, result in RRet
+	OpRegReturn // Return value in R[reg]
+
+	// Register closure and function operations
+	OpRegClosure   // Create closure from constant function
+	OpRegLoadFunc  // Load function from constant pool into register
+
+	// Register collection operations
+	OpRegArray     // R[dst] = Array from R[src1..src1+src2-1]
+	OpRegMap       // R[dst] = Map from pairs starting at R[src1]
+	OpRegIndex     // R[dst] = R[obj][R[key]]
+	OpRegSetIndex  // R[obj][R[key]] = R[val]
+	OpRegPush      // Push R[src] to temp stack (for complex exprs)
+	OpRegPop       // Pop to R[dst] from temp stack
+
+	// Register method/field operations (extended format for name index)
+	OpRegGetMethod  // R[dst] = R[obj].method(name_idx)
+	OpRegCallMethod // Call method, args in R1-R7, result in RRet
+	OpRegGetField   // R[dst] = R[obj].field(name_idx)
+	OpRegSetField   // R[obj].field(name_idx) = R[src]
+
+	// Register class operations
+	OpRegClass // Create class
+	OpRegNew   // Create instance, args in R0-R7, result in RRet
+
+	// Register built-in call
+	OpRegBuiltin // Call builtin, args in R0-R7, result in RRet
+
+	// Register null/true/false literals
+	OpRegNull  // R[dst] = null
+	OpRegTrue  // R[dst] = true
+	OpRegFalse // R[dst] = false
+
+	// Register exception handling
+	OpRegThrow       // throw R[src]
+	OpRegPushHandler // push exception handler
+	OpRegPopHandler  // pop exception handler
+
+	// Register superinstructions for common patterns
+	OpRegAddConst    // R[dst] = R[src1] + Constants[idx]
+	OpRegSubConst    // R[dst] = R[src1] - Constants[idx]
+	OpRegMulConst    // R[dst] = R[src1] * Constants[idx]
+	OpRegIncLocal    // Locals[idx]++
+	OpRegDecLocal    // Locals[idx]--
 )
 
 // Definition describes an opcode's format
@@ -303,6 +393,92 @@ var definitions = map[Opcode]*Definition{
 	OpValueGetLocalLess:    {"OpValueGetLocalLess", []int{1, 1}},
 	OpValueGetLocalGreater: {"OpValueGetLocalGreater", []int{1, 1}},
 	OpValueGetLocalEqual:   {"OpValueGetLocalEqual", []int{1, 1}},
+
+	// ============================================================================
+	// REGISTER-BASED OPERATIONS
+	// ============================================================================
+
+	// Register arithmetic: 4-byte format - dst, src1, src2
+	OpRegAdd:    {"OpRegAdd", []int{1, 1, 1}},    // dst, src1, src2
+	OpRegSub:    {"OpRegSub", []int{1, 1, 1}},    // dst, src1, src2
+	OpRegMul:    {"OpRegMul", []int{1, 1, 1}},    // dst, src1, src2
+	OpRegDiv:    {"OpRegDiv", []int{1, 1, 1}},    // dst, src1, src2
+	OpRegMod:    {"OpRegMod", []int{1, 1, 1}},    // dst, src1, src2
+	OpRegNeg:    {"OpRegNeg", []int{1, 1}},       // dst, src
+	OpRegAnd:    {"OpRegAnd", []int{1, 1, 1}},    // dst, src1, src2
+	OpRegOr:     {"OpRegOr", []int{1, 1, 1}},     // dst, src1, src2
+	OpRegNot:    {"OpRegNot", []int{1, 1}},       // dst, src
+
+	// Register comparison: 4-byte format
+	OpRegLess:         {"OpRegLess", []int{1, 1, 1}},        // dst, src1, src2
+	OpRegLessEqual:    {"OpRegLessEqual", []int{1, 1, 1}},   // dst, src1, src2
+	OpRegGreater:      {"OpRegGreater", []int{1, 1, 1}},     // dst, src1, src2
+	OpRegGreaterEqual: {"OpRegGreaterEqual", []int{1, 1, 1}}, // dst, src1, src2
+	OpRegEqual:        {"OpRegEqual", []int{1, 1, 1}},       // dst, src1, src2
+	OpRegNotEqual:     {"OpRegNotEqual", []int{1, 1, 1}},    // dst, src1, src2
+
+	// Register data movement (extended format: reg(8), idx(16))
+	OpRegLoadConst:   {"OpRegLoadConst", []int{1, 2}},   // dst, const_idx
+	OpRegLoadGlobal:  {"OpRegLoadGlobal", []int{1, 2}},  // dst, global_idx
+	OpRegStoreGlobal: {"OpRegStoreGlobal", []int{1, 2}}, // src, global_idx
+	OpRegMove:        {"OpRegMove", []int{1, 1}},        // dst, src
+
+	// Register local/free operations
+	OpRegLoadLocal:  {"OpRegLoadLocal", []int{1, 1}},  // dst, local_idx
+	OpRegStoreLocal: {"OpRegStoreLocal", []int{1, 1}}, // src, local_idx
+	OpRegLoadFree:   {"OpRegLoadFree", []int{1, 1}},   // dst, free_idx
+	OpRegStoreFree:  {"OpRegStoreFree", []int{1, 1}},  // src, free_idx
+
+	// Register control flow (extended format: cond_reg(8), offset(16))
+	OpRegJump:        {"OpRegJump", []int{2}},        // offset (16-bit signed)
+	OpRegJumpIfTrue:  {"OpRegJumpIfTrue", []int{1, 2}},  // cond, offset
+	OpRegJumpIfFalse: {"OpRegJumpIfFalse", []int{1, 2}}, // cond, offset
+
+	// Register function operations
+	OpRegCall:   {"OpRegCall", []int{1, 1}},   // func_reg, num_args
+	OpRegReturn: {"OpRegReturn", []int{1}},    // return_reg
+
+	// Register closure and function operations
+	OpRegClosure:  {"OpRegClosure", []int{1, 2, 1}}, // dst, func_idx, num_free
+	OpRegLoadFunc: {"OpRegLoadFunc", []int{1, 2}},   // dst, func_idx
+
+	// Register collection operations
+	OpRegArray:    {"OpRegArray", []int{1, 1, 1}},    // dst, start_reg, count
+	OpRegMap:      {"OpRegMap", []int{1, 1, 1}},      // dst, start_reg, count
+	OpRegIndex:    {"OpRegIndex", []int{1, 1, 1}},    // dst, obj, key
+	OpRegSetIndex: {"OpRegSetIndex", []int{1, 1, 1}}, // obj, key, val
+	OpRegPush:     {"OpRegPush", []int{1}},           // src
+	OpRegPop:      {"OpRegPop", []int{1}},            // dst
+
+	// Register method/field operations
+	OpRegGetMethod:  {"OpRegGetMethod", []int{1, 1, 2}},  // dst, obj, name_idx
+	OpRegCallMethod: {"OpRegCallMethod", []int{1, 2, 1}}, // obj, name_idx, num_args
+	OpRegGetField:   {"OpRegGetField", []int{1, 1, 2}},   // dst, obj, name_idx
+	OpRegSetField:   {"OpRegSetField", []int{1, 1, 2}},   // obj, val, name_idx
+
+	// Register class operations
+	OpRegClass: {"OpRegClass", []int{1, 2}},     // dst, name_idx
+	OpRegNew:   {"OpRegNew", []int{1, 1, 1}},    // dst, class_reg, num_args
+
+	// Register built-in call
+	OpRegBuiltin: {"OpRegBuiltin", []int{1, 1}}, // builtin_idx, num_args
+
+	// Register literals
+	OpRegNull:  {"OpRegNull", []int{1}},  // dst
+	OpRegTrue:  {"OpRegTrue", []int{1}},  // dst
+	OpRegFalse: {"OpRegFalse", []int{1}}, // dst
+
+	// Register exception handling
+	OpRegThrow:       {"OpRegThrow", []int{1}},           // src
+	OpRegPushHandler: {"OpRegPushHandler", []int{2, 2}},  // catch_addr, finally_addr
+	OpRegPopHandler:  {"OpRegPopHandler", []int{}},       // no operands
+
+	// Register superinstructions
+	OpRegAddConst: {"OpRegAddConst", []int{1, 1, 2}}, // dst, src, const_idx
+	OpRegSubConst: {"OpRegSubConst", []int{1, 1, 2}}, // dst, src, const_idx
+	OpRegMulConst: {"OpRegMulConst", []int{1, 1, 2}}, // dst, src, const_idx
+	OpRegIncLocal: {"OpRegIncLocal", []int{1}},       // local_idx
+	OpRegDecLocal: {"OpRegDecLocal", []int{1}},       // local_idx
 }
 
 // Lookup finds an opcode's definition
@@ -389,4 +565,102 @@ func String(ins []byte) string {
 	}
 
 	return out
+}
+
+// ============================================================================
+// Register VM Constants
+// ============================================================================
+
+const (
+	// NumRegisters is the number of registers per frame
+	NumRegisters = 256
+
+	// NumArgRegisters is the number of argument registers (R0-R7)
+	NumArgRegisters = 8
+
+	// ReturnRegister is the register index for return values
+	ReturnRegister = 255
+
+	// FirstLocalRegister is the first register available for local variables
+	// R0-R7 are reserved for arguments
+	FirstLocalRegister = 8
+)
+
+// IsRegisterOpcode returns true if the opcode is a register-based operation
+func IsRegisterOpcode(op Opcode) bool {
+	return op >= OpRegAdd && op <= OpRegDecLocal
+}
+
+// MakeRegInstruction creates a fixed 4-byte register instruction
+// Format: opcode(1) | dst(1) | src1(1) | src2(1)
+func MakeRegInstruction(op Opcode, dst, src1, src2 int) []byte {
+	return []byte{byte(op), byte(dst), byte(src1), byte(src2)}
+}
+
+// MakeRegInstruction1 creates a register instruction with 1 operand
+func MakeRegInstruction1(op Opcode, reg int) []byte {
+	return []byte{byte(op), byte(reg)}
+}
+
+// MakeRegInstruction2 creates a register instruction with 2 operands
+func MakeRegInstruction2(op Opcode, reg1, reg2 int) []byte {
+	return []byte{byte(op), byte(reg1), byte(reg2)}
+}
+
+// MakeRegInstructionConst creates a register instruction with a 16-bit constant index
+// Format: opcode(1) | reg(1) | const_idx(2)
+func MakeRegInstructionConst(op Opcode, reg, constIdx int) []byte {
+	return []byte{
+		byte(op),
+		byte(reg),
+		byte(constIdx >> 8),
+		byte(constIdx),
+	}
+}
+
+// MakeRegJump creates a jump instruction with 16-bit offset
+// Format: opcode(1) | unused(1) | offset(2)
+func MakeRegJump(op Opcode, offset int) []byte {
+	return []byte{
+		byte(op),
+		0, // unused byte for alignment
+		byte(offset >> 8),
+		byte(offset),
+	}
+}
+
+// MakeRegJumpCond creates a conditional jump instruction
+// Format: opcode(1) | cond_reg(1) | offset(2)
+func MakeRegJumpCond(op Opcode, condReg, offset int) []byte {
+	return []byte{
+		byte(op),
+		byte(condReg),
+		byte(offset >> 8),
+		byte(offset),
+	}
+}
+
+// DecodeRegInstruction decodes a fixed 4-byte register instruction
+func DecodeRegInstruction(ins []byte) (op Opcode, dst, src1, src2 byte) {
+	return Opcode(ins[0]), ins[1], ins[2], ins[3]
+}
+
+// DecodeRegInstructionConst decodes a register instruction with 16-bit constant
+func DecodeRegInstructionConst(ins []byte) (op Opcode, reg byte, constIdx int) {
+	return Opcode(ins[0]), ins[1], int(ins[2])<<8 | int(ins[3])
+}
+
+// DecodeRegJump decodes a jump instruction
+func DecodeRegJump(ins []byte) (op Opcode, offset int) {
+	return Opcode(ins[0]), int(ins[2])<<8 | int(ins[3])
+}
+
+// DecodeRegJumpCond decodes a conditional jump instruction
+func DecodeRegJumpCond(ins []byte) (op Opcode, condReg byte, offset int) {
+	return Opcode(ins[0]), ins[1], int(ins[2])<<8 | int(ins[3])
+}
+
+// GetDefinitions returns the opcode definitions map
+func GetDefinitions() map[Opcode]*Definition {
+	return definitions
 }

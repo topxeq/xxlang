@@ -440,3 +440,67 @@ func (v Value) String() string {
 	}
 	return "unknown"
 }
+
+// ValueBool creates a Value from a boolean (alias for NewBool)
+func ValueBool(b bool) Value {
+	if b {
+		return ValueTrue
+	}
+	return ValueFalse
+}
+
+// LessEqual compares if v <= other
+func (v Value) LessEqual(other Value) Value {
+	less, ok := v.Less(other)
+	if !ok {
+		return ValueFalse
+	}
+	if less {
+		return ValueTrue
+	}
+	eq, ok := v.Equal(other)
+	if !ok {
+		return ValueFalse
+	}
+	return ValueBool(eq)
+}
+
+// GreaterEqual compares if v >= other
+func (v Value) GreaterEqual(other Value) Value {
+	greater, ok := v.Greater(other)
+	if !ok {
+		return ValueFalse
+	}
+	if greater {
+		return ValueTrue
+	}
+	eq, ok := v.Equal(other)
+	if !ok {
+		return ValueFalse
+	}
+	return ValueBool(eq)
+}
+
+// EqualValue returns a Value representing equality comparison
+func (v Value) EqualValue(other Value) Value {
+	eq, _ := v.Equal(other)
+	return ValueBool(eq)
+}
+
+// NotEqualValue returns a Value representing inequality comparison
+func (v Value) NotEqualValue(other Value) Value {
+	ne, _ := v.NotEqual(other)
+	return ValueBool(ne)
+}
+
+// LessValue returns a Value representing less than comparison
+func (v Value) LessValue(other Value) Value {
+	less, _ := v.Less(other)
+	return ValueBool(less)
+}
+
+// GreaterValue returns a Value representing greater than comparison
+func (v Value) GreaterValue(other Value) Value {
+	greater, _ := v.Greater(other)
+	return ValueBool(greater)
+}
