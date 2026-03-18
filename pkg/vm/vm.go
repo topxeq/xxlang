@@ -316,6 +316,26 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case compiler.OpGetLocalLess:
+			if err := vm.executeGetLocalLess(); err != nil {
+				return err
+			}
+
+		case compiler.OpGetLocalGreater:
+			if err := vm.executeGetLocalGreater(); err != nil {
+				return err
+			}
+
+		case compiler.OpGetLocalEqual:
+			if err := vm.executeGetLocalEqual(); err != nil {
+				return err
+			}
+
+		case compiler.OpGetLocalNotEqual:
+			if err := vm.executeGetLocalNotEqual(); err != nil {
+				return err
+			}
+
 		case compiler.OpConstantAdd:
 			if err := vm.executeConstantAdd(); err != nil {
 				return err
@@ -344,6 +364,16 @@ func (vm *VM) Run() error {
 
 		case compiler.OpAddLocalConst:
 			if err := vm.executeAddLocalConst(); err != nil {
+				return err
+			}
+
+		case compiler.OpSubLocalConst:
+			if err := vm.executeSubLocalConst(); err != nil {
+				return err
+			}
+
+		case compiler.OpMulLocalConst:
+			if err := vm.executeMulLocalConst(); err != nil {
 				return err
 			}
 
@@ -1008,6 +1038,138 @@ func (vm *VM) executeGetLocalMul() error {
 	return nil
 }
 
+// executeGetLocalLess compares two local variables for less-than
+func (vm *VM) executeGetLocalLess() error {
+	frame := vm.currentFrame()
+	idx1 := int(frame.Instructions()[frame.IP+1])
+	idx2 := int(frame.Instructions()[frame.IP+2])
+	frame.IP += 2
+
+	var val1, val2 int64
+
+	if frame.This != nil {
+		if idx1 == 0 {
+			val1 = 0
+		} else {
+			val1 = frame.Locals[idx1-1].(*objects.Int).Value
+		}
+		if idx2 == 0 {
+			val2 = 0
+		} else {
+			val2 = frame.Locals[idx2-1].(*objects.Int).Value
+		}
+	} else {
+		val1 = frame.Locals[idx1].(*objects.Int).Value
+		val2 = frame.Locals[idx2].(*objects.Int).Value
+	}
+
+	if val1 < val2 {
+		vm.stack.Push(objects.TRUE)
+	} else {
+		vm.stack.Push(objects.FALSE)
+	}
+	return nil
+}
+
+// executeGetLocalGreater compares two local variables for greater-than
+func (vm *VM) executeGetLocalGreater() error {
+	frame := vm.currentFrame()
+	idx1 := int(frame.Instructions()[frame.IP+1])
+	idx2 := int(frame.Instructions()[frame.IP+2])
+	frame.IP += 2
+
+	var val1, val2 int64
+
+	if frame.This != nil {
+		if idx1 == 0 {
+			val1 = 0
+		} else {
+			val1 = frame.Locals[idx1-1].(*objects.Int).Value
+		}
+		if idx2 == 0 {
+			val2 = 0
+		} else {
+			val2 = frame.Locals[idx2-1].(*objects.Int).Value
+		}
+	} else {
+		val1 = frame.Locals[idx1].(*objects.Int).Value
+		val2 = frame.Locals[idx2].(*objects.Int).Value
+	}
+
+	if val1 > val2 {
+		vm.stack.Push(objects.TRUE)
+	} else {
+		vm.stack.Push(objects.FALSE)
+	}
+	return nil
+}
+
+// executeGetLocalEqual compares two local variables for equality
+func (vm *VM) executeGetLocalEqual() error {
+	frame := vm.currentFrame()
+	idx1 := int(frame.Instructions()[frame.IP+1])
+	idx2 := int(frame.Instructions()[frame.IP+2])
+	frame.IP += 2
+
+	var val1, val2 int64
+
+	if frame.This != nil {
+		if idx1 == 0 {
+			val1 = 0
+		} else {
+			val1 = frame.Locals[idx1-1].(*objects.Int).Value
+		}
+		if idx2 == 0 {
+			val2 = 0
+		} else {
+			val2 = frame.Locals[idx2-1].(*objects.Int).Value
+		}
+	} else {
+		val1 = frame.Locals[idx1].(*objects.Int).Value
+		val2 = frame.Locals[idx2].(*objects.Int).Value
+	}
+
+	if val1 == val2 {
+		vm.stack.Push(objects.TRUE)
+	} else {
+		vm.stack.Push(objects.FALSE)
+	}
+	return nil
+}
+
+// executeGetLocalNotEqual compares two local variables for inequality
+func (vm *VM) executeGetLocalNotEqual() error {
+	frame := vm.currentFrame()
+	idx1 := int(frame.Instructions()[frame.IP+1])
+	idx2 := int(frame.Instructions()[frame.IP+2])
+	frame.IP += 2
+
+	var val1, val2 int64
+
+	if frame.This != nil {
+		if idx1 == 0 {
+			val1 = 0
+		} else {
+			val1 = frame.Locals[idx1-1].(*objects.Int).Value
+		}
+		if idx2 == 0 {
+			val2 = 0
+		} else {
+			val2 = frame.Locals[idx2-1].(*objects.Int).Value
+		}
+	} else {
+		val1 = frame.Locals[idx1].(*objects.Int).Value
+		val2 = frame.Locals[idx2].(*objects.Int).Value
+	}
+
+	if val1 != val2 {
+		vm.stack.Push(objects.TRUE)
+	} else {
+		vm.stack.Push(objects.FALSE)
+	}
+	return nil
+}
+
 func (vm *VM) executeConstantAdd() error {
 	frame := vm.currentFrame()
 	idx1 := int(frame.Instructions()[frame.IP+1])<<8 | int(frame.Instructions()[frame.IP+2])
@@ -1134,6 +1296,68 @@ func (vm *VM) executeAddLocalConst() error {
 	constVal := constants[constIndex].(*objects.Int).Value
 
 	localVal.Value += constVal
+	vm.stack.Push(localVal)
+	return nil
+}
+
+// executeSubLocalConst subtracts a constant from a local variable
+func (vm *VM) executeSubLocalConst() error {
+	frame := vm.currentFrame()
+	localIndex := int(frame.Instructions()[frame.IP+1])
+	constIndex := int(frame.Instructions()[frame.IP+2])<<8 | int(frame.Instructions()[frame.IP+3])
+	frame.IP += 3
+
+	// Get constants
+	constants := frame.Constants
+	if constants == nil {
+		constants = vm.constants
+	}
+
+	// Get local value
+	var localVal *objects.Int
+	if frame.This != nil && localIndex > 0 {
+		localVal = frame.Locals[localIndex-1].(*objects.Int)
+	} else if frame.This == nil {
+		localVal = frame.Locals[localIndex].(*objects.Int)
+	} else {
+		return fmt.Errorf("cannot subtract from 'this'")
+	}
+
+	// Get constant value
+	constVal := constants[constIndex].(*objects.Int).Value
+
+	localVal.Value -= constVal
+	vm.stack.Push(localVal)
+	return nil
+}
+
+// executeMulLocalConst multiplies a local variable by a constant
+func (vm *VM) executeMulLocalConst() error {
+	frame := vm.currentFrame()
+	localIndex := int(frame.Instructions()[frame.IP+1])
+	constIndex := int(frame.Instructions()[frame.IP+2])<<8 | int(frame.Instructions()[frame.IP+3])
+	frame.IP += 3
+
+	// Get constants
+	constants := frame.Constants
+	if constants == nil {
+		constants = vm.constants
+	}
+
+	// Get local value
+	var localVal *objects.Int
+	if frame.This != nil && localIndex > 0 {
+		localVal = frame.Locals[localIndex-1].(*objects.Int)
+	} else if frame.This == nil {
+		localVal = frame.Locals[localIndex].(*objects.Int)
+	} else {
+		return fmt.Errorf("cannot multiply 'this'")
+	}
+
+	// Get constant value
+	constVal := constants[constIndex].(*objects.Int).Value
+
+	localVal.Value *= constVal
 	vm.stack.Push(localVal)
 	return nil
 }

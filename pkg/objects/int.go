@@ -15,7 +15,8 @@ const IntCacheMin = -100
 
 // IntCacheMax is the maximum cached integer value
 // Extended to cover common loop indices and calculation results
-const IntCacheMax = 10000
+// Increased from 10000 to 100000 to reduce heap allocations in large loops
+const IntCacheMax = 100000
 
 // intCache holds pre-allocated integers for common values
 var intCache [IntCacheMax - IntCacheMin + 1]*Int

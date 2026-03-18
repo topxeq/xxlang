@@ -205,6 +205,14 @@ func (o *Optimizer) GenerateSuperinstructions() *Bytecode {
 						superOp = OpGetLocalSub
 					case OpMul:
 						superOp = OpGetLocalMul
+					case OpLess:
+						superOp = OpGetLocalLess
+					case OpGreater:
+						superOp = OpGetLocalGreater
+					case OpEqual:
+						superOp = OpGetLocalEqual
+					case OpNotEqual:
+						superOp = OpGetLocalNotEqual
 					}
 
 					if superOp != 0 {
@@ -308,6 +316,30 @@ func (o *Optimizer) GenerateTypeSpecializations() *Bytecode {
 						if Opcode(instructions[i+6]) == OpSetLocal && int(instructions[i+7]) == localIdx {
 							// Found pattern! Use OpAddLocalConst
 							newInstructions = append(newInstructions, byte(OpAddLocalConst), byte(localIdx))
+							newInstructions = append(newInstructions, byte(constIdx>>8), byte(constIdx))
+							i += 8 // Skip the whole sequence
+							continue
+						}
+					}
+
+					// Check for OpSub
+					if Opcode(instructions[i+5]) == OpSub {
+						// Check for OpSetLocal with same index
+						if Opcode(instructions[i+6]) == OpSetLocal && int(instructions[i+7]) == localIdx {
+							// Found pattern! Use OpSubLocalConst
+							newInstructions = append(newInstructions, byte(OpSubLocalConst), byte(localIdx))
+							newInstructions = append(newInstructions, byte(constIdx>>8), byte(constIdx))
+							i += 8 // Skip the whole sequence
+							continue
+						}
+					}
+
+					// Check for OpMul
+					if Opcode(instructions[i+5]) == OpMul {
+						// Check for OpSetLocal with same index
+						if Opcode(instructions[i+6]) == OpSetLocal && int(instructions[i+7]) == localIdx {
+							// Found pattern! Use OpMulLocalConst
+							newInstructions = append(newInstructions, byte(OpMulLocalConst), byte(localIdx))
 							newInstructions = append(newInstructions, byte(constIdx>>8), byte(constIdx))
 							i += 8 // Skip the whole sequence
 							continue
@@ -526,7 +558,8 @@ func stackEffectOf(op Opcode, instructions []byte, pos int) int {
 
 	// Superinstructions that push 1 value (pop 2, push 1 = net -1 each, but these compute and push)
 	case OpConstantAdd, OpConstantSub, OpConstantMul,
-		OpGetLocalAdd, OpGetLocalSub, OpGetLocalMul:
+		OpGetLocalAdd, OpGetLocalSub, OpGetLocalMul,
+		OpGetLocalLess, OpGetLocalGreater, OpGetLocalEqual, OpGetLocalNotEqual:
 		return -1 // pop 2, push 1 = net -1
 
 	// Array creates array from stack elements
@@ -608,7 +641,7 @@ func stackEffectOf(op Opcode, instructions []byte, pos int) int {
 		return 0
 
 	// Increment/decrement local
-	case OpIncLocal, OpDecLocal, OpAddLocalConst:
+	case OpIncLocal, OpDecLocal, OpAddLocalConst, OpSubLocalConst, OpMulLocalConst:
 		return 0 // modify local, no stack effect
 
 	// Push/pop scope - no stack effect

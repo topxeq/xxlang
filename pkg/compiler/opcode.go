@@ -50,17 +50,23 @@ const (
 	OpPopScope  // Pop scope
 
 	// Superinstructions (combined operations for performance)
-	OpGetLocalAdd // Get two locals and add
-	OpGetLocalSub // Get two locals and subtract
-	OpGetLocalMul // Get two locals and multiply
-	OpConstantAdd // Load two constants and add
-	OpConstantSub // Load two constants and subtract
-	OpConstantMul // Load two constants and multiply
+	OpGetLocalAdd     // Get two locals and add
+	OpGetLocalSub     // Get two locals and subtract
+	OpGetLocalMul     // Get two locals and multiply
+	OpConstantAdd     // Load two constants and add
+	OpConstantSub     // Load two constants and subtract
+	OpConstantMul     // Load two constants and multiply
+	OpGetLocalLess    // Get two locals and compare less
+	OpGetLocalGreater // Get two locals and compare greater
+	OpGetLocalEqual   // Get two locals and compare equal
+	OpGetLocalNotEqual // Get two locals and compare not equal
 
 	// Type-specialized instructions (for hot path optimization)
 	OpIncLocal      // Increment local variable by 1 (optimized for loop counters)
 	OpDecLocal      // Decrement local variable by 1
 	OpAddLocalConst // Add constant to local variable
+	OpSubLocalConst // Subtract constant from local variable
+	OpMulLocalConst // Multiply local variable by constant
 
 	// Control flow operations
 	OpJump        // Unconditional jump
@@ -218,10 +224,18 @@ var definitions = map[Opcode]*Definition{
 	OpConstantSub: {"OpConstantSub", []int{2, 2}},
 	OpConstantMul: {"OpConstantMul", []int{2, 2}},
 
+	// Comparison superinstructions
+	OpGetLocalLess:    {"OpGetLocalLess", []int{1, 1}},    // 2x 1-byte local indices
+	OpGetLocalGreater: {"OpGetLocalGreater", []int{1, 1}}, // 2x 1-byte local indices
+	OpGetLocalEqual:   {"OpGetLocalEqual", []int{1, 1}},   // 2x 1-byte local indices
+	OpGetLocalNotEqual: {"OpGetLocalNotEqual", []int{1, 1}}, // 2x 1-byte local indices
+
 	// Type-specialized instructions
 	OpIncLocal:      {"OpIncLocal", []int{1}},         // 1-byte: local index
 	OpDecLocal:      {"OpDecLocal", []int{1}},         // 1-byte: local index
 	OpAddLocalConst: {"OpAddLocalConst", []int{1, 2}}, // 1-byte local index, 2-byte constant index
+	OpSubLocalConst: {"OpSubLocalConst", []int{1, 2}}, // 1-byte local index, 2-byte constant index
+	OpMulLocalConst: {"OpMulLocalConst", []int{1, 2}}, // 1-byte local index, 2-byte constant index
 }
 
 // Lookup finds an opcode's definition

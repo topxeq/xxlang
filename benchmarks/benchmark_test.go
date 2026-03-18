@@ -346,3 +346,84 @@ for (var i = 0; i < 10000; i = i + 1) {
 		runXxlangCodeWithFlags(code, flags)
 	}
 }
+
+// ============================================================
+// Super-instruction Benchmarks
+// ============================================================
+
+// BenchmarkXxlangSubLocalConst tests the OpSubLocalConst optimization
+func BenchmarkXxlangSubLocalConst(b *testing.B) {
+	code := `
+var total = 100000
+for (var i = 0; i < 10000; i = i + 1) {
+    total = total - 1
+}
+`
+	for i := 0; i < b.N; i++ {
+		runXxlangCode(code)
+	}
+}
+
+// BenchmarkXxlangMulLocalConst tests the OpMulLocalConst optimization
+func BenchmarkXxlangMulLocalConst(b *testing.B) {
+	code := `
+var result = 1
+for (var i = 0; i < 100; i = i + 1) {
+    result = result * 2
+}
+`
+	for i := 0; i < b.N; i++ {
+		runXxlangCode(code)
+	}
+}
+
+// BenchmarkXxlangComparisonSuper tests comparison super-instructions in loop conditions
+func BenchmarkXxlangComparisonSuper(b *testing.B) {
+	code := `
+func compare(a, b) {
+    return a < b
+}
+var count = 0
+for (var i = 0; i < 10000; i = i + 1) {
+    if (compare(i, 5000)) {
+        count = count + 1
+    }
+}
+`
+	for i := 0; i < b.N; i++ {
+		runXxlangCode(code)
+	}
+}
+
+// BenchmarkXxlangComparisonInLoop tests loop condition with comparison super-instruction
+func BenchmarkXxlangComparisonInLoop(b *testing.B) {
+	code := `
+var sum = 0
+for (var i = 0; i < 10000; i = i + 1) {
+    sum = sum + i
+}
+`
+	for i := 0; i < b.N; i++ {
+		runXxlangCode(code)
+	}
+}
+
+// BenchmarkXxlangAllSuperinstructions tests a mix of all super-instructions
+func BenchmarkXxlangAllSuperinstructions(b *testing.B) {
+	code := `
+var sum = 0
+var product = 1
+var diff = 10000
+for (var i = 0; i < 1000; i = i + 1) {
+    sum = sum + i
+    product = product * 2
+    diff = diff - 1
+    if (sum > 500) {
+        sum = 0
+    }
+}
+`
+	for i := 0; i < b.N; i++ {
+		runXxlangCode(code)
+	}
+}

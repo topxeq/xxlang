@@ -148,6 +148,171 @@ func TestAddLocalConstOptimization(t *testing.T) {
 }
 
 // ============================================
+// Tests for OpSubLocalConst
+// ============================================
+
+func TestSubLocalConstOptimization(t *testing.T) {
+	// Test pattern: i - 1 or similar
+	input := `
+		func dec(x) {
+			return x - 10
+		}
+		dec(25)
+	`
+	vm := runVM(t, input)
+	testIntegerObject(t, 15, vm.LastPopped())
+}
+
+func TestSubLocalConstInLoop(t *testing.T) {
+	input := `
+		var sum = 100
+		for (var i = 0; i < 5; i++) {
+			sum = sum - 10
+		}
+		sum
+	`
+	vm := runVM(t, input)
+	testIntegerObject(t, 50, vm.LastPopped())
+}
+
+// ============================================
+// Tests for OpMulLocalConst
+// ============================================
+
+func TestMulLocalConstOptimization(t *testing.T) {
+	// Test pattern: i * 2 or similar
+	input := `
+		func double(x) {
+			return x * 2
+		}
+		double(21)
+	`
+	vm := runVM(t, input)
+	testIntegerObject(t, 42, vm.LastPopped())
+}
+
+func TestMulLocalConstInLoop(t *testing.T) {
+	input := `
+		var product = 1
+		for (var i = 0; i < 3; i++) {
+			product = product * 2
+		}
+		product
+	`
+	vm := runVM(t, input)
+	testIntegerObject(t, 8, vm.LastPopped())
+}
+
+// ============================================
+// Tests for Comparison Super-instructions
+// ============================================
+
+func TestGetLocalLessOptimization(t *testing.T) {
+	// Test pattern: a < b (two locals compared)
+	input := `
+		func testLess(a, b) {
+			return a < b
+		}
+		testLess(3, 5)
+	`
+	vm := runVM(t, input)
+	testBooleanObject(t, true, vm.LastPopped())
+}
+
+func TestGetLocalLessFalse(t *testing.T) {
+	input := `
+		func testLess(a, b) {
+			return a < b
+		}
+		testLess(5, 3)
+	`
+	vm := runVM(t, input)
+	testBooleanObject(t, false, vm.LastPopped())
+}
+
+func TestGetLocalGreaterOptimization(t *testing.T) {
+	// Test pattern: a > b (two locals compared)
+	input := `
+		func testGreater(a, b) {
+			return a > b
+		}
+		testGreater(10, 5)
+	`
+	vm := runVM(t, input)
+	testBooleanObject(t, true, vm.LastPopped())
+}
+
+func TestGetLocalGreaterFalse(t *testing.T) {
+	input := `
+		func testGreater(a, b) {
+			return a > b
+		}
+		testGreater(3, 10)
+	`
+	vm := runVM(t, input)
+	testBooleanObject(t, false, vm.LastPopped())
+}
+
+func TestGetLocalEqualOptimization(t *testing.T) {
+	// Test pattern: a == b (two locals compared)
+	input := `
+		func testEqual(a, b) {
+			return a == b
+		}
+		testEqual(5, 5)
+	`
+	vm := runVM(t, input)
+	testBooleanObject(t, true, vm.LastPopped())
+}
+
+func TestGetLocalEqualFalse(t *testing.T) {
+	input := `
+		func testEqual(a, b) {
+			return a == b
+		}
+		testEqual(5, 6)
+	`
+	vm := runVM(t, input)
+	testBooleanObject(t, false, vm.LastPopped())
+}
+
+func TestGetLocalNotEqualOptimization(t *testing.T) {
+	// Test pattern: a != b (two locals compared)
+	input := `
+		func testNotEqual(a, b) {
+			return a != b
+		}
+		testNotEqual(5, 6)
+	`
+	vm := runVM(t, input)
+	testBooleanObject(t, true, vm.LastPopped())
+}
+
+func TestGetLocalNotEqualFalse(t *testing.T) {
+	input := `
+		func testNotEqual(a, b) {
+			return a != b
+		}
+		testNotEqual(5, 5)
+	`
+	vm := runVM(t, input)
+	testBooleanObject(t, false, vm.LastPopped())
+}
+
+func TestComparisonInLoopCondition(t *testing.T) {
+	// Test that comparison super-instructions work in loop conditions
+	input := `
+		var sum = 0
+		for (var i = 0; i < 10; i++) {
+			sum = sum + i
+		}
+		sum
+	`
+	vm := runVM(t, input)
+	testIntegerObject(t, 45, vm.LastPopped())
+}
+
+// ============================================
 // Tests for OpJump / OpJumpIfTrue
 // ============================================
 
