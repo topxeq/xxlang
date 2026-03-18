@@ -429,8 +429,8 @@ var definitions = map[Opcode]*Definition{
 	OpRegLoadFree:   {"OpRegLoadFree", []int{1, 1}},   // dst, free_idx
 	OpRegStoreFree:  {"OpRegStoreFree", []int{1, 1}},  // src, free_idx
 
-	// Register control flow (extended format: cond_reg(8), offset(16))
-	OpRegJump:        {"OpRegJump", []int{2}},        // offset (16-bit signed)
+	// Register control flow (extended format for 16-bit offset)
+	OpRegJump:        {"OpRegJump", []int{1, 2}},       // unused_byte, offset (16-bit signed) - 4 bytes total
 	OpRegJumpIfTrue:  {"OpRegJumpIfTrue", []int{1, 2}},  // cond, offset
 	OpRegJumpIfFalse: {"OpRegJumpIfFalse", []int{1, 2}}, // cond, offset
 
@@ -439,8 +439,8 @@ var definitions = map[Opcode]*Definition{
 	OpRegReturn: {"OpRegReturn", []int{1}},    // return_reg
 
 	// Register closure and function operations
-	OpRegClosure:  {"OpRegClosure", []int{1, 2, 1}}, // dst, func_idx, num_free
-	OpRegLoadFunc: {"OpRegLoadFunc", []int{1, 2}},   // dst, func_idx
+	OpRegClosure:  {"OpRegClosure", []int{1, 2, 1, 1}}, // dst, func_idx(16-bit), num_free, start_reg
+	OpRegLoadFunc: {"OpRegLoadFunc", []int{1, 2}},      // dst, func_idx
 
 	// Register collection operations
 	OpRegArray:    {"OpRegArray", []int{1, 1, 1}},    // dst, start_reg, count

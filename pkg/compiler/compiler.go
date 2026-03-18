@@ -406,15 +406,35 @@ func (c *Compiler) Compile(node parser.Node) error {
 		c.emit(OpPop)
 
 	case *parser.VarStatement:
-		if err := c.Compile(node.Value); err != nil {
-			return err
-		}
-		symbol := c.symbolTable.Define(node.Name.Value)
-		switch symbol.Scope {
-		case GlobalScope:
-			c.emit(OpSetGlobal, symbol.Index)
-		case LocalScope:
-			c.emit(OpSetLocal, symbol.Index)
+		// Pre-define the variable if the value is a function literal
+		// This allows recursive functions like: var f = func() { f() }
+		if fn, ok := node.Value.(*parser.FunctionLiteral); ok {
+			// Define the variable first so the function body can reference it
+			symbol := c.symbolTable.Define(node.Name.Value)
+			// Set the function name for better error messages
+			fn.Name = node.Name.Value
+			// Compile the function literal
+			if err := c.Compile(fn); err != nil {
+				return err
+			}
+			// Store the function in the variable
+			switch symbol.Scope {
+			case GlobalScope:
+				c.emit(OpSetGlobal, symbol.Index)
+			case LocalScope:
+				c.emit(OpSetLocal, symbol.Index)
+			}
+		} else {
+			if err := c.Compile(node.Value); err != nil {
+				return err
+			}
+			symbol := c.symbolTable.Define(node.Name.Value)
+			switch symbol.Scope {
+			case GlobalScope:
+				c.emit(OpSetGlobal, symbol.Index)
+			case LocalScope:
+				c.emit(OpSetLocal, symbol.Index)
+			}
 		}
 
 	case *parser.ConstStatement:

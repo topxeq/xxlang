@@ -151,51 +151,15 @@ func (vm *RegVM) GlobalsAsObjects() []objects.Object {
 }
 
 // LastPoppedObject returns the result as objects.Object
-// For register VM, this returns the value from ReturnRegister or the most likely result register
+// For register VM, this returns the value from ReturnRegister
 func (vm *RegVM) LastPoppedObject() objects.Object {
 	frame := vm.currentFrame()
 	if frame == nil {
 		return objects.NULL
 	}
 
-	// Check ReturnRegister first (for function/builtin calls)
-	result := frame.Registers[compiler.ReturnRegister]
-	if !result.IsNull() {
-		return result.ToObject()
-	}
-
-	// Find all non-null registers and their types
-	var lastCollectionReg int = -1
-	var lastNonCollectionReg int = -1
-
-	for i := 0; i < 16; i++ { // Check first 16 registers
-		val := frame.Registers[i]
-		if val.IsNull() {
-			continue
-		}
-		obj := val.ToObject()
-		switch obj.(type) {
-		case *objects.Array, *objects.Map:
-			// Collection types are typically results
-			lastCollectionReg = i
-		default:
-			lastNonCollectionReg = i
-		}
-	}
-
-	// Prefer collection types as they are typically the result
-	if lastCollectionReg >= 0 {
-		return frame.Registers[lastCollectionReg].ToObject()
-	}
-
-	// For non-collection types, the highest register usually has the result
-	// (arithmetic operations store result in a new register)
-	if lastNonCollectionReg >= 0 {
-		return frame.Registers[lastNonCollectionReg].ToObject()
-	}
-
-	// Fallback to tempStack for mixed mode
-	return vm.tempStack.LastPopped().ToObject()
+	// Return value from ReturnRegister (set by function/builtin calls or program end)
+	return frame.Registers[compiler.ReturnRegister].ToObject()
 }
 
 // NewRegVMWithObjectGlobals creates a register VM with globals as objects.Object
@@ -498,7 +462,43 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 		return vm.handleRegBuiltin(int(builtinIdx), int(numArgs), frame)
 
 	case compiler.OpRegReturn:
+		// Decode the register containing the return value
+		retReg := DecodeReg1(code, frame.IP)
+		frame.IP += 2
+		// Copy return value to ReturnRegister
+		frame.Registers[compiler.ReturnRegister] = regs[retReg]
 		return vm.handleRegReturn(frame)
+
+	case compiler.OpRegClosure:
+		// Format: OpRegClosure dst func_idx(16-bit) num_free start_reg
+		dst := code[frame.IP+1]
+		fnIndex := int(code[frame.IP+2])<<8 | int(code[frame.IP+3])
+		numFree := int(code[frame.IP+4])
+		startReg := int(code[frame.IP+5])
+		frame.IP += 6
+
+		// Get the compiled function from constants
+		fn, ok := frame.Constants[fnIndex].ToObject().(*compiler.CompiledFunction)
+		if !ok {
+			return fmt.Errorf("expected CompiledFunction at index %d, got %T", fnIndex, frame.Constants[fnIndex].ToObject())
+		}
+
+		// Create closure with captured free variables
+		// Note: For register VM, Constants and Globals are taken from callerFrame
+		closure := &Closure{
+			Fn:             fn,
+			FreeVars:       nil, // Not used in register VM
+			Constants:      nil, // Not used in register VM
+			Globals:        nil, // Not used in register VM
+			FreeVarsValues: make([]Value, numFree),
+		}
+
+		// Copy free variables from registers (these are the captured values)
+		for i := 0; i < numFree; i++ {
+			closure.FreeVarsValues[i] = regs[startReg+i]
+		}
+
+		regs[dst] = NewObject(closure)
 
 	// Collection operations
 	case compiler.OpRegArray:
@@ -692,9 +692,15 @@ func (vm *RegVM) callClosure(closure *Closure, numArgs int, callerFrame *RegFram
 		newFrame.Registers[i] = callerFrame.Registers[i]
 	}
 
-	// Set up free variables from closure
-	for i, free := range closure.FreeVars {
-		newFrame.FreeVars[i] = NewObject(free)
+	// Set up free variables - directly reference the closure's FreeVarsValues
+	// This allows modifications to persist across calls
+	if closure.FreeVarsValues != nil {
+		newFrame.FreeVars = closure.FreeVarsValues
+	} else if closure.FreeVars != nil {
+		// Fallback for closures created by stack VM
+		for i, free := range closure.FreeVars {
+			newFrame.FreeVars[i] = NewObject(free)
+		}
 	}
 
 	vm.pushFrame(newFrame)

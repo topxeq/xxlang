@@ -8,8 +8,36 @@ import (
 	"github.com/topxeq/xxlang/pkg/stdlib"
 )
 
+// VMType specifies which VM to use
+type VMType int
+
+const (
+	// RegisterVM is the default, faster register-based VM
+	RegisterVM VMType = iota
+	// StackVM is the traditional stack-based VM (for compatibility)
+	StackVM
+)
+
 // Option configures the interpreter.
 type Option func(*Interpreter)
+
+// WithVMType sets the VM type (RegisterVM or StackVM).
+// Default is RegisterVM for better performance.
+// Note: RegisterVM has limited support for user-defined functions.
+// For complex function usage, use WithStackVM() instead.
+func WithVMType(vmType VMType) Option {
+	return func(i *Interpreter) {
+		i.vmType = vmType
+	}
+}
+
+// WithStackVM uses the stack-based VM instead of the default register VM.
+// This is for backward compatibility or debugging.
+func WithStackVM() Option {
+	return func(i *Interpreter) {
+		i.vmType = StackVM
+	}
+}
 
 // WithGlobals sets initial global variables.
 // The globals slice is copied, so modifications to the original

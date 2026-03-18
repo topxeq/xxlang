@@ -134,7 +134,7 @@ xxl
 ## 命令行工具
 
 ```bash
-xxl                                # 启动 REPL
+xxl                                # 启动 REPL（默认使用寄存器 VM）
 xxl script.xxl                     # 运行本地脚本（快捷方式）
 xxl run script.xxl                 # 运行源代码
 xxl run script.xxb                 # 运行字节码
@@ -147,6 +147,24 @@ xxl update                         # 自我更新到最新版本
 xxl version                        # 显示版本
 xxl help                           # 显示帮助
 ```
+
+### VM 选择
+
+Xxlang 支持两种虚拟机：
+
+| VM | 说明 | 性能 |
+|----|------|------|
+| **寄存器 VM**（默认） | 现代、优化 | 快 2-18 倍 |
+| 栈式 VM | 传统、兼容 | 基准 |
+
+```bash
+xxl script.xxl                  # 寄存器 VM（默认，推荐）
+xxl --vm=register script.xxl    # 明确使用寄存器 VM
+xxl --vm=stack script.xxl       # 使用栈式 VM（兼容模式）
+xxl --stack-vm script.xxl       # 同 --vm=stack
+```
+
+**注意**：寄存器 VM 对用户自定义函数的支持有限。对于包含大量用户函数的复杂脚本，请使用 `--vm=stack`。
 
 ## 云端脚本执行
 

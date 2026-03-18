@@ -25,10 +25,13 @@ type Interpreter struct {
 	globals     []objects.Object
 	loader      *module.Loader
 	stdlib      bool
+	vmType      VMType
 }
 
 // New creates a new interpreter with the given options.
-// Default interpreter has no stdlib and empty globals.
+// Default interpreter uses RegisterVM for best performance.
+// Note: RegisterVM has limited support for user-defined functions.
+// For complex function usage, use WithStackVM() instead.
 func New(opts ...Option) *Interpreter {
 	i := &Interpreter{
 		symbolTable: compiler.NewSymbolTable(),
@@ -36,6 +39,7 @@ func New(opts ...Option) *Interpreter {
 		globals:     make([]objects.Object, compiler.GlobalsSize),
 		loader:      module.NewLoader(),
 		stdlib:      false,
+		vmType:      RegisterVM, // Default to register VM
 	}
 
 	for _, opt := range opts {
@@ -60,6 +64,42 @@ func (i *Interpreter) Eval(code string) (objects.Object, error) {
 		return nil, formatParserErrors(p.Errors())
 	}
 
+	if i.vmType == RegisterVM {
+		return i.evalRegister(program)
+	}
+	return i.evalStack(program)
+}
+
+// evalRegister uses the register-based VM for execution
+func (i *Interpreter) evalRegister(program *parser.Program) (objects.Object, error) {
+	// Compilation with register compiler
+	c := compiler.NewRegCompiler()
+	c.SetSymbolTable(i.symbolTable)
+	c.SetConstants(i.constants)
+	if _, err := c.Compile(program); err != nil {
+		return nil, fmt.Errorf("compiler error: %v", err)
+	}
+
+	// Update constants for next execution
+	i.constants = c.Bytecode().Constants
+
+	// Execution with persistent globals
+	bytecode := c.Bytecode()
+	v := vm.NewRegVMWithObjectGlobals(bytecode, i.globals)
+	v.SetLoader(i.loader)
+
+	if err := v.Run(); err != nil {
+		return nil, fmt.Errorf("runtime error: %v", err)
+	}
+
+	// Update globals for next execution
+	i.globals = v.GlobalsAsObjects()
+
+	return v.LastPoppedObject(), nil
+}
+
+// evalStack uses the stack-based VM for execution
+func (i *Interpreter) evalStack(program *parser.Program) (objects.Object, error) {
 	// Compilation with persistent state
 	c := compiler.NewWithState(i.symbolTable, i.constants)
 	if err := c.Compile(program); err != nil {
@@ -111,6 +151,50 @@ func (i *Interpreter) EvalFile(path string) (objects.Object, error) {
 		return nil, formatParserErrors(p.Errors())
 	}
 
+	if i.vmType == RegisterVM {
+		return i.evalFileRegister(program, absPath)
+	}
+	return i.evalFileStack(program, absPath)
+}
+
+// evalFileRegister uses the register-based VM for file execution
+func (i *Interpreter) evalFileRegister(program *parser.Program, absPath string) (objects.Object, error) {
+	// Compilation with register compiler
+	c := compiler.NewRegCompiler()
+	c.SetSymbolTable(i.symbolTable)
+	c.SetConstants(i.constants)
+	if _, err := c.Compile(program); err != nil {
+		return nil, fmt.Errorf("compiler error: %v", err)
+	}
+
+	// Update constants
+	i.constants = c.Bytecode().Constants
+
+	// Create main module for exports
+	mainModule := &objects.Module{
+		Name:    absPath,
+		Exports: make(map[string]objects.Object),
+	}
+
+	// Execution
+	bytecode := c.Bytecode()
+	v := vm.NewRegVMWithObjectGlobals(bytecode, i.globals)
+	v.SetLoader(i.loader)
+	v.SetSourcePath(absPath)
+	v.SetCurrentModule(mainModule)
+
+	if err := v.Run(); err != nil {
+		return nil, fmt.Errorf("runtime error: %v", err)
+	}
+
+	// Update globals for next execution
+	i.globals = v.GlobalsAsObjects()
+
+	return v.LastPoppedObject(), nil
+}
+
+// evalFileStack uses the stack-based VM for file execution
+func (i *Interpreter) evalFileStack(program *parser.Program, absPath string) (objects.Object, error) {
 	// Compilation
 	c := compiler.NewWithState(i.symbolTable, i.constants)
 	if err := c.Compile(program); err != nil {

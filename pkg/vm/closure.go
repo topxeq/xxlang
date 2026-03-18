@@ -11,9 +11,13 @@ import (
 // Closure represents a function with captured variables
 type Closure struct {
 	Fn        *compiler.CompiledFunction
-	FreeVars  []objects.Object
+	FreeVars  []objects.Object // Free variables for stack VM
 	Constants []objects.Object // Constants from the creating VM
 	Globals   []objects.Object // Globals from the creating module (for exported functions)
+
+	// FreeVarsValues is used by register VM for shared mutable free variables
+	// When set, register VM uses this instead of FreeVars
+	FreeVarsValues []Value
 }
 
 // Type returns the object type

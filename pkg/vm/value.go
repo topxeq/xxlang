@@ -10,11 +10,14 @@
 // - Booleans: stored in NaN payload
 // - Null: special NaN value
 // - Objects: stored as pointer in NaN payload
+//
+// IMPORTANT: For boxed objects, we maintain a global registry to ensure
+// GC visibility. The Value stores an index into this registry.
 package vm
 
 import (
 	"math"
-	"unsafe"
+	"sync"
 
 	"github.com/topxeq/xxlang/pkg/objects"
 )
@@ -74,10 +77,94 @@ func NewBool(b bool) Value {
 	return ValueFalse
 }
 
-// boxedObject holds an object for NaN boxing
-// We need this because we can't take the address of an interface directly
-type boxedObject struct {
-	obj objects.Object
+// objectRegistry is a GC-visible storage for boxed objects.
+// This is critical: the registry itself is a GC root, so all stored
+// objects remain reachable as long as the registry is alive.
+// We use an index-based approach to store objects, which is safe
+// because the GC can trace through the registry slice.
+type objectRegistry struct {
+	mu      sync.RWMutex
+	objects []*objects.Object // Slice is GC-visible
+	freeIdx []int             // Freed indices for reuse
+	nextIdx int               // Next available index
+}
+
+// globalRegistry is the global object registry for the VM
+var globalRegistry = &objectRegistry{
+	objects: make([]*objects.Object, 1024), // Pre-allocate
+	freeIdx: make([]int, 0),
+}
+
+// register stores an object and returns its index
+func (r *objectRegistry) register(obj objects.Object) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Try to reuse a freed index
+	if len(r.freeIdx) > 0 {
+		idx := r.freeIdx[len(r.freeIdx)-1]
+		r.freeIdx = r.freeIdx[:len(r.freeIdx)-1]
+		r.objects[idx] = &obj
+		return idx
+	}
+
+	// Allocate new index
+	idx := r.nextIdx
+	if idx >= len(r.objects) {
+		// Grow the slice
+		newObjects := make([]*objects.Object, len(r.objects)*2)
+		copy(newObjects, r.objects)
+		r.objects = newObjects
+	}
+	r.objects[idx] = &obj
+	r.nextIdx++
+	return idx
+}
+
+// get retrieves an object by index
+func (r *objectRegistry) get(idx int) objects.Object {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if idx < 0 || idx >= len(r.objects) {
+		return nil
+	}
+	obj := r.objects[idx]
+	if obj == nil {
+		return nil
+	}
+	return *obj
+}
+
+// release marks an index as free for reuse
+func (r *objectRegistry) release(idx int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if idx >= 0 && idx < len(r.objects) {
+		r.objects[idx] = nil
+		r.freeIdx = append(r.freeIdx, idx)
+	}
+}
+
+// Clear clears all objects from the registry
+func (r *objectRegistry) Clear() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.objects = make([]*objects.Object, 1024)
+	r.freeIdx = r.freeIdx[:0]
+	r.nextIdx = 0
+}
+
+// ClearRegistry clears the global object registry
+// This should be called when starting a new execution context
+func ClearRegistry() {
+	globalRegistry.Clear()
+}
+
+// RegistryStats returns statistics about the object registry
+func RegistryStats() (total, used int) {
+	globalRegistry.mu.RLock()
+	defer globalRegistry.mu.RUnlock()
+	return len(globalRegistry.objects), globalRegistry.nextIdx - len(globalRegistry.freeIdx)
 }
 
 // NewObject creates a Value from an object pointer
@@ -101,10 +188,9 @@ func NewObject(obj objects.Object) Value {
 		return ValueNull
 	}
 
-	// For other types, store a pointer to a boxed object
-	box := &boxedObject{obj: obj}
-	ptr := uintptr(unsafe.Pointer(box))
-	return Value(tagObjectValue | uint64(ptr))
+	// For other types, store in the registry and use the index
+	idx := globalRegistry.register(obj)
+	return Value(tagObjectValue | uint64(idx))
 }
 
 // NewValue creates a Value from any object
@@ -223,14 +309,14 @@ func (v Value) GetBool() bool {
 	return v == ValueTrue
 }
 
-// GetObject extracts the object pointer
+// GetObject extracts the object from the registry
 func (v Value) GetObject() objects.Object {
-	ptr := uintptr(uint64(v) & payloadMask)
-	box := (*boxedObject)(unsafe.Pointer(ptr))
-	if box == nil {
+	idx := int(uint64(v) & payloadMask)
+	obj := globalRegistry.get(idx)
+	if obj == nil {
 		return objects.NULL
 	}
-	return box.obj
+	return obj
 }
 
 // ToInt attempts to convert the value to an integer
@@ -265,6 +351,17 @@ func (v Value) Add(other Value) (Value, bool) {
 	// Fast path: both integers
 	if v.IsInt() && other.IsInt() {
 		return NewInt(v.GetInt() + other.GetInt()), true
+	}
+
+	// String concatenation
+	if v.IsObject() && other.IsObject() {
+		obj1 := v.GetObject()
+		obj2 := other.GetObject()
+		if s1, ok1 := obj1.(*objects.String); ok1 {
+			if s2, ok2 := obj2.(*objects.String); ok2 {
+				return NewObject(&objects.String{Value: s1.Value + s2.Value}), true
+			}
+		}
 	}
 
 	// Mixed: convert to floats
@@ -394,6 +491,23 @@ func (v Value) Equal(other Value) (bool, bool) {
 	// Both booleans - already handled by == above, but explicit check
 	if v.IsBool() && other.IsBool() {
 		return v == other, true
+	}
+
+	// Both objects - compare using Object's Equal method
+	if v.IsObject() && other.IsObject() {
+		obj1 := v.GetObject()
+		obj2 := other.GetObject()
+		if obj1 == nil || obj2 == nil {
+			return obj1 == obj2, true
+		}
+		// Use type-specific comparison
+		if s1, ok1 := obj1.(*objects.String); ok1 {
+			if s2, ok2 := obj2.(*objects.String); ok2 {
+				return s1.Value == s2.Value, true
+			}
+		}
+		// For other objects, use HashKey comparison for maps or direct comparison
+		return obj1 == obj2, true
 	}
 
 	// Mixed int/float

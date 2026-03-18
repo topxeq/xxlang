@@ -17,8 +17,11 @@ type RegCompiler struct {
 	// Code generation
 	instructions []byte
 
+	// Scopes for nested function compilation
+	// Each entry stores the outer scope's state when entering a new scope
+	scopeStack []regScopeState
+
 	// Register allocation
-	regAlloc    *RegAllocator
 	nextTempReg int
 	maxReg      int
 
@@ -28,6 +31,12 @@ type RegCompiler struct {
 
 	// Loop context for break/continue
 	loopContexts []regLoopContext
+}
+
+type regScopeState struct {
+	instructions []byte
+	nextTempReg  int
+	maxReg       int
 }
 
 type regLoopContext struct {
@@ -42,8 +51,58 @@ func NewRegCompiler() *RegCompiler {
 		constants:    []objects.Object{},
 		symbolTable:  NewSymbolTable(),
 		instructions: []byte{},
-		regAlloc:     NewRegAllocator(NumRegisters),
+		nextTempReg:  FirstLocalRegister,
+		maxReg:       FirstLocalRegister,
 		sourceMap:    NewSourceMap(),
+	}
+}
+
+// enterScope enters a new compilation scope (for function compilation)
+func (c *RegCompiler) enterScope() {
+	// Save current state to stack
+	c.scopeStack = append(c.scopeStack, regScopeState{
+		instructions: c.instructions,
+		nextTempReg:  c.nextTempReg,
+		maxReg:       c.maxReg,
+	})
+
+	// Start with fresh instructions for the new scope
+	c.instructions = []byte{}
+
+	// Reset register allocation for new scope (parameters will use R0-R7)
+	c.nextTempReg = FirstLocalRegister
+	c.maxReg = FirstLocalRegister
+
+	c.symbolTable = NewEnclosedSymbolTable(c.symbolTable)
+}
+
+// leaveScope leaves the current scope and returns the compiled function
+func (c *RegCompiler) leaveScope() *CompiledFunction {
+	// Capture the function's instructions
+	fnInstructions := c.instructions
+	numLocals := c.symbolTable.NumDefinitions
+	freeVars := make([]Symbol, len(c.symbolTable.FreeSymbols))
+	copy(freeVars, c.symbolTable.FreeSymbols)
+
+	// Restore outer scope's state
+	if len(c.scopeStack) > 0 {
+		outer := c.scopeStack[len(c.scopeStack)-1]
+		c.scopeStack = c.scopeStack[:len(c.scopeStack)-1]
+		c.instructions = outer.instructions
+		c.nextTempReg = outer.nextTempReg
+		c.maxReg = outer.maxReg
+	} else {
+		c.instructions = []byte{}
+		c.nextTempReg = FirstLocalRegister
+		c.maxReg = FirstLocalRegister
+	}
+
+	c.symbolTable = c.symbolTable.Outer
+
+	return &CompiledFunction{
+		Instructions:  fnInstructions,
+		NumLocals:     numLocals,
+		FreeVariables: freeVars,
 	}
 }
 
@@ -94,6 +153,12 @@ func (c *RegCompiler) Compile(node parser.Node) (int, error) {
 		return c.compileIndexExpression(n)
 	case *parser.AssignmentExpression:
 		return c.compileAssignmentExpression(n)
+	case *parser.BreakStatement:
+		return c.compileBreakStatement(n)
+	case *parser.ContinueStatement:
+		return c.compileContinueStatement(n)
+	case *parser.TernaryExpression:
+		return c.compileTernaryExpression(n)
 	default:
 		return 0, fmt.Errorf("unknown node type: %T", node)
 	}
@@ -192,6 +257,14 @@ func (c *RegCompiler) compileInfixExpression(n *parser.InfixExpression) (int, er
 		return 0, err
 	}
 
+	// If left operand is in ReturnRegister, move it to a temp register
+	// because compiling the right operand might overwrite ReturnRegister
+	if leftReg == ReturnRegister {
+		newLeftReg := c.allocTempReg()
+		c.emitRegMove(newLeftReg, leftReg)
+		leftReg = newLeftReg
+	}
+
 	// Compile right operand
 	rightReg, err := c.Compile(n.Right)
 	if err != nil {
@@ -264,7 +337,29 @@ func (c *RegCompiler) compilePrefixExpression(n *parser.PrefixExpression) (int, 
 
 // compileVarStatement compiles a variable declaration
 func (c *RegCompiler) compileVarStatement(n *parser.VarStatement) (int, error) {
-	// Define the variable
+	// Pre-define the variable if the value is a function literal
+	// This allows recursive functions like: var f = func() { f() }
+	if fn, ok := n.Value.(*parser.FunctionLiteral); ok {
+		// Define the variable first so the function body can reference it
+		symbol := c.symbolTable.Define(n.Name.Value)
+		// Set the function name so it can reference itself
+		fn.Name = n.Name.Value
+		// Compile the function literal
+		valReg, err := c.Compile(fn)
+		if err != nil {
+			return 0, err
+		}
+		// Store to local or global
+		if symbol.Scope == GlobalScope {
+			c.emitRegStoreGlobal(valReg, symbol.Index)
+		} else {
+			c.emitRegStoreLocal(valReg, symbol.Index)
+		}
+		c.freeTempReg(valReg)
+		return valReg, nil
+	}
+
+	// Regular variable declaration
 	symbol := c.symbolTable.Define(n.Name.Value)
 
 	// Compile the initial value
@@ -310,9 +405,15 @@ func (c *RegCompiler) compileIfStatement(n *parser.IfStatement) (int, error) {
 	c.freeTempReg(condReg)
 
 	// Compile consequence
-	_, err = c.Compile(n.Consequence)
+	consequentReg, err := c.Compile(n.Consequence)
 	if err != nil {
 		return 0, err
+	}
+
+	// Allocate result register and move consequent there
+	resultReg := c.allocTempReg()
+	if consequentReg != resultReg && consequentReg != 0 {
+		c.emitRegMove(resultReg, consequentReg)
 	}
 
 	// Jump over alternative
@@ -323,16 +424,23 @@ func (c *RegCompiler) compileIfStatement(n *parser.IfStatement) (int, error) {
 
 	// Compile alternative if present
 	if n.Alternative != nil {
-		_, err = c.Compile(n.Alternative)
+		alternativeReg, err := c.Compile(n.Alternative)
 		if err != nil {
 			return 0, err
 		}
+		// Move alternative to result register
+		if alternativeReg != resultReg && alternativeReg != 0 {
+			c.emitRegMove(resultReg, alternativeReg)
+		}
+	} else {
+		// No alternative - set result to null
+		c.emitRegNull(resultReg)
 	}
 
 	// Patch jump to here (end)
 	c.patchJump(jumpPos)
 
-	return 0, nil
+	return resultReg, nil
 }
 
 // compileWhileStatement compiles a while statement
@@ -469,36 +577,93 @@ func (c *RegCompiler) compileReturnStatement(n *parser.ReturnStatement) (int, er
 
 // compileFunctionLiteral compiles a function literal
 func (c *RegCompiler) compileFunctionLiteral(n *parser.FunctionLiteral) (int, error) {
-	// Enter new scope
-	outerSymbolTable := c.symbolTable
-	c.symbolTable = NewEnclosedSymbolTable(c.symbolTable)
+	// If named function, define the name first for recursion support
+	var funcSymbol Symbol
+	if n.Name != "" {
+		funcSymbol = c.symbolTable.Define(n.Name)
+	}
 
-	// Define parameters
-	for _, p := range n.Parameters {
-		c.symbolTable.Define(p.Value)
+	// Enter function scope
+	c.enterScope()
+
+	// Define parameters as local variables
+	// Parameters are passed in R0-R7, copy them to local slots
+	for i, p := range n.Parameters {
+		symbol := c.symbolTable.Define(p.Value)
+		// Copy from argument register to local slot
+		// R0-R7 -> Locals[0..n]
+		c.emitRegStoreLocal(i, symbol.Index)
 	}
 
 	// Compile body
 	_, err := c.Compile(n.Body)
 	if err != nil {
-		c.symbolTable = outerSymbolTable
 		return 0, err
 	}
 
-	// Restore outer scope
-	c.symbolTable = outerSymbolTable
-
-	// Create compiled function
-	fn := &CompiledFunction{
-		Instructions:  c.instructions,
-		NumLocals:     c.symbolTable.NumDefinitions,
-		NumParameters: len(n.Parameters),
+	// Ensure function ends with return
+	if len(c.instructions) == 0 || Opcode(c.instructions[len(c.instructions)-1]) != OpRegReturn {
+		// Emit implicit return null
+		c.emitRegReturn(0)
 	}
 
-	// Add to constants
-	constIdx := c.addConstant(fn)
+	// Leave scope and get compiled function
+	fn := c.leaveScope()
+	fn.NumParameters = len(n.Parameters)
+
+	// Add function to constants
+	fnIndex := c.addConstant(fn)
+
+	// Allocate register for closure
 	dst := c.allocTempReg()
-	c.emitRegLoadConst(dst, constIdx)
+
+	numFree := len(fn.FreeVariables)
+	if numFree == 0 {
+		// No free variables - just load the function
+		c.emitRegLoadConst(dst, fnIndex)
+	} else {
+		// Load free variables into temporary registers
+		freeStartReg := c.nextTempReg
+		for i, freeVar := range fn.FreeVariables {
+			freeReg := c.allocTempReg()
+			switch freeVar.Scope {
+			case GlobalScope:
+				c.emitRegLoadGlobal(freeReg, freeVar.Index)
+			case LocalScope:
+				c.emitRegLoadLocal(freeReg, freeVar.Index)
+			case FreeScope:
+				c.emitRegLoadFree(freeReg, freeVar.Index)
+			}
+			_ = i // freeReg already equals freeStartReg + i due to sequential allocation
+		}
+
+		// Emit closure instruction
+		// Format: OpRegClosure dst func_idx num_free start_reg
+		c.instructions = append(c.instructions,
+			byte(OpRegClosure),
+			byte(dst),
+			byte(fnIndex>>8),
+			byte(fnIndex),
+			byte(numFree),
+			byte(freeStartReg),
+		)
+
+		// Free the temporary registers used for free variables
+		for i := 0; i < numFree; i++ {
+			c.freeTempReg(freeStartReg + i)
+		}
+	}
+
+	// If named function, bind it to its name
+	if n.Name != "" {
+		switch funcSymbol.Scope {
+		case GlobalScope:
+			c.emitRegStoreGlobal(dst, funcSymbol.Index)
+		case LocalScope:
+			c.emitRegStoreLocal(dst, funcSymbol.Index)
+		}
+		// The function is now stored, result is the function itself
+	}
 
 	return dst, nil
 }
@@ -582,33 +747,62 @@ func (c *RegCompiler) compileArrayLiteral(n *parser.ArrayLiteral) (int, error) {
 
 // compileMapLiteral compiles a map literal
 func (c *RegCompiler) compileMapLiteral(n *parser.MapLiteral) (int, error) {
-	// For simplicity, compile each key-value pair
-	dst := c.allocTempReg()
-	count := 0
-	startReg := c.nextTempReg
+	// Collect all key-value pairs first to ensure deterministic order
+	type kvPair struct {
+		keyReg, valReg int
+	}
+	pairs := make([]kvPair, 0, len(n.Pairs))
 
+	// Compile all key-value pairs
 	for key, val := range n.Pairs {
 		keyReg, err := c.Compile(key)
 		if err != nil {
 			return 0, err
 		}
+		// Save keyReg by moving to a safe position if needed
+		savedKeyReg := c.allocTempReg()
+		if savedKeyReg != keyReg {
+			c.emitRegMove(savedKeyReg, keyReg)
+			c.freeTempReg(keyReg)
+		}
+
 		valReg, err := c.Compile(val)
 		if err != nil {
 			return 0, err
 		}
-		// Move to consecutive registers
-		if keyReg != startReg+count*2 {
-			c.emitRegMove(startReg+count*2, keyReg)
+
+		pairs = append(pairs, kvPair{keyReg: savedKeyReg, valReg: valReg})
+	}
+
+	// Now allocate contiguous registers and move all pairs
+	dst := c.allocTempReg()
+	startReg := c.nextTempReg
+	count := len(pairs)
+
+	for i, pair := range pairs {
+		targetKeyReg := startReg + i*2
+		targetValReg := startReg + i*2 + 1
+
+		// Allocate these registers
+		for c.nextTempReg <= targetValReg {
+			c.allocTempReg()
 		}
-		if valReg != startReg+count*2+1 {
-			c.emitRegMove(startReg+count*2+1, valReg)
+
+		// Move key and value to target positions
+		if pair.keyReg != targetKeyReg {
+			c.emitRegMove(targetKeyReg, pair.keyReg)
 		}
-		c.freeTempReg(keyReg)
-		c.freeTempReg(valReg)
-		count++
+		if pair.valReg != targetValReg {
+			c.emitRegMove(targetValReg, pair.valReg)
+		}
 	}
 
 	c.emitRegMap(dst, startReg, count)
+
+	// Free all temporary registers
+	for i := 0; i < count*2; i++ {
+		c.freeTempReg(startReg + i)
+	}
 
 	return dst, nil
 }
@@ -673,6 +867,88 @@ func (c *RegCompiler) compileAssignmentExpression(n *parser.AssignmentExpression
 	}
 
 	return valReg, nil
+}
+
+// compileBreakStatement compiles a break statement
+func (c *RegCompiler) compileBreakStatement(n *parser.BreakStatement) (int, error) {
+	if len(c.loopContexts) == 0 {
+		return 0, fmt.Errorf("break statement outside of loop")
+	}
+
+	// Emit jump to end of loop (will be patched when loop ends)
+	breakPos := c.emitRegJump(0)
+
+	// Track the break position for patching
+	ctx := &c.loopContexts[len(c.loopContexts)-1]
+	ctx.breakPos = append(ctx.breakPos, breakPos)
+
+	return 0, nil
+}
+
+// compileContinueStatement compiles a continue statement
+func (c *RegCompiler) compileContinueStatement(n *parser.ContinueStatement) (int, error) {
+	if len(c.loopContexts) == 0 {
+		return 0, fmt.Errorf("continue statement outside of loop")
+	}
+
+	// Emit jump to update section or start of loop
+	// Will be patched to jump to update position for for-loops
+	continuePos := c.emitRegJump(0)
+
+	// Track the continue position for patching
+	ctx := &c.loopContexts[len(c.loopContexts)-1]
+	ctx.continuePos = append(ctx.continuePos, continuePos)
+
+	return 0, nil
+}
+
+// compileTernaryExpression compiles a ternary expression (condition ? consequent : alternative)
+func (c *RegCompiler) compileTernaryExpression(n *parser.TernaryExpression) (int, error) {
+	// Compile condition
+	condReg, err := c.Compile(n.Condition)
+	if err != nil {
+		return 0, err
+	}
+
+	// Jump to alternative if condition is false
+	jumpIfFalsePos := c.emitRegJumpIfFalse(condReg, 0)
+	c.freeTempReg(condReg)
+
+	// Compile consequent
+	consequentReg, err := c.Compile(n.Consequent)
+	if err != nil {
+		return 0, err
+	}
+
+	// Allocate result register and move consequent there
+	resultReg := c.allocTempReg()
+	if consequentReg != resultReg {
+		c.emitRegMove(resultReg, consequentReg)
+		c.freeTempReg(consequentReg)
+	}
+
+	// Jump over alternative
+	jumpPos := c.emitRegJump(0)
+
+	// Patch jump to here (start of alternative)
+	c.patchJump(jumpIfFalsePos)
+
+	// Compile alternative
+	alternativeReg, err := c.Compile(n.Alternative)
+	if err != nil {
+		return 0, err
+	}
+
+	// Move alternative to result register
+	if alternativeReg != resultReg {
+		c.emitRegMove(resultReg, alternativeReg)
+		c.freeTempReg(alternativeReg)
+	}
+
+	// Patch jump to here (end)
+	c.patchJump(jumpPos)
+
+	return resultReg, nil
 }
 
 // Register allocation helpers

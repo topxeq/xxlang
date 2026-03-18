@@ -101,14 +101,23 @@ func DecodeConst(code []byte, ip int) (reg byte, constIdx int) {
 	return code[ip+1], int(code[ip+2])<<8 | int(code[ip+3])
 }
 
-// DecodeJump decodes a jump instruction with 16-bit offset
+// DecodeJump decodes a jump instruction with signed 16-bit offset
 func DecodeJump(code []byte, ip int) (offset int) {
-	return int(code[ip+2])<<8 | int(code[ip+3])
+	// Read as unsigned 16-bit, then convert to signed
+	unsigned := int(code[ip+2])<<8 | int(code[ip+3])
+	if unsigned >= 32768 {
+		return unsigned - 65536 // Convert to signed
+	}
+	return unsigned
 }
 
-// DecodeJumpCond decodes a conditional jump instruction
+// DecodeJumpCond decodes a conditional jump instruction with signed 16-bit offset
 func DecodeJumpCond(code []byte, ip int) (condReg byte, offset int) {
-	return code[ip+1], int(code[ip+2])<<8 | int(code[ip+3])
+	unsigned := int(code[ip+2])<<8 | int(code[ip+3])
+	if unsigned >= 32768 {
+		return code[ip+1], unsigned - 65536
+	}
+	return code[ip+1], unsigned
 }
 
 // DecodeCall decodes a call instruction

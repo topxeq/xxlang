@@ -2,6 +2,7 @@
 package vm
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/topxeq/xxlang/pkg/compiler"
@@ -245,5 +246,234 @@ func TestRegCompilerBasic(t *testing.T) {
 		bytecode := c.Bytecode()
 		t.Logf("Input: %s", tt.input)
 		t.Logf("Generated %d bytes of register bytecode", len(bytecode.Instructions))
+	}
+}
+
+// TestRegVMForLoops tests for loop execution in register VM
+func TestRegVMForLoops(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int64
+	}{
+		{"var sum = 0; for (var i = 1; i <= 5; i = i + 1) { sum = sum + i; } sum;", 15},
+		{"var x = 1; for (var i = 0; i < 3; i = i + 1) { x = x * 2; } x;", 8},
+		{"var n = 5; var fact = 1; for (var i = 1; i <= n; i = i + 1) { fact = fact * i; } fact;", 120},
+	}
+
+	for _, tt := range tests {
+		l := lexer.New(tt.input)
+		p := parser.New(l)
+		program := p.ParseProgram()
+
+		if len(p.Errors()) > 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+
+		// Register compiler
+		c := compiler.NewRegCompiler()
+		_, err := c.Compile(program)
+		if err != nil {
+			t.Fatalf("compiler error: %v", err)
+		}
+
+		// Run with register VM
+		vm := NewRegVM(c.Bytecode())
+		if err := vm.Run(); err != nil {
+			t.Fatalf("VM error: %v", err)
+		}
+
+		result := vm.LastResult()
+		if !result.IsInt() {
+			t.Errorf("expected int result, got %v", result)
+			continue
+		}
+
+		if result.GetInt() != tt.expected {
+			t.Errorf("input=%s, expected=%d, got=%d", tt.input, tt.expected, result.GetInt())
+		}
+	}
+}
+
+// TestRegVMForLoopsWithBreakContinue tests break/continue in for loops
+func TestRegVMForLoopsWithBreakContinue(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int64
+	}{
+		// Break tests
+		{"var sum = 0; for (var i = 0; i < 10; i = i + 1) { if (i == 5) { break; } sum = sum + i; } sum;", 10},
+		{"var found = 0; for (var i = 0; i < 100; i = i + 1) { if (i == 7) { found = i; break; } } found;", 7},
+		// Continue tests
+		{"var sum = 0; for (var i = 0; i < 5; i = i + 1) { if (i == 2) { continue; } sum = sum + i; } sum;", 8},
+		{"var count = 0; for (var i = 0; i < 4; i = i + 1) { if (i == 1) { continue; } count = count + 1; } count;", 3},
+	}
+
+	for _, tt := range tests {
+		l := lexer.New(tt.input)
+		p := parser.New(l)
+		program := p.ParseProgram()
+
+		if len(p.Errors()) > 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+
+		// Register compiler
+		c := compiler.NewRegCompiler()
+		_, err := c.Compile(program)
+		if err != nil {
+			t.Fatalf("compiler error: %v", err)
+		}
+
+		// Run with register VM
+		vm := NewRegVM(c.Bytecode())
+		if err := vm.Run(); err != nil {
+			t.Fatalf("VM error: %v", err)
+		}
+
+		result := vm.LastResult()
+		if !result.IsInt() {
+			t.Errorf("expected int result, got %v", result)
+			continue
+		}
+
+		if result.GetInt() != tt.expected {
+			t.Errorf("input=%s, expected=%d, got=%d", tt.input, tt.expected, result.GetInt())
+		}
+	}
+}
+
+// TestRegVMClosures tests closure functionality in register VM
+func TestRegVMClosures(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int64
+	}{
+		// Simple closure capturing a variable
+		{
+			`
+var outer = func() {
+    var x = 10
+    return func() {
+        return x
+    }
+}
+var f = outer()
+f()
+`,
+			10,
+		},
+		// Counter closure - tests mutable captured variable
+		{
+			`
+var makeCounter = func() {
+    var count = 0
+    return func() {
+        count = count + 1
+        return count
+    }
+}
+var c = makeCounter()
+c()
+c()
+c()
+`,
+			3,
+		},
+		// Closure with multiple calls
+		{
+			`
+var makeAdder = func(x) {
+    return func(y) {
+        return x + y
+    }
+}
+var add5 = makeAdder(5)
+add5(3)
+`,
+			8,
+		},
+	}
+
+	for _, tt := range tests {
+		l := lexer.New(tt.input)
+		p := parser.New(l)
+		program := p.ParseProgram()
+
+		if len(p.Errors()) > 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+
+		c := compiler.NewRegCompiler()
+		_, err := c.Compile(program)
+		if err != nil {
+			t.Fatalf("compiler error: %v", err)
+		}
+
+		vm := NewRegVM(c.Bytecode())
+		if err := vm.Run(); err != nil {
+			t.Fatalf("VM error: %v", err)
+		}
+
+		result := vm.LastResult()
+		if !result.IsInt() {
+			t.Errorf("expected int result, got %v", result)
+			continue
+		}
+
+		if result.GetInt() != tt.expected {
+			t.Errorf("expected=%d, got=%d", tt.expected, result.GetInt())
+		}
+	}
+}
+
+// TestRegVMMaps tests map functionality in register VM
+func TestRegVMMaps(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{`{"name": "Alice"}`, "Alice"},
+		{`var m = {"a": 1, "b": 2}; m["a"]`, "1"},
+		{`var m = {"x": 10, "y": 20}; m["y"]`, "20"},
+	}
+
+	for _, tt := range tests {
+		l := lexer.New(tt.input)
+		p := parser.New(l)
+		program := p.ParseProgram()
+
+		if len(p.Errors()) > 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+
+		// Stack VM
+		sc := compiler.New()
+		if err := sc.Compile(program); err != nil {
+			t.Fatalf("stack compiler error: %v", err)
+		}
+		svm := New(sc.Bytecode())
+		if err := svm.Run(); err != nil {
+			t.Fatalf("stack VM error: %v", err)
+		}
+		stackResult := svm.LastPopped().Inspect()
+
+		// Register VM
+		rc := compiler.NewRegCompiler()
+		if _, err := rc.Compile(program); err != nil {
+			t.Fatalf("reg compiler error: %v", err)
+		}
+		rvm := NewRegVM(rc.Bytecode())
+		if err := rvm.Run(); err != nil {
+			t.Fatalf("reg VM error: %v", err)
+		}
+		regResult := rvm.LastResult().ToObject().Inspect()
+
+		// Compare with expected
+		if !strings.Contains(stackResult, tt.expected) {
+			t.Errorf("stack VM: expected to contain %q, got %q", tt.expected, stackResult)
+		}
+		if !strings.Contains(regResult, tt.expected) {
+			t.Errorf("reg VM: expected to contain %q, got %q", tt.expected, regResult)
+		}
 	}
 }

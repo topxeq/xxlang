@@ -276,7 +276,7 @@ push([1, 2], 3)     // [1, 2, 3]
 ## CLI Commands
 
 ```bash
-xxl                           # Start REPL
+xxl                           # Start REPL (uses register VM by default)
 xxl script.xxl                # Run local script (shortcut)
 xxl run script.xxl            # Run source script
 xxl run script.xxb            # Run compiled bytecode
@@ -289,6 +289,24 @@ xxl update                    # Self-update to latest version
 xxl version                   # Show version
 xxl help                      # Show help
 ```
+
+### VM Selection
+
+Xxlang supports two virtual machines:
+
+| VM | Description | Performance |
+|----|-------------|-------------|
+| **Register VM** (default) | Modern, optimized | 2-18x faster |
+| Stack VM | Traditional, compatible | Baseline |
+
+```bash
+xxl script.xxl                  # Register VM (default, recommended)
+xxl --vm=register script.xxl    # Explicitly use register VM
+xxl --vm=stack script.xxl       # Use stack VM (for compatibility)
+xxl --stack-vm script.xxl       # Same as --vm=stack
+```
+
+**Note**: The register VM has limited support for user-defined functions. For complex scripts with many user functions, use `--vm=stack`.
 
 ## Cloud Script Execution
 

@@ -18,6 +18,10 @@ import (
 	"github.com/topxeq/xxlang/pkg/vm"
 )
 
+// VMType controls which VM to use
+// Default is stack VM for compatibility (register VM is still experimental)
+var useStackVM = true
+
 const (
 	PROMPT          = ">> "
 	CONTINUE_PROMPT = ".. "
@@ -85,6 +89,9 @@ func main() {
 	// Split arguments at -- separator
 	interpreterArgs, scriptArgs := splitArgs(os.Args[1:])
 
+	// Parse --vm flag
+	interpreterArgs = parseVMFlag(interpreterArgs)
+
 	// Set script args for scripts to access via env::scriptArgs()
 	stdlib.SetScriptArgs(scriptArgs)
 
@@ -141,6 +148,31 @@ func main() {
 	}
 }
 
+// parseVMFlag extracts and processes --vm=register|stack flag
+// Returns the remaining arguments
+func parseVMFlag(args []string) []string {
+	var result []string
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "--vm=") {
+			vmType := strings.TrimPrefix(arg, "--vm=")
+			switch strings.ToLower(vmType) {
+			case "stack":
+				useStackVM = true
+			case "register":
+				useStackVM = false
+			default:
+				fmt.Fprintf(os.Stderr, "Unknown VM type: %s (use 'register' or 'stack')\n", vmType)
+				os.Exit(1)
+			}
+		} else if arg == "--stack-vm" {
+			useStackVM = true
+		} else {
+			result = append(result, arg)
+		}
+	}
+	return result
+}
+
 func printUsage() {
 	fmt.Printf("Xxlang v%s\n", Version)
 	fmt.Println()
@@ -160,6 +192,9 @@ func printUsage() {
 	fmt.Println("      --target os/arch  Cross-compile for target OS/architecture")
 	fmt.Println("      --bytecode        Output as bytecode (.xxb) instead of executable")
 	fmt.Println("  -cloud <script>       Execute script from configured cloudUrlBase")
+	fmt.Println("      --vm=register     Use register-based VM (default, faster)")
+	fmt.Println("      --vm=stack        Use stack-based VM (for compatibility)")
+	fmt.Println("      --stack-vm        Same as --vm=stack")
 	fmt.Println()
 	fmt.Println("Script Arguments:")
 	fmt.Println("  Use '--' to separate interpreter arguments from script arguments.")
@@ -170,6 +205,7 @@ func printUsage() {
 	fmt.Println("  xxl script.xxl")
 	fmt.Println("  xxl script.xxl -- arg1 arg2 --help")
 	fmt.Println("  xxl run script.xxl -- --verbose -f file.txt")
+	fmt.Println("  xxl --vm=stack script.xxl    # Use stack-based VM")
 	fmt.Println("  xxl https://raw.githubusercontent.com/user/repo/main/script.xxl")
 	fmt.Println("  xxl compile -o program script.xxl")
 	fmt.Println("  xxl compile -o program.exe --target windows/amd64 script.xxl")
@@ -263,6 +299,41 @@ func (r *REPL) Execute(input string) (objects.Object, error) {
 		return nil, formatParserErrors(p.Errors())
 	}
 
+	if useStackVM {
+		return r.executeStack(program)
+	}
+	return r.executeRegister(program)
+}
+
+// executeRegister uses the register-based VM for REPL execution
+func (r *REPL) executeRegister(program *parser.Program) (objects.Object, error) {
+	// Compilation with register compiler
+	c := compiler.NewRegCompiler()
+	c.SetSymbolTable(r.symbolTable)
+	c.SetConstants(r.constants)
+	if _, err := c.Compile(program); err != nil {
+		return nil, fmt.Errorf("compiler error: %v", err)
+	}
+
+	// Update constants
+	r.constants = c.Bytecode().Constants
+
+	// Execution with persistent globals
+	bytecode := c.Bytecode()
+	v := vm.NewRegVMWithObjectGlobals(bytecode, r.globals)
+
+	if err := v.Run(); err != nil {
+		return nil, fmt.Errorf("runtime error: %v", err)
+	}
+
+	// Update globals for next execution
+	r.globals = v.GlobalsAsObjects()
+
+	return v.LastPoppedObject(), nil
+}
+
+// executeStack uses the stack-based VM for REPL execution
+func (r *REPL) executeStack(program *parser.Program) (objects.Object, error) {
 	// Compilation with persistent state
 	c := compiler.NewWithState(r.symbolTable, r.constants)
 	if err := c.Compile(program); err != nil {
@@ -394,6 +465,66 @@ func executeCode(code, sourcePath string) {
 		os.Exit(1)
 	}
 
+	if useStackVM {
+		executeCodeStack(program, sourcePath, code)
+	} else {
+		executeCodeRegister(program, sourcePath, code)
+	}
+}
+
+// executeCodeRegister uses the register-based VM
+func executeCodeRegister(program *parser.Program, sourcePath, code string) {
+	// Compilation
+	c := compiler.NewRegCompiler()
+	// Define preset global variables before compilation
+	argsGSymbol := c.SymbolTable().Define("argsG")
+	scriptPathGSymbol := c.SymbolTable().Define("scriptPathG")
+	c.SetSourceFile(sourcePath)
+	if _, err := c.Compile(program); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Create main module for exports
+	mainModule := &objects.Module{
+		Name:    sourcePath,
+		Exports: make(map[string]objects.Object),
+	}
+
+	// Prepare globals array with preset values
+	globals := make([]vm.Value, compiler.GlobalsSize)
+
+	// Set argsG - command line arguments as string array
+	argsElements := make([]objects.Object, len(os.Args))
+	for i, arg := range os.Args {
+		argsElements[i] = &objects.String{Value: arg}
+	}
+	globals[argsGSymbol.Index] = vm.NewObject(&objects.Array{Elements: argsElements})
+
+	// Set scriptPathG - script path
+	globals[scriptPathGSymbol.Index] = vm.NewObject(&objects.String{Value: sourcePath})
+
+	// Execution
+	bytecode := c.Bytecode()
+	v := vm.NewRegVMWithGlobals(bytecode, globals)
+	v.SetSourcePath(sourcePath)
+	v.SetCurrentModule(mainModule)
+
+	if err := v.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Runtime Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "\n%s", v.GetCallStack())
+		os.Exit(1)
+	}
+
+	// Print result if it's meaningful
+	result := v.LastPoppedObject()
+	if result != nil && result != objects.NULL {
+		fmt.Println(result.Inspect())
+	}
+}
+
+// executeCodeStack uses the stack-based VM
+func executeCodeStack(program *parser.Program, sourcePath, code string) {
 	// Compilation
 	c := compiler.New()
 	// Define preset global variables before compilation
