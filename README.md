@@ -398,32 +398,44 @@ go test ./...
 
 ## Performance
 
-Xxlang uses a register-based bytecode VM with tail call optimization.
+Xxlang uses a register-based bytecode VM with tail call optimization, achieving significant performance improvements over traditional stack-based VMs.
+
+### Register VM vs Stack VM
+
+| Benchmark | Stack VM | Register VM | Speedup |
+|-----------|----------|-------------|---------|
+| Fibonacci(15) | 971 µs | 52 µs | **18.6x** |
+| Factorial | 400 µs | 52 µs | **7.7x** |
+| Function Calls | 534 µs | 78 µs | **6.8x** |
+| Loop(1000) | 687 µs | 267 µs | **2.6x** |
 
 ### fib(35) Benchmark Comparison
 
 | Language | Time | Relative to Go |
 |----------|------|----------------|
-| **Go** | **52.6 ms** | 1x (baseline) |
-| Python | 2,739 ms | 52x slower |
-| Xxlang | 6,227 ms | 118x slower |
+| **Go** | **52.5 ms** | 1x (baseline) |
+| Python | 2,706 ms | 52x slower |
+| Xxlang | 6,180 ms | 118x slower |
 
 ### fib(30) Benchmark Comparison
 
 | Language | Time | Relative to Go |
 |----------|------|----------------|
-| **Go** | **4.7 ms** | 1x (baseline) |
-| Python | 248 ms | 53x slower |
-| Xxlang | 570 ms | 121x slower |
+| **Go** | **4.8 ms** | 1x (baseline) |
+| Python | 247 ms | 51x slower |
+| Xxlang | 559 ms | 116x slower |
 
 ### With Tail Call Optimization
 
 | Language | fib(35) TCO | Relative to Go |
 |----------|-------------|----------------|
 | **Go (iterative)** | **~0.025 ms** | 1x |
-| Xxlang TCO | 0.015 ms | ~0.6x |
+| Xxlang TCO | 0.013 ms | ~0.5x |
 
-**Key insight**: Algorithm choice matters more than language. Using TCO, Xxlang achieves **400,000x** speedup over naive recursion, and can even match or beat Go's iterative approach.
+**Key insights:**
+- Register VM provides **2-18x speedup** over stack-based VM
+- TCO makes recursion **400,000x faster** than naive approach
+- Xxlang TCO can **match or beat** Go's iterative implementation
 
 ### TCO Rules
 
