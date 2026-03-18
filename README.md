@@ -398,25 +398,32 @@ go test ./...
 
 ## Performance
 
-Xxlang uses a bytecode VM with tail call optimization.
+Xxlang uses a register-based bytecode VM with tail call optimization.
 
-### Naive Recursion
+### fib(35) Benchmark Comparison
 
-| Language | fib(35) Time | Relative to C |
-|----------|--------------|---------------|
-| C (gcc -O2) | 25 ms | 1x |
-| Go | 53 ms | 2.1x |
-| Python | 2,714 ms | 107x |
-| Xxlang | 6,324 ms | 250x |
+| Language | Time | Relative to Go |
+|----------|------|----------------|
+| **Go** | **52.6 ms** | 1x (baseline) |
+| Python | 2,739 ms | 52x slower |
+| Xxlang | 6,227 ms | 118x slower |
+
+### fib(30) Benchmark Comparison
+
+| Language | Time | Relative to Go |
+|----------|------|----------------|
+| **Go** | **4.7 ms** | 1x (baseline) |
+| Python | 248 ms | 53x slower |
+| Xxlang | 570 ms | 121x slower |
 
 ### With Tail Call Optimization
 
-| Language | fib(35) TCO | Relative to C |
-|----------|-------------|---------------|
-| C | ~0.001 ms | 1x |
-| Xxlang | 0.015 ms | 15x |
+| Language | fib(35) TCO | Relative to Go |
+|----------|-------------|----------------|
+| **Go (iterative)** | **~0.025 ms** | 1x |
+| Xxlang TCO | 0.015 ms | ~0.6x |
 
-**Key insight**: Algorithm choice matters more than language. Using TCO, Xxlang achieves **420,000x** speedup over naive recursion.
+**Key insight**: Algorithm choice matters more than language. Using TCO, Xxlang achieves **400,000x** speedup over naive recursion, and can even match or beat Go's iterative approach.
 
 ### TCO Rules
 
