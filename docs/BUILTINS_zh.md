@@ -31,8 +31,8 @@ Xxlang 提供预置的全局变量，在所有脚本中自动可用：
 // 示例：运行 `xxl script.xxl -- -port=8080 -verbose`
 // argsG 为：["xxl", "script.xxl", "--", "-port=8080", "-verbose"]
 
-println("参数：", argsG)
-println("第一个参数：", argsG[0])
+pln("参数：", argsG)
+pln("第一个参数：", argsG[0])
 ```
 
 ### scriptPathG
@@ -43,10 +43,10 @@ println("第一个参数：", argsG[0])
 - 空字符串（REPL 模式或嵌入式运行时）
 
 ```xxl
-println("脚本路径：", scriptPathG)
+pln("脚本路径：", scriptPathG)
 
 if (scriptPathG == "") {
-    println("运行在 REPL 或嵌入式模式")
+    pln("运行在 REPL 或嵌入式模式")
 }
 ```
 
@@ -58,9 +58,9 @@ var port = getSwitch(argsG, "-port=", "8080")
 var host = getSwitch(argsG, "-host=", "localhost")
 var verbose = includes(argsG, "-verbose")
 
-println("端口：", port)
-println("主机：", host)
-println("详细模式：", verbose)
+pln("端口：", port)
+pln("主机：", host)
+pln("详细模式：", verbose)
 ```
 
 ---
@@ -548,7 +548,7 @@ var debug = getSwitch(argsG, "-debug=", "false")    // "false"（未找到）
 // 检查标志型参数（前缀后无值）
 var hasVerbose = getSwitch(argsG, "-verbose", "")   // ""（找到了，但没有值）
 if (hasVerbose == "" && includes(argsG, "-verbose")) {
-    println("详细模式已启用")
+    pln("详细模式已启用")
 }
 ```
 
@@ -622,7 +622,7 @@ loadPlugin("./myplugin.so")
 var arr = [1, 2, 3]
 var arrCopy = copy(arr)
 arrCopy[0] = 99
-println(arr[0])     // 1 (原数组不变)
+pln(arr[0])     // 1 (原数组不变)
 
 var map = {"a": 1}
 var mapCopy = copy(map)
@@ -636,7 +636,7 @@ var mapCopy = copy(map)
 var nested = {"a": [1, 2, 3]}
 var cloned = clone(nested)
 cloned["a"][0] = 99
-println(nested["a"][0])  // 1 (原对象不变)
+pln(nested["a"][0])  // 1 (原对象不变)
 ```
 
 ### equals(a, b)
@@ -712,9 +712,9 @@ sha256("hello")  // "2cf24dba5fb0a30e26e83b2ac5b9e29e..."
 暂停执行指定的毫秒数。
 
 ```xxl
-println("开始...")
+pln("开始...")
 sleep(1000)  // 休眠1秒
-println("完成！")
+pln("完成！")
 ```
 
 ### now()
@@ -1120,7 +1120,7 @@ JSON 编解码。
 | `map(arr, fn)` | 映射元素 | `array.map([1, 2, 3], fn(x) { x * 2 })` |
 | `filter(arr, fn)` | 过滤元素 | `array.filter([1, 2, 3], fn(x) { x > 1 })` |
 | `reduce(arr, fn, init)` | 归约元素 | `array.reduce([1, 2, 3], fn(a, b) { a + b }, 0)` |
-| `forEach(arr, fn)` | 遍历元素 | `array.forEach([1, 2, 3], fn(x) { println(x) })` |
+| `forEach(arr, fn)` | 遍历元素 | `array.forEach([1, 2, 3], fn(x) { pln(x) })` |
 
 ### collections
 

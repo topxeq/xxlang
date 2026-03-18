@@ -205,11 +205,11 @@ var name = "global"
 
 func shadowExample() {
     var name = "local"     // Shadows global 'name'
-    println(name)          // Prints "local"
+    pln(name)          // Prints "local"
 }
 
 shadowExample()
-println(name)              // Prints "global" (unchanged)
+pln(name)              // Prints "global" (unchanged)
 ```
 
 Function parameters also shadow outer variables:
@@ -221,8 +221,8 @@ func paramShadow(x) {      // Parameter shadows global 'x'
     return x
 }
 
-println(paramShadow("arg"))  // "arg"
-println(x)                   // "global" (unchanged)
+pln(paramShadow("arg"))  // "arg"
+pln(x)                   // "global" (unchanged)
 ```
 
 ### Nested Functions and Closures
@@ -240,7 +240,7 @@ func outer() {
     return inner()
 }
 
-println(outer())  // "Hello"
+pln(outer())  // "Hello"
 ```
 
 Inner local variables shadow outer variables:
@@ -257,7 +257,7 @@ func outer() {
     return inner() + " " + x
 }
 
-println(outer())  // "inner outer"
+pln(outer())  // "inner outer"
 ```
 
 ### Closures
@@ -277,12 +277,12 @@ func makeCounter() {
 }
 
 var c1 = makeCounter()
-println(c1())  // 1
-println(c1())  // 2
-println(c1())  // 3
+pln(c1())  // 1
+pln(c1())  // 2
+pln(c1())  // 3
 
 var c2 = makeCounter()  // New closure, new captured variable
-println(c2())  // 1 (independent from c1)
+pln(c2())  // 1 (independent from c1)
 ```
 
 ### Important: Multiple Closures Sharing Variables
@@ -309,7 +309,7 @@ func createObject() {
 
 var obj = createObject()
 obj["set"]("updated")
-println(obj["get"]())  // "initial" (NOT "updated" as expected!)
+pln(obj["get"]())  // "initial" (NOT "updated" as expected!)
 ```
 
 **Pattern 2: Multiple closures in an array**
@@ -325,8 +325,8 @@ func createCounters() {
 }
 
 var counters = createCounters()
-println(counters[0]())  // 1
-println(counters[1]())  // 0 (NOT 1 as expected!)
+pln(counters[0]())  // 1
+pln(counters[1]())  // 0 (NOT 1 as expected!)
 ```
 
 #### Workaround: Use a Map as Shared State
@@ -349,7 +349,7 @@ func createObject() {
 
 var obj = createObject()
 obj["set"]("updated")
-println(obj["get"]())  // "updated" ✓ Works correctly!
+pln(obj["get"]())  // "updated" ✓ Works correctly!
 ```
 
 #### Pattern Comparison Table
@@ -368,11 +368,11 @@ Local variables can shadow built-in functions:
 ```xxl
 func example() {
     var len = 100       // Shadows built-in len()
-    println(len)        // 100
+    pln(len)        // 100
 }
 
 example()
-println(len([1,2,3]))   // 3 (built-in still works outside)
+pln(len([1,2,3]))   // 3 (built-in still works outside)
 ```
 
 ### Scope Resolution Summary
@@ -386,12 +386,12 @@ func outer() {
 
     func inner() {
         var a = "inner local"  // Shadows outer's a
-        println(a)              // "inner local"
-        println(b)              // "outer only" (captured)
+        pln(a)              // "inner local"
+        pln(b)              // "outer only" (captured)
     }
 
     inner()
-    println(a)              // "outer local"
+    pln(a)              // "outer local"
 }
 ```
 
@@ -487,7 +487,7 @@ if (condition1) {
 ```xxl
 var i = 0
 while (i < 5) {
-    println(i)
+    pln(i)
     i++
 }
 ```
@@ -497,17 +497,17 @@ while (i < 5) {
 ```xxl
 // C-style for loop
 for (var i = 0; i < 5; i++) {
-    println(i)
+    pln(i)
 }
 
 // For-in loop (arrays)
 for (item in [1, 2, 3]) {
-    println(item)
+    pln(item)
 }
 
 // For-in loop (maps)
 for (key, value in {"a": 1, "b": 2}) {
-    println(key + ": " + value)
+    pln(key + ": " + value)
 }
 ```
 
@@ -521,7 +521,7 @@ for (var i = 0; i < 10; i++) {
     if (i % 2 == 0) {
         continue   // Skip to next iteration
     }
-    println(i)
+    pln(i)
 }
 ```
 
@@ -530,11 +530,11 @@ for (var i = 0; i < 10; i++) {
 ```xxl
 switch (value) {
     case 1:
-        println("one")
+        pln("one")
     case 2:
-        println("two")
+        pln("two")
     default:
-        println("other")
+        pln("other")
 }
 ```
 
@@ -547,7 +547,7 @@ func add(a, b) {
     return a + b
 }
 
-println(add(3, 4))  // 7
+pln(add(3, 4))  // 7
 ```
 
 ### Return Statement
@@ -575,9 +575,9 @@ func makeCounter() {
 }
 
 var counter = makeCounter()
-println(counter())  // 1
-println(counter())  // 2
-println(counter())  // 3
+pln(counter())  // 1
+pln(counter())  // 2
+pln(counter())  // 3
 ```
 
 > 📘 **See [Variable Scope](#variable-scope) for detailed closure behavior, including important notes about multiple closures sharing variables.**
@@ -600,7 +600,7 @@ func fib(n) {
     return fib(n - 1) + fib(n - 2)
 }
 
-println(fib(10))  // 55
+pln(fib(10))  // 55
 ```
 
 ### Tail Call Optimization
@@ -634,9 +634,9 @@ func fibHelper(n, a, b) {
     return fibHelper(n - 1, b, a + b)  // TCO applies
 }
 
-println(sumTail(10000, 0))     // Works without stack overflow!
-println(factorial(1000, 1))    // Works!
-println(fibHelper(10000, 0, 1)) // Works!
+pln(sumTail(10000, 0))     // Works without stack overflow!
+pln(factorial(1000, 1))    // Works!
+pln(fibHelper(10000, 0, 1)) // Works!
 ```
 
 #### When TCO Does NOT Apply
@@ -711,8 +711,8 @@ var arr3 = ["a", "b", "c"]
 
 ```xxl
 var arr = [10, 20, 30]
-println(arr[0])   // 10
-println(arr[1])   // 20
+pln(arr[0])   // 10
+pln(arr[1])   // 20
 ```
 
 ### Modification
@@ -766,8 +766,8 @@ var map2 = {}                        // Empty map
 
 ```xxl
 var person = {"name": "Alice", "age": 30}
-println(person["name"])   // "Alice"
-println(person["age"])    // 30
+pln(person["name"])   // "Alice"
+pln(person["age"])    // 30
 ```
 
 ### Modification
@@ -823,7 +823,7 @@ class Point {
 var p1 = new Point(1, 2)
 var p2 = new Point(3, 4)
 var p3 = p1.add(p2)
-println(p3.toString())  // "(4, 6)"
+pln(p3.toString())  // "(4, 6)"
 ```
 
 ### Inheritance
@@ -850,7 +850,7 @@ class Dog : Animal {
 }
 
 var dog = new Dog("Rex")
-println(dog.speak())  // "Rex says Woof!"
+pln(dog.speak())  // "Rex says Woof!"
 ```
 
 ### Super Calls
@@ -876,7 +876,7 @@ class Child : Parent {
 ```xxl
 // Import standard library
 import "math"
-println(math.sqrt(16))
+pln(math.sqrt(16))
 
 // Import with alias
 import "io" as io
@@ -884,18 +884,18 @@ io.println("Hello")
 
 // Import specific functions
 import "string" { upper, lower }
-println(upper("hello"))
+pln(upper("hello"))
 
 // Import from relative path
 import * as utils from "./utils"
-println(utils.add(5, 3))
+pln(utils.add(5, 3))
 
 // Import from absolute path
 import * as math from "/home/user/project/math.xxl"
 
 // Import WASM plugin by path
 import * as fib from "./plugins/fib.wasm"
-println(fib.fast(50))
+pln(fib.fast(50))
 ```
 
 ### Export Syntax

@@ -82,7 +82,7 @@ func main() {
     interp.SetGlobal("active", true)
 
     // Use in Xxlang
-    interp.Eval(`println(name + " has " + count + " items")`)
+    interp.Eval(`pln(name + " has " + count + " items")`)
     // Output: Alice has 42 items
 }
 ```
@@ -188,7 +188,7 @@ if err != nil {
 
 // Use in interpreter
 interp.SetGlobal("numbers", obj)
-interp.Eval(`for (n in numbers) { println(n) }`)
+interp.Eval(`for (n in numbers) { pln(n) }`)
 ```
 
 ## Calling Xxlang Functions from Go
@@ -269,7 +269,7 @@ interp := interpreter.New(interpreter.WithStdlib())
 // Now Xxlang can import stdlib modules
 interp.Eval(`
     import "math"
-    println(math.sqrt(16))
+    pln(math.sqrt(16))
 `)
 ```
 
@@ -303,7 +303,7 @@ func main() {
     // 2. Pass values from Go
     fmt.Println("2. Pass values from Go:")
     interp.SetGlobal("x", 42)
-    interp.Eval("println(x)")
+    interp.Eval("pln(x)")
     fmt.Println()
 
     // 3. Get values back

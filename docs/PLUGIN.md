@@ -26,7 +26,7 @@ asc fib.ts -o fib.wasm --optimize --runtime stub --initialMemory 2
 ```xxl
 // Load and use directly in Xxlang
 var fib = loadPlugin("./fib.wasm")
-println(fib.fast(50))
+pln(fib.fast(50))
 ```
 
 **From Go:**
@@ -36,7 +36,7 @@ loader := plugin.NewLoader()
 p, err := loader.LoadPath("./fib.wasm")
 plugin.Register(p)
 
-interp.Eval(`import "plugin/fib"; println(fib.fast(50))`)
+interp.Eval(`import "plugin/fib"; pln(fib.fast(50))`)
 ```
 
 ### Output Files
@@ -60,8 +60,8 @@ All languages produce a single `.wasm` file:
 var fib = loadPlugin("./plugins/fib.wasm")
 
 // Use the plugin
-println(fib.version)
-println(fib.fast(50))
+pln(fib.version)
+pln(fib.fast(50))
 ```
 
 **Method 2: Load from Go code**
@@ -115,18 +115,18 @@ Data types:
 // Load plugin by file path
 var fib = loadPlugin("./plugins/fib.wasm")
 
-println(fib.version)           // "1.0.0-as"
-println(fib.fast(50))          // 12586269025
-println(fib.matrix(92))        // 7540113804746346429
-println(fib.isFib(13))         // true
-println(fib.range_(10))        // [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]
+pln(fib.version)           // "1.0.0-as"
+pln(fib.fast(50))          // 12586269025
+pln(fib.matrix(92))        // 7540113804746346429
+pln(fib.isFib(13))         // true
+pln(fib.range_(10))        // [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]
 ```
 
 **Or import with search paths (requires setup in Go):**
 
 ```xxl
 import "plugin/fib"
-println(fib.fast(50))
+pln(fib.fast(50))
 ```
 
 ---
@@ -171,7 +171,7 @@ import _ "github.com/topxeq/xxlang/examples/fib_plugin/plugin"
 
 func main() {
     interp := interpreter.New(interpreter.WithStdlib())
-    interp.Eval(`import "plugin/fib"; println(fib.fast(50))`)
+    interp.Eval(`import "plugin/fib"; pln(fib.fast(50))`)
 }
 ```
 

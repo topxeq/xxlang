@@ -34,9 +34,9 @@ Input/output operations for reading, writing, and console interaction.
 Prints arguments without a trailing newline.
 
 ```xxl
-print("Hello")
-print(" ")
-print("World")
+io.print("Hello")
+io.print(" ")
+io.print("World")
 // Output: Hello World
 ```
 
@@ -44,8 +44,8 @@ print("World")
 Prints arguments separated by spaces, followed by a newline.
 
 ```xxl
-println("Hello", "World")  // "Hello World\n"
-println(42, "is the answer")  // "42 is the answer\n"
+io.println("Hello", "World")  // "Hello World\n"
+io.println(42, "is the answer")  // "42 is the answer\n"
 ```
 
 #### printf(format, args...)
@@ -60,9 +60,9 @@ printf("Pi: %.2f\n", 3.14159)  // "Pi: 3.14"
 Reads a line from stdin.
 
 ```xxl
-print("Enter name: ")
-var name = readLine()
-println("Hello, " + name)
+io.print("Enter name: ")
+var name = io.readLine()
+io.println("Hello, " + name)
 ```
 
 ### File Functions
@@ -71,15 +71,15 @@ println("Hello, " + name)
 Reads entire file content as string.
 
 ```xxl
-var content = readFile("data.txt")
-println(content)
+var content = io.readFile("data.txt")
+io.println(content)
 ```
 
 #### writeFile(path, content)
 Writes string content to file.
 
 ```xxl
-writeFile("output.txt", "Hello, File!")
+io.writeFile("output.txt", "Hello, File!")
 ```
 
 #### appendFile(path, content)
@@ -93,8 +93,8 @@ appendFile("log.txt", "New log entry\n")
 Returns true if file or directory exists.
 
 ```xxl
-if (exists("config.json")) {
-    println("Config found")
+if (io.exists("config.json")) {
+    io.println("Config found")
 }
 ```
 
@@ -118,7 +118,7 @@ mkdir("path/to/directory")
 Returns current working directory.
 
 ```xxl
-println(cwd())  // "/home/user/project"
+io.println(io.cwd())  // "/home/user/project"
 ```
 
 #### exit(code)
@@ -148,8 +148,8 @@ setEnv("DEBUG", "true")
 Returns command-line arguments as array.
 
 ```xxl
-var args = args()
-println(args[0])  // Program name
+var args = io.args()
+io.println(args[0])  // Program name
 ```
 
 ---
@@ -172,7 +172,7 @@ Returns an empty map if no configuration file is found.
 ```xxl
 import "os"
 var cfg = os.getConfigObj()
-println(cfg["cloudUrlBase"])
+pln(cfg["cloudUrlBase"])
 
 // Example config file (~/.xxl/settings.json):
 // {
@@ -195,7 +195,7 @@ Returns `null` if the file is not found.
 import "os"
 var token = os.getConfigStr("api_token")
 if (token != null) {
-    println("Token found: " + token)
+    pln("Token found: " + token)
 }
 ```
 
@@ -208,7 +208,7 @@ os.setConfigStr("api_token", "my-secret-token")
 
 // Later, read it back
 var token = os.getConfigStr("api_token")
-println(token)  // "my-secret-token"
+pln(token)  // "my-secret-token"
 ```
 
 ### System Information
@@ -217,42 +217,42 @@ println(token)  // "my-secret-token"
 Returns the current operating system name.
 
 ```xxl
-println(os.platform())  // "linux", "windows", "darwin"
+pln(os.platform())  // "linux", "windows", "darwin"
 ```
 
 #### arch()
 Returns the CPU architecture.
 
 ```xxl
-println(os.arch())  // "amd64", "arm64"
+pln(os.arch())  // "amd64", "arm64"
 ```
 
 #### hostname()
 Returns the system hostname.
 
 ```xxl
-println(os.hostname())
+pln(os.hostname())
 ```
 
 #### home()
 Returns the user's home directory.
 
 ```xxl
-println(os.home())  // "/home/user" or "C:\Users\user"
+pln(os.home())  // "/home/user" or "C:\Users\user"
 ```
 
 #### temp()
 Returns the system temporary directory.
 
 ```xxl
-println(os.temp())  // "/tmp" on Unix
+pln(os.temp())  // "/tmp" on Unix
 ```
 
 #### cpus()
 Returns the number of CPU cores.
 
 ```xxl
-println(os.cpus())  // 8
+pln(os.cpus())  // 8
 ```
 
 ### File System Operations
@@ -289,7 +289,7 @@ os.ext("/path/to/file.txt")  // ".txt"
 Returns the absolute path.
 
 ```xxl
-println(os.abs("./file.txt"))  // "/current/dir/file.txt"
+pln(os.abs("./file.txt"))  // "/current/dir/file.txt"
 ```
 
 #### isAbs(path)
@@ -305,10 +305,10 @@ Returns file information as an array [name, size, isDir, modTime].
 
 ```xxl
 var info = os.stat("file.txt")
-println(info[0])  // name
-println(info[1])  // size in bytes
-println(info[2])  // is directory?
-println(info[3])  // modification time
+pln(info[0])  // name
+pln(info[1])  // size in bytes
+pln(info[2])  // is directory?
+pln(info[3])  // modification time
 ```
 
 #### isDir(path)
@@ -331,7 +331,7 @@ Returns array of directory entry names.
 ```xxl
 var files = os.listDir(".")
 for (f in files) {
-    println(f)
+    pln(f)
 }
 ```
 
@@ -370,8 +370,8 @@ Executes a shell command and returns [output, exitCode, error].
 
 ```xxl
 var result = os.exec("ls -la")
-println(result[0])  // output
-println(result[1])  // exit code
+pln(result[0])  // output
+pln(result[1])  // exit code
 ```
 
 #### shell(command)
@@ -379,7 +379,7 @@ Executes a command through the system shell.
 
 ```xxl
 var result = os.shell("echo hello")
-println(result[0])  // "hello\n"
+pln(result[0])  // "hello\n"
 ```
 
 ### Temporary Files
@@ -834,10 +834,10 @@ Parses JSON string to Xxlang value.
 
 ```xxl
 var data = parse('{"name": "Alice", "age": 30}')
-println(data["name"])  // "Alice"
+pln(data["name"])  // "Alice"
 
 var arr = parse('[1, 2, 3]')
-println(arr[0])  // 1
+pln(arr[0])  // 1
 ```
 
 #### stringify(value, indent)
@@ -845,9 +845,9 @@ Converts Xxlang value to JSON string.
 
 ```xxl
 var obj = {"name": "Alice", "age": 30}
-println(stringify(obj))        // {"name":"Alice","age":30}
-println(stringify(obj, "  "))  // Pretty printed with 2-space indent
-println(stringify(obj, 4))     // Pretty printed with 4-space indent
+pln(stringify(obj))        // {"name":"Alice","age":30}
+pln(stringify(obj, "  "))  // Pretty printed with 2-space indent
+pln(stringify(obj, 4))     // Pretty printed with 4-space indent
 ```
 
 #### encode(value)
@@ -1075,25 +1075,25 @@ Returns current time as a map with components.
 
 ```xxl
 var t = time.now()
-println(t["year"])     // 2026
-println(t["month"])    // 3 (March)
-println(t["day"])      // 14
-println(t["hour"])     // 20
-println(t["minute"])   // 30
-println(t["second"])   // 45
-println(t["nanosecond"])  // 123456789
+pln(t["year"])     // 2026
+pln(t["month"])    // 3 (March)
+pln(t["day"])      // 14
+pln(t["hour"])     // 20
+pln(t["minute"])   // 30
+pln(t["second"])   // 45
+pln(t["nanosecond"])  // 123456789
 ```
 
 #### year(), month(), day(), hour(), minute(), second()
 Returns current date/time component.
 
 ```xxl
-println(time.year())    // 2026
-println(time.month())   // 3
-println(time.day())     // 14
-println(time.hour())    // 20
-println(time.minute())  // 30
-println(time.second())  // 45
+pln(time.year())    // 2026
+pln(time.month())   // 3
+pln(time.day())     // 14
+pln(time.hour())    // 20
+pln(time.minute())  // 30
+pln(time.second())  // 45
 ```
 
 #### weekday()
@@ -1109,9 +1109,9 @@ var wd = time.weekday()  // e.g., 4 (Thursday)
 Formats current time using Go-style layout.
 
 ```xxl
-println(time.format("2006-01-02"))           // "2026-03-14"
-println(time.format("15:04:05"))             // "20:30:45"
-println(time.format("2006-01-02 15:04:05"))  // "2026-03-14 20:30:45"
+pln(time.format("2006-01-02"))           // "2026-03-14"
+pln(time.format("15:04:05"))             // "20:30:45"
+pln(time.format("2006-01-02 15:04:05"))  // "2026-03-14 20:30:45"
 ```
 
 #### formatUnix(timestamp, layout)
@@ -1119,7 +1119,7 @@ Formats a Unix timestamp.
 
 ```xxl
 var ts = time.unix()
-println(time.formatUnix(ts, "2006-01-02"))
+pln(time.formatUnix(ts, "2006-01-02"))
 ```
 
 #### parse(layout, value)
@@ -1135,9 +1135,9 @@ var ts = time.parse("2006-01-02", "2026-03-14")
 Pauses execution for specified milliseconds.
 
 ```xxl
-println("Starting...")
+pln("Starting...")
 time.sleep(1000)  // Sleep 1 second
-println("Done!")
+pln("Done!")
 ```
 
 #### sleepSec(seconds)
@@ -1178,7 +1178,7 @@ Returns milliseconds elapsed since given timestamp.
 var start = time.unixMs()
 // ... do some work ...
 var elapsed = time.since(start)
-println("Took " + elapsed.toStr() + " ms")
+pln("Took " + elapsed.toStr() + " ms")
 ```
 
 ### Calendar

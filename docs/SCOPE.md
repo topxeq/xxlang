@@ -44,11 +44,11 @@ var name = "global"
 
 func shadowExample() {
     var name = "local"     // Shadows global 'name'
-    println(name)          // Prints "local"
+    pln(name)          // Prints "local"
 }
 
 shadowExample()
-println(name)              // Prints "global" (unchanged)
+pln(name)              // Prints "global" (unchanged)
 ```
 
 Function parameters also shadow outer variables:
@@ -60,8 +60,8 @@ func paramShadow(x) {      // Parameter shadows global 'x'
     return x
 }
 
-println(paramShadow("arg"))  // "arg"
-println(x)                   // "global" (unchanged)
+pln(paramShadow("arg"))  // "arg"
+pln(x)                   // "global" (unchanged)
 ```
 
 ## Nested Functions and Closures
@@ -79,7 +79,7 @@ func outer() {
     return inner()
 }
 
-println(outer())  // "Hello"
+pln(outer())  // "Hello"
 ```
 
 Inner local variables shadow outer variables:
@@ -96,7 +96,7 @@ func outer() {
     return inner() + " " + x
 }
 
-println(outer())  // "inner outer"
+pln(outer())  // "inner outer"
 ```
 
 ## Closures
@@ -116,12 +116,12 @@ func makeCounter() {
 }
 
 var c1 = makeCounter()
-println(c1())  // 1
-println(c1())  // 2
-println(c1())  // 3
+pln(c1())  // 1
+pln(c1())  // 2
+pln(c1())  // 3
 
 var c2 = makeCounter()  // New closure, new captured variable
-println(c2())  // 1 (independent from c1)
+pln(c2())  // 1 (independent from c1)
 ```
 
 ## Important: Multiple Closures Sharing Variables
@@ -148,8 +148,10 @@ func createObject() {
 
 var obj = createObject()
 obj["set"]("updated")
-println(obj["get"]())  // "initial" (NOT "updated" as expected!)
+pln(obj["get"]())  // "initial" (NOT "updated" as expected!)
 ```
+
+**Reason**: The `set` and `get` closures each capture their own independent copy of `value`, they don't share the same reference.
 
 **Pattern 2: Multiple closures in an array**
 
@@ -164,9 +166,11 @@ func createCounters() {
 }
 
 var counters = createCounters()
-println(counters[0]())  // 1
-println(counters[1]())  // 0 (NOT 1 as expected!)
+pln(counters[0]())  // 1
+pln(counters[1]())  // 0 (NOT 1 as expected!)
 ```
+
+**Reason**: Each closure captures its own independent copy of `count`, they don't share the same reference.
 
 ### Workaround: Use a Map as Shared State
 
@@ -188,7 +192,7 @@ func createObject() {
 
 var obj = createObject()
 obj["set"]("updated")
-println(obj["get"]())  // "updated" Works correctly!
+pln(obj["get"]())  // "updated" Works correctly!
 ```
 
 ### Pattern Comparison Table
@@ -215,8 +219,8 @@ func makeCounter() {
 }
 
 var counter = makeCounter()
-println(counter())  // 1
-println(counter())  // 2
+pln(counter())  // 1
+pln(counter())  // 2
 ```
 
 #### Pattern Requiring Map: Multiple Related Closures
@@ -245,9 +249,9 @@ func createBankAccount(initialBalance) {
 }
 
 var account = createBankAccount(100)
-println(account["deposit"](50))    // 150
-println(account["withdraw"](30))   // 120
-println(account["getBalance"]())   // 120
+pln(account["deposit"](50))    // 150
+pln(account["withdraw"](30))   // 120
+pln(account["getBalance"]())   // 120
 ```
 
 ## Built-in Function Shadowing
@@ -257,11 +261,11 @@ Local variables can shadow built-in functions:
 ```xxl
 func example() {
     var len = 100       // Shadows built-in len()
-    println(len)        // 100
+    pln(len)        // 100
 }
 
 example()
-println(len([1,2,3]))   // 3 (built-in still works outside)
+pln(len([1,2,3]))   // 3 (built-in still works outside)
 ```
 
 ## Scope Resolution Summary
@@ -275,12 +279,12 @@ func outer() {
 
     func inner() {
         var a = "inner local"  // Shadows outer's a
-        println(a)              // "inner local"
-        println(b)              // "outer only" (captured)
+        pln(a)              // "inner local"
+        pln(b)              // "outer only" (captured)
     }
 
     inner()
-    println(a)              // "outer local"
+    pln(a)              // "outer local"
 }
 ```
 

@@ -44,11 +44,11 @@ var name = "global"
 
 func shadowExample() {
     var name = "local"     // 遮蔽全局的 'name'
-    println(name)          // 输出 "local"
+    pln(name)          // 输出 "local"
 }
 
 shadowExample()
-println(name)              // 输出 "global"（未改变）
+pln(name)              // 输出 "global"（未改变）
 ```
 
 函数参数也会遮蔽外层同名变量：
@@ -60,8 +60,8 @@ func paramShadow(x) {      // 参数遮蔽全局的 'x'
     return x
 }
 
-println(paramShadow("arg"))  // "arg"
-println(x)                   // "global"（未改变）
+pln(paramShadow("arg"))  // "arg"
+pln(x)                   // "global"（未改变）
 ```
 
 ## 嵌套函数与闭包
@@ -79,7 +79,7 @@ func outer() {
     return inner()
 }
 
-println(outer())  // "Hello"
+pln(outer())  // "Hello"
 ```
 
 内层的局部变量会遮蔽外层变量：
@@ -96,7 +96,7 @@ func outer() {
     return inner() + " " + x
 }
 
-println(outer())  // "inner outer"
+pln(outer())  // "inner outer"
 ```
 
 ## 闭包
@@ -116,12 +116,12 @@ func makeCounter() {
 }
 
 var c1 = makeCounter()
-println(c1())  // 1
-println(c1())  // 2
-println(c1())  // 3
+pln(c1())  // 1
+pln(c1())  // 2
+pln(c1())  // 3
 
 var c2 = makeCounter()  // 新闭包，新的捕获变量
-println(c2())  // 1（与 c1 独立）
+pln(c2())  // 1（与 c1 独立）
 ```
 
 ## ⚠️ 重要：多个闭包共享变量的情况
@@ -148,7 +148,7 @@ func createObject() {
 
 var obj = createObject()
 obj["set"]("updated")
-println(obj["get"]())  // "initial"（不是预期的 "updated"！）
+pln(obj["get"]())  // "initial"（不是预期的 "updated"！）
 ```
 
 **原因**：`set` 和 `get` 两个闭包各自捕获了 `value` 变量的独立副本，它们之间不共享。
@@ -166,8 +166,8 @@ func createCounters() {
 }
 
 var counters = createCounters()
-println(counters[0]())  // 1
-println(counters[1]())  // 0（不是预期的 1！）
+pln(counters[0]())  // 1
+pln(counters[1]())  // 0（不是预期的 1！）
 ```
 
 ### 解决方案：使用 Map 作为共享状态
@@ -190,7 +190,7 @@ func createObject() {
 
 var obj = createObject()
 obj["set"]("updated")
-println(obj["get"]())  // "updated" ✓ 正确！
+pln(obj["get"]())  // "updated" ✓ 正确！
 ```
 
 ### 模式对比表
@@ -217,8 +217,8 @@ func makeCounter() {
 }
 
 var counter = makeCounter()
-println(counter())  // 1
-println(counter())  // 2
+pln(counter())  // 1
+pln(counter())  // 2
 ```
 
 #### 需要使用 map 的模式：多个相关闭包
@@ -247,9 +247,9 @@ func createBankAccount(initialBalance) {
 }
 
 var account = createBankAccount(100)
-println(account["deposit"](50))    // 150
-println(account["withdraw"](30))   // 120
-println(account["getBalance"]())   // 120
+pln(account["deposit"](50))    // 150
+pln(account["withdraw"](30))   // 120
+pln(account["getBalance"]())   // 120
 ```
 
 ## 内置函数遮蔽
@@ -259,11 +259,11 @@ println(account["getBalance"]())   // 120
 ```xxl
 func example() {
     var len = 100       // 遮蔽内置的 len()
-    println(len)        // 100
+    pln(len)        // 100
 }
 
 example()
-println(len([1,2,3]))   // 3（内置函数在外部仍然正常）
+pln(len([1,2,3]))   // 3（内置函数在外部仍然正常）
 ```
 
 ## 作用域解析总结
@@ -277,12 +277,12 @@ func outer() {
 
     func inner() {
         var a = "inner local"  // 遮蔽外层的 a
-        println(a)              // "inner local"
-        println(b)              // "outer only"（捕获的外层变量）
+        pln(a)              // "inner local"
+        pln(b)              // "outer only"（捕获的外层变量）
     }
 
     inner()
-    println(a)              // "outer local"
+    pln(a)              // "outer local"
 }
 ```
 

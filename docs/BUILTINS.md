@@ -31,8 +31,8 @@ A string array containing all command line arguments (including the program name
 // Example: running `xxl script.xxl -- -port=8080 -verbose`
 // argsG would be: ["xxl", "script.xxl", "--", "-port=8080", "-verbose"]
 
-println("Arguments: ", argsG)
-println("First arg: ", argsG[0])
+pln("Arguments: ", argsG)
+pln("First arg: ", argsG[0])
 ```
 
 ### scriptPathG
@@ -43,10 +43,10 @@ The path of the currently executing script. This can be:
 - An empty string when in REPL mode or embedded execution
 
 ```xxl
-println("Script path: ", scriptPathG)
+pln("Script path: ", scriptPathG)
 
 if (scriptPathG == "") {
-    println("Running in REPL or embedded mode")
+    pln("Running in REPL or embedded mode")
 }
 ```
 
@@ -58,9 +58,9 @@ var port = getSwitch(argsG, "-port=", "8080")
 var host = getSwitch(argsG, "-host=", "localhost")
 var verbose = includes(argsG, "-verbose")
 
-println("Port: ", port)
-println("Host: ", host)
-println("Verbose: ", verbose)
+pln("Port: ", port)
+pln("Host: ", host)
+pln("Verbose: ", verbose)
 ```
 
 ---
@@ -548,7 +548,7 @@ var debug = getSwitch(argsG, "-debug=", "false")   // "false" (not found)
 // Check for flag-style arguments (no value after prefix)
 var hasVerbose = getSwitch(argsG, "-verbose", "")  // "" (found, but no value)
 if (hasVerbose == "" && includes(argsG, "-verbose")) {
-    println("Verbose mode enabled")
+    pln("Verbose mode enabled")
 }
 ```
 
@@ -622,7 +622,7 @@ Creates a shallow copy of an array or map.
 var arr = [1, 2, 3]
 var arrCopy = copy(arr)
 arrCopy[0] = 99
-println(arr[0])     // 1 (original unchanged)
+pln(arr[0])     // 1 (original unchanged)
 
 var map = {"a": 1}
 var mapCopy = copy(map)
@@ -636,7 +636,7 @@ Creates a deep copy of an array or map.
 var nested = {"a": [1, 2, 3]}
 var cloned = clone(nested)
 cloned["a"][0] = 99
-println(nested["a"][0])  // 1 (original unchanged)
+pln(nested["a"][0])  // 1 (original unchanged)
 ```
 
 ### equals(a, b)
@@ -712,9 +712,9 @@ sha256("hello")  // "2cf24dba5fb0a30e26e83b2ac5b9e29e..."
 Pauses execution for specified milliseconds.
 
 ```xxl
-println("Starting...")
+pln("Starting...")
 sleep(1000)  // Sleep 1 second
-println("Done!")
+pln("Done!")
 ```
 
 ### now()
@@ -1120,7 +1120,7 @@ Extended array utilities.
 | `map(arr, fn)` | Map elements | `array.map([1, 2, 3], fn(x) { x * 2 })` |
 | `filter(arr, fn)` | Filter elements | `array.filter([1, 2, 3], fn(x) { x > 1 })` |
 | `reduce(arr, fn, init)` | Reduce elements | `array.reduce([1, 2, 3], fn(a, b) { a + b }, 0)` |
-| `forEach(arr, fn)` | Iterate elements | `array.forEach([1, 2, 3], fn(x) { println(x) })` |
+| `forEach(arr, fn)` | Iterate elements | `array.forEach([1, 2, 3], fn(x) { pln(x) })` |
 
 ### collections
 

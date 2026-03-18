@@ -1,6 +1,11 @@
 # Xxlang (现象语言)
+![Coverage](https://img.shields.io/badge/Coverage-81.8%25-brightgreen)
 
 [English](README.md)
+
+[![Go Reference](https://pkg.go.dev/badge/github.com/topxeq/xxlang.svg)](https://pkg.go.dev/github.com/topxeq/xxlang)
+[![Go Report Card](https://goreportcard.com/badge/github.com/topxeq/xxlang)](https://goreportcard.com/report/github.com/topxeq/xxlang)
+[![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 Xxlang 是一个基于字节码虚拟机的脚本语言，使用 Go 语言实现。
 
@@ -170,7 +175,7 @@ xxl -cloud basic.xxl
 ```xxl
 import "os"
 var cfg = os.getConfigObj()
-println(cfg["cloudUrlBase"])
+pln(cfg["cloudUrlBase"])
 ```
 
 ## 字节码编译
@@ -262,8 +267,27 @@ func makeCounter() {
 }
 
 var counter = makeCounter()
-println(counter())  // 1
-println(counter())  // 2
+pln(counter())  // 1
+pln(counter())  // 2
+```
+
+### 类与面向对象
+
+```xxl
+class Point {
+    func init(x, y) {
+        this.x = x
+        this.y = y
+    }
+
+    func add(other) {
+        return new Point(this.x + other.x, this.y + other.y)
+    }
+}
+
+var p1 = new Point(1, 2)
+var p2 = new Point(3, 4)
+var p3 = p1.add(p2)
 ```
 
 ### 控制流
@@ -271,28 +295,67 @@ println(counter())  // 2
 ```xxl
 // 条件语句
 if (x > 0) {
-    println("正数")
+    pln("正数")
 } else {
-    println("非正数")
+    pln("非正数")
 }
 
 // while 循环
 var i = 0
 while (i < 5) {
-    println(i)
+    pln(i)
     i = i + 1
 }
 
 // for 循环
 for (var j = 0; j < 5; j = j + 1) {
-    println(j)
+    pln(j)
 }
 
 // for-in 循环
 for (item in [1, 2, 3]) {
-    println(item)
+    pln(item)
 }
 ```
+
+### 模块
+
+```xxl
+// 导入标准库
+import "math"
+pln(math.sqrt(16))
+
+// 导入特定函数
+import "io" { readFile, writeFile }
+```
+
+### 插件系统
+
+编写原生 Go 插件实现高性能操作：
+
+```xxl
+// 导入 Go 插件
+import "plugin/fib"
+
+// 从 Xxlang 调用 Go 函数
+pln(fib.fast(50))      // 12586269025
+pln(fib.matrix(92))    // int64 范围内最大的斐波那契数
+```
+
+**两种插件类型：**
+
+| 类型 | Windows | 需要 CGO | 运行时加载 |
+|------|---------|----------|------------|
+| 静态插件 | ✅ | ❌ | ❌ |
+| WASM 插件 | ✅ | ❌ | ✅ |
+
+| 方式 | fib(35) 耗时 | 性能提升 |
+|------|-------------|----------|
+| Xxlang 朴素递归 | 6.5 秒 | 基准 |
+| Xxlang 尾递归 | 136 µs | 47,000x |
+| Go 插件 | **35 µs** | **180,000x** |
+
+详见 [插件系统](docs/PLUGIN.md)。
 
 ### 内置函数
 
@@ -302,32 +365,32 @@ for (item in [1, 2, 3]) {
 
 ```xxl
 // 字符串函数
-println(upper("hello"))           // HELLO
-println(lower("HELLO"))           // hello
-println(substr("hello", 1, 4))    // ell
-println(split("a,b,c", ","))      // [a, b, c]
-println(containsStr("hello", "ell"))  // true
+pln(upper("hello"))           // HELLO
+pln(lower("HELLO"))           // hello
+pln(substr("hello", 1, 4))    // ell
+pln(split("a,b,c", ","))      // [a, b, c]
+pln(containsStr("hello", "ell"))  // true
 
 // 数学函数
-println(sqrt(16))    // 4
-println(pow(2, 10))  // 1024
-println(abs(-42))    // 42
-println(floor(3.7))  // 3
-println(ceil(3.2))   // 4
+pln(sqrt(16))    // 4
+pln(pow(2, 10))  // 1024
+pln(abs(-42))    // 42
+pln(floor(3.7))  // 3
+pln(ceil(3.2))   // 4
 
 // 数组函数
 var arr = [3, 1, 4, 1, 5]
-println(sort(arr))      // [1, 1, 3, 4, 5]
-println(sum(arr))       // 14
-println(reverse(arr))   // [5, 1, 4, 1, 3]
-println(first(arr))     // 3
-println(last(arr))      // 5
+pln(sort(arr))      // [1, 1, 3, 4, 5]
+pln(sum(arr))       // 14
+pln(reverse(arr))   // [5, 1, 4, 1, 3]
+pln(first(arr))     // 3
+pln(last(arr))      // 5
 
 // 映射函数
 var m = {"a": 1, "b": 2}
-println(keys(m))        // [a, b]
-println(values(m))      // [1, 2]
-println(hasKey(m, "a")) // true
+pln(keys(m))        // [a, b]
+pln(values(m))      // [1, 2]
+pln(hasKey(m, "a")) // true
 ```
 
 ## REPL 命令
@@ -416,7 +479,7 @@ func fibTail(n, a, b) {
 
 func fib(n) { return fibTail(n, 0, 1) }
 
-println(fib(10000))  // 瞬间完成，不会栈溢出！
+pln(fib(10000))  // 瞬间完成，不会栈溢出！
 ```
 
 **性能提升**：使用 TCO 后，fib(35) 性能提升约 **420,000 倍**！
@@ -455,8 +518,8 @@ interp.Eval("goFib(100000)")  // 微秒级，而非秒级！
 import "plugin/fib"
 
 // 从 Xxlang 调用 Go 函数
-println(fib.fast(50))      // 12586269025
-println(fib.matrix(92))    // int64 范围内最大的斐波那契数
+pln(fib.fast(50))      // 12586269025
+pln(fib.matrix(92))    // int64 范围内最大的斐波那契数
 ```
 
 **两种插件类型：**
@@ -476,17 +539,17 @@ println(fib.matrix(92))    // int64 范围内最大的斐波那契数
 
 ## 内置函数列表
 
-Xxlang 提供 41 个内置函数：
+Xxlang 提供 40+ 个内置函数：
 
 | 类别 | 函数 |
 |------|------|
-| 通用 | `len`, `typeOf`, `print`, `println` |
+| 输出 | `pln`, `pr`, `pl`, `prf` |
+| 通用 | `len`, `typeOf` |
 | 字符串 | `substr`, `split`, `join`, `trim`, `upper`, `lower`, `containsStr`, `replace`, `startsWith`, `endsWith` |
 | 数学 | `abs`, `floor`, `ceil`, `sqrt`, `pow`, `min`, `max` |
 | 类型转换 | `int`, `float`, `string` |
 | 数组 | `push`, `pop`, `first`, `last`, `rest`, `concat`, `indexOf`, `containsArr`, `sort`, `sum`, `avg`, `reverse` |
 | 映射 | `keys`, `values`, `hasKey`, `delete` |
-| 迭代 | `range` |
 
 ## 许可证
 

@@ -34,9 +34,9 @@ io.println("你好，世界！")
 打印参数，不换行。
 
 ```xxl
-print("你好")
-print(" ")
-print("世界")
+io.print("你好")
+io.print(" ")
+io.print("世界")
 // 输出: 你好 世界
 ```
 
@@ -44,8 +44,8 @@ print("世界")
 打印参数，用空格分隔，末尾换行。
 
 ```xxl
-println("你好", "世界")  // "你好 世界\n"
-println(42, "是答案")     // "42 是答案\n"
+io.println("你好", "世界")  // "你好 世界\n"
+io.println(42, "是答案")     // "42 是答案\n"
 ```
 
 #### printf(format, args...)
@@ -60,9 +60,9 @@ printf("圆周率: %.2f\n", 3.14159)  // "圆周率: 3.14"
 从标准输入读取一行。
 
 ```xxl
-print("请输入姓名: ")
-var name = readLine()
-println("你好, " + name)
+io.print("请输入姓名: ")
+var name = io.readLine()
+io.println("你好, " + name)
 ```
 
 ### 文件函数
@@ -71,30 +71,30 @@ println("你好, " + name)
 读取整个文件内容为字符串。
 
 ```xxl
-var content = readFile("data.txt")
-println(content)
+var content = io.readFile("data.txt")
+io.println(content)
 ```
 
 #### writeFile(path, content)
 将字符串内容写入文件。
 
 ```xxl
-writeFile("output.txt", "你好，文件！")
+io.writeFile("output.txt", "你好，文件！")
 ```
 
 #### appendFile(path, content)
 追加字符串内容到文件。
 
 ```xxl
-appendFile("log.txt", "新日志条目\n")
+io.appendFile("log.txt", "新日志条目\n")
 ```
 
 #### exists(path)
 如果文件或目录存在则返回 true。
 
 ```xxl
-if (exists("config.json")) {
-    println("找到配置文件")
+if (io.exists("config.json")) {
+    io.println("找到配置文件")
 }
 ```
 
@@ -102,14 +102,14 @@ if (exists("config.json")) {
 删除文件。
 
 ```xxl
-remove("temp.txt")
+io.remove("temp.txt")
 ```
 
 #### mkdir(path)
 创建目录（包括父目录）。
 
 ```xxl
-mkdir("path/to/directory")
+io.mkdir("path/to/directory")
 ```
 
 ### 系统函数
@@ -118,38 +118,38 @@ mkdir("path/to/directory")
 返回当前工作目录。
 
 ```xxl
-println(cwd())  // "/home/user/project"
+io.println(io.cwd())  // "/home/user/project"
 ```
 
 #### exit(code)
 以状态码退出。
 
 ```xxl
-exit(0)   // 成功
-exit(1)   // 错误
+io.exit(0)   // 成功
+io.exit(1)   // 错误
 ```
 
 #### env(key)
 获取环境变量值。
 
 ```xxl
-var home = env("HOME")
-var path = env("PATH")
+var home = io.env("HOME")
+var path = io.env("PATH")
 ```
 
 #### setEnv(key, value)
 设置环境变量。
 
 ```xxl
-setEnv("DEBUG", "true")
+io.setEnv("DEBUG", "true")
 ```
 
 #### args()
 返回命令行参数数组。
 
 ```xxl
-var args = args()
-println(args[0])  // 程序名
+var args = io.args()
+io.println(args[0])  // 程序名
 ```
 
 ---
@@ -172,7 +172,7 @@ println(args[0])  // 程序名
 ```xxl
 import "os"
 var cfg = os.getConfigObj()
-println(cfg["cloudUrlBase"])
+pln(cfg["cloudUrlBase"])
 
 // 示例配置文件 (~/.xxl/settings.json):
 // {
@@ -195,7 +195,7 @@ println(cfg["cloudUrlBase"])
 import "os"
 var token = os.getConfigStr("api_token")
 if (token != null) {
-    println("找到令牌: " + token)
+    pln("找到令牌: " + token)
 }
 ```
 
@@ -208,7 +208,7 @@ os.setConfigStr("api_token", "my-secret-token")
 
 // 之后读取
 var token = os.getConfigStr("api_token")
-println(token)  // "my-secret-token"
+pln(token)  // "my-secret-token"
 ```
 
 ### 系统信息
@@ -217,42 +217,42 @@ println(token)  // "my-secret-token"
 返回当前操作系统名称。
 
 ```xxl
-println(os.platform())  // "linux"、"windows"、"darwin"
+pln(os.platform())  // "linux"、"windows"、"darwin"
 ```
 
 #### arch()
 返回 CPU 架构。
 
 ```xxl
-println(os.arch())  // "amd64"、"arm64"
+pln(os.arch())  // "amd64"、"arm64"
 ```
 
 #### hostname()
 返回系统主机名。
 
 ```xxl
-println(os.hostname())
+pln(os.hostname())
 ```
 
 #### home()
 返回用户主目录。
 
 ```xxl
-println(os.home())  // "/home/user" 或 "C:\Users\user"
+pln(os.home())  // "/home/user" 或 "C:\Users\user"
 ```
 
 #### temp()
 返回系统临时目录。
 
 ```xxl
-println(os.temp())  // Unix 上为 "/tmp"
+pln(os.temp())  // Unix 上为 "/tmp"
 ```
 
 #### cpus()
 返回 CPU 核心数。
 
 ```xxl
-println(os.cpus())  // 8
+pln(os.cpus())  // 8
 ```
 
 ### 文件系统操作
@@ -289,7 +289,7 @@ os.ext("/path/to/file.txt")  // ".txt"
 返回绝对路径。
 
 ```xxl
-println(os.abs("./file.txt"))  // "/current/dir/file.txt"
+pln(os.abs("./file.txt"))  // "/current/dir/file.txt"
 ```
 
 #### isAbs(path)
@@ -305,10 +305,10 @@ os.isAbs("./file")          // false
 
 ```xxl
 var info = os.stat("file.txt")
-println(info[0])  // 名称
-println(info[1])  // 大小（字节）
-println(info[2])  // 是否目录
-println(info[3])  // 修改时间
+pln(info[0])  // 名称
+pln(info[1])  // 大小（字节）
+pln(info[2])  // 是否目录
+pln(info[3])  // 修改时间
 ```
 
 #### isDir(path)
@@ -331,7 +331,7 @@ os.isFile("/path/to/file.txt")  // true
 ```xxl
 var files = os.listDir(".")
 for (f in files) {
-    println(f)
+    pln(f)
 }
 ```
 
@@ -370,8 +370,8 @@ os.chmod("script.sh", 0o755)
 
 ```xxl
 var result = os.exec("ls -la")
-println(result[0])  // 输出
-println(result[1])  // 退出码
+pln(result[0])  // 输出
+pln(result[1])  // 退出码
 ```
 
 #### shell(command)
@@ -379,7 +379,7 @@ println(result[1])  // 退出码
 
 ```xxl
 var result = os.shell("echo hello")
-println(result[0])  // "hello\n"
+pln(result[0])  // "hello\n"
 ```
 
 ### 临时文件
@@ -834,10 +834,10 @@ JSON 编解码。
 
 ```xxl
 var data = parse('{"name": "张三", "age": 30}')
-println(data["name"])  // "张三"
+pln(data["name"])  // "张三"
 
 var arr = parse('[1, 2, 3]')
-println(arr[0])  // 1
+pln(arr[0])  // 1
 ```
 
 #### stringify(value, indent)
@@ -845,9 +845,9 @@ println(arr[0])  // 1
 
 ```xxl
 var obj = {"name": "张三", "age": 30}
-println(stringify(obj))        // {"name":"张三","age":30}
-println(stringify(obj, "  "))  // 带2空格缩进的格式化输出
-println(stringify(obj, 4))     // 带4空格缩进的格式化输出
+pln(stringify(obj))        // {"name":"张三","age":30}
+pln(stringify(obj, "  "))  // 带2空格缩进的格式化输出
+pln(stringify(obj, 4))     // 带4空格缩进的格式化输出
 ```
 
 #### encode(value)
@@ -1075,25 +1075,25 @@ var ns = time.unixNano()  // 例如: 1710422400000000000
 
 ```xxl
 var t = time.now()
-println(t["year"])     // 2026
-println(t["month"])    // 3 (三月)
-println(t["day"])      // 14
-println(t["hour"])     // 20
-println(t["minute"])   // 30
-println(t["second"])   // 45
-println(t["nanosecond"])  // 123456789
+pln(t["year"])     // 2026
+pln(t["month"])    // 3 (三月)
+pln(t["day"])      // 14
+pln(t["hour"])     // 20
+pln(t["minute"])   // 30
+pln(t["second"])   // 45
+pln(t["nanosecond"])  // 123456789
 ```
 
 #### year(), month(), day(), hour(), minute(), second()
 返回当前日期/时间组件。
 
 ```xxl
-println(time.year())    // 2026
-println(time.month())   // 3
-println(time.day())     // 14
-println(time.hour())    // 20
-println(time.minute())  // 30
-println(time.second())  // 45
+pln(time.year())    // 2026
+pln(time.month())   // 3
+pln(time.day())     // 14
+pln(time.hour())    // 20
+pln(time.minute())  // 30
+pln(time.second())  // 45
 ```
 
 #### weekday()
@@ -1109,9 +1109,9 @@ var wd = time.weekday()  // 例如: 4 (周四)
 使用 Go 风格布局格式化当前时间。
 
 ```xxl
-println(time.format("2006-01-02"))           // "2026-03-14"
-println(time.format("15:04:05"))             // "20:30:45"
-println(time.format("2006-01-02 15:04:05"))  // "2026-03-14 20:30:45"
+pln(time.format("2006-01-02"))           // "2026-03-14"
+pln(time.format("15:04:05"))             // "20:30:45"
+pln(time.format("2006-01-02 15:04:05"))  // "2026-03-14 20:30:45"
 ```
 
 #### formatUnix(timestamp, layout)
@@ -1119,7 +1119,7 @@ println(time.format("2006-01-02 15:04:05"))  // "2026-03-14 20:30:45"
 
 ```xxl
 var ts = time.unix()
-println(time.formatUnix(ts, "2006-01-02"))
+pln(time.formatUnix(ts, "2006-01-02"))
 ```
 
 #### parse(layout, value)
@@ -1135,9 +1135,9 @@ var ts = time.parse("2006-01-02", "2026-03-14")
 暂停执行指定的毫秒数。
 
 ```xxl
-println("开始...")
+pln("开始...")
 time.sleep(1000)  // 休眠1秒
-println("完成！")
+pln("完成！")
 ```
 
 #### sleepSec(seconds)
@@ -1178,7 +1178,7 @@ var nextYear = time.addYears(1)
 var start = time.unixMs()
 // ... 执行一些操作 ...
 var elapsed = time.since(start)
-println("耗时 " + elapsed.toStr() + " 毫秒")
+pln("耗时 " + elapsed.toStr() + " 毫秒")
 ```
 
 ### 日历
