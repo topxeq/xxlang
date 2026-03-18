@@ -377,6 +377,133 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		// Value-based operations (NaN boxing optimized - zero allocation hot path)
+		// These opcodes use Value type for efficient numeric operations
+		case compiler.OpValueAdd:
+			if err := vm.execValueAdd(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueSub:
+			if err := vm.execValueSub(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueMul:
+			if err := vm.execValueMul(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueDiv:
+			if err := vm.execValueDiv(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueMod:
+			if err := vm.execValueMod(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueNeg:
+			if err := vm.execValueNeg(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueLess:
+			if err := vm.execValueLess(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueGreater:
+			if err := vm.execValueGreater(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueEqual:
+			if err := vm.execValueEqual(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueNotEqual:
+			if err := vm.execValueNotEqual(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueLessEqual:
+			if err := vm.execValueLessEqual(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueGreaterEqual:
+			if err := vm.execValueGreaterEqual(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueGetLocal:
+			if err := vm.execValueGetLocal(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueSetLocal:
+			if err := vm.execValueSetLocal(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueIncLocal:
+			if err := vm.execValueIncLocal(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueDecLocal:
+			if err := vm.execValueDecLocal(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueAddLocalConst:
+			if err := vm.execValueAddLocalConst(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueSubLocalConst:
+			if err := vm.execValueSubLocalConst(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueMulLocalConst:
+			if err := vm.execValueMulLocalConst(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueGetLocalAdd:
+			if err := vm.execValueGetLocalAdd(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueGetLocalSub:
+			if err := vm.execValueGetLocalSub(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueGetLocalMul:
+			if err := vm.execValueGetLocalMul(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueGetLocalLess:
+			if err := vm.execValueGetLocalLess(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueGetLocalGreater:
+			if err := vm.execValueGetLocalGreater(); err != nil {
+				return err
+			}
+
+		case compiler.OpValueGetLocalEqual:
+			if err := vm.execValueGetLocalEqual(); err != nil {
+				return err
+			}
+
 		case compiler.OpSetLocal:
 			if err := vm.executeSetLocal(); err != nil {
 				return err
@@ -1234,18 +1361,26 @@ func (vm *VM) executeIncLocal() error {
 	frame.IP++
 
 	// Adjust index if 'this' is present
-	var val *objects.Int
+	var idx int
 	if frame.This != nil && localIndex > 0 {
-		val = frame.Locals[localIndex-1].(*objects.Int)
+		idx = localIndex - 1
 	} else if frame.This == nil {
-		val = frame.Locals[localIndex].(*objects.Int)
+		idx = localIndex
 	} else {
 		// localIndex == 0 with 'this' - this is an error
 		return fmt.Errorf("cannot increment 'this'")
 	}
 
-	val.Value++
-	vm.stack.Push(val)
+	val, ok := frame.Locals[idx].(*objects.Int)
+	if !ok {
+		return fmt.Errorf("cannot increment non-integer local")
+	}
+
+	// Create a new integer instead of modifying in place
+	// This prevents corruption of the integer cache
+	newVal := objects.NewInt(val.Value + 1)
+	frame.Locals[idx] = newVal
+	vm.stack.Push(newVal)
 	return nil
 }
 
@@ -1255,17 +1390,26 @@ func (vm *VM) executeDecLocal() error {
 	localIndex := int(frame.Instructions()[frame.IP+1])
 	frame.IP++
 
-	var val *objects.Int
+	// Adjust index if 'this' is present
+	var idx int
 	if frame.This != nil && localIndex > 0 {
-		val = frame.Locals[localIndex-1].(*objects.Int)
+		idx = localIndex - 1
 	} else if frame.This == nil {
-		val = frame.Locals[localIndex].(*objects.Int)
+		idx = localIndex
 	} else {
 		return fmt.Errorf("cannot decrement 'this'")
 	}
 
-	val.Value--
-	vm.stack.Push(val)
+	val, ok := frame.Locals[idx].(*objects.Int)
+	if !ok {
+		return fmt.Errorf("cannot decrement non-integer local")
+	}
+
+	// Create a new integer instead of modifying in place
+	// This prevents corruption of the integer cache
+	newVal := objects.NewInt(val.Value - 1)
+	frame.Locals[idx] = newVal
+	vm.stack.Push(newVal)
 	return nil
 }
 
@@ -1283,20 +1427,28 @@ func (vm *VM) executeAddLocalConst() error {
 	}
 
 	// Get local value
-	var localVal *objects.Int
+	var idx int
 	if frame.This != nil && localIndex > 0 {
-		localVal = frame.Locals[localIndex-1].(*objects.Int)
+		idx = localIndex - 1
 	} else if frame.This == nil {
-		localVal = frame.Locals[localIndex].(*objects.Int)
+		idx = localIndex
 	} else {
 		return fmt.Errorf("cannot add to 'this'")
+	}
+
+	localVal, ok := frame.Locals[idx].(*objects.Int)
+	if !ok {
+		return fmt.Errorf("cannot add to non-integer local")
 	}
 
 	// Get constant value
 	constVal := constants[constIndex].(*objects.Int).Value
 
-	localVal.Value += constVal
-	vm.stack.Push(localVal)
+	// Create a new integer instead of modifying in place
+	// This prevents corruption of the integer cache
+	newVal := objects.NewInt(localVal.Value + constVal)
+	frame.Locals[idx] = newVal
+	vm.stack.Push(newVal)
 	return nil
 }
 
@@ -1314,20 +1466,28 @@ func (vm *VM) executeSubLocalConst() error {
 	}
 
 	// Get local value
-	var localVal *objects.Int
+	var idx int
 	if frame.This != nil && localIndex > 0 {
-		localVal = frame.Locals[localIndex-1].(*objects.Int)
+		idx = localIndex - 1
 	} else if frame.This == nil {
-		localVal = frame.Locals[localIndex].(*objects.Int)
+		idx = localIndex
 	} else {
 		return fmt.Errorf("cannot subtract from 'this'")
+	}
+
+	localVal, ok := frame.Locals[idx].(*objects.Int)
+	if !ok {
+		return fmt.Errorf("cannot subtract from non-integer local")
 	}
 
 	// Get constant value
 	constVal := constants[constIndex].(*objects.Int).Value
 
-	localVal.Value -= constVal
-	vm.stack.Push(localVal)
+	// Create a new integer instead of modifying in place
+	// This prevents corruption of the integer cache
+	newVal := objects.NewInt(localVal.Value - constVal)
+	frame.Locals[idx] = newVal
+	vm.stack.Push(newVal)
 	return nil
 }
 
@@ -1345,20 +1505,28 @@ func (vm *VM) executeMulLocalConst() error {
 	}
 
 	// Get local value
-	var localVal *objects.Int
+	var idx int
 	if frame.This != nil && localIndex > 0 {
-		localVal = frame.Locals[localIndex-1].(*objects.Int)
+		idx = localIndex - 1
 	} else if frame.This == nil {
-		localVal = frame.Locals[localIndex].(*objects.Int)
+		idx = localIndex
 	} else {
 		return fmt.Errorf("cannot multiply 'this'")
+	}
+
+	localVal, ok := frame.Locals[idx].(*objects.Int)
+	if !ok {
+		return fmt.Errorf("cannot multiply non-integer local")
 	}
 
 	// Get constant value
 	constVal := constants[constIndex].(*objects.Int).Value
 
-	localVal.Value *= constVal
-	vm.stack.Push(localVal)
+	// Create a new integer instead of modifying in place
+	// This prevents corruption of the integer cache
+	newVal := objects.NewInt(localVal.Value * constVal)
+	frame.Locals[idx] = newVal
+	vm.stack.Push(newVal)
 	return nil
 }
 

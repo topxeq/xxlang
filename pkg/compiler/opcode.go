@@ -117,6 +117,40 @@ const (
 	OpThrow       // Throw exception (value on stack)
 	OpPushHandler // Push exception handler (catchAddr, finallyAddr)
 	OpPopHandler  // Pop exception handler
+
+	// Value-based operations (NaN boxing optimized - zero allocation)
+	// These are the fast path for numeric operations
+	OpValueAdd // Add two Values (no type check, direct numeric)
+	OpValueSub // Subtract two Values
+	OpValueMul // Multiply two Values
+	OpValueDiv // Divide two Values
+	OpValueMod // Modulo two Values
+	OpValueNeg // Negate a Value
+
+	// Value-based comparisons
+	OpValueLess        // Compare two Values for less than
+	OpValueGreater     // Compare two Values for greater than
+	OpValueEqual       // Compare two Values for equality
+	OpValueNotEqual    // Compare two Values for inequality
+	OpValueLessEqual   // Compare two Values for less or equal
+	OpValueGreaterEqual // Compare two Values for greater or equal
+
+	// Value-based local operations (combined for zero allocation)
+	OpValueGetLocal      // Get local as Value (push to value stack)
+	OpValueSetLocal      // Set local from Value (pop from value stack)
+	OpValueIncLocal      // Increment local by 1
+	OpValueDecLocal      // Decrement local by 1
+	OpValueAddLocalConst // Add constant to local
+	OpValueSubLocalConst // Subtract constant from local
+	OpValueMulLocalConst // Multiply local by constant
+
+	// Value-based superinstructions (maximum optimization)
+	OpValueGetLocalAdd     // Get two locals and add (Value path)
+	OpValueGetLocalSub     // Get two locals and subtract (Value path)
+	OpValueGetLocalMul     // Get two locals and multiply (Value path)
+	OpValueGetLocalLess    // Get two locals and compare less (Value path)
+	OpValueGetLocalGreater // Get two locals and compare greater (Value path)
+	OpValueGetLocalEqual   // Get two locals and compare equal (Value path)
 )
 
 // Definition describes an opcode's format
@@ -236,6 +270,39 @@ var definitions = map[Opcode]*Definition{
 	OpAddLocalConst: {"OpAddLocalConst", []int{1, 2}}, // 1-byte local index, 2-byte constant index
 	OpSubLocalConst: {"OpSubLocalConst", []int{1, 2}}, // 1-byte local index, 2-byte constant index
 	OpMulLocalConst: {"OpMulLocalConst", []int{1, 2}}, // 1-byte local index, 2-byte constant index
+
+	// Value-based arithmetic operations (zero allocation)
+	OpValueAdd: {"OpValueAdd", []int{}}, // Pop 2, push result
+	OpValueSub: {"OpValueSub", []int{}},
+	OpValueMul: {"OpValueMul", []int{}},
+	OpValueDiv: {"OpValueDiv", []int{}},
+	OpValueMod: {"OpValueMod", []int{}},
+	OpValueNeg: {"OpValueNeg", []int{}},
+
+	// Value-based comparisons
+	OpValueLess:        {"OpValueLess", []int{}},
+	OpValueGreater:     {"OpValueGreater", []int{}},
+	OpValueEqual:       {"OpValueEqual", []int{}},
+	OpValueNotEqual:    {"OpValueNotEqual", []int{}},
+	OpValueLessEqual:   {"OpValueLessEqual", []int{}},
+	OpValueGreaterEqual: {"OpValueGreaterEqual", []int{}},
+
+	// Value-based local operations
+	OpValueGetLocal:      {"OpValueGetLocal", []int{1}},         // 1-byte: local index
+	OpValueSetLocal:      {"OpValueSetLocal", []int{1}},         // 1-byte: local index
+	OpValueIncLocal:      {"OpValueIncLocal", []int{1}},         // 1-byte: local index
+	OpValueDecLocal:      {"OpValueDecLocal", []int{1}},         // 1-byte: local index
+	OpValueAddLocalConst: {"OpValueAddLocalConst", []int{1, 2}}, // 1-byte local, 2-byte const
+	OpValueSubLocalConst: {"OpValueSubLocalConst", []int{1, 2}},
+	OpValueMulLocalConst: {"OpValueMulLocalConst", []int{1, 2}},
+
+	// Value-based superinstructions
+	OpValueGetLocalAdd:     {"OpValueGetLocalAdd", []int{1, 1}},     // 2x 1-byte local indices
+	OpValueGetLocalSub:     {"OpValueGetLocalSub", []int{1, 1}},
+	OpValueGetLocalMul:     {"OpValueGetLocalMul", []int{1, 1}},
+	OpValueGetLocalLess:    {"OpValueGetLocalLess", []int{1, 1}},
+	OpValueGetLocalGreater: {"OpValueGetLocalGreater", []int{1, 1}},
+	OpValueGetLocalEqual:   {"OpValueGetLocalEqual", []int{1, 1}},
 }
 
 // Lookup finds an opcode's definition
