@@ -361,15 +361,22 @@ func TestNewIntCached(t *testing.T) {
 }
 
 func TestNewIntNotCached(t *testing.T) {
-	// Test values outside cache range
-	n1 := NewInt(100000)
-	n2 := NewInt(100000)
+	// Test values outside cache range (cache is -100 to 100000)
+	n1 := NewInt(100001)
+	n2 := NewInt(100001)
 	// These should be different objects (not cached)
 	if n1 == n2 {
-		t.Error("NewInt(100000) should not be cached")
+		t.Error("NewInt(100001) should not be cached")
 	}
-	if n1.Value != 100000 || n2.Value != 100000 {
+	if n1.Value != 100001 || n2.Value != 100001 {
 		t.Error("NewInt values incorrect")
+	}
+
+	// Also test negative value outside cache
+	n3 := NewInt(-101)
+	n4 := NewInt(-101)
+	if n3 == n4 {
+		t.Error("NewInt(-101) should not be cached")
 	}
 }
 
