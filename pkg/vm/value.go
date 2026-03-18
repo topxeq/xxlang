@@ -19,6 +19,7 @@ import (
 	"math"
 	"sync"
 
+	"github.com/topxeq/xxlang/pkg/compiler"
 	"github.com/topxeq/xxlang/pkg/objects"
 )
 
@@ -317,6 +318,87 @@ func (v Value) GetObject() objects.Object {
 		return objects.NULL
 	}
 	return obj
+}
+
+// GetObjectNoLock extracts the object without mutex lock (for single-threaded use)
+// This is faster but not safe for concurrent access
+func (v Value) GetObjectNoLock() objects.Object {
+	idx := int(uint64(v) & payloadMask)
+	globalRegistry.mu.RLock()
+	obj := globalRegistry.objects[idx]
+	globalRegistry.mu.RUnlock()
+	if obj == nil {
+		return objects.NULL
+	}
+	return *obj
+}
+
+// IsClosure returns true if the value is a Closure
+func (v Value) IsClosure() bool {
+	if !v.IsObject() {
+		return false
+	}
+	idx := int(uint64(v) & payloadMask)
+	globalRegistry.mu.RLock()
+	obj := globalRegistry.objects[idx]
+	globalRegistry.mu.RUnlock()
+	if obj == nil {
+		return false
+	}
+	_, ok := (*obj).(*Closure)
+	return ok
+}
+
+// IsCompiledFunction returns true if the value is a CompiledFunction
+func (v Value) IsCompiledFunction() bool {
+	if !v.IsObject() {
+		return false
+	}
+	idx := int(uint64(v) & payloadMask)
+	globalRegistry.mu.RLock()
+	obj := globalRegistry.objects[idx]
+	globalRegistry.mu.RUnlock()
+	if obj == nil {
+		return false
+	}
+	_, ok := (*obj).(*compiler.CompiledFunction)
+	return ok
+}
+
+// GetClosure returns the Closure if this value is a Closure, or nil otherwise
+func (v Value) GetClosure() *Closure {
+	if !v.IsObject() {
+		return nil
+	}
+	idx := int(uint64(v) & payloadMask)
+	globalRegistry.mu.RLock()
+	obj := globalRegistry.objects[idx]
+	globalRegistry.mu.RUnlock()
+	if obj == nil {
+		return nil
+	}
+	if c, ok := (*obj).(*Closure); ok {
+		return c
+	}
+	return nil
+}
+
+// GetCompiledFunction returns the CompiledFunction if this value is one, or nil otherwise
+func (v Value) GetCompiledFunction() *compiler.CompiledFunction {
+	if !v.IsObject() {
+		return nil
+	}
+	idx := int(uint64(v) & payloadMask)
+	globalRegistry.mu.RLock()
+	obj := globalRegistry.objects[idx]
+	globalRegistry.mu.RUnlock()
+	if obj == nil {
+		return nil
+	}
+	if f, ok := (*obj).(*compiler.CompiledFunction); ok {
+		return f
+	}
+	return nil
 }
 
 // ToInt attempts to convert the value to an integer

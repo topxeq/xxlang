@@ -78,7 +78,9 @@ func (f *RegFrame) Release() {
 		f.Registers[i] = ValueNull
 	}
 
-	f.FreeVars = f.FreeVars[:0]
+	// Don't clear FreeVars - it may be shared with a closure
+	// Just remove the reference
+	f.FreeVars = nil
 	f.Constants = nil
 	f.Globals = nil
 	f.This = ValueNull

@@ -661,7 +661,15 @@ func (vm *RegVM) handleRegCall(frame *RegFrame, code []byte) error {
 		return fmt.Errorf("cannot call null")
 	}
 
-	// Get the function object
+	// Fast path: check specific types without full ToObject call
+	if closure := fn.GetClosure(); closure != nil {
+		return vm.callClosure(closure, int(numArgs), frame)
+	}
+	if compiledFn := fn.GetCompiledFunction(); compiledFn != nil {
+		return vm.callCompiledFunction(compiledFn, int(numArgs), frame)
+	}
+
+	// Slow path: generic object
 	obj := fn.ToObject()
 	switch fnObj := obj.(type) {
 	case *Closure:
@@ -769,6 +777,9 @@ func (vm *RegVM) handleRegBuiltin(builtinIdx, numArgs int, frame *RegFrame) erro
 func (vm *RegVM) handleRegReturn(frame *RegFrame) error {
 	// Get return value from return register
 	returnValue := frame.Registers[compiler.ReturnRegister]
+
+	// Release the frame back to pool before popping
+	frame.Release()
 
 	// Pop the frame
 	vm.popFrame()
