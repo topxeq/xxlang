@@ -64,7 +64,7 @@ var intMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for toFloat must be INT, got %s", args[0].Type())
 		}
-		return &Float{Value: float64(self.Value)}
+		return NewFloat(float64(self.Value))
 	}},
 	"abs": {Fn: func(args ...Object) Object {
 		if len(args) != 1 {
@@ -75,7 +75,7 @@ var intMethods = map[string]*Builtin{
 			return newError("receiver for abs must be INT, got %s", args[0].Type())
 		}
 		if self.Value < 0 {
-			return &Int{Value: -self.Value}
+			return NewInt(-self.Value)
 		}
 		return self
 	}},
@@ -96,7 +96,7 @@ var floatMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for toInt must be FLOAT, got %s", args[0].Type())
 		}
-		return &Int{Value: int64(self.Value)}
+		return NewInt(int64(self.Value))
 	}},
 	"abs": {Fn: func(args ...Object) Object {
 		if len(args) != 1 {
@@ -107,7 +107,7 @@ var floatMethods = map[string]*Builtin{
 			return newError("receiver for abs must be FLOAT, got %s", args[0].Type())
 		}
 		if self.Value < 0 {
-			return &Float{Value: -self.Value}
+			return NewFloat(-self.Value)
 		}
 		return self
 	}},
@@ -119,7 +119,7 @@ var floatMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for floor must be FLOAT, got %s", args[0].Type())
 		}
-		return &Int{Value: int64(math.Floor(self.Value))}
+		return NewInt(int64(math.Floor(self.Value)))
 	}},
 	"ceil": {Fn: func(args ...Object) Object {
 		if len(args) != 1 {
@@ -129,7 +129,7 @@ var floatMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for ceil must be FLOAT, got %s", args[0].Type())
 		}
-		return &Int{Value: int64(math.Ceil(self.Value))}
+		return NewInt(int64(math.Ceil(self.Value)))
 	}},
 	"round": {Fn: func(args ...Object) Object {
 		if len(args) != 1 {
@@ -139,7 +139,7 @@ var floatMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for round must be FLOAT, got %s", args[0].Type())
 		}
-		return &Int{Value: int64(math.Round(self.Value))}
+		return NewInt(int64(math.Round(self.Value)))
 	}},
 }
 
@@ -158,7 +158,7 @@ var stringMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for len must be STRING, got %s", args[0].Type())
 		}
-		return &Int{Value: int64(len(self.Value))}
+		return NewInt(int64(len(self.Value)))
 	}},
 	"upper": {Fn: func(args ...Object) Object {
 		if len(args) != 1 {
@@ -235,7 +235,7 @@ var stringMethods = map[string]*Builtin{
 		if !ok {
 			return newError("argument for indexOf must be STRING, got %s", args[1].Type())
 		}
-		return &Int{Value: int64(strings.Index(self.Value, substr.Value))}
+		return NewInt(int64(strings.Index(self.Value, substr.Value)))
 	}},
 	"startsWith": {Fn: func(args ...Object) Object {
 		if len(args) != 2 {
@@ -313,7 +313,7 @@ var stringMethods = map[string]*Builtin{
 		if err != nil {
 			return newError("could not convert string to int: %s", self.Value)
 		}
-		return &Int{Value: val}
+		return NewInt(val)
 	}},
 	"toFloat": {Fn: func(args ...Object) Object {
 		if len(args) != 1 {
@@ -327,7 +327,7 @@ var stringMethods = map[string]*Builtin{
 		if err != nil {
 			return newError("could not convert string to float: %s", self.Value)
 		}
-		return &Float{Value: val}
+		return NewFloat(val)
 	}},
 }
 
@@ -346,7 +346,7 @@ var arrayMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for len must be ARRAY, got %s", args[0].Type())
 		}
-		return &Int{Value: int64(len(self.Elements))}
+		return NewInt(int64(len(self.Elements)))
 	}},
 	"push": {Fn: func(args ...Object) Object {
 		if len(args) != 2 {
@@ -413,10 +413,10 @@ var arrayMethods = map[string]*Builtin{
 		}
 		for i, elem := range self.Elements {
 			if compareObjects(elem, args[1]) {
-				return &Int{Value: int64(i)}
+				return NewInt(int64(i))
 			}
 		}
-		return &Int{Value: -1}
+		return NewInt(-1)
 	}},
 	"contains": {Fn: func(args ...Object) Object {
 		if len(args) != 2 {
@@ -489,7 +489,7 @@ var mapMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for len must be MAP, got %s", args[0].Type())
 		}
-		return &Int{Value: int64(len(self.Pairs))}
+		return NewInt(int64(len(self.Pairs)))
 	}},
 	"keys": {Fn: func(args ...Object) Object {
 		if len(args) != 1 {
@@ -585,7 +585,7 @@ var stringBuilderMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for len must be STRING_BUILDER, got %s", args[0].Type())
 		}
-		return &Int{Value: int64(self.Len())}
+		return NewInt(int64(self.Len()))
 	}},
 	"write": {Fn: func(args ...Object) Object {
 		if len(args) != 2 {
@@ -600,7 +600,7 @@ var stringBuilderMethods = map[string]*Builtin{
 			return newError("argument for write must be STRING, got %s", args[1].Type())
 		}
 		n := self.Write(str.Value)
-		return &Int{Value: int64(n)}
+		return NewInt(int64(n))
 	}},
 	"writeLine": {Fn: func(args ...Object) Object {
 		if len(args) != 2 {
@@ -615,7 +615,7 @@ var stringBuilderMethods = map[string]*Builtin{
 			return newError("argument for writeLine must be STRING, got %s", args[1].Type())
 		}
 		n := self.WriteLine(str.Value)
-		return &Int{Value: int64(n)}
+		return NewInt(int64(n))
 	}},
 	"toString": {Fn: func(args ...Object) Object {
 		if len(args) != 1 {

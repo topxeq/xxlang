@@ -885,7 +885,7 @@ func (vm *VM) executeFloatBinaryOp(left, right objects.Object, op compiler.Opcod
 		return fmt.Errorf("unknown float operator: %d", op)
 	}
 
-	vm.stack.Push(&objects.Float{Value: result})
+	vm.stack.Push(objects.NewFloat(result))
 	return nil
 }
 
@@ -900,7 +900,7 @@ func (vm *VM) executeNeg() error {
 
 	if isFloat(operand) {
 		val := operand.(*objects.Float).Value
-		vm.stack.Push(&objects.Float{Value: -val})
+		vm.stack.Push(objects.NewFloat(-val))
 		return nil
 	}
 

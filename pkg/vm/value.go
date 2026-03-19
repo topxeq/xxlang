@@ -215,13 +215,13 @@ func (v Value) ToObject() objects.Object {
 		return objects.NewInt(v.GetInt())
 	}
 	if v.IsFloat() {
-		return &objects.Float{Value: v.GetFloat()}
+		return objects.NewFloat(v.GetFloat())
 	}
 	if v.IsObject() {
 		return v.GetObject()
 	}
 	// Treat as float by default
-	return &objects.Float{Value: v.GetFloat()}
+	return objects.NewFloat(v.GetFloat())
 }
 
 // Type checking methods
@@ -673,7 +673,7 @@ func (v Value) String() string {
 		return objects.NewInt(v.GetInt()).Inspect()
 	}
 	if v.IsFloat() {
-		return (&objects.Float{Value: v.GetFloat()}).Inspect()
+		return objects.NewFloat(v.GetFloat()).Inspect()
 	}
 	if v.IsObject() {
 		obj := v.GetObject()

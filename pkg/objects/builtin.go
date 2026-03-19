@@ -497,7 +497,7 @@ var Builtins = map[string]*Builtin{
 				return arg
 			case *Float:
 				if arg.Value < 0 {
-					return &Float{Value: -arg.Value}
+					return NewFloat(-arg.Value)
 				}
 				return arg
 			default:
@@ -562,7 +562,7 @@ var Builtins = map[string]*Builtin{
 				return newError("cannot calculate square root of negative number")
 			}
 
-			return &Float{Value: math.Sqrt(val)}
+			return NewFloat(math.Sqrt(val))
 		},
 	},
 	"pow": {
@@ -590,7 +590,7 @@ var Builtins = map[string]*Builtin{
 				return newError("second argument to 'pow' must be INT or FLOAT, got %s", args[1].Type())
 			}
 
-			return &Float{Value: math.Pow(base, exp)}
+			return NewFloat(math.Pow(base, exp))
 		},
 	},
 	"min": {
@@ -694,7 +694,7 @@ var Builtins = map[string]*Builtin{
 
 			switch arg := args[0].(type) {
 			case *Int:
-				return &Float{Value: float64(arg.Value)}
+				return NewFloat(float64(arg.Value))
 			case *Float:
 				return arg
 			case *String:
@@ -702,12 +702,12 @@ var Builtins = map[string]*Builtin{
 				if err != nil {
 					return newError("could not convert string to float: %s", arg.Value)
 				}
-				return &Float{Value: val}
+				return NewFloat(val)
 			case *Bool:
 				if arg.Value {
-					return &Float{Value: 1.0}
+					return NewFloat(1.0)
 				}
-				return &Float{Value: 0.0}
+				return NewFloat(0.0)
 			default:
 				return newError("cannot convert %s to FLOAT", args[0].Type())
 			}
@@ -1049,7 +1049,7 @@ var Builtins = map[string]*Builtin{
 				}
 			}
 			if hasFloat {
-				return &Float{Value: float64(total)}
+				return NewFloat(float64(total))
 			}
 			return NewInt(total)
 		},
@@ -1064,7 +1064,7 @@ var Builtins = map[string]*Builtin{
 				return newError("argument to 'avg' must be ARRAY, got %s", args[0].Type())
 			}
 			if len(arr.Elements) == 0 {
-				return &Float{Value: 0}
+				return NewFloat(0)
 			}
 			var total float64
 			for _, elem := range arr.Elements {
@@ -1077,7 +1077,7 @@ var Builtins = map[string]*Builtin{
 					return newError("array elements must be INT or FLOAT for avg, got %s", elem.Type())
 				}
 			}
-			return &Float{Value: total / float64(len(arr.Elements))}
+			return NewFloat(total / float64(len(arr.Elements)))
 		},
 	},
 	"reverse": {
@@ -1492,7 +1492,7 @@ var Builtins = map[string]*Builtin{
 
 			multiplier := math.Pow(10, float64(precision))
 			result := math.Round(val*multiplier) / multiplier
-			return &Float{Value: result}
+			return NewFloat(result)
 		},
 	},
 	"clamp": {
@@ -1542,7 +1542,7 @@ var Builtins = map[string]*Builtin{
 			if _, isInt := args[0].(*Int); isInt {
 				return NewInt(int64(result))
 			}
-			return &Float{Value: result}
+			return NewFloat(result)
 		},
 	},
 	"sign": {
@@ -1576,7 +1576,7 @@ var Builtins = map[string]*Builtin{
 			if len(args) != 0 {
 				return newError("wrong number of arguments for random. got=%d, want=0", len(args))
 			}
-			return &Float{Value: float64(randInt63()) / float64(1<<63)}
+			return NewFloat(float64(randInt63()) / float64(1<<63))
 		},
 	},
 	"randomInt": {
@@ -2462,7 +2462,7 @@ func deepCopyObject(obj Object) Object {
 	case *Int:
 		return NewInt(o.Value)
 	case *Float:
-		return &Float{Value: o.Value}
+		return NewFloat(o.Value)
 	case *String:
 		return &String{Value: o.Value}
 	case *Bool:

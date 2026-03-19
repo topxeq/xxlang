@@ -46,5 +46,5 @@ func intResult(val int64) objects.Object {
 //
 //go:noinline
 func floatResult(val float64) objects.Object {
-	return &objects.Float{Value: val}
+	return objects.NewFloat(val)
 }
