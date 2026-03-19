@@ -672,3 +672,87 @@ func BenchmarkFibonacciTailRecursive10000(b *testing.B) {
 		v.Run()
 	}
 }
+
+// ============================================
+// Inline Cache Benchmarks (Method Calls)
+// ============================================
+
+func BenchmarkStringMethodCalls1000(b *testing.B) {
+	// Tests inline cache for string methods
+	input := `
+		var s = "hello world"
+		var result = ""
+		for (var i = 0; i < 1000; i++) {
+			result = s.toUpper()
+			result = s.toLower()
+			result = s.contains("hello")
+			result = s.indexOf("world")
+			result = len(s)
+		}
+	`
+
+	l := lexer.New(input)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	c := compiler.New()
+	c.Compile(program)
+	bytecode := c.Bytecode()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		v := vm.New(bytecode)
+		v.Run()
+	}
+}
+
+func BenchmarkArrayMethodCalls1000(b *testing.B) {
+	// Tests inline cache for array methods
+	input := `
+		var arr = [1, 2, 3, 4, 5]
+		var result = 0
+		for (var i = 0; i < 1000; i++) {
+			push(arr, i)
+			result = len(arr)
+			result = arr.indexOf(3)
+		}
+	`
+
+	l := lexer.New(input)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	c := compiler.New()
+	c.Compile(program)
+	bytecode := c.Bytecode()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		v := vm.New(bytecode)
+		v.Run()
+	}
+}
+
+func BenchmarkMapMethodCalls1000(b *testing.B) {
+	// Tests inline cache for map methods
+	input := `
+		var m = {"a": 1, "b": 2, "c": 3}
+		var result = 0
+		for (var i = 0; i < 1000; i++) {
+			result = len(m)
+			result = m.containsKey("a")
+			result = m.keys().len()
+		}
+	`
+
+	l := lexer.New(input)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	c := compiler.New()
+	c.Compile(program)
+	bytecode := c.Bytecode()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		v := vm.New(bytecode)
+		v.Run()
+	}
+}

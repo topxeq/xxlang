@@ -32,8 +32,8 @@ type RegVM struct {
 	// Exception handling
 	handlers []ExceptionHandler
 
-	// Inline cache for method lookups
-	methodCache [InlineCacheSize]InlineCacheEntry
+	// Inline cache for property/method lookups
+	inlineCache InlineCacheTable
 
 	// Temp stack for complex expressions that don't fit in registers
 	tempStack *ValueStack
@@ -766,36 +766,105 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 
 		var result objects.Object
 
-		// Handle Instance objects
+		// Handle Instance objects with inline caching
 		if instance, ok := obj.(*objects.Instance); ok {
-			// First check for field
-			if val, ok := instance.Fields[name.Value]; ok {
-				result = val
-			} else {
-				// Check for method
-				method := vm.findMethod(instance.Class, name.Value)
-				if method != nil {
-					result = method
-				} else {
+			nameHash := hashName(name.Value)
+			class := instance.Class
+
+			// Check cache first
+			cached := vm.inlineCache.Get(objects.TagInstance, class, nameHash)
+			if cached != nil {
+				// Cache hit
+				switch cached.ResultType {
+				case CacheResultMethod:
+					result = cached.Method
+				case CacheResultField:
+					// Field index cached, but we still need to look up the value
+					// (fields are mutable, so we cache the index not the value)
+					if cached.FieldIdx >= 0 && cached.FieldIdx < len(instance.Fields) {
+						// This optimization requires field index tracking - for now fall back
+						if val, ok := instance.Fields[name.Value]; ok {
+							result = val
+						} else {
+							result = objects.NULL
+						}
+					} else {
+						result = objects.NULL
+					}
+				case CacheResultNull:
 					result = objects.NULL
+				default:
+					// Shouldn't happen, fall through to slow path
+					cached = nil
+				}
+			}
+
+			if cached == nil {
+				// Cache miss - do the lookup
+				// First check for field
+				if val, ok := instance.Fields[name.Value]; ok {
+					result = val
+					// Note: We don't cache field values because they're mutable
+					// We could cache field indices, but that requires tracking field positions
+				} else {
+					// Check for method
+					method := vm.findMethod(class, name.Value)
+					if method != nil {
+						result = method
+						// Cache the method lookup
+						vm.inlineCache.Set(objects.TagInstance, class, nameHash, CacheResultMethod, method, -1)
+					} else {
+						result = objects.NULL
+						// Cache the miss (negative caching)
+						vm.inlineCache.Set(objects.TagInstance, class, nameHash, CacheResultNull, nil, -1)
+					}
 				}
 			}
 		} else if m, ok := obj.(*objects.Map); ok {
-			// Handle Map objects
-			key := objects.InternString(name.Value)
-			if pair, exists := m.Pairs[key.HashKey()]; exists {
-				result = pair.Value
+			// Handle Map objects - cache map method lookups
+			typeTag := objects.TagMap
+			nameHash := hashName(name.Value)
+
+			// Check cache for map methods
+			cached := vm.inlineCache.Get(typeTag, nil, nameHash)
+			if cached != nil && cached.ResultType == CacheResultMapMethod {
+				result = cached.Method
 			} else {
-				// Check for map method
-				if method, ok := objects.GetMethod(objects.MapType, name.Value); ok {
-					result = method
+				// Cache miss
+				key := objects.InternString(name.Value)
+				if pair, exists := m.Pairs[key.HashKey()]; exists {
+					result = pair.Value
+					// Don't cache map values - they're mutable
 				} else {
-					result = objects.NULL
+					// Check for map method
+					if method, ok := objects.GetMethod(objects.MapType, name.Value); ok {
+						result = method
+						// Cache the method lookup
+						vm.inlineCache.Set(typeTag, nil, nameHash, CacheResultMapMethod, method, -1)
+					} else {
+						result = objects.NULL
+					}
 				}
 			}
-		} else if method, ok := objects.GetMethod(obj.Type(), name.Value); ok {
-			// Handle primitive type methods (Int, Float, String, Array, Bool, Null)
-			result = method
+		} else if obj.TypeTag() <= objects.TagStringBuilder {
+			// Handle primitive type methods with inline caching
+			typeTag := obj.TypeTag()
+			nameHash := hashName(name.Value)
+
+			// Check cache
+			cached := vm.inlineCache.Get(typeTag, nil, nameHash)
+			if cached != nil && cached.ResultType == CacheResultPrimitiveMethod {
+				result = cached.Method
+			} else {
+				// Cache miss - lookup method
+				if method, ok := objects.GetMethod(obj.Type(), name.Value); ok {
+					result = method
+					// Cache the method lookup
+					vm.inlineCache.Set(typeTag, nil, nameHash, CacheResultPrimitiveMethod, method, -1)
+				} else {
+					return fmt.Errorf("cannot access property '%s' on type %s", name.Value, obj.Type())
+				}
+			}
 		} else if mod, ok := obj.(*objects.Module); ok {
 			// Handle Module objects
 			if val, ok := mod.Exports[name.Value]; ok {
@@ -856,15 +925,26 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 
 		var method objects.Object
 
-		// Handle Instance objects
+		// Handle Instance objects with inline caching
 		// Track if this is a map function value (not a built-in method)
 		isMapFunctionValue := false
 
 		if instance, ok := obj.(*objects.Instance); ok {
-			// Find method
-			method = vm.findMethod(instance.Class, name.Value)
-			if method == nil {
-				return fmt.Errorf("method '%s' not found in class", name.Value)
+			class := instance.Class
+			nameHash := hashName(name.Value)
+
+			// Check cache first
+			cached := vm.inlineCache.Get(objects.TagInstance, class, nameHash)
+			if cached != nil && cached.ResultType == CacheResultMethod {
+				method = cached.Method
+			} else {
+				// Cache miss - find method
+				method = vm.findMethod(class, name.Value)
+				if method == nil {
+					return fmt.Errorf("method '%s' not found in class", name.Value)
+				}
+				// Cache the result
+				vm.inlineCache.Set(objects.TagInstance, class, nameHash, CacheResultMethod, method, -1)
 			}
 		} else if mapObj, ok := obj.(*objects.Map); ok {
 			// First check if the map has a key with this name (for callable map values)
@@ -873,17 +953,44 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 				method = pair.Value
 				isMapFunctionValue = true // This is a function stored in the map, not a built-in method
 			} else {
-				// Otherwise check for built-in map method
-				var methodFound bool
-				method, methodFound = objects.GetMethod(objects.MapType, name.Value)
-				if !methodFound {
-					return fmt.Errorf("method '%s' not found on Map", name.Value)
+				// Check cache for map methods
+				typeTag := objects.TagMap
+				nameHash := hashName(name.Value)
+
+				cached := vm.inlineCache.Get(typeTag, nil, nameHash)
+				if cached != nil && cached.ResultType == CacheResultMapMethod {
+					method = cached.Method
+				} else {
+					// Cache miss - lookup method
+					var methodFound bool
+					method, methodFound = objects.GetMethod(objects.MapType, name.Value)
+					if !methodFound {
+						return fmt.Errorf("method '%s' not found on Map", name.Value)
+					}
+					// Cache the result
+					vm.inlineCache.Set(typeTag, nil, nameHash, CacheResultMapMethod, method, -1)
 				}
 			}
 			_ = mapObj // avoid unused variable error
-		} else if m, ok := objects.GetMethod(obj.Type(), name.Value); ok {
-			// Handle primitive type methods
-			method = m
+		} else if obj.TypeTag() <= objects.TagStringBuilder {
+			// Handle primitive type methods with inline caching
+			typeTag := obj.TypeTag()
+			nameHash := hashName(name.Value)
+
+			// Check cache
+			cached := vm.inlineCache.Get(typeTag, nil, nameHash)
+			if cached != nil && cached.ResultType == CacheResultPrimitiveMethod {
+				method = cached.Method
+			} else {
+				// Cache miss - lookup method
+				var methodFound bool
+				method, methodFound = objects.GetMethod(obj.Type(), name.Value)
+				if !methodFound {
+					return fmt.Errorf("cannot call method '%s' on type %s", name.Value, obj.Type())
+				}
+				// Cache the result
+				vm.inlineCache.Set(typeTag, nil, nameHash, CacheResultPrimitiveMethod, method, -1)
+			}
 		} else {
 			return fmt.Errorf("cannot call method '%s' on type %s", name.Value, obj.Type())
 		}
