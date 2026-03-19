@@ -22,8 +22,9 @@ type RegCompiler struct {
 	scopeStack []regScopeState
 
 	// Register allocation
-	nextTempReg int
-	maxReg      int
+	nextTempReg  int
+	maxReg       int
+	freeRegs     []int // List of freed registers available for reuse
 
 	// Source mapping
 	sourceMap  *SourceMap
@@ -37,6 +38,7 @@ type regScopeState struct {
 	instructions []byte
 	nextTempReg  int
 	maxReg       int
+	freeRegs     []int
 }
 
 type regLoopContext struct {
@@ -53,6 +55,7 @@ func NewRegCompiler() *RegCompiler {
 		instructions: []byte{},
 		nextTempReg:  FirstLocalRegister,
 		maxReg:       FirstLocalRegister,
+		freeRegs:     []int{},
 		sourceMap:    NewSourceMap(),
 	}
 }
@@ -64,6 +67,7 @@ func (c *RegCompiler) enterScope() {
 		instructions: c.instructions,
 		nextTempReg:  c.nextTempReg,
 		maxReg:       c.maxReg,
+		freeRegs:     c.freeRegs,
 	})
 
 	// Start with fresh instructions for the new scope
@@ -72,6 +76,7 @@ func (c *RegCompiler) enterScope() {
 	// Reset register allocation for new scope (parameters will use R0-R7)
 	c.nextTempReg = FirstLocalRegister
 	c.maxReg = FirstLocalRegister
+	c.freeRegs = []int{}
 
 	c.symbolTable = NewEnclosedSymbolTable(c.symbolTable)
 }
@@ -94,10 +99,12 @@ func (c *RegCompiler) leaveScope() *CompiledFunction {
 		c.instructions = outer.instructions
 		c.nextTempReg = outer.nextTempReg
 		c.maxReg = outer.maxReg
+		c.freeRegs = outer.freeRegs
 	} else {
 		c.instructions = []byte{}
 		c.nextTempReg = FirstLocalRegister
 		c.maxReg = FirstLocalRegister
+		c.freeRegs = []int{}
 	}
 
 	c.symbolTable = c.symbolTable.Outer
@@ -670,6 +677,25 @@ func (c *RegCompiler) compileForInStatement(n *parser.ForInStatement) (int, erro
 		return 0, err
 	}
 
+	// If iterReg is ReturnRegister, we need to save it to a safe temp register
+	// because subsequent builtin calls (like len) will overwrite ReturnRegister
+	if iterReg == ReturnRegister {
+		savedReg := c.allocTempReg()
+		c.emitRegMove(savedReg, iterReg)
+		iterReg = savedReg
+	}
+
+	// Save iterable to a local slot to preserve it across iterations
+	// This prevents the iterable from being corrupted when the loop body
+	// allocates temporary registers
+	iterSymbol := c.symbolTable.Define("__for_in_iter__")
+	if iterSymbol.Scope == GlobalScope {
+		c.emitRegStoreGlobal(iterReg, iterSymbol.Index)
+	} else {
+		c.emitRegStoreLocal(iterReg, iterSymbol.Index)
+	}
+	c.freeTempReg(iterReg)
+
 	// Define index variable (hidden, used for iteration)
 	indexSymbol := c.symbolTable.Define("__for_in_index__")
 
@@ -700,6 +726,14 @@ func (c *RegCompiler) compileForInStatement(n *parser.ForInStatement) (int, erro
 
 	// Record loop start
 	startPos := len(c.instructions)
+
+	// Reload iterable from local slot for this iteration
+	iterReg = c.allocTempReg()
+	if iterSymbol.Scope == GlobalScope {
+		c.emitRegLoadGlobal(iterReg, iterSymbol.Index)
+	} else {
+		c.emitRegLoadLocal(iterReg, iterSymbol.Index)
+	}
 
 	// Load iterable length using len builtin (index 0)
 	// Put iterable in R0 for builtin call
@@ -757,6 +791,7 @@ func (c *RegCompiler) compileForInStatement(n *parser.ForInStatement) (int, erro
 	}
 
 	c.freeTempReg(indexReg)
+	c.freeTempReg(iterReg)
 
 	// Compile body
 	_, err = c.Compile(n.Body)
@@ -803,8 +838,6 @@ func (c *RegCompiler) compileForInStatement(n *parser.ForInStatement) (int, erro
 		c.patchJump(pos)
 	}
 	c.loopContexts = c.loopContexts[:len(c.loopContexts)-1]
-
-	c.freeTempReg(iterReg)
 
 	return 0, nil
 }
@@ -1059,21 +1092,72 @@ func (c *RegCompiler) compileCallExpression(n *parser.CallExpression) (int, erro
 
 // compileArrayLiteral compiles an array literal
 func (c *RegCompiler) compileArrayLiteral(n *parser.ArrayLiteral) (int, error) {
-	// Compile elements
-	startReg := c.nextTempReg
+	// Compile elements and collect their result registers
+	// Elements may not be in contiguous registers (e.g., nested arrays)
+	elementRegs := make([]int, 0, len(n.Elements))
+
 	for _, elem := range n.Elements {
-		_, err := c.Compile(elem)
+		reg, err := c.Compile(elem)
 		if err != nil {
 			return 0, err
 		}
+		elementRegs = append(elementRegs, reg)
 	}
 
-	dst := c.allocTempReg()
-	c.emitRegArray(dst, startReg, len(n.Elements))
+	numElements := len(n.Elements)
 
-	// Free element registers
-	for i := 0; i < len(n.Elements); i++ {
-		c.freeTempReg(startReg + i)
+	// Check if we have enough contiguous register space
+	// Need numElements contiguous registers for elements + 1 for dst
+	available := NumRegisters - 1 - c.nextTempReg
+	if available >= numElements {
+		// Enough space - use existing OpRegArray (more efficient)
+		dst := c.allocTempReg()
+		startReg := c.nextTempReg
+
+		for i, elemReg := range elementRegs {
+			targetReg := startReg + i
+			c.allocTempReg() // allocate the register slot
+			if targetReg != elemReg {
+				c.emitRegMove(targetReg, elemReg)
+				c.freeTempReg(elemReg)
+			}
+		}
+
+		c.emitRegArray(dst, startReg, numElements)
+
+		// Free element registers
+		for i := 0; i < numElements; i++ {
+			c.freeTempReg(startReg + i)
+		}
+
+		return dst, nil
+	}
+
+	// Not enough contiguous space - use incremental array building with temp stack
+	// Push all elements to the temp stack first to preserve them
+	for _, elemReg := range elementRegs {
+		c.emitRegPush(elemReg)
+	}
+
+	// Free the original element registers
+	for _, elemReg := range elementRegs {
+		c.freeTempReg(elemReg)
+	}
+
+	// Use fixed registers for overflow case
+	const overflowArrReg = 253
+	const overflowElemReg = 254
+
+	// Create empty array
+	dst := overflowArrReg
+	c.emitRegArrayEmpty(dst)
+
+	// Pop elements from stack and append to array
+	for i := len(elementRegs) - 1; i >= 0; i-- {
+		// Pop element to fixed register
+		c.emitRegPop(overflowElemReg)
+		// Append element to array
+		c.emitRegArrayAppend(dst, dst, overflowElemReg)
 	}
 
 	return dst, nil
@@ -1108,34 +1192,77 @@ func (c *RegCompiler) compileMapLiteral(n *parser.MapLiteral) (int, error) {
 		pairs = append(pairs, kvPair{keyReg: savedKeyReg, valReg: valReg})
 	}
 
-	// Now allocate contiguous registers and move all pairs
-	dst := c.allocTempReg()
-	startReg := c.nextTempReg
 	count := len(pairs)
 
-	for i, pair := range pairs {
-		targetKeyReg := startReg + i*2
-		targetValReg := startReg + i*2 + 1
+	// Check if we have enough contiguous register space
+	// Need count*2 contiguous registers for key-value pairs
+	available := NumRegisters - 1 - c.nextTempReg
+	if available >= count*2 {
+		// Enough space - use existing OpRegMap (more efficient)
+		dst := c.allocTempReg()
+		startReg := c.nextTempReg
 
-		// Allocate these registers
-		for c.nextTempReg <= targetValReg {
-			c.allocTempReg()
+		for i, pair := range pairs {
+			targetKeyReg := startReg + i*2
+			targetValReg := startReg + i*2 + 1
+
+			// Allocate these registers
+			for c.nextTempReg <= targetValReg {
+				c.allocTempReg()
+			}
+
+			// Move key and value to target positions
+			if pair.keyReg != targetKeyReg {
+				c.emitRegMove(targetKeyReg, pair.keyReg)
+			}
+			if pair.valReg != targetValReg {
+				c.emitRegMove(targetValReg, pair.valReg)
+			}
 		}
 
-		// Move key and value to target positions
-		if pair.keyReg != targetKeyReg {
-			c.emitRegMove(targetKeyReg, pair.keyReg)
+		c.emitRegMap(dst, startReg, count)
+
+		// Free all temporary registers
+		for i := 0; i < count*2; i++ {
+			c.freeTempReg(startReg + i)
 		}
-		if pair.valReg != targetValReg {
-			c.emitRegMove(targetValReg, pair.valReg)
-		}
+
+		return dst, nil
 	}
 
-	c.emitRegMap(dst, startReg, count)
+	// Not enough contiguous space - use incremental map building with temp stack
+	// Push all key-value pairs to the temp stack first to preserve them
+	for _, pair := range pairs {
+		c.emitRegPush(pair.keyReg)
+		c.emitRegPush(pair.valReg)
+	}
 
-	// Free all temporary registers
-	for i := 0; i < count*2; i++ {
-		c.freeTempReg(startReg + i)
+	// Free the original pair registers now that values are on stack
+	for _, pair := range pairs {
+		c.freeTempReg(pair.keyReg)
+		c.freeTempReg(pair.valReg)
+	}
+
+	// Use fixed registers for overflow case to avoid conflicts
+	// R252 = map result
+	// R253 = key temp
+	// R254 = value temp
+	// R255 = return register (reserved)
+	const overflowMapReg = 252
+	const overflowKeyReg = 253
+	const overflowValReg = 254
+
+	dst := overflowMapReg
+	c.emitRegMapEmpty(dst)
+
+	// Pop pairs from stack and add to map
+	for i := len(pairs) - 1; i >= 0; i-- {
+		// Pop value first (it was pushed last)
+		c.emitRegPop(overflowValReg)
+		// Pop key
+		c.emitRegPop(overflowKeyReg)
+		// Add to map
+		c.emitRegMapSet(dst, dst, overflowKeyReg, overflowValReg)
 	}
 
 	return dst, nil
@@ -1447,8 +1574,19 @@ func (c *RegCompiler) compileCompoundAssignmentExpression(n *parser.CompoundAssi
 // Register allocation helpers
 
 func (c *RegCompiler) allocTempReg() int {
+	// First, check if there's a freed register we can reuse
+	if len(c.freeRegs) > 0 {
+		// Pop the last freed register
+		reg := c.freeRegs[len(c.freeRegs)-1]
+		c.freeRegs = c.freeRegs[:len(c.freeRegs)-1]
+		return reg
+	}
+
+	// No freed registers available, allocate a new one
 	if c.nextTempReg >= NumRegisters-1 {
-		// Reserve ReturnRegister
+		// We've run out of registers - this is a critical error
+		// Fall back to reusing a high register (will likely cause issues)
+		// In a production compiler, we'd spill to stack/local slots
 		return NumRegisters - 2
 	}
 	reg := c.nextTempReg
@@ -1459,9 +1597,56 @@ func (c *RegCompiler) allocTempReg() int {
 	return reg
 }
 
+// allocContiguousRegisters allocates count contiguous registers starting from the returned index.
+// Returns the start register index. If not enough space, uses locals for overflow.
+func (c *RegCompiler) allocContiguousRegisters(count int) int {
+	if count <= 0 {
+		return c.nextTempReg
+	}
+
+	// Check if we have enough space
+	available := NumRegisters - 1 - c.nextTempReg // -1 for ReturnRegister
+	if available >= count {
+		// Enough space - allocate normally
+		start := c.nextTempReg
+		for i := 0; i < count; i++ {
+			c.allocTempReg()
+		}
+		return start
+	}
+
+	// Not enough contiguous space - allocate as many as we can
+	// The VM will handle reading from locals for overflow
+	start := c.nextTempReg
+	for c.nextTempReg < NumRegisters-1 {
+		c.allocTempReg()
+	}
+	return start
+}
+
+// ensureRegisterSpace ensures there are at least 'count' registers available.
+// If not, it returns an error (caller should handle by using alternative approach).
+func (c *RegCompiler) ensureRegisterSpace(count int) bool {
+	return c.nextTempReg+count < NumRegisters-1
+}
+
 func (c *RegCompiler) freeTempReg(reg int) {
+	// Validate register is in valid range and not a reserved register
+	if reg < FirstLocalRegister || reg >= NumRegisters-1 {
+		return // Don't free reserved registers
+	}
+
+	// If this is the last allocated register, decrement the counter
 	if reg == c.nextTempReg-1 {
 		c.nextTempReg--
+		// Also pop any freed registers that are now contiguous with the end
+		for len(c.freeRegs) > 0 && c.freeRegs[len(c.freeRegs)-1] == c.nextTempReg-1 {
+			c.nextTempReg--
+			c.freeRegs = c.freeRegs[:len(c.freeRegs)-1]
+		}
+	} else {
+		// Add to free list for reuse
+		c.freeRegs = append(c.freeRegs, reg)
 	}
 }
 
@@ -1599,6 +1784,22 @@ func (c *RegCompiler) emitRegArray(dst, startReg, count int) {
 	c.instructions = append(c.instructions, MakeRegInstruction(OpRegArray, dst, startReg, count)...)
 }
 
+func (c *RegCompiler) emitRegArrayEmpty(dst int) {
+	c.instructions = append(c.instructions, MakeRegInstruction1(OpRegArrayEmpty, dst)...)
+}
+
+func (c *RegCompiler) emitRegArrayAppend(dst, arrReg, elemReg int) {
+	c.instructions = append(c.instructions, MakeRegInstruction(OpRegArrayAppend, dst, arrReg, elemReg)...)
+}
+
+func (c *RegCompiler) emitRegMapEmpty(dst int) {
+	c.instructions = append(c.instructions, MakeRegInstruction1(OpRegMapEmpty, dst)...)
+}
+
+func (c *RegCompiler) emitRegMapSet(dst, mapReg, keyReg, valReg int) {
+	c.instructions = append(c.instructions, []byte{byte(OpRegMapSet), byte(dst), byte(mapReg), byte(keyReg), byte(valReg)}...)
+}
+
 func (c *RegCompiler) emitRegMap(dst, startReg, count int) {
 	c.instructions = append(c.instructions, MakeRegInstruction(OpRegMap, dst, startReg, count)...)
 }
@@ -1683,6 +1884,14 @@ func (c *RegCompiler) patchJumpTo(pos int, target int) {
 func (c *RegCompiler) addConstant(obj objects.Object) int {
 	c.constants = append(c.constants, obj)
 	return len(c.constants) - 1
+}
+
+func (c *RegCompiler) emitRegPush(srcReg int) {
+	c.instructions = append(c.instructions, byte(OpRegPush), byte(srcReg))
+}
+
+func (c *RegCompiler) emitRegPop(dstReg int) {
+	c.instructions = append(c.instructions, byte(OpRegPop), byte(dstReg))
 }
 
 // Bytecode returns the compiled bytecode
