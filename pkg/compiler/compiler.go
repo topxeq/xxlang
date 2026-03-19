@@ -259,6 +259,7 @@ type CompiledFunction struct {
 	Instructions  []byte
 	NumLocals     int
 	NumParameters int
+	NumRegs       int    // Maximum register used (for frame initialization)
 	FreeVariables []Symbol // Free variables captured from outer scope
 
 	// Inlining support

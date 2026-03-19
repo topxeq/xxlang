@@ -34,8 +34,13 @@ func NewRegFrame(fn *compiler.CompiledFunction) *RegFrame {
 	f.Fn = fn
 	f.IP = 0 // Start at instruction 0
 
-	// Reset all registers to null
-	for i := range f.Registers {
+	// Only reset registers that will be used (optimization for recursive calls)
+	// If NumRegs is 0 or not set, default to all registers
+	numRegs := fn.NumRegs
+	if numRegs <= 0 || numRegs > compiler.NumRegisters {
+		numRegs = compiler.NumRegisters
+	}
+	for i := 0; i < numRegs; i++ {
 		f.Registers[i] = ValueNull
 	}
 
@@ -69,14 +74,12 @@ func NewRegFrame(fn *compiler.CompiledFunction) *RegFrame {
 
 // Release returns the frame to the pool for reuse
 func (f *RegFrame) Release() {
+	// Don't clear registers here - they'll be reset when reused in NewRegFrame
+	// This saves an O(256) loop on every function return
+
 	// Clear references
 	f.Fn = nil
 	f.IP = 0
-
-	// Clear registers
-	for i := range f.Registers {
-		f.Registers[i] = ValueNull
-	}
 
 	// Don't clear FreeVars - it may be shared with a closure
 	// Just remove the reference

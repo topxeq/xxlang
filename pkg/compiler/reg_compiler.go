@@ -84,6 +84,9 @@ func (c *RegCompiler) leaveScope() *CompiledFunction {
 	freeVars := make([]Symbol, len(c.symbolTable.FreeSymbols))
 	copy(freeVars, c.symbolTable.FreeSymbols)
 
+	// Capture max register used before restoring
+	maxRegUsed := c.maxReg
+
 	// Restore outer scope's state
 	if len(c.scopeStack) > 0 {
 		outer := c.scopeStack[len(c.scopeStack)-1]
@@ -102,6 +105,7 @@ func (c *RegCompiler) leaveScope() *CompiledFunction {
 	return &CompiledFunction{
 		Instructions:  fnInstructions,
 		NumLocals:     numLocals,
+		NumRegs:       maxRegUsed + 1, // +1 because maxReg is 0-indexed
 		FreeVariables: freeVars,
 	}
 }
