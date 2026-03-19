@@ -255,7 +255,18 @@ func TestBuiltinPush(t *testing.T) {
 
 	arr := &Array{Elements: []Object{&Int{Value: 1}}}
 	result := fn.Fn(arr, &Int{Value: 2})
-	compareObjectsForTest(t, result, &Array{Elements: []Object{&Int{Value: 1}, &Int{Value: 2}}})
+	// push returns the array (for chaining/supporting result = push(result, item) pattern)
+	resultArr, ok := result.(*Array)
+	if !ok {
+		t.Fatalf("expected ARRAY, got %s", result.Type())
+	}
+	if resultArr != arr {
+		t.Error("push should return the same array instance")
+	}
+	// Check that the array was modified in place
+	if len(arr.Elements) != 2 {
+		t.Errorf("expected 2 elements after push, got %d", len(arr.Elements))
+	}
 }
 
 func TestBuiltinPop(t *testing.T) {
@@ -266,7 +277,12 @@ func TestBuiltinPop(t *testing.T) {
 
 	arr := &Array{Elements: []Object{&Int{Value: 1}, &Int{Value: 2}}}
 	result := fn.Fn(arr)
-	compareObjectsForTest(t, result, &Array{Elements: []Object{&Int{Value: 1}}})
+	// pop returns the popped element
+	compareObjectsForTest(t, result, &Int{Value: 2})
+	// Check that the array was modified in place
+	if len(arr.Elements) != 1 {
+		t.Errorf("expected 1 element after pop, got %d", len(arr.Elements))
+	}
 
 	// Test pop empty
 	emptyArr := &Array{Elements: []Object{}}
@@ -367,12 +383,13 @@ func TestBuiltinDelete(t *testing.T) {
 	keyA := &String{Value: "a"}
 
 	result := fn.Fn(m, keyA)
-	newMap, ok := result.(*Map)
-	if !ok {
-		t.Fatalf("expected Map, got %s", result.Type())
+	// delete returns NULL (in-place modification)
+	if result != NULL {
+		t.Fatalf("expected NULL, got %s", result.Type())
 	}
-	if len(newMap.Pairs) != 0 {
-		t.Errorf("expected 0 pairs, got %d", len(newMap.Pairs))
+	// Check that the map was modified in place
+	if len(m.Pairs) != 0 {
+		t.Errorf("expected 0 pairs after delete, got %d", len(m.Pairs))
 	}
 }
 

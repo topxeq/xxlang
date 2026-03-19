@@ -1426,14 +1426,17 @@ func TestSerializeToFile(t *testing.T) {
 
 	bytecode := compiler.Bytecode()
 
+	// Use t.TempDir() for a unique temp directory
+	tmpFile := t.TempDir() + "/test_bytecode.xxl"
+
 	// Serialize to file
-	err = bytecode.SerializeToFile("/tmp/test_bytecode.xxl")
+	err = bytecode.SerializeToFile(tmpFile)
 	if err != nil {
 		t.Fatalf("serialize to file error: %v", err)
 	}
 
 	// Deserialize from file
-	deserialized, err := DeserializeFromFile("/tmp/test_bytecode.xxl")
+	deserialized, err := DeserializeFromFile(tmpFile)
 	if err != nil {
 		t.Fatalf("deserialize from file error: %v", err)
 	}

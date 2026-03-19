@@ -727,10 +727,9 @@ var Builtins = map[string]*Builtin{
 			if !ok {
 				return newError("first argument to 'push' must be ARRAY, got %s", args[0].Type())
 			}
-			newElements := make([]Object, len(arr.Elements)+1)
-			copy(newElements, arr.Elements)
-			newElements[len(arr.Elements)] = args[1]
-			return &Array{Elements: newElements}
+			// Modify array in place and return it for chaining
+			arr.Elements = append(arr.Elements, args[1])
+			return arr
 		},
 	},
 	"pop": {
@@ -746,10 +745,12 @@ var Builtins = map[string]*Builtin{
 			if len(arr.Elements) == 0 {
 				return newError("cannot pop from empty array")
 			}
+			// Get last element
 			lastElem := arr.Elements[len(arr.Elements)-1]
-			newElements := make([]Object, len(arr.Elements)-1)
-			copy(newElements, arr.Elements[:len(arr.Elements)-1])
-			return &Array{Elements: newElements, LastPopped: lastElem}
+			// Modify array in place
+			arr.Elements = arr.Elements[:len(arr.Elements)-1]
+			// Return the popped element
+			return lastElem
 		},
 	},
 	"first": {
@@ -939,13 +940,9 @@ var Builtins = map[string]*Builtin{
 			if !ok {
 				return newError("first argument to 'delete' must be MAP, got %s", args[0].Type())
 			}
-			newPairs := make(map[HashKey]MapPair, len(m.Pairs)-1)
-			for k, v := range m.Pairs {
-				if k != args[1].HashKey() {
-					newPairs[k] = v
-				}
-			}
-			return &Map{Pairs: newPairs}
+			// Delete in place (imperative style)
+			delete(m.Pairs, args[1].HashKey())
+			return NULL
 		},
 	},
 
