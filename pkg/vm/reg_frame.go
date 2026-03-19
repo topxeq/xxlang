@@ -44,23 +44,17 @@ func NewRegFrame(fn *compiler.CompiledFunction) *RegFrame {
 		f.Registers[i] = ValueNull
 	}
 
-	// Allocate or reuse free variables array
+	// Allocate or reuse free variables array - don't clear, will be written before read
 	numFreeVars := len(fn.FreeVariables)
 	if cap(f.FreeVars) >= numFreeVars {
 		f.FreeVars = f.FreeVars[:numFreeVars]
-		for i := range f.FreeVars {
-			f.FreeVars[i] = ValueNull
-		}
 	} else {
 		f.FreeVars = make([]Value, numFreeVars)
 	}
 
-	// Allocate locals for spilled values
+	// Allocate locals for spilled values - don't clear, will be written before read
 	if cap(f.Locals) >= fn.NumLocals {
 		f.Locals = f.Locals[:fn.NumLocals]
-		for i := range f.Locals {
-			f.Locals[i] = ValueNull
-		}
 	} else {
 		f.Locals = make([]Value, fn.NumLocals)
 	}
