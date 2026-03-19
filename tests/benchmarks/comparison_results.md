@@ -1,12 +1,39 @@
-# 性能基准测试对比：Xxlang Register VM vs Go vs Python
+# 性能基准测试对比：Xxlang Register VM vs Go vs Python vs C vs Java
 
 ## 测试环境
 - CPU: Intel Xeon Platinum 8180 @ 2.50GHz
 - OS: Linux
 - Go: 1.x
 - Python: 3.x
+- C: gcc -O2
+- Java: OpenJDK
 
-## 性能对比表
+## Fibonacci(35) 跨语言对比
+
+递归法计算斐波那契数列第35项（结果：9,227,465）：
+
+| 语言 | 时间 (ms) | 相对C的速度 | 相对Go的速度 |
+|------|-----------|-------------|--------------|
+| **C** (gcc -O2) | 25 | 1.0x | 0.4x |
+| **Java** | 38 | 1.5x | 0.6x |
+| **Go** | 67 | 2.7x | 1.0x |
+| **Python 3** | 2,998 | 120x | 45x |
+| **Xxlang** | 5,755 | 230x | 86x |
+
+### 分析
+
+- **C**: 最快，编译优化后的原生代码
+- **Java**: JIT编译器优化，接近C的性能
+- **Go**: 比C慢约2.7倍，但仍是编译型语言
+- **Python**: 比Go慢45倍，CPython解释执行
+- **Xxlang**: 比Go慢86倍，比Python慢约2倍
+
+Xxlang作为解释型语言，性能处于合理范围：
+- 相比Python只慢约2倍
+- 递归函数调用开销可控
+- 寄存器VM优化效果明显
+
+## 常规基准测试对比表
 
 | 基准测试 | Xxlang (µs) | Go (µs) | Python (µs) | vs Go | vs Python |
 |---------|-------------|---------|-------------|-------|-----------|

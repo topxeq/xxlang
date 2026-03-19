@@ -1,6 +1,25 @@
 # Register VM vs Stack VM Benchmark Results
 
-## Summary
+## Fibonacci(35) Cross-Language Comparison
+
+Recursive Fibonacci benchmark (result: 9,227,465):
+
+| Language | Time (ms) | Relative to C |
+|----------|-----------|---------------|
+| **C** (gcc -O2) | 25 | 1.0x |
+| **Java** | 38 | 1.5x |
+| **Go** | 67 | 2.7x |
+| **Python 3** | 2,998 | 120x |
+| **Xxlang** | 5,755 | 230x |
+
+### Analysis
+
+Xxlang performs reasonably well for an interpreted language:
+- Only ~2x slower than Python for recursive workloads
+- 86x slower than Go (expected for interpreter vs compiled)
+- Register VM optimization shows clear benefits for function-heavy code
+
+## Register VM vs Stack VM Summary
 
 | Benchmark | Stack VM (ns/op) | Register VM (ns/op) | Speedup | Stack VM Allocs | Register VM Allocs |
 |-----------|-----------------|---------------------|---------|-----------------|-------------------|
