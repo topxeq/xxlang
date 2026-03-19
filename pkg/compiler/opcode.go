@@ -258,6 +258,9 @@ const (
 	// Register map building (for large maps)
 	OpRegMapEmpty // R[dst] = empty map
 	OpRegMapSet   // R[dst] = R[map] with R[key] = R[val]
+
+	// Tail call optimization
+	OpRegTailCall // Tail call: reuse current frame instead of creating new one
 )
 
 // Definition describes an opcode's format
@@ -512,6 +515,8 @@ var definitions = map[Opcode]*Definition{
 	OpRegMapEmpty:    {"OpRegMapEmpty", []int{1}},            // dst
 	OpRegMapSet:      {"OpRegMapSet", []int{1, 1, 1, 1}},     // dst, map_reg, key_reg, val_reg
 
+	// Tail call optimization
+	OpRegTailCall: {"OpRegTailCall", []int{1, 1}}, // func_reg, num_args
 }
 
 // Lookup finds an opcode's definition
@@ -621,7 +626,7 @@ const (
 
 // IsRegisterOpcode returns true if the opcode is a register-based operation
 func IsRegisterOpcode(op Opcode) bool {
-	return op >= OpRegAdd && op <= OpRegMapSet
+	return op >= OpRegAdd && op <= OpRegTailCall
 }
 
 // MakeRegInstruction creates a fixed 4-byte register instruction

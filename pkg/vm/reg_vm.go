@@ -458,6 +458,9 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 	case compiler.OpRegCall:
 		return vm.handleRegCall(frame, code)
 
+	case compiler.OpRegTailCall:
+		return vm.handleRegTailCall(frame, code)
+
 	case compiler.OpRegBuiltin:
 		builtinIdx, numArgs := DecodeReg2(code, frame.IP)
 		frame.IP += 3
@@ -1446,4 +1449,103 @@ func (vm *RegVM) loadModule(importPath string, frame *RegFrame) (*objects.Module
 	})
 
 	return mod, nil
+}
+
+// handleRegTailCall handles tail call optimization
+// Instead of creating a new frame, it reuses the current frame
+func (vm *RegVM) handleRegTailCall(frame *RegFrame, code []byte) error {
+	funcReg, numArgs := DecodeCall(code, frame.IP)
+	// Don't advance IP here - we'll reset it to the new function's start
+
+	fn := frame.Registers[funcReg]
+	if fn.IsNull() {
+		return fmt.Errorf("cannot call null")
+	}
+
+	// Get the function to call
+	var targetFn *compiler.CompiledFunction
+	var freeVars []Value
+
+	// Fast path: check specific types
+	if closure := fn.GetClosure(); closure != nil {
+		targetFn = closure.Fn
+		// Use FreeVarsValues for register VM, convert FreeVars if needed
+		if closure.FreeVarsValues != nil {
+			freeVars = closure.FreeVarsValues
+		} else if len(closure.FreeVars) > 0 {
+			freeVars = make([]Value, len(closure.FreeVars))
+			for i, obj := range closure.FreeVars {
+				freeVars[i] = NewObject(obj)
+			}
+		}
+	} else if compiledFn := fn.GetCompiledFunction(); compiledFn != nil {
+		targetFn = compiledFn
+	} else {
+		// Slow path: generic object
+		obj := fn.ToObject()
+		switch fnObj := obj.(type) {
+		case *Closure:
+			targetFn = fnObj.Fn
+			// Use FreeVarsValues for register VM, convert FreeVars if needed
+			if fnObj.FreeVarsValues != nil {
+				freeVars = fnObj.FreeVarsValues
+			} else if len(fnObj.FreeVars) > 0 {
+				freeVars = make([]Value, len(fnObj.FreeVars))
+				for i, obj := range fnObj.FreeVars {
+					freeVars[i] = NewObject(obj)
+				}
+			}
+		case *compiler.CompiledFunction:
+			targetFn = fnObj
+		case *objects.Builtin:
+			// Builtins don't benefit from TCO, fall back to normal call
+			frame.IP += 3
+			return vm.callBuiltin(fnObj, int(numArgs), frame)
+		default:
+			return fmt.Errorf("cannot tail call %s", obj.Type())
+		}
+	}
+
+	if int(numArgs) != targetFn.NumParameters {
+		return fmt.Errorf("wrong number of arguments: want=%d, got=%d", targetFn.NumParameters, numArgs)
+	}
+
+	// Save arguments from R0-R7 before resetting registers
+	args := make([]Value, numArgs)
+	for i := 0; i < int(numArgs); i++ {
+		args[i] = frame.Registers[i]
+	}
+
+	// Reset the frame for the new function
+	// Clear only the registers that will be used
+	numRegs := targetFn.NumRegs
+	if numRegs <= 0 || numRegs > compiler.NumRegisters {
+		numRegs = compiler.NumRegisters
+	}
+	for i := 0; i < numRegs; i++ {
+		frame.Registers[i] = ValueNull
+	}
+
+	// Restore arguments to R0-R7
+	for i := 0; i < int(numArgs); i++ {
+		frame.Registers[i] = args[i]
+	}
+
+	// Update frame to point to the new function
+	frame.Fn = targetFn
+	frame.IP = 0
+	frame.FreeVars = freeVars
+
+	// Allocate locals for the new function
+	if cap(frame.Locals) >= targetFn.NumLocals {
+		frame.Locals = frame.Locals[:targetFn.NumLocals]
+		// Clear locals
+		for i := range frame.Locals {
+			frame.Locals[i] = ValueNull
+		}
+	} else {
+		frame.Locals = make([]Value, targetFn.NumLocals)
+	}
+
+	return nil
 }

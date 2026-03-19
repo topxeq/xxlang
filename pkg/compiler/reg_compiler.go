@@ -843,10 +843,17 @@ func (c *RegCompiler) compileForInStatement(n *parser.ForInStatement) (int, erro
 }
 
 // compileReturnStatement compiles a return statement
+// Supports tail call optimization: if return value is a function call,
+// emit OpRegTailCall instead of OpRegCall + OpRegReturn
 func (c *RegCompiler) compileReturnStatement(n *parser.ReturnStatement) (int, error) {
 	if n.ReturnValue == nil {
 		c.emitRegReturn(0)
 		return 0, nil
+	}
+
+	// Check for tail call opportunity: return func(args)
+	if call, ok := n.ReturnValue.(*parser.CallExpression); ok {
+		return c.compileTailCall(call)
 	}
 
 	valReg, err := c.Compile(n.ReturnValue)
@@ -856,6 +863,82 @@ func (c *RegCompiler) compileReturnStatement(n *parser.ReturnStatement) (int, er
 
 	c.emitRegReturn(valReg)
 	c.freeTempReg(valReg)
+	return 0, nil
+}
+
+// compileTailCall compiles a tail call (return func(args))
+// This emits OpRegTailCall which reuses the current frame
+func (c *RegCompiler) compileTailCall(n *parser.CallExpression) (int, error) {
+	// Check if this is a direct builtin call - builtins don't benefit from TCO
+	// and OpRegTailCall doesn't work with builtins
+	if ident, ok := n.Function.(*parser.Identifier); ok {
+		symbol, ok := c.symbolTable.Resolve(ident.Value)
+		if ok && symbol.Scope == BuiltinScope {
+			// Fall back to normal call + return for builtins
+			valReg, err := c.compileCallExpression(n)
+			if err != nil {
+				return 0, err
+			}
+			c.emitRegReturn(valReg)
+			c.freeTempReg(valReg)
+			return 0, nil
+		}
+	}
+
+	// Check if this is a method call
+	if _, ok := n.Function.(*parser.DotExpression); ok {
+		// Method calls need special handling for TCO
+		// For now, fall back to normal call + return
+		// TODO: Implement method TCO
+		valReg, err := c.compileCallExpression(n)
+		if err != nil {
+			return 0, err
+		}
+		c.emitRegReturn(valReg)
+		c.freeTempReg(valReg)
+		return 0, nil
+	}
+
+	// Regular function tail call
+	// Compile function expression
+	funcReg, err := c.Compile(n.Function)
+	if err != nil {
+		return 0, err
+	}
+
+	// Compile arguments to temporary registers
+	argRegs := make([]int, len(n.Arguments))
+	for i, arg := range n.Arguments {
+		argReg, err := c.Compile(arg)
+		if err != nil {
+			return 0, err
+		}
+		if argReg == ReturnRegister {
+			tempReg := c.allocTempReg()
+			c.emitRegMove(tempReg, argReg)
+			argReg = tempReg
+		}
+		argRegs[i] = argReg
+	}
+
+	// Move arguments to R0-R7
+	for i, argReg := range argRegs {
+		if argReg != i {
+			c.emitRegMove(i, argReg)
+		}
+	}
+
+	// Free temporary registers
+	for i := len(argRegs) - 1; i >= 0; i-- {
+		if argRegs[i] >= FirstLocalRegister {
+			c.freeTempReg(argRegs[i])
+		}
+	}
+
+	// Emit tail call instruction
+	c.emitRegTailCall(funcReg, len(n.Arguments))
+	c.freeTempReg(funcReg)
+
 	return 0, nil
 }
 
@@ -1770,6 +1853,10 @@ func (c *RegCompiler) emitRegFalse(dst int) {
 
 func (c *RegCompiler) emitRegCall(funcReg, numArgs int) {
 	c.instructions = append(c.instructions, MakeRegInstruction2(OpRegCall, funcReg, numArgs)...)
+}
+
+func (c *RegCompiler) emitRegTailCall(funcReg, numArgs int) {
+	c.instructions = append(c.instructions, MakeRegInstruction2(OpRegTailCall, funcReg, numArgs)...)
 }
 
 func (c *RegCompiler) emitRegBuiltin(builtinIdx, numArgs int) {

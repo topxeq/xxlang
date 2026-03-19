@@ -614,3 +614,61 @@ func BenchmarkPrimeCheck100(b *testing.B) {
 		v.Run()
 	}
 }
+
+// ============================================
+// Tail Call Optimization Benchmarks
+// ============================================
+
+func BenchmarkFibonacciTailRecursive35(b *testing.B) {
+	input := `
+		func fibTail(n, a, b) {
+			if (n == 0) { return a }
+			if (n == 1) { return b }
+			return fibTail(n - 1, b, a + b)
+		}
+		func fib(n) {
+			return fibTail(n, 0, 1)
+		}
+		fib(35)
+	`
+
+	l := lexer.New(input)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	c := compiler.New()
+	c.Compile(program)
+	bytecode := c.Bytecode()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		v := vm.New(bytecode)
+		v.Run()
+	}
+}
+
+func BenchmarkFibonacciTailRecursive10000(b *testing.B) {
+	input := `
+		func fibTail(n, a, b) {
+			if (n == 0) { return a }
+			if (n == 1) { return b }
+			return fibTail(n - 1, b, a + b)
+		}
+		func fib(n) {
+			return fibTail(n, 0, 1)
+		}
+		fib(10000)
+	`
+
+	l := lexer.New(input)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	c := compiler.New()
+	c.Compile(program)
+	bytecode := c.Bytecode()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		v := vm.New(bytecode)
+		v.Run()
+	}
+}
