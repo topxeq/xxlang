@@ -135,6 +135,8 @@ func (c *RegCompiler) Compile(node parser.Node) (int, error) {
 		return c.compileIdentifier(n)
 	case *parser.VarStatement:
 		return c.compileVarStatement(n)
+	case *parser.ConstStatement:
+		return c.compileConstStatement(n)
 	case *parser.BlockStatement:
 		return c.compileBlockStatement(n)
 	case *parser.IfStatement:
@@ -143,6 +145,8 @@ func (c *RegCompiler) Compile(node parser.Node) (int, error) {
 		return c.compileWhileStatement(n)
 	case *parser.ForStatement:
 		return c.compileForStatement(n)
+	case *parser.ForInStatement:
+		return c.compileForInStatement(n)
 	case *parser.ReturnStatement:
 		return c.compileReturnStatement(n)
 	case *parser.FunctionLiteral:
@@ -155,6 +159,8 @@ func (c *RegCompiler) Compile(node parser.Node) (int, error) {
 		return c.compileMapLiteral(n)
 	case *parser.IndexExpression:
 		return c.compileIndexExpression(n)
+	case *parser.DotExpression:
+		return c.compileDotExpression(n)
 	case *parser.AssignmentExpression:
 		return c.compileAssignmentExpression(n)
 	case *parser.BreakStatement:
@@ -163,6 +169,10 @@ func (c *RegCompiler) Compile(node parser.Node) (int, error) {
 		return c.compileContinueStatement(n)
 	case *parser.TernaryExpression:
 		return c.compileTernaryExpression(n)
+	case *parser.PostfixExpression:
+		return c.compilePostfixExpression(n)
+	case *parser.CompoundAssignmentExpression:
+		return c.compileCompoundAssignmentExpression(n)
 	case *parser.ImportStatement:
 		return c.compileImportStatement(n)
 	case *parser.ExportStatement:
@@ -323,24 +333,84 @@ func (c *RegCompiler) compileInfixExpression(n *parser.InfixExpression) (int, er
 
 // compilePrefixExpression compiles a prefix expression
 func (c *RegCompiler) compilePrefixExpression(n *parser.PrefixExpression) (int, error) {
-	rightReg, err := c.Compile(n.Right)
-	if err != nil {
-		return 0, err
-	}
-
-	dst := c.allocTempReg()
-
 	switch n.Operator {
-	case "-":
-		c.emitRegNeg(dst, rightReg)
-	case "!":
-		c.emitRegNot(dst, rightReg)
-	default:
-		return 0, fmt.Errorf("unknown operator: %s", n.Operator)
-	}
+	case "++", "--":
+		// Prefix increment/decrement: ++x or --x
+		// Returns the new value (unlike postfix which returns old value)
+		switch right := n.Right.(type) {
+		case *parser.Identifier:
+			symbol, ok := c.symbolTable.Resolve(right.Value)
+			if !ok {
+				return 0, fmt.Errorf("undefined variable: %s", right.Value)
+			}
 
-	c.freeTempReg(rightReg)
-	return dst, nil
+			// Allocate a register for the current value
+			valReg := c.allocTempReg()
+
+			// Load current value
+			switch symbol.Scope {
+			case GlobalScope:
+				c.emitRegLoadGlobal(valReg, symbol.Index)
+			case LocalScope:
+				c.emitRegLoadLocal(valReg, symbol.Index)
+			case FreeScope:
+				c.emitRegLoadFree(valReg, symbol.Index)
+			}
+
+			// Load constant 1
+			oneIdx := c.addConstant(objects.NewInt(1))
+			oneReg := c.allocTempReg()
+			c.emitRegLoadConst(oneReg, oneIdx)
+
+			// Perform increment or decrement
+			switch n.Operator {
+			case "++":
+				c.emitRegAdd(valReg, valReg, oneReg)
+			case "--":
+				c.emitRegSub(valReg, valReg, oneReg)
+			}
+
+			// Store back to variable
+			switch symbol.Scope {
+			case GlobalScope:
+				c.emitRegStoreGlobal(valReg, symbol.Index)
+			case LocalScope:
+				c.emitRegStoreLocal(valReg, symbol.Index)
+			case FreeScope:
+				c.emitRegStoreFree(valReg, symbol.Index)
+			}
+
+			// Free the one register
+			c.freeTempReg(oneReg)
+
+			// Return the register holding the new value (prefix returns new value)
+			return valReg, nil
+
+		default:
+			return 0, fmt.Errorf("prefix %s operator not supported for type: %T", n.Operator, right)
+		}
+
+	default:
+		// Handle other prefix operators: - and !
+		rightReg, err := c.Compile(n.Right)
+		if err != nil {
+			return 0, err
+		}
+
+		dst := c.allocTempReg()
+
+		switch n.Operator {
+		case "-":
+			c.emitRegNeg(dst, rightReg)
+		case "!":
+			c.emitRegNot(dst, rightReg)
+		default:
+			return 0, fmt.Errorf("unknown operator: %s", n.Operator)
+		}
+
+		c.freeTempReg(rightReg)
+		return dst, nil
+	}
 }
 
 // compileVarStatement compiles a variable declaration
@@ -368,6 +438,30 @@ func (c *RegCompiler) compileVarStatement(n *parser.VarStatement) (int, error) {
 	}
 
 	// Regular variable declaration
+	symbol := c.symbolTable.Define(n.Name.Value)
+
+	// Compile the initial value
+	valReg, err := c.Compile(n.Value)
+	if err != nil {
+		return 0, err
+	}
+
+	// Store to local or global
+	if symbol.Scope == GlobalScope {
+		c.emitRegStoreGlobal(valReg, symbol.Index)
+	} else {
+		c.emitRegStoreLocal(valReg, symbol.Index)
+	}
+
+	c.freeTempReg(valReg)
+	return valReg, nil
+}
+
+// compileConstStatement compiles a constant declaration
+// Constants are compiled the same as variables at the bytecode level
+// The semantic difference (immutability) is enforced at parse time
+func (c *RegCompiler) compileConstStatement(n *parser.ConstStatement) (int, error) {
+	// Define the constant in the symbol table
 	symbol := c.symbolTable.Define(n.Name.Value)
 
 	// Compile the initial value
@@ -566,6 +660,155 @@ func (c *RegCompiler) compileForStatement(n *parser.ForStatement) (int, error) {
 	return 0, nil
 }
 
+// compileForInStatement compiles a for-in statement
+// for (value in iterable) { body }
+// for (key, value in iterable) { body }
+func (c *RegCompiler) compileForInStatement(n *parser.ForInStatement) (int, error) {
+	// Compile iterable expression
+	iterReg, err := c.Compile(n.Iterable)
+	if err != nil {
+		return 0, err
+	}
+
+	// Define index variable (hidden, used for iteration)
+	indexSymbol := c.symbolTable.Define("__for_in_index__")
+
+	// Initialize index to 0
+	zeroIdx := c.addConstant(objects.NewInt(0))
+	zeroReg := c.allocTempReg()
+	c.emitRegLoadConst(zeroReg, zeroIdx)
+
+	// Store index
+	if indexSymbol.Scope == GlobalScope {
+		c.emitRegStoreGlobal(zeroReg, indexSymbol.Index)
+	} else {
+		c.emitRegStoreLocal(zeroReg, indexSymbol.Index)
+	}
+	c.freeTempReg(zeroReg)
+
+	// Define key variable if present
+	var keySymbol Symbol
+	if n.Key != nil {
+		keySymbol = c.symbolTable.Define(n.Key.Value)
+	}
+
+	// Define value variable
+	var valueSymbol Symbol
+	if n.Value != nil {
+		valueSymbol = c.symbolTable.Define(n.Value.Value)
+	}
+
+	// Record loop start
+	startPos := len(c.instructions)
+
+	// Load iterable length using len builtin (index 0)
+	// Put iterable in R0 for builtin call
+	c.emitRegMove(0, iterReg)
+	c.emitRegBuiltin(0, 1) // 0 = len builtin index
+	lenReg := c.allocTempReg()
+	c.emitRegMove(lenReg, ReturnRegister)
+
+	// Load current index
+	indexReg := c.allocTempReg()
+	if indexSymbol.Scope == GlobalScope {
+		c.emitRegLoadGlobal(indexReg, indexSymbol.Index)
+	} else {
+		c.emitRegLoadLocal(indexReg, indexSymbol.Index)
+	}
+
+	// Compare index < length
+	condReg := c.allocTempReg()
+	c.emitRegLess(condReg, indexReg, lenReg)
+
+	// Jump to end if condition is false
+	jumpIfFalsePos := c.emitRegJumpIfFalse(condReg, 0)
+	c.freeTempReg(condReg)
+	c.freeTempReg(lenReg)
+
+	// Enter loop context
+	c.loopContexts = append(c.loopContexts, regLoopContext{
+		startPos: startPos,
+	})
+
+	// Set key variable (current key at index)
+	// Use OpRegIterKey which works correctly for both arrays and maps
+	if n.Key != nil {
+		keyReg := c.allocTempReg()
+		c.emitRegIterKey(keyReg, iterReg, indexReg)
+		if keySymbol.Scope == GlobalScope {
+			c.emitRegStoreGlobal(keyReg, keySymbol.Index)
+		} else {
+			c.emitRegStoreLocal(keyReg, keySymbol.Index)
+		}
+		c.freeTempReg(keyReg)
+	}
+
+	// Set value variable (current value at index)
+	// Use OpRegIterValue which works correctly for both arrays and maps
+	if n.Value != nil {
+		elemReg := c.allocTempReg()
+		c.emitRegIterValue(elemReg, iterReg, indexReg)
+		if valueSymbol.Scope == GlobalScope {
+			c.emitRegStoreGlobal(elemReg, valueSymbol.Index)
+		} else {
+			c.emitRegStoreLocal(elemReg, valueSymbol.Index)
+		}
+		c.freeTempReg(elemReg)
+	}
+
+	c.freeTempReg(indexReg)
+
+	// Compile body
+	_, err = c.Compile(n.Body)
+	if err != nil {
+		return 0, err
+	}
+
+	// Update position for continue
+	ctx := &c.loopContexts[len(c.loopContexts)-1]
+	for _, pos := range ctx.continuePos {
+		c.patchJumpTo(pos, len(c.instructions))
+	}
+
+	// Increment index
+	incReg := c.allocTempReg()
+	if indexSymbol.Scope == GlobalScope {
+		c.emitRegLoadGlobal(incReg, indexSymbol.Index)
+	} else {
+		c.emitRegLoadLocal(incReg, indexSymbol.Index)
+	}
+
+	oneIdx := c.addConstant(objects.NewInt(1))
+	oneReg := c.allocTempReg()
+	c.emitRegLoadConst(oneReg, oneIdx)
+	c.emitRegAdd(incReg, incReg, oneReg)
+	c.freeTempReg(oneReg)
+
+	if indexSymbol.Scope == GlobalScope {
+		c.emitRegStoreGlobal(incReg, indexSymbol.Index)
+	} else {
+		c.emitRegStoreLocal(incReg, indexSymbol.Index)
+	}
+	c.freeTempReg(incReg)
+
+	// Jump back to start
+	c.emitRegJump(startPos - len(c.instructions))
+
+	// Patch jump to end
+	c.patchJump(jumpIfFalsePos)
+
+	// Patch breaks
+	ctx = &c.loopContexts[len(c.loopContexts)-1]
+	for _, pos := range ctx.breakPos {
+		c.patchJump(pos)
+	}
+	c.loopContexts = c.loopContexts[:len(c.loopContexts)-1]
+
+	c.freeTempReg(iterReg)
+
+	return 0, nil
+}
+
 // compileReturnStatement compiles a return statement
 func (c *RegCompiler) compileReturnStatement(n *parser.ReturnStatement) (int, error) {
 	if n.ReturnValue == nil {
@@ -683,24 +926,90 @@ func (c *RegCompiler) compileCallExpression(n *parser.CallExpression) (int, erro
 		symbol, ok := c.symbolTable.Resolve(ident.Value)
 		if ok && symbol.Scope == BuiltinScope {
 			// This is a builtin - use OpRegBuiltin directly
-			// Compile arguments into R0-R7
+			// First, compile all arguments to temporary registers
+			// This prevents nested calls from overwriting argument registers
+			argRegs := make([]int, len(n.Arguments))
 			for i, arg := range n.Arguments {
 				argReg, err := c.Compile(arg)
 				if err != nil {
 					return 0, err
 				}
-				// Move to argument register position (R0-R7)
+				// If the result is in ReturnRegister (from a nested call),
+				// move it to a temp register to preserve it
+				if argReg == ReturnRegister {
+					tempReg := c.allocTempReg()
+					c.emitRegMove(tempReg, argReg)
+					argReg = tempReg
+				}
+				argRegs[i] = argReg
+			}
+
+			// Now move all arguments to their final positions (R0-R7)
+			for i, argReg := range argRegs {
 				if argReg != i {
 					c.emitRegMove(i, argReg)
-					c.freeTempReg(argReg)
 				}
-				// Don't free if argReg == i, the value is already in the right place
+			}
+
+			// Free temporary registers (in reverse order for proper stack-like freeing)
+			for i := len(argRegs) - 1; i >= 0; i-- {
+				if argRegs[i] >= FirstLocalRegister {
+					c.freeTempReg(argRegs[i])
+				}
 			}
 
 			// Emit builtin call
 			c.emitRegBuiltin(symbol.Index, len(n.Arguments))
 			return ReturnRegister, nil
 		}
+	}
+
+	// Check if this is a method call (obj.method())
+	if dot, ok := n.Function.(*parser.DotExpression); ok {
+		// Compile the object
+		objReg, err := c.Compile(dot.Object)
+		if err != nil {
+			return 0, err
+		}
+
+		// First, compile all arguments to temporary registers
+		argRegs := make([]int, len(n.Arguments))
+		for i, arg := range n.Arguments {
+			argReg, err := c.Compile(arg)
+			if err != nil {
+				return 0, err
+			}
+			// If the result is in ReturnRegister, move it to a temp register
+			if argReg == ReturnRegister {
+				tempReg := c.allocTempReg()
+				c.emitRegMove(tempReg, argReg)
+				argReg = tempReg
+			}
+			argRegs[i] = argReg
+		}
+
+		// Now move all arguments to their final positions (R0-R7)
+		for i, argReg := range argRegs {
+			if argReg != i {
+				c.emitRegMove(i, argReg)
+			}
+		}
+
+		// Free temporary registers
+		for i := len(argRegs) - 1; i >= 0; i-- {
+			if argRegs[i] >= FirstLocalRegister {
+				c.freeTempReg(argRegs[i])
+			}
+		}
+
+		// Get method name constant
+		nameIdx := c.addConstant(objects.InternString(dot.Property.Value))
+
+		// Emit method call
+		c.emitRegCallMethod(objReg, nameIdx, len(n.Arguments))
+		c.freeTempReg(objReg)
+
+		return ReturnRegister, nil
 	}
 
 	// Regular function call
@@ -710,17 +1019,34 @@ func (c *RegCompiler) compileCallExpression(n *parser.CallExpression) (int, erro
 		return 0, err
 	}
 
-	// Compile arguments into R0-R7
+	// First, compile all arguments to temporary registers
+	argRegs := make([]int, len(n.Arguments))
 	for i, arg := range n.Arguments {
 		argReg, err := c.Compile(arg)
 		if err != nil {
 			return 0, err
 		}
-		// Move to argument register position (R0-R7)
+		// If the result is in ReturnRegister, move it to a temp register
+		if argReg == ReturnRegister {
+			tempReg := c.allocTempReg()
+			c.emitRegMove(tempReg, argReg)
+			argReg = tempReg
+		}
+		argRegs[i] = argReg
+	}
+
+	// Now move all arguments to their final positions (R0-R7)
+	for i, argReg := range argRegs {
 		if argReg != i {
 			c.emitRegMove(i, argReg)
 		}
-		c.freeTempReg(argReg)
+	}
+
+	// Free temporary registers
+	for i := len(argRegs) - 1; i >= 0; i-- {
+		if argRegs[i] >= FirstLocalRegister {
+			c.freeTempReg(argRegs[i])
+		}
 	}
 
 	// Emit call
@@ -836,6 +1162,28 @@ func (c *RegCompiler) compileIndexExpression(n *parser.IndexExpression) (int, er
 	return dst, nil
 }
 
+// compileDotExpression compiles a dot expression (obj.field or obj.method)
+func (c *RegCompiler) compileDotExpression(n *parser.DotExpression) (int, error) {
+	// Compile the object
+	objReg, err := c.Compile(n.Object)
+	if err != nil {
+		return 0, err
+	}
+
+	// Get the property name
+	nameIdx := c.addConstant(objects.InternString(n.Property.Value))
+
+	// Allocate result register
+	dst := c.allocTempReg()
+
+	// Emit get field/method instruction
+	c.emitRegGetField(dst, objReg, nameIdx)
+
+	c.freeTempReg(objReg)
+
+	return dst, nil
+}
+
 // compileAssignmentExpression compiles an assignment expression
 func (c *RegCompiler) compileAssignmentExpression(n *parser.AssignmentExpression) (int, error) {
 	// Compile right side
@@ -872,6 +1220,15 @@ func (c *RegCompiler) compileAssignmentExpression(n *parser.AssignmentExpression
 		c.emitRegSetIndex(objReg, indexReg, valReg)
 		c.freeTempReg(objReg)
 		c.freeTempReg(indexReg)
+
+	case *parser.DotExpression:
+		objReg, err := c.Compile(left.Object)
+		if err != nil {
+			return 0, err
+		}
+		nameIdx := c.addConstant(objects.InternString(left.Property.Value))
+		c.emitRegSetField(objReg, valReg, nameIdx)
+		c.freeTempReg(objReg)
 	}
 
 	return valReg, nil
@@ -957,6 +1314,134 @@ func (c *RegCompiler) compileTernaryExpression(n *parser.TernaryExpression) (int
 	c.patchJump(jumpPos)
 
 	return resultReg, nil
+}
+
+// compilePostfixExpression compiles a postfix expression (i++, i--)
+func (c *RegCompiler) compilePostfixExpression(n *parser.PostfixExpression) (int, error) {
+	// Handle identifier postfix expressions: x++ or x--
+	switch left := n.Left.(type) {
+	case *parser.Identifier:
+		symbol, ok := c.symbolTable.Resolve(left.Value)
+		if !ok {
+			return 0, fmt.Errorf("undefined variable: %s", left.Value)
+		}
+
+		// Allocate a register for the result (old value)
+		resultReg := c.allocTempReg()
+
+		// Allocate a register for the current value
+		valReg := c.allocTempReg()
+
+		// Load current value
+		switch symbol.Scope {
+		case GlobalScope:
+			c.emitRegLoadGlobal(valReg, symbol.Index)
+		case LocalScope:
+			c.emitRegLoadLocal(valReg, symbol.Index)
+		case FreeScope:
+			c.emitRegLoadFree(valReg, symbol.Index)
+		}
+
+		// Copy old value to result register (postfix returns old value)
+		c.emitRegMove(resultReg, valReg)
+
+		// Load constant 1
+		oneIdx := c.addConstant(objects.NewInt(1))
+		oneReg := c.allocTempReg()
+		c.emitRegLoadConst(oneReg, oneIdx)
+
+		// Perform increment or decrement
+		switch n.Operator {
+		case "++":
+			c.emitRegAdd(valReg, valReg, oneReg)
+		case "--":
+			c.emitRegSub(valReg, valReg, oneReg)
+		default:
+			return 0, fmt.Errorf("unknown postfix operator: %s", n.Operator)
+		}
+
+		// Store back to variable
+		switch symbol.Scope {
+		case GlobalScope:
+			c.emitRegStoreGlobal(valReg, symbol.Index)
+		case LocalScope:
+			c.emitRegStoreLocal(valReg, symbol.Index)
+		case FreeScope:
+			c.emitRegStoreFree(valReg, symbol.Index)
+		}
+
+		// Free temporary registers
+		c.freeTempReg(valReg)
+		c.freeTempReg(oneReg)
+
+		return resultReg, nil
+
+	default:
+		return 0, fmt.Errorf("postfix expression not supported for type: %T", left)
+	}
+}
+
+// compileCompoundAssignmentExpression compiles compound assignment expressions (+=, -=, *=, /=)
+func (c *RegCompiler) compileCompoundAssignmentExpression(n *parser.CompoundAssignmentExpression) (int, error) {
+	// Handle identifier compound assignments: x += 1, x -= 2, etc.
+	switch left := n.Left.(type) {
+	case *parser.Identifier:
+		symbol, ok := c.symbolTable.Resolve(left.Value)
+		if !ok {
+			return 0, fmt.Errorf("undefined variable: %s", left.Value)
+		}
+
+		// Load current value
+		valReg := c.allocTempReg()
+		switch symbol.Scope {
+		case GlobalScope:
+			c.emitRegLoadGlobal(valReg, symbol.Index)
+		case LocalScope:
+			c.emitRegLoadLocal(valReg, symbol.Index)
+		case FreeScope:
+			c.emitRegLoadFree(valReg, symbol.Index)
+		}
+
+		// Compile right side
+		rightReg, err := c.Compile(n.Right)
+		if err != nil {
+			return 0, err
+		}
+
+		// Perform operation
+		switch n.Operator {
+		case "+=":
+			c.emitRegAdd(valReg, valReg, rightReg)
+		case "-=":
+			c.emitRegSub(valReg, valReg, rightReg)
+		case "*=":
+			c.emitRegMul(valReg, valReg, rightReg)
+		case "/=":
+			c.emitRegDiv(valReg, valReg, rightReg)
+		case "%=":
+			c.emitRegMod(valReg, valReg, rightReg)
+		default:
+			return 0, fmt.Errorf("unknown compound assignment operator: %s", n.Operator)
+		}
+
+		// Store back to variable
+		switch symbol.Scope {
+		case GlobalScope:
+			c.emitRegStoreGlobal(valReg, symbol.Index)
+		case LocalScope:
+			c.emitRegStoreLocal(valReg, symbol.Index)
+		case FreeScope:
+			c.emitRegStoreFree(valReg, symbol.Index)
+		}
+
+		// Free temporary registers
+		c.freeTempReg(rightReg)
+
+		return valReg, nil
+
+	default:
+		return 0, fmt.Errorf("compound assignment not supported for type: %T", left)
+	}
 }
 
 // Register allocation helpers
@@ -1126,6 +1611,14 @@ func (c *RegCompiler) emitRegSetIndex(objReg, indexReg, valReg int) {
 	c.instructions = append(c.instructions, MakeRegInstruction(OpRegSetIndex, objReg, indexReg, valReg)...)
 }
 
+func (c *RegCompiler) emitRegIterKey(dst, iterReg, indexReg int) {
+	c.instructions = append(c.instructions, MakeRegInstruction(OpRegIterKey, dst, iterReg, indexReg)...)
+}
+
+func (c *RegCompiler) emitRegIterValue(dst, iterReg, indexReg int) {
+	c.instructions = append(c.instructions, MakeRegInstruction(OpRegIterValue, dst, iterReg, indexReg)...)
+}
+
 func (c *RegCompiler) emitRegLoadModule(dst, constIdx int) {
 	c.instructions = append(c.instructions, MakeRegInstructionConst(OpRegLoadModule, dst, constIdx)...)
 }
@@ -1136,6 +1629,39 @@ func (c *RegCompiler) emitRegGetExport(dst, moduleReg, nameIdx int) {
 
 func (c *RegCompiler) emitRegSetExport(srcReg, nameIdx int) {
 	c.instructions = append(c.instructions, MakeRegInstructionConst(OpRegSetExport, srcReg, nameIdx)...)
+}
+
+func (c *RegCompiler) emitRegGetField(dst, objReg, nameIdx int) {
+	// Format: OpRegGetField dst obj name_idx_hi name_idx_lo
+	c.instructions = append(c.instructions,
+		byte(OpRegGetField),
+		byte(dst),
+		byte(objReg),
+		byte(nameIdx>>8),
+		byte(nameIdx),
+	)
+}
+
+func (c *RegCompiler) emitRegSetField(objReg, valReg, nameIdx int) {
+	// Format: OpRegSetField obj val name_idx_hi name_idx_lo
+	c.instructions = append(c.instructions,
+		byte(OpRegSetField),
+		byte(objReg),
+		byte(valReg),
+		byte(nameIdx>>8),
+		byte(nameIdx),
+	)
+}
+
+func (c *RegCompiler) emitRegCallMethod(objReg, nameIdx, numArgs int) {
+	// Format: OpRegCallMethod obj name_idx_hi name_idx_lo num_args
+	c.instructions = append(c.instructions,
+		byte(OpRegCallMethod),
+		byte(objReg),
+		byte(nameIdx>>8),
+		byte(nameIdx),
+		byte(numArgs),
+	)
 }
 
 // patchJump patches a jump instruction with the correct offset

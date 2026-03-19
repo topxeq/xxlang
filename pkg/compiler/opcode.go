@@ -246,6 +246,10 @@ const (
 	OpRegLoadModule // R[dst] = LoadModule(Constants[idx])
 	OpRegGetExport  // R[dst] = R[module].Exports[name_idx]
 	OpRegSetExport  // CurrentModule.Exports[name_idx] = R[src]
+
+	// Register iterator operations (for for-in loops)
+	OpRegIterKey   // R[dst] = key at index (array: index, map: keys[index])
+	OpRegIterValue // R[dst] = value at index (array: arr[index], map: map[keys[index]])
 )
 
 // Definition describes an opcode's format
@@ -489,6 +493,10 @@ var definitions = map[Opcode]*Definition{
 	OpRegLoadModule: {"OpRegLoadModule", []int{1, 2}}, // dst, const_idx
 	OpRegGetExport:  {"OpRegGetExport", []int{1, 1, 2}}, // dst, module_reg, name_idx
 	OpRegSetExport:  {"OpRegSetExport", []int{1, 2}}, // src, name_idx
+
+	// Register iterator operations
+	OpRegIterKey:   {"OpRegIterKey", []int{1, 1, 1}},   // dst, iter_reg, index_reg
+	OpRegIterValue: {"OpRegIterValue", []int{1, 1, 1}}, // dst, iter_reg, index_reg
 }
 
 // Lookup finds an opcode's definition
@@ -598,7 +606,7 @@ const (
 
 // IsRegisterOpcode returns true if the opcode is a register-based operation
 func IsRegisterOpcode(op Opcode) bool {
-	return op >= OpRegAdd && op <= OpRegDecLocal
+	return op >= OpRegAdd && op <= OpRegIterValue
 }
 
 // MakeRegInstruction creates a fixed 4-byte register instruction

@@ -586,6 +586,264 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 		}
 		frame.IP += 4
 
+	case compiler.OpRegIterKey:
+		// Get key at current index for iteration
+		// For arrays: returns the index itself
+		// For maps: returns the key at that index
+		dst, iterReg, indexReg := DecodeReg3(code, frame.IP)
+		obj := regs[iterReg].ToObject()
+		idx := regs[indexReg].ToObject()
+
+		idxInt, ok := idx.(*objects.Int)
+		if !ok {
+			return fmt.Errorf("iterator index must be integer")
+		}
+
+		var result objects.Object
+		switch o := obj.(type) {
+		case *objects.Array:
+			// For arrays, the key is the index itself
+			result = idxInt
+		case *objects.Map:
+			// For maps, get the key at this index
+			// Build a sorted list of keys for consistent ordering
+			keys := make([]objects.Object, 0, len(o.Pairs))
+			for _, pair := range o.Pairs {
+				keys = append(keys, pair.Key)
+			}
+			// Sort keys by their string representation for deterministic order
+			for i := 0; i < len(keys); i++ {
+				for j := i + 1; j < len(keys); j++ {
+					if keys[i].Inspect() > keys[j].Inspect() {
+						keys[i], keys[j] = keys[j], keys[i]
+					}
+				}
+			}
+			if int(idxInt.Value) < len(keys) {
+				result = keys[idxInt.Value]
+			} else {
+				result = objects.NULL
+			}
+		default:
+			return fmt.Errorf("cannot iterate over type %s", obj.Type())
+		}
+		regs[dst] = NewObject(result)
+		frame.IP += 4
+
+	case compiler.OpRegIterValue:
+		// Get value at current index for iteration
+		// For arrays: returns arr[index]
+		// For maps: returns map[keys[index]]
+		dst, iterReg, indexReg := DecodeReg3(code, frame.IP)
+		obj := regs[iterReg].ToObject()
+		idx := regs[indexReg].ToObject()
+
+		idxInt, ok := idx.(*objects.Int)
+		if !ok {
+			return fmt.Errorf("iterator index must be integer")
+		}
+
+		var result objects.Object
+		switch o := obj.(type) {
+		case *objects.Array:
+			if idxInt.Value < 0 || idxInt.Value >= int64(len(o.Elements)) {
+				return fmt.Errorf("array index out of bounds: %d", idxInt.Value)
+			}
+			result = o.Elements[idxInt.Value]
+		case *objects.Map:
+			// For maps, get the key at this index, then get its value
+			// Use same sorted order as OpRegIterKey
+			keys := make([]objects.Object, 0, len(o.Pairs))
+			for _, pair := range o.Pairs {
+				keys = append(keys, pair.Key)
+			}
+			// Sort keys by their string representation for deterministic order
+			for i := 0; i < len(keys); i++ {
+				for j := i + 1; j < len(keys); j++ {
+					if keys[i].Inspect() > keys[j].Inspect() {
+						keys[i], keys[j] = keys[j], keys[i]
+					}
+				}
+			}
+			if int(idxInt.Value) < len(keys) {
+				key := keys[idxInt.Value]
+				pair, exists := o.Pairs[key.HashKey()]
+				if exists {
+					result = pair.Value
+				} else {
+					result = objects.NULL
+				}
+			} else {
+				result = objects.NULL
+			}
+		default:
+			return fmt.Errorf("cannot iterate over type %s", obj.Type())
+		}
+		regs[dst] = NewObject(result)
+		frame.IP += 4
+
+	case compiler.OpRegGetField:
+		// Format: OpRegGetField dst obj name_idx_hi name_idx_lo
+		dst := int(code[frame.IP+1])
+		objReg := int(code[frame.IP+2])
+		nameIdx := int(code[frame.IP+3])<<8 | int(code[frame.IP+4])
+
+		obj := regs[objReg].ToObject()
+
+		// Get the field name from object constants
+		nameObj := vm.objConstants[nameIdx]
+		name, ok := nameObj.(*objects.String)
+		if !ok {
+			return fmt.Errorf("field name is not a string")
+		}
+
+		var result objects.Object
+
+		// Handle Instance objects
+		if instance, ok := obj.(*objects.Instance); ok {
+			// First check for field
+			if val, ok := instance.Fields[name.Value]; ok {
+				result = val
+			} else {
+				// Check for method
+				method := vm.findMethod(instance.Class, name.Value)
+				if method != nil {
+					result = method
+				} else {
+					result = objects.NULL
+				}
+			}
+		} else if m, ok := obj.(*objects.Map); ok {
+			// Handle Map objects
+			key := objects.InternString(name.Value)
+			if pair, exists := m.Pairs[key.HashKey()]; exists {
+				result = pair.Value
+			} else {
+				// Check for map method
+				if method, ok := objects.GetMethod(objects.MapType, name.Value); ok {
+					result = method
+				} else {
+					result = objects.NULL
+				}
+			}
+		} else if method, ok := objects.GetMethod(obj.Type(), name.Value); ok {
+			// Handle primitive type methods (Int, Float, String, Array, Bool, Null)
+			result = method
+		} else if mod, ok := obj.(*objects.Module); ok {
+			// Handle Module objects
+			if val, ok := mod.Exports[name.Value]; ok {
+				result = val
+			} else {
+				return fmt.Errorf("export '%s' not found in module %s", name.Value, mod.Name)
+			}
+		} else {
+			return fmt.Errorf("cannot access property '%s' on type %s", name.Value, obj.Type())
+		}
+
+		regs[dst] = NewObject(result)
+		frame.IP += 5
+
+	case compiler.OpRegSetField:
+		// Format: OpRegSetField obj val name_idx_hi name_idx_lo
+		objReg := int(code[frame.IP+1])
+		valReg := int(code[frame.IP+2])
+		nameIdx := int(code[frame.IP+3])<<8 | int(code[frame.IP+4])
+
+		obj := regs[objReg].ToObject()
+		val := regs[valReg].ToObject()
+
+		// Get the field name from object constants
+		nameObj := vm.objConstants[nameIdx]
+		name, ok := nameObj.(*objects.String)
+		if !ok {
+			return fmt.Errorf("field name is not a string")
+		}
+
+		// Handle Instance objects
+		if instance, ok := obj.(*objects.Instance); ok {
+			instance.Fields[name.Value] = val
+		} else if m, ok := obj.(*objects.Map); ok {
+			// Handle Map objects
+			key := objects.InternString(name.Value)
+			m.Pairs[key.HashKey()] = objects.MapPair{Key: key, Value: val}
+		} else {
+			return fmt.Errorf("cannot set field '%s' on type %s", name.Value, obj.Type())
+		}
+
+		frame.IP += 5
+
+	case compiler.OpRegCallMethod:
+		// Format: OpRegCallMethod obj name_idx_hi name_idx_lo num_args
+		objReg := int(code[frame.IP+1])
+		nameIdx := int(code[frame.IP+2])<<8 | int(code[frame.IP+3])
+		numArgs := int(code[frame.IP+4])
+
+		obj := regs[objReg].ToObject()
+
+		// Get the method name from object constants
+		nameObj := vm.objConstants[nameIdx]
+		name, ok := nameObj.(*objects.String)
+		if !ok {
+			return fmt.Errorf("method name is not a string")
+		}
+
+		var method objects.Object
+
+		// Handle Instance objects
+		if instance, ok := obj.(*objects.Instance); ok {
+			// Find method
+			method = vm.findMethod(instance.Class, name.Value)
+			if method == nil {
+				return fmt.Errorf("method '%s' not found in class", name.Value)
+			}
+		} else if mapObj, ok := obj.(*objects.Map); ok {
+			// Check for map method
+			var methodFound bool
+			method, methodFound = objects.GetMethod(objects.MapType, name.Value)
+			if !methodFound {
+				return fmt.Errorf("method '%s' not found on Map", name.Value)
+			}
+			_ = mapObj // avoid unused variable error
+		} else if m, ok := objects.GetMethod(obj.Type(), name.Value); ok {
+			// Handle primitive type methods
+			method = m
+		} else {
+			return fmt.Errorf("cannot call method '%s' on type %s", name.Value, obj.Type())
+		}
+
+		// Shift arguments: R0->R1, R1->R2, etc. to make room for receiver in R0
+		for i := numArgs; i > 0; i-- {
+			regs[i] = regs[i-1]
+		}
+		// Put receiver in R0
+		regs[0] = NewObject(obj)
+
+		// Call the method
+		switch fn := method.(type) {
+		case *objects.Builtin:
+			// Collect args including receiver
+			args := make([]objects.Object, numArgs+1)
+			for i := 0; i <= numArgs; i++ {
+				args[i] = regs[i].ToObject()
+			}
+			result := fn.Fn(args...)
+			regs[compiler.ReturnRegister] = NewObject(result)
+		case *compiler.CompiledFunction:
+			// Call with numArgs+1 (including receiver)
+			if err := vm.callCompiledFunction(fn, numArgs+1, frame); err != nil {
+				return err
+			}
+		case *Closure:
+			// Call with numArgs+1 (including receiver)
+			if err := vm.callClosure(fn, numArgs+1, frame); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("method '%s' is not callable", name.Value)
+		}
+
+		frame.IP += 5
+
 	// Literals
 	case compiler.OpRegNull:
 		dst := DecodeReg1(code, frame.IP)
@@ -825,6 +1083,16 @@ func (vm *RegVM) handleRegBuiltin(builtinIdx, numArgs int, frame *RegFrame) erro
 
 	// Store result in return register
 	frame.Registers[compiler.ReturnRegister] = NewObject(result)
+	return nil
+}
+
+// findMethod finds a method in class hierarchy
+func (vm *RegVM) findMethod(class *objects.Class, name string) objects.Object {
+	for c := class; c != nil; c = c.SuperClass {
+		if method, ok := c.Methods[name]; ok {
+			return method
+		}
+	}
 	return nil
 }
 
