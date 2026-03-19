@@ -163,6 +163,10 @@ func (c *RegCompiler) Compile(node parser.Node) (int, error) {
 		return c.compileContinueStatement(n)
 	case *parser.TernaryExpression:
 		return c.compileTernaryExpression(n)
+	case *parser.ImportStatement:
+		return c.compileImportStatement(n)
+	case *parser.ExportStatement:
+		return c.compileExportStatement(n)
 	default:
 		return 0, fmt.Errorf("unknown node type: %T", node)
 	}
@@ -1122,6 +1126,18 @@ func (c *RegCompiler) emitRegSetIndex(objReg, indexReg, valReg int) {
 	c.instructions = append(c.instructions, MakeRegInstruction(OpRegSetIndex, objReg, indexReg, valReg)...)
 }
 
+func (c *RegCompiler) emitRegLoadModule(dst, constIdx int) {
+	c.instructions = append(c.instructions, MakeRegInstructionConst(OpRegLoadModule, dst, constIdx)...)
+}
+
+func (c *RegCompiler) emitRegGetExport(dst, moduleReg, nameIdx int) {
+	c.instructions = append(c.instructions, MakeRegInstruction(OpRegGetExport, dst, moduleReg, nameIdx)...)
+}
+
+func (c *RegCompiler) emitRegSetExport(srcReg, nameIdx int) {
+	c.instructions = append(c.instructions, MakeRegInstructionConst(OpRegSetExport, srcReg, nameIdx)...)
+}
+
 // patchJump patches a jump instruction with the correct offset
 func (c *RegCompiler) patchJump(pos int) {
 	offset := len(c.instructions) - pos
@@ -1185,6 +1201,148 @@ func (c *RegCompiler) Constants() []objects.Object {
 // SetSourceFile sets the source file for error reporting
 func (c *RegCompiler) SetSourceFile(filename string) {
 	c.sourceFile = filename
+}
+
+// compileImportStatement compiles an import statement for register VM
+func (c *RegCompiler) compileImportStatement(node *parser.ImportStatement) (int, error) {
+	// Allocate a register for the module result
+	moduleReg := c.allocTempReg()
+
+	// Load the module path constant
+	pathIdx := c.addConstant(objects.InternString(node.Path.Value))
+
+	// Emit OpRegLoadModule to load the module into a register
+	c.emitRegLoadModule(moduleReg, pathIdx)
+
+	// Handle different import styles
+	if node.Name != nil {
+		// Default import: import math from "./math"
+		symbol := c.symbolTable.Define(node.Name.Value)
+		if symbol.Scope == GlobalScope {
+			c.emitRegStoreGlobal(moduleReg, symbol.Index)
+		} else {
+			c.emitRegStoreLocal(moduleReg, symbol.Index)
+		}
+	} else if node.Alias != nil {
+		// Namespace import: import * as math from "./math"
+		symbol := c.symbolTable.Define(node.Alias.Value)
+		if symbol.Scope == GlobalScope {
+			c.emitRegStoreGlobal(moduleReg, symbol.Index)
+		} else {
+			c.emitRegStoreLocal(moduleReg, symbol.Index)
+		}
+	} else if len(node.Names) > 0 {
+		// Destructuring import: import { add, sub } from "./math"
+		for _, name := range node.Names {
+			// Get the export by name
+			nameIdx := c.addConstant(objects.InternString(name.Value))
+			exportReg := c.allocTempReg()
+			c.emitRegGetExport(exportReg, moduleReg, nameIdx)
+			// Store in global
+			symbol := c.symbolTable.Define(name.Value)
+			if symbol.Scope == GlobalScope {
+				c.emitRegStoreGlobal(exportReg, symbol.Index)
+			} else {
+				c.emitRegStoreLocal(exportReg, symbol.Index)
+			}
+			c.freeTempReg(exportReg)
+		}
+	} else {
+		// Simple import: import "time" or import "./math"
+		path := node.Path.Value
+		moduleName := extractModuleName(path)
+
+		if moduleName != "" {
+			// Store the module as a global variable
+			symbol := c.symbolTable.Define(moduleName)
+			if symbol.Scope == GlobalScope {
+				c.emitRegStoreGlobal(moduleReg, symbol.Index)
+			} else {
+				c.emitRegStoreLocal(moduleReg, symbol.Index)
+			}
+		}
+	}
+
+	c.freeTempReg(moduleReg)
+	return 0, nil
+}
+
+// compileExportStatement compiles an export statement for register VM
+func (c *RegCompiler) compileExportStatement(node *parser.ExportStatement) (int, error) {
+	// Handle different export types
+	switch stmt := node.Exportable.(type) {
+	case *parser.VarStatement:
+		// Compile the value expression
+		valReg, err := c.Compile(stmt.Value)
+		if err != nil {
+			return 0, err
+		}
+		// Define the variable in the symbol table
+		symbol := c.symbolTable.Define(stmt.Name.Value)
+		// Store in global
+		if symbol.Scope == GlobalScope {
+			c.emitRegStoreGlobal(valReg, symbol.Index)
+		} else {
+			c.emitRegStoreLocal(valReg, symbol.Index)
+		}
+		// Export the variable
+		nameIdx := c.addConstant(objects.InternString(stmt.Name.Value))
+		c.emitRegSetExport(valReg, nameIdx)
+		c.freeTempReg(valReg)
+
+	case *parser.ConstStatement:
+		// Compile the value expression
+		valReg, err := c.Compile(stmt.Value)
+		if err != nil {
+			return 0, err
+		}
+		// Define the constant in the symbol table
+		symbol := c.symbolTable.Define(stmt.Name.Value)
+		// Store in global
+		if symbol.Scope == GlobalScope {
+			c.emitRegStoreGlobal(valReg, symbol.Index)
+		} else {
+			c.emitRegStoreLocal(valReg, symbol.Index)
+		}
+		// Export the constant
+		nameIdx := c.addConstant(objects.InternString(stmt.Name.Value))
+		c.emitRegSetExport(valReg, nameIdx)
+		c.freeTempReg(valReg)
+
+	case *parser.ExpressionStatement:
+		// Handle function exports: export func add(a, b) { ... }
+		if fn, ok := stmt.Expression.(*parser.FunctionLiteral); ok {
+			if fn.Name == "" {
+				return 0, fmt.Errorf("exported function must have a name")
+			}
+			// Compile the function
+			valReg, err := c.Compile(fn)
+			if err != nil {
+				return 0, err
+			}
+			// The function is now stored in the global
+			symbol, ok := c.symbolTable.Resolve(fn.Name)
+			if !ok {
+				return 0, fmt.Errorf("symbol %s not found", fn.Name)
+			}
+			if symbol.Scope == GlobalScope {
+				c.emitRegStoreGlobal(valReg, symbol.Index)
+			} else {
+				c.emitRegStoreLocal(valReg, symbol.Index)
+			}
+			// Export the function
+			nameIdx := c.addConstant(objects.InternString(fn.Name))
+			c.emitRegSetExport(valReg, nameIdx)
+			c.freeTempReg(valReg)
+			return 0, nil
+		}
+		return 0, fmt.Errorf("unsupported export expression type: %T", stmt.Expression)
+
+	default:
+		return 0, fmt.Errorf("unsupported export type: %T", stmt)
+	}
+
+	return 0, nil
 }
 
 // CompileReg compiles a program using the register-based compiler

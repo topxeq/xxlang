@@ -241,6 +241,11 @@ const (
 	OpRegMulConst    // R[dst] = R[src1] * Constants[idx]
 	OpRegIncLocal    // Locals[idx]++
 	OpRegDecLocal    // Locals[idx]--
+
+	// Register module operations
+	OpRegLoadModule // R[dst] = LoadModule(Constants[idx])
+	OpRegGetExport  // R[dst] = R[module].Exports[name_idx]
+	OpRegSetExport  // CurrentModule.Exports[name_idx] = R[src]
 )
 
 // Definition describes an opcode's format
@@ -479,6 +484,11 @@ var definitions = map[Opcode]*Definition{
 	OpRegMulConst: {"OpRegMulConst", []int{1, 1, 2}}, // dst, src, const_idx
 	OpRegIncLocal: {"OpRegIncLocal", []int{1}},       // local_idx
 	OpRegDecLocal: {"OpRegDecLocal", []int{1}},       // local_idx
+
+	// Register module operations
+	OpRegLoadModule: {"OpRegLoadModule", []int{1, 2}}, // dst, const_idx
+	OpRegGetExport:  {"OpRegGetExport", []int{1, 1, 2}}, // dst, module_reg, name_idx
+	OpRegSetExport:  {"OpRegSetExport", []int{1, 2}}, // src, name_idx
 }
 
 // Lookup finds an opcode's definition

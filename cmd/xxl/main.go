@@ -19,8 +19,8 @@ import (
 )
 
 // VMType controls which VM to use
-// Default is stack VM for compatibility (register VM is still experimental)
-var useStackVM = true
+// Default is register VM for best performance (21% faster on average)
+var useStackVM = false
 
 const (
 	PROMPT          = ">> "

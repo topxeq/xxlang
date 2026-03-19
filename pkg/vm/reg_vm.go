@@ -4,6 +4,7 @@ package vm
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/topxeq/xxlang/pkg/compiler"
@@ -11,6 +12,7 @@ import (
 	"github.com/topxeq/xxlang/pkg/module"
 	"github.com/topxeq/xxlang/pkg/objects"
 	"github.com/topxeq/xxlang/pkg/parser"
+	"github.com/topxeq/xxlang/pkg/stdlib"
 )
 
 // RegVM is a register-based virtual machine
@@ -644,6 +646,59 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 		}
 		frame.IP += 2
 
+	case compiler.OpRegLoadModule:
+		_, dst, constIdx := compiler.DecodeRegInstructionConst(code[frame.IP:])
+		frame.IP += 4
+		// Load the module path from constants
+		pathObj := vm.objConstants[constIdx]
+		path, ok := pathObj.(*objects.String)
+		if !ok {
+			return fmt.Errorf("module path is not a string")
+		}
+		mod, err := vm.loadModule(path.Value, frame)
+		if err != nil {
+			return err
+		}
+		frame.Registers[dst] = NewObject(mod)
+
+	case compiler.OpRegGetExport:
+		dst, moduleReg, nameIdx := DecodeReg3(code, frame.IP)
+		frame.IP += 4
+		// Get the module
+		moduleObj := frame.Registers[moduleReg].ToObject()
+		mod, ok := moduleObj.(*objects.Module)
+		if !ok {
+			return fmt.Errorf("cannot get export from non-module")
+		}
+		// Get the export name from object constants
+		nameObj := vm.objConstants[nameIdx]
+		name, ok := nameObj.(*objects.String)
+		if !ok {
+			return fmt.Errorf("export name is not a string")
+		}
+		// Get the export
+		export, ok := mod.Exports[name.Value]
+		if !ok {
+			return fmt.Errorf("export '%s' not found in module", name.Value)
+		}
+		frame.Registers[dst] = NewObject(export)
+
+	case compiler.OpRegSetExport:
+		_, srcReg, nameIdx := compiler.DecodeRegInstructionConst(code[frame.IP:])
+		frame.IP += 4
+		// Get the current module
+		if vm.currentModule == nil {
+			return fmt.Errorf("no current module for export")
+		}
+		// Get the export name from object constants
+		nameObj := vm.objConstants[nameIdx]
+		name, ok := nameObj.(*objects.String)
+		if !ok {
+			return fmt.Errorf("export name is not a string")
+		}
+		// Set the export
+		vm.currentModule.Exports[name.Value] = frame.Registers[srcReg].ToObject()
+
 	default:
 		return fmt.Errorf("unknown register opcode: %d", op)
 	}
@@ -933,4 +988,96 @@ func (vm *RegVM) GetCallStack() string {
 // StackTop returns the top of the temp stack
 func (vm *RegVM) StackTop() Value {
 	return vm.tempStack.Top()
+}
+
+// loadModule loads a module for the register VM
+func (vm *RegVM) loadModule(importPath string, frame *RegFrame) (*objects.Module, error) {
+	// Check if it's a standard library module
+	if stdlib.Has(importPath) {
+		stdMod := stdlib.Get(importPath)
+		if stdMod == nil {
+			return nil, fmt.Errorf("stdlib module not found: %s", importPath)
+		}
+		return &objects.Module{
+			Name:    stdMod.Name,
+			Exports: stdMod.Exports,
+			Globals: nil,
+		}, nil
+	}
+
+	// Resolve path relative to current source
+	resolvedPath, err := module.Resolve(vm.sourcePath, importPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve import path '%s': %v", importPath, err)
+	}
+
+	// Check cache first
+	if vm.loader.HasModule(resolvedPath) {
+		cachedMod, err := vm.loader.Get(resolvedPath)
+		if err != nil {
+			return nil, err
+		}
+		return &objects.Module{
+			Name:    cachedMod.Name,
+			Exports: cachedMod.Exports,
+			Globals: cachedMod.Globals,
+		}, nil
+	}
+
+	// Check for circular dependency
+	if vm.loader.IsLoading(resolvedPath) {
+		return nil, fmt.Errorf("circular import: %s", resolvedPath)
+	}
+
+	// Read the module file
+	code, err := os.ReadFile(resolvedPath)
+	if err != nil {
+		return nil, fmt.Errorf("module not found: %s", resolvedPath)
+	}
+
+	// Parse the module
+	l := lexer.New(string(code))
+	p := parser.New(l)
+	program := p.ParseProgram()
+
+	if len(p.Errors()) > 0 {
+		return nil, fmt.Errorf("parse errors in module %s: %v", resolvedPath, p.Errors())
+	}
+
+	// Compile the module with register compiler
+	c := compiler.NewRegCompiler()
+	if _, err := c.Compile(program); err != nil {
+		return nil, fmt.Errorf("compile error in module %s: %v", resolvedPath, err)
+	}
+
+	// Create the module object
+	mod := &objects.Module{
+		Name:    resolvedPath,
+		Exports: make(map[string]objects.Object),
+	}
+
+	// Mark as loading
+	vm.loader.MarkLoading(resolvedPath)
+
+	// Execute the module in an isolated VM context
+	moduleVM := NewRegVMWithGlobals(c.Bytecode(), make([]Value, compiler.GlobalsSize))
+	moduleVM.SetLoader(vm.loader)
+	moduleVM.SetSourcePath(resolvedPath)
+	moduleVM.SetCurrentModule(mod)
+
+	if err := moduleVM.Run(); err != nil {
+		vm.loader.MarkDone(resolvedPath)
+		return nil, fmt.Errorf("runtime error in module %s: %v", resolvedPath, err)
+	}
+
+	// Mark as done loading
+	vm.loader.MarkDone(resolvedPath)
+
+	// Cache the module
+	vm.loader.Set(resolvedPath, &module.Module{
+		Name:    mod.Name,
+		Exports: mod.Exports,
+	})
+
+	return mod, nil
 }
