@@ -69,6 +69,56 @@ func fibTail(n, a, b) {
 }
 ```
 
+## Inline Caching Optimization
+
+Inline caching speeds up property access and method calls by caching lookup results.
+
+### Method Call Benchmarks (1000 iterations)
+
+| Benchmark | Time (µs) | Memory | Allocs |
+|-----------|-----------|--------|--------|
+| String method calls | 552 | 1.1 MB | 17 |
+| Map method calls | 532 | 1.1 MB | 20 |
+| Array method calls | 4,581 | 1.2 MB | 5022 |
+
+### How Inline Caching Works
+
+When accessing `obj.method`:
+1. Compute cache key from object's type tag or class pointer + method name hash
+2. Check cache entry - if valid, return cached method directly
+3. If cache miss, perform lookup and store result in cache
+
+```
+Cache entry: [type_tag/class_ptr] + [name_hash] → [method]
+```
+
+### Cache Types
+
+| Cache Type | Key | Use Case |
+|------------|-----|----------|
+| Primitive Method | Type tag | String.toUpper(), Array.indexOf() |
+| Instance Method | Class pointer | obj.method() on class instances |
+| Map Method | Type tag | map.containsKey(), map.keys() |
+
+### Benefits
+
+- **Eliminates repeated lookups** when same method is called in loops
+- **No hash map lookups** for cached methods - just array index
+- **Monomorphic caching** for instance methods (same class = cache hit)
+
+### Example Performance
+
+```xxl
+// This loop benefits from inline caching
+// After first iteration, string methods are cached
+var s = "hello"
+for (var i = 0; i < 1000; i++) {
+    s.toUpper()   // Cache hit after first call
+    s.toLower()   // Cache hit after first call
+    s.indexOf("e") // Cache hit after first call
+}
+```
+
 ## Register VM vs Stack VM Summary
 
 | Benchmark | Stack VM (ns/op) | Register VM (ns/op) | Speedup | Stack VM Allocs | Register VM Allocs |
