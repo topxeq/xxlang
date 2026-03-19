@@ -229,7 +229,7 @@ var Builtins = map[string]*Builtin{
 			// Get 6-digit code
 			otp := code % 1000000
 
-			return &String{Value: fmt.Sprintf("%06d", otp)}
+			return NewString(fmt.Sprintf("%06d", otp))
 		},
 	},
 	"typeOf": {
@@ -251,11 +251,11 @@ var Builtins = map[string]*Builtin{
 			// For instances with detailed mode, return class name
 			if detailed {
 				if inst, ok := obj.(*Instance); ok {
-					return &String{Value: inst.Class.Name}
+					return NewString(inst.Class.Name)
 				}
 			}
 
-			return &String{Value: string(obj.Type())}
+			return NewString(string(obj.Type()))
 		},
 	},
 	"toStr": {
@@ -263,7 +263,7 @@ var Builtins = map[string]*Builtin{
 			if len(args) != 1 {
 				return newError("wrong number of arguments for toStr. got=%d, want=1", len(args))
 			}
-			return &String{Value: args[0].Inspect()}
+			return NewString(args[0].Inspect())
 		},
 	},
 
@@ -300,7 +300,7 @@ var Builtins = map[string]*Builtin{
 				return newError("substring indices out of range")
 			}
 
-			return &String{Value: str.Value[start.Value:end]}
+			return NewString(str.Value[start.Value:end])
 		},
 	},
 	"split": {
@@ -322,7 +322,7 @@ var Builtins = map[string]*Builtin{
 			parts := strings.Split(str.Value, sep.Value)
 			elements := make([]Object, len(parts))
 			for i, part := range parts {
-				elements[i] = &String{Value: part}
+				elements[i] = NewString(part)
 			}
 
 			return &Array{Elements: elements}
@@ -353,7 +353,7 @@ var Builtins = map[string]*Builtin{
 				}
 			}
 
-			return &String{Value: strings.Join(parts, sep.Value)}
+			return NewString(strings.Join(parts, sep.Value))
 		},
 	},
 	"trim": {
@@ -367,7 +367,7 @@ var Builtins = map[string]*Builtin{
 				return newError("argument to 'trim' must be STRING, got %s", args[0].Type())
 			}
 
-			return &String{Value: strings.TrimSpace(str.Value)}
+			return NewString(strings.TrimSpace(str.Value))
 		},
 	},
 	"upper": {
@@ -381,7 +381,7 @@ var Builtins = map[string]*Builtin{
 				return newError("argument to 'upper' must be STRING, got %s", args[0].Type())
 			}
 
-			return &String{Value: strings.ToUpper(str.Value)}
+			return NewString(strings.ToUpper(str.Value))
 		},
 	},
 	"lower": {
@@ -395,7 +395,7 @@ var Builtins = map[string]*Builtin{
 				return newError("argument to 'lower' must be STRING, got %s", args[0].Type())
 			}
 
-			return &String{Value: strings.ToLower(str.Value)}
+			return NewString(strings.ToLower(str.Value))
 		},
 	},
 	"containsStr": {
@@ -438,7 +438,7 @@ var Builtins = map[string]*Builtin{
 				return newError("third argument to 'replace' must be STRING, got %s", args[2].Type())
 			}
 
-			return &String{Value: strings.ReplaceAll(str.Value, old.Value, newStr.Value)}
+			return NewString(strings.ReplaceAll(str.Value, old.Value, newStr.Value))
 		},
 	},
 	"startsWith": {
@@ -718,7 +718,7 @@ var Builtins = map[string]*Builtin{
 			if len(args) != 1 {
 				return newError("wrong number of arguments for string. got=%d, want=1", len(args))
 			}
-			return &String{Value: args[0].Inspect()}
+			return NewString(args[0].Inspect())
 		},
 	},
 
@@ -1192,7 +1192,7 @@ var Builtins = map[string]*Builtin{
 				return newError("repeat count cannot be negative")
 			}
 
-			return &String{Value: strings.Repeat(str.Value, int(count.Value))}
+			return NewString(strings.Repeat(str.Value, int(count.Value)))
 		},
 	},
 	"lpad": {
@@ -1230,7 +1230,7 @@ var Builtins = map[string]*Builtin{
 
 			padLen := targetLen - strLen
 			padding := strings.Repeat(padChar, (padLen+len(padChar)-1)/len(padChar))
-			return &String{Value: padding[:padLen] + str.Value}
+			return NewString(padding[:padLen] + str.Value)
 		},
 	},
 	"rpad": {
@@ -1268,7 +1268,7 @@ var Builtins = map[string]*Builtin{
 
 			padLen := targetLen - strLen
 			padding := strings.Repeat(padChar, (padLen+len(padChar)-1)/len(padChar))
-			return &String{Value: str.Value + padding[:padLen]}
+			return NewString(str.Value + padding[:padLen])
 		},
 	},
 	"charAt": {
@@ -1292,7 +1292,7 @@ var Builtins = map[string]*Builtin{
 				return NULL
 			}
 
-			return &String{Value: string(str.Value[idx])}
+			return NewString(string(str.Value[idx]))
 		},
 	},
 	"trimLeft": {
@@ -1315,7 +1315,7 @@ var Builtins = map[string]*Builtin{
 				cutset = cs.Value
 			}
 
-			return &String{Value: strings.TrimLeft(str.Value, cutset)}
+			return NewString(strings.TrimLeft(str.Value, cutset))
 		},
 	},
 	"trimRight": {
@@ -1338,7 +1338,7 @@ var Builtins = map[string]*Builtin{
 				cutset = cs.Value
 			}
 
-			return &String{Value: strings.TrimRight(str.Value, cutset)}
+			return NewString(strings.TrimRight(str.Value, cutset))
 		},
 	},
 
@@ -1813,7 +1813,7 @@ var Builtins = map[string]*Builtin{
 				}
 			}
 
-			return &String{Value: fmt.Sprintf(format.Value, formatArgs...)}
+			return NewString(fmt.Sprintf(format.Value, formatArgs...))
 		},
 	},
 
@@ -1888,7 +1888,7 @@ var Builtins = map[string]*Builtin{
 				return newError("argument to 'base64Encode' must be STRING, got %s", args[0].Type())
 			}
 
-			return &String{Value: base64.StdEncoding.EncodeToString([]byte(str.Value))}
+			return NewString(base64.StdEncoding.EncodeToString([]byte(str.Value)))
 		},
 	},
 	"base64Decode": {
@@ -1907,7 +1907,7 @@ var Builtins = map[string]*Builtin{
 				return newError("base64Decode failed: %s", err.Error())
 			}
 
-			return &String{Value: string(decoded)}
+			return NewString(string(decoded))
 		},
 	},
 	"hexEncode": {
@@ -1921,7 +1921,7 @@ var Builtins = map[string]*Builtin{
 				return newError("argument to 'hexEncode' must be STRING, got %s", args[0].Type())
 			}
 
-			return &String{Value: hex.EncodeToString([]byte(str.Value))}
+			return NewString(hex.EncodeToString([]byte(str.Value)))
 		},
 	},
 	"hexDecode": {
@@ -1940,7 +1940,7 @@ var Builtins = map[string]*Builtin{
 				return newError("hexDecode failed: %s", err.Error())
 			}
 
-			return &String{Value: string(decoded)}
+			return NewString(string(decoded))
 		},
 	},
 	"md5": {
@@ -1955,7 +1955,7 @@ var Builtins = map[string]*Builtin{
 			}
 
 			hash := md5.Sum([]byte(str.Value))
-			return &String{Value: hex.EncodeToString(hash[:])}
+			return NewString(hex.EncodeToString(hash[:]))
 		},
 	},
 	"sha256": {
@@ -1970,7 +1970,7 @@ var Builtins = map[string]*Builtin{
 			}
 
 			hash := sha256.Sum256([]byte(str.Value))
-			return &String{Value: hex.EncodeToString(hash[:])}
+			return NewString(hex.EncodeToString(hash[:]))
 		},
 	},
 
@@ -2015,7 +2015,7 @@ var Builtins = map[string]*Builtin{
 			// Variant
 			b[8] = (b[8] & 0x3f) | 0x80
 
-			return &String{Value: fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])}
+			return NewString(fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:]))
 		},
 	},
 
@@ -2038,7 +2038,7 @@ var Builtins = map[string]*Builtin{
 				return newError("second argument to 'trimPrefix' must be STRING, got %s", args[1].Type())
 			}
 
-			return &String{Value: strings.TrimPrefix(str.Value, prefix.Value)}
+			return NewString(strings.TrimPrefix(str.Value, prefix.Value))
 		},
 	},
 	"trimSuffix": {
@@ -2057,7 +2057,7 @@ var Builtins = map[string]*Builtin{
 				return newError("second argument to 'trimSuffix' must be STRING, got %s", args[1].Type())
 			}
 
-			return &String{Value: strings.TrimSuffix(str.Value, suffix.Value)}
+			return NewString(strings.TrimSuffix(str.Value, suffix.Value))
 		},
 	},
 	"count": {
@@ -2342,7 +2342,7 @@ var Builtins = map[string]*Builtin{
 				}
 				if strings.HasPrefix(str.Value, prefix.Value) {
 					// Return the value after the prefix
-					return &String{Value: strings.TrimPrefix(str.Value, prefix.Value)}
+					return NewString(strings.TrimPrefix(str.Value, prefix.Value))
 				}
 			}
 
@@ -2464,7 +2464,7 @@ func deepCopyObject(obj Object) Object {
 	case *Float:
 		return NewFloat(o.Value)
 	case *String:
-		return &String{Value: o.Value}
+		return NewString(o.Value)
 	case *Bool:
 		if o.Value {
 			return TRUE

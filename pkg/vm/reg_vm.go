@@ -622,7 +622,7 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 			if idx.Value < 0 || idx.Value >= int64(len(o.Value)) {
 				return fmt.Errorf("string index out of bounds: %d", idx.Value)
 			}
-			result = &objects.String{Value: string(o.Value[idx.Value])}
+			result = objects.NewString(string(o.Value[idx.Value]))
 		default:
 			return fmt.Errorf("cannot index type %s", obj.Type())
 		}
@@ -948,7 +948,7 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 			}
 		} else if mapObj, ok := obj.(*objects.Map); ok {
 			// First check if the map has a key with this name (for callable map values)
-			key := &objects.String{Value: name.Value}
+			key := objects.NewString(name.Value)
 			if pair, found := mapObj.Pairs[key.HashKey()]; found {
 				method = pair.Value
 				isMapFunctionValue = true // This is a function stored in the map, not a built-in method

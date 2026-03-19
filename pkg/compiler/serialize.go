@@ -269,7 +269,7 @@ func serializableToObject(serial serializableObject) (objects.Object, error) {
 
 	case "string":
 		if v, ok := serial.Value.(string); ok {
-			return &objects.String{Value: v}, nil
+			return objects.NewString(v), nil
 		}
 		return nil, fmt.Errorf("invalid string value type: %T", serial.Value)
 
@@ -307,7 +307,7 @@ func serializableToObject(serial serializableObject) (objects.Object, error) {
 				if err != nil {
 					return nil, err
 				}
-				key := &objects.String{Value: keyStr}
+				key := objects.NewString(keyStr)
 				m.Pairs[key.HashKey()] = objects.MapPair{
 					Key:   key,
 					Value: value,

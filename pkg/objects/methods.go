@@ -38,7 +38,7 @@ func universalTypeOf(args ...Object) Object {
 	if len(args) != 1 {
 		return newError("wrong number of arguments for typeOf. got=%d, want=1", len(args))
 	}
-	return &String{Value: string(args[0].Type())}
+	return NewString(string(args[0].Type()))
 }
 
 // universalToStr returns the string representation of any object
@@ -46,7 +46,7 @@ func universalToStr(args ...Object) Object {
 	if len(args) != 1 {
 		return newError("wrong number of arguments for toStr. got=%d, want=1", len(args))
 	}
-	return &String{Value: args[0].Inspect()}
+	return NewString(args[0].Inspect())
 }
 
 // ============================================================
@@ -168,7 +168,7 @@ var stringMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for upper must be STRING, got %s", args[0].Type())
 		}
-		return &String{Value: strings.ToUpper(self.Value)}
+		return NewString(strings.ToUpper(self.Value))
 	}},
 	"lower": {Fn: func(args ...Object) Object {
 		if len(args) != 1 {
@@ -178,7 +178,7 @@ var stringMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for lower must be STRING, got %s", args[0].Type())
 		}
-		return &String{Value: strings.ToLower(self.Value)}
+		return NewString(strings.ToLower(self.Value))
 	}},
 	"trim": {Fn: func(args ...Object) Object {
 		if len(args) != 1 {
@@ -188,7 +188,7 @@ var stringMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for trim must be STRING, got %s", args[0].Type())
 		}
-		return &String{Value: strings.TrimSpace(self.Value)}
+		return NewString(strings.TrimSpace(self.Value))
 	}},
 	"split": {Fn: func(args ...Object) Object {
 		if len(args) != 2 {
@@ -205,7 +205,7 @@ var stringMethods = map[string]*Builtin{
 		parts := strings.Split(self.Value, sep.Value)
 		elements := make([]Object, len(parts))
 		for i, part := range parts {
-			elements[i] = &String{Value: part}
+			elements[i] = NewString(part)
 		}
 		return &Array{Elements: elements}
 	}},
@@ -297,9 +297,9 @@ var stringMethods = map[string]*Builtin{
 			if endIdx > len(s) {
 				endIdx = len(s)
 			}
-			return &String{Value: s[startIdx:endIdx]}
+			return NewString(s[startIdx:endIdx])
 		}
-		return &String{Value: s[startIdx:]}
+		return NewString(s[startIdx:])
 	}},
 	"toInt": {Fn: func(args ...Object) Object {
 		if len(args) != 1 {
@@ -470,7 +470,7 @@ var arrayMethods = map[string]*Builtin{
 				parts[i] = elem.Inspect()
 			}
 		}
-		return &String{Value: strings.Join(parts, sep.Value)}
+		return NewString(strings.Join(parts, sep.Value))
 	}},
 }
 
@@ -625,7 +625,7 @@ var stringBuilderMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for toString must be STRING_BUILDER, got %s", args[0].Type())
 		}
-		return &String{Value: self.String()}
+		return NewString(self.String())
 	}},
 	"clear": {Fn: func(args ...Object) Object {
 		if len(args) != 1 {

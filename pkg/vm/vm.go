@@ -1913,7 +1913,7 @@ func (vm *VM) executeStringIndexSafe(str *objects.String, index objects.Object) 
 
 	// Skip bounds check - assume index is valid
 	idx := int(intIndex.Value)
-	vm.stack.Push(&objects.String{Value: string(str.Value[idx])})
+	vm.stack.Push(objects.NewString(string(str.Value[idx])))
 	return nil
 }
 
@@ -1956,7 +1956,7 @@ func (vm *VM) executeStringIndex(str *objects.String, index objects.Object) erro
 		return nil
 	}
 
-	vm.stack.Push(&objects.String{Value: string(str.Value[idx])})
+	vm.stack.Push(objects.NewString(string(str.Value[idx])))
 	return nil
 }
 

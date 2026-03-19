@@ -245,7 +245,7 @@ func (c *RegCompiler) compileNullLiteral() (int, error) {
 
 // compileStringLiteral compiles a string literal
 func (c *RegCompiler) compileStringLiteral(n *parser.StringLiteral) (int, error) {
-	constIdx := c.addConstant(&objects.String{Value: n.Value})
+	constIdx := c.addConstant(objects.NewString(n.Value))
 	dst := c.allocTempReg()
 	c.emitRegLoadConst(dst, constIdx)
 	return dst, nil

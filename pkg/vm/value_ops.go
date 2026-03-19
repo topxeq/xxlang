@@ -751,7 +751,7 @@ func (vm *VM) binaryAdd(left, right objects.Object) (objects.Object, error) {
 	if leftIsStr || rightIsStr {
 		leftStr := objectToString(left)
 		rightStr := objectToString(right)
-		return &objects.String{Value: leftStr + rightStr}, nil
+		return objects.NewString(leftStr + rightStr), nil
 	}
 
 	return nil, fmt.Errorf("cannot add values")
