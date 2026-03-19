@@ -11,7 +11,7 @@ Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language impleme
 
 ## Features
 
-- **Bytecode VM** - Efficient execution with a stack-based virtual machine
+- **Bytecode VM** - Efficient execution with register-based virtual machine (21% faster than stack-based)
 - **Closures** - First-class functions with proper closure support
 - **Classes & OOP** - Object-oriented programming with inheritance
 - **Module System** - Import/export with standard library
@@ -296,7 +296,7 @@ Xxlang supports two virtual machines:
 
 | VM | Description | Performance |
 |----|-------------|-------------|
-| **Register VM** (default) | Modern, optimized | 2-18x faster |
+| **Register VM** (default) | Modern, optimized | ~21% faster on average |
 | Stack VM | Traditional, compatible | Baseline |
 
 ```bash
@@ -306,7 +306,7 @@ xxl --vm=stack script.xxl       # Use stack VM (for compatibility)
 xxl --stack-vm script.xxl       # Same as --vm=stack
 ```
 
-**Note**: The register VM has limited support for user-defined functions. For complex scripts with many user functions, use `--vm=stack`.
+**Note**: The register VM has limited support for method call syntax (e.g., `obj.method()`). For scripts using such features, use `--vm=stack`.
 
 ## Cloud Script Execution
 
@@ -418,14 +418,41 @@ go test ./...
 
 Xxlang uses a register-based bytecode VM with tail call optimization, achieving significant performance improvements over traditional stack-based VMs.
 
-### Register VM vs Stack VM
+### Register VM vs Stack VM vs Go vs Python
 
-| Benchmark | Stack VM | Register VM | Speedup |
-|-----------|----------|-------------|---------|
-| Fibonacci(15) | 971 µs | 52 µs | **18.6x** |
-| Factorial | 400 µs | 52 µs | **7.7x** |
-| Function Calls | 534 µs | 78 µs | **6.8x** |
-| Loop(1000) | 687 µs | 267 µs | **2.6x** |
+| Benchmark | Stack VM (µs) | Register VM (µs) | Go (µs) | Python (µs) | Reg vs Stack |
+|-----------|--------------:|-----------------:|--------:|------------:|-------------:|
+| Fibonacci(15) | 908 | 872 | 3.5 | 178 | 1.04x |
+| Fibonacci(20) | 5,219 | 4,785 | 39 | 1,980 | 1.09x |
+| Fibonacci Iterative(30) | 452 | 403 | ~0.01 | 1.6 | 1.12x |
+| Factorial(12) | 449 | 388 | ~0.01 | 1.4 | 1.16x |
+| For Loop(100) | 426 | 382 | ~0.04 | 3.7 | 1.11x |
+| **For Loop(1000)** | 813 | **474** | ~0.33 | 43.7 | **1.72x** |
+| While Loop(100) | 432 | 348 | ~0.04 | 6.5 | 1.24x |
+| Function Calls(200) | 556 | 526 | ~0.04 | 17.7 | 1.06x |
+| Arithmetic | 397 | 338 | ~0.0003 | 0.15 | 1.17x |
+| **Intensive Arithmetic(1000)** | 897 | **595** | ~0.65 | 139 | **1.51x** |
+| Nested Expressions | 410 | 360 | ~0.0003 | 0.13 | 1.14x |
+| Comparisons(400) | 529 | 472 | ~0.04 | 12.7 | 1.12x |
+| **Prime Check(100)** | 653 | **481** | 2.4 | 31 | **1.36x** |
+| Bubble Sort(10) | 494 | 455 | ~0.04 | 6.7 | 1.09x |
+| Array Sum(1000) | 383 | 353 | ~0.67 | 16.1 | 1.08x |
+| **String Concat(100)** | 452 | **324** | 5.2 | 5.5 | **1.39x** |
+
+**Key insights:**
+- Register VM provides **average 21% speedup** over Stack VM
+- Best speedup: **1.72x** (For Loop 1000)
+- Memory allocations reduced by **25.5%**
+
+### Memory Allocation Optimization
+
+| Benchmark | Stack VM (allocs) | Register VM (allocs) | Reduction |
+|-----------|------------------:|---------------------:|----------:|
+| Fibonacci(15) | 212 | 173 | 18.4% |
+| Fibonacci Iterative | 244 | 193 | 20.9% |
+| For Loop(1000) | 716 | 137 | **80.9%** |
+| Function Calls | 289 | 230 | 20.4% |
+| Intensive Arithmetic | 194 | 156 | 19.6% |
 
 ### fib(35) Benchmark Comparison
 
@@ -435,14 +462,6 @@ Xxlang uses a register-based bytecode VM with tail call optimization, achieving 
 | Python | 2,706 ms | 52x slower |
 | Xxlang | 6,180 ms | 118x slower |
 
-### fib(30) Benchmark Comparison
-
-| Language | Time | Relative to Go |
-|----------|------|----------------|
-| **Go** | **4.8 ms** | 1x (baseline) |
-| Python | 247 ms | 51x slower |
-| Xxlang | 559 ms | 116x slower |
-
 ### With Tail Call Optimization
 
 | Language | fib(35) TCO | Relative to Go |
@@ -451,7 +470,6 @@ Xxlang uses a register-based bytecode VM with tail call optimization, achieving 
 | Xxlang TCO | 0.013 ms | ~0.5x |
 
 **Key insights:**
-- Register VM provides **2-18x speedup** over stack-based VM
 - TCO makes recursion **400,000x faster** than naive approach
 - Xxlang TCO can **match or beat** Go's iterative implementation
 
