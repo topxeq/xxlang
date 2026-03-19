@@ -47,11 +47,11 @@ var Builtins = map[string]*Builtin{
 
 			switch arg := args[0].(type) {
 			case *String:
-				return &Int{Value: int64(len(arg.Value))}
+				return NewInt(int64(len(arg.Value)))
 			case *Array:
-				return &Int{Value: int64(len(arg.Elements))}
+				return NewInt(int64(len(arg.Elements)))
 			case *Map:
-				return &Int{Value: int64(len(arg.Pairs))}
+				return NewInt(int64(len(arg.Pairs)))
 			default:
 				return newError("argument to 'len' not supported, got %s", args[0].Type())
 			}
@@ -492,7 +492,7 @@ var Builtins = map[string]*Builtin{
 			switch arg := args[0].(type) {
 			case *Int:
 				if arg.Value < 0 {
-					return &Int{Value: -arg.Value}
+					return NewInt(-arg.Value)
 				}
 				return arg
 			case *Float:
@@ -521,7 +521,7 @@ var Builtins = map[string]*Builtin{
 				return newError("argument to 'floor' must be INT or FLOAT, got %s", args[0].Type())
 			}
 
-			return &Int{Value: int64(math.Floor(val))}
+			return NewInt(int64(math.Floor(val)))
 		},
 	},
 	"ceil": {
@@ -540,7 +540,7 @@ var Builtins = map[string]*Builtin{
 				return newError("argument to 'ceil' must be INT or FLOAT, got %s", args[0].Type())
 			}
 
-			return &Int{Value: int64(math.Ceil(val))}
+			return NewInt(int64(math.Ceil(val)))
 		},
 	},
 	"sqrt": {
@@ -669,18 +669,18 @@ var Builtins = map[string]*Builtin{
 			case *Int:
 				return arg
 			case *Float:
-				return &Int{Value: int64(arg.Value)}
+				return NewInt(int64(arg.Value))
 			case *String:
 				val, err := strconv.ParseInt(arg.Value, 10, 64)
 				if err != nil {
 					return newError("could not convert string to int: %s", arg.Value)
 				}
-				return &Int{Value: val}
+				return NewInt(val)
 			case *Bool:
 				if arg.Value {
-					return &Int{Value: 1}
+					return NewInt(1)
 				}
-				return &Int{Value: 0}
+				return NewInt(0)
 			default:
 				return newError("cannot convert %s to INT", args[0].Type())
 			}
@@ -856,11 +856,11 @@ var Builtins = map[string]*Builtin{
 
 			for i, elem := range arr.Elements {
 				if compareObjects(elem, args[1]) {
-					return &Int{Value: int64(i)}
+					return NewInt(int64(i))
 				}
 			}
 
-			return &Int{Value: -1}
+			return NewInt(-1)
 		},
 	},
 	"containsArr": {
@@ -987,12 +987,12 @@ var Builtins = map[string]*Builtin{
 			if start <= end {
 				elements = make([]Object, end-start+1)
 				for i := start; i <= end; i++ {
-					elements[i-start] = &Int{Value: i}
+					elements[i-start] = NewInt(i)
 				}
 			} else {
 				elements = make([]Object, start-end+1)
 				for i := start; i >= end; i-- {
-					elements[start-i] = &Int{Value: i}
+					elements[start-i] = NewInt(i)
 				}
 			}
 			return &Array{Elements: elements}
@@ -1033,7 +1033,7 @@ var Builtins = map[string]*Builtin{
 				return newError("argument to 'sum' must be ARRAY, got %s", args[0].Type())
 			}
 			if len(arr.Elements) == 0 {
-				return &Int{Value: 0}
+				return NewInt(0)
 			}
 			var total int64
 			var hasFloat bool
@@ -1051,7 +1051,7 @@ var Builtins = map[string]*Builtin{
 			if hasFloat {
 				return &Float{Value: float64(total)}
 			}
-			return &Int{Value: total}
+			return NewInt(total)
 		},
 	},
 	"avg": {
@@ -1487,7 +1487,7 @@ var Builtins = map[string]*Builtin{
 			}
 
 			if precision == 0 {
-				return &Int{Value: int64(math.Round(val))}
+				return NewInt(int64(math.Round(val)))
 			}
 
 			multiplier := math.Pow(10, float64(precision))
@@ -1540,7 +1540,7 @@ var Builtins = map[string]*Builtin{
 
 			// Return same type as input
 			if _, isInt := args[0].(*Int); isInt {
-				return &Int{Value: int64(result)}
+				return NewInt(int64(result))
 			}
 			return &Float{Value: result}
 		},
@@ -1554,18 +1554,18 @@ var Builtins = map[string]*Builtin{
 			switch arg := args[0].(type) {
 			case *Int:
 				if arg.Value > 0 {
-					return &Int{Value: 1}
+					return NewInt(1)
 				} else if arg.Value < 0 {
-					return &Int{Value: -1}
+					return NewInt(-1)
 				}
-				return &Int{Value: 0}
+				return NewInt(0)
 			case *Float:
 				if arg.Value > 0 {
-					return &Int{Value: 1}
+					return NewInt(1)
 				} else if arg.Value < 0 {
-					return &Int{Value: -1}
+					return NewInt(-1)
 				}
-				return &Int{Value: 0}
+				return NewInt(0)
 			default:
 				return newError("argument to 'sign' must be numeric, got %s", args[0].Type())
 			}
@@ -1601,7 +1601,7 @@ var Builtins = map[string]*Builtin{
 
 			range_ := max.Value - min.Value + 1
 			result := min.Value + (randInt63() % range_)
-			return &Int{Value: result}
+			return NewInt(result)
 		},
 	},
 
@@ -1994,12 +1994,12 @@ var Builtins = map[string]*Builtin{
 	},
 	"now": {
 		Fn: func(args ...Object) Object {
-			return &Int{Value: time.Now().Unix()}
+			return NewInt(time.Now().Unix())
 		},
 	},
 	"nowMs": {
 		Fn: func(args ...Object) Object {
-			return &Int{Value: time.Now().UnixMilli()}
+			return NewInt(time.Now().UnixMilli())
 		},
 	},
 	"uuid": {
@@ -2076,7 +2076,7 @@ var Builtins = map[string]*Builtin{
 				return newError("second argument to 'count' must be STRING, got %s", args[1].Type())
 			}
 
-			return &Int{Value: int64(strings.Count(str.Value, substr.Value))}
+			return NewInt(int64(strings.Count(str.Value, substr.Value)))
 		},
 	},
 	"isDigit": {
@@ -2185,11 +2185,11 @@ var Builtins = map[string]*Builtin{
 
 			for i, elem := range arr.Elements {
 				if deepEquals(elem, args[1]) {
-					return &Int{Value: int64(i)}
+					return NewInt(int64(i))
 				}
 			}
 
-			return &Int{Value: -1}
+			return NewInt(-1)
 		},
 	},
 	"includes": {
@@ -2460,7 +2460,7 @@ func flattenArray(elements []Object, depth int64) []Object {
 func deepCopyObject(obj Object) Object {
 	switch o := obj.(type) {
 	case *Int:
-		return &Int{Value: o.Value}
+		return NewInt(o.Value)
 	case *Float:
 		return &Float{Value: o.Value}
 	case *String:
