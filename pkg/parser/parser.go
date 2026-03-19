@@ -1221,6 +1221,15 @@ func (p *Parser) parseExpression(precedence int) Expression {
 	leftExp := prefix()
 
 	for !p.peekTokenIs(lexer.TokenSemicolon) && precedence <= p.peekPrecedence() {
+		// For postfix ++ and --, only parse as postfix if on the same line
+		// This prevents: pln("hello")\n++x  from being parsed as (pln("hello"))++
+		if p.peekToken.Type == lexer.TokenIncrement || p.peekToken.Type == lexer.TokenDecrement {
+			if p.peekToken.Line != p.curToken.Line {
+				// ++ or -- is on a different line, don't parse as postfix
+				return leftExp
+			}
+		}
+
 		infix := p.infixParseFns[p.peekToken.Type]
 		if infix == nil {
 			return leftExp

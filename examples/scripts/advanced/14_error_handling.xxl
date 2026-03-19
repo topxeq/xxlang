@@ -2,7 +2,7 @@
 // Error handling patterns: try-catch-finally, validation, and defensive programming
 
 // === Basic Try-Catch ===
-println("=== Basic Try-Catch ===")
+pln("=== Basic Try-Catch ===")
 
 func divide(a, b) {
     if (b == 0) {
@@ -13,38 +13,38 @@ func divide(a, b) {
 
 // Using try-catch for error handling
 try {
-    println("  divide(10, 2) = " + divide(10, 2))
+    pln("  divide(10, 2) = " + divide(10, 2))
 } catch (e) {
-    println("  Error: " + e)
+    pln("  Error: " + e)
 }
 
 try {
-    println("  divide(10, 0) = " + divide(10, 0))
+    pln("  divide(10, 0) = " + divide(10, 0))
 } catch (e) {
-    println("  Error: " + e)
+    pln("  Error: " + e)
 }
 
 // === Safe Operations with Try-Catch ===
-println("\n=== Safe Operations with Try-Catch ===")
+pln("\n=== Safe Operations with Try-Catch ===")
 
 func safeDivide(a, b) {
     var result = null
     try {
         result = divide(a, b)
     } catch (e) {
-        println("  Caught error: " + e)
+        pln("  Caught error: " + e)
     }
     return result
 }
 
-println("  safeDivide(10, 2) = " + safeDivide(10, 2))
-println("  safeDivide(10, 0) = " + safeDivide(10, 0))
+pln("  safeDivide(10, 2) = " + safeDivide(10, 2))
+pln("  safeDivide(10, 0) = " + safeDivide(10, 0))
 
 // === Try-Catch-Finally for Cleanup ===
-println("\n=== Try-Catch-Finally for Cleanup ===")
+pln("\n=== Try-Catch-Finally for Cleanup ===")
 
 func processFile(filename) {
-    println("  Opening file: " + filename)
+    pln("  Opening file: " + filename)
     var error = null
 
     try {
@@ -52,16 +52,16 @@ func processFile(filename) {
         if (filename == "missing.txt") {
             throw "file not found"
         }
-        println("  Processing file...")
+        pln("  Processing file...")
     } catch (e) {
         error = e
     } finally {
         // Cleanup always happens
-        println("  Closing file (cleanup)")
+        pln("  Closing file (cleanup)")
     }
 
     if (error != null) {
-        println("  Had error: " + error)
+        pln("  Had error: " + error)
     }
 }
 
@@ -69,7 +69,7 @@ processFile("data.txt")
 processFile("missing.txt")
 
 // === Validation with Exceptions ===
-println("\n=== Validation with Exceptions ===")
+pln("\n=== Validation with Exceptions ===")
 
 func validateUser(user) {
     // Check name
@@ -98,10 +98,10 @@ func validateUser(user) {
 func processUser(user) {
     try {
         validateUser(user)
-        println("  User is valid: " + user["name"])
+        pln("  User is valid: " + user["name"])
         return true
     } catch (e) {
-        println("  Validation failed: " + e)
+        pln("  Validation failed: " + e)
         return false
     }
 }
@@ -109,12 +109,12 @@ func processUser(user) {
 var validUser = {"name": "Alice", "age": 30, "email": "alice@example.com"}
 var invalidUser = {"name": "", "age": -5, "email": "invalid"}
 
-println("Validating users:")
+pln("Validating users:")
 processUser(validUser)
 processUser(invalidUser)
 
 // === Exception Propagation ===
-println("\n=== Exception Propagation ===")
+pln("\n=== Exception Propagation ===")
 
 func validateInput(input) {
     if (len(input) == 0) {
@@ -125,7 +125,7 @@ func validateInput(input) {
 
 func processData(input) {
     validateInput(input)  // Exception propagates if thrown
-    println("  Processing: " + input)
+    pln("  Processing: " + input)
     return "processed: " + input
 }
 
@@ -134,34 +134,34 @@ func handleRequest(input) {
     try {
         result = processData(input)
     } catch (e) {
-        println("  Request failed: " + e)
+        pln("  Request failed: " + e)
     }
     return result
 }
 
-println("Handling requests:")
-println("  Result: " + handleRequest("hello"))
-println("  Result: " + handleRequest(""))
+pln("Handling requests:")
+pln("  Result: " + handleRequest("hello"))
+pln("  Result: " + handleRequest(""))
 
 // === Nested Try-Catch ===
-println("\n=== Nested Try-Catch ===")
+pln("\n=== Nested Try-Catch ===")
 
 func innerOperation() {
-    println("  Starting inner operation")
+    pln("  Starting inner operation")
     try {
         throw "inner failure"
     } catch (e) {
-        println("  Inner caught: " + e)
+        pln("  Inner caught: " + e)
         throw e  // Re-throw
     }
 }
 
 func outerOperation() {
-    println("  Starting outer operation")
+    pln("  Starting outer operation")
     try {
         innerOperation()
     } catch (e) {
-        println("  Outer caught: " + e)
+        pln("  Outer caught: " + e)
         throw "outer error: " + e
     }
 }
@@ -169,11 +169,11 @@ func outerOperation() {
 try {
     outerOperation()
 } catch (e) {
-    println("  Final caught: " + e)
+    pln("  Final caught: " + e)
 }
 
 // === Assertions with Exceptions ===
-println("\n=== Assertions with Exceptions ===")
+pln("\n=== Assertions with Exceptions ===")
 
 func assert(condition, message) {
     if (!condition) {
@@ -185,7 +185,7 @@ func assertEquals(actual, expected, name) {
     if (actual != expected) {
         throw name + ": expected " + expected + ", got " + actual
     }
-    println("  PASS: " + name)
+    pln("  PASS: " + name)
 }
 
 func runTests() {
@@ -194,38 +194,38 @@ func runTests() {
         assertEquals("hello".upper(), "HELLO", "upper()")
         assertEquals(2 * 3, 5, "multiplication")  // This will fail
     } catch (e) {
-        println("  FAIL: " + e)
+        pln("  FAIL: " + e)
     }
 }
 
-println("Running tests:")
+pln("Running tests:")
 runTests()
 
 // === Resource Management ===
-println("\n=== Resource Management ===")
+pln("\n=== Resource Management ===")
 
 func withResource(resource, operation) {
-    println("  Acquiring: " + resource)
+    pln("  Acquiring: " + resource)
     var result = null
     try {
         result = operation(resource)
     } finally {
-        println("  Releasing: " + resource)
+        pln("  Releasing: " + resource)
     }
     return result
 }
 
 try {
     withResource("database", func(db) {
-        println("  Using: " + db)
+        pln("  Using: " + db)
         throw "connection error"
     })
 } catch (e) {
-    println("  Error: " + e)
+    pln("  Error: " + e)
 }
 
 // === Option/Nullable Pattern ===
-println("\n=== Option/Nullable Pattern ===")
+pln("\n=== Option/Nullable Pattern ===")
 
 func safeGet(map, key) {
     if (hasKey(map, key)) {
@@ -244,16 +244,16 @@ func getOrElse(value, defaultVal) {
 var user = {"name": "Alice", "age": 30}
 var email = safeGet(user, "email")
 
-println("Email: " + getOrElse(email, "not provided"))
+pln("Email: " + getOrElse(email, "not provided"))
 
 // === Retry Pattern with Try-Catch ===
-println("\n=== Retry Pattern with Try-Catch ===")
+pln("\n=== Retry Pattern with Try-Catch ===")
 
 var retryCount = 0
 
 func unreliableOperation() {
     retryCount = retryCount + 1
-    println("  Attempt " + retryCount)
+    pln("  Attempt " + retryCount)
     if (retryCount < 3) {
         throw "temporary failure"
     }
@@ -270,7 +270,7 @@ func withRetry(operation, maxAttempts) {
             result = operation()
             return result
         } catch (e) {
-            println("    Failed: " + e)
+            pln("    Failed: " + e)
             if (attempts >= maxAttempts) {
                 throw "failed after " + maxAttempts + " attempts"
             }
@@ -280,13 +280,13 @@ func withRetry(operation, maxAttempts) {
 
 try {
     var result = withRetry(unreliableOperation, 5)
-    println("  Final result: " + result)
+    pln("  Final result: " + result)
 } catch (e) {
-    println("  Error: " + e)
+    pln("  Error: " + e)
 }
 
 // === Guard Clause Pattern ===
-println("\n=== Guard Clause Pattern ===")
+pln("\n=== Guard Clause Pattern ===")
 
 func processPayment(amount, currency, account) {
     // Guard clauses - throw early for error conditions
@@ -309,23 +309,23 @@ func processPayment(amount, currency, account) {
 
 func handlePayment(amount, currency, account) {
     try {
-        println("  " + processPayment(amount, currency, account))
+        pln("  " + processPayment(amount, currency, account))
     } catch (e) {
-        println("  Payment failed: " + e)
+        pln("  Payment failed: " + e)
     }
 }
 
 var account1 = {"id": "A001", "active": true}
 var account2 = {"id": "A002", "active": false}
 
-println("Processing payments:")
+pln("Processing payments:")
 handlePayment(100, "USD", account1)
 handlePayment(-50, "USD", account1)
 handlePayment(100, "JPY", account1)
 handlePayment(100, "EUR", account2)
 
 // === Error Handler Pattern ===
-println("\n=== Error Handler Pattern ===")
+pln("\n=== Error Handler Pattern ===")
 
 func createErrorHandler() {
     var handlers = {}
@@ -346,27 +346,27 @@ func createErrorHandler() {
 
 var errorHandler = createErrorHandler()
 errorHandler["onError"]("validation", func(e) {
-    println("  Validation error: " + e)
+    pln("  Validation error: " + e)
 })
 errorHandler["onError"]("network", func(e) {
-    println("  Network error: " + e + " - retrying...")
+    pln("  Network error: " + e + " - retrying...")
 })
 
-println("Handling errors:")
+pln("Handling errors:")
 try {
     errorHandler["handle"]("validation", "Invalid input")
 } catch (e) {
-    println("  Unhandled: " + e)
+    pln("  Unhandled: " + e)
 }
 
 try {
     errorHandler["handle"]("unknown", "Something went wrong")
 } catch (e) {
-    println("  Unhandled: " + e)
+    pln("  Unhandled: " + e)
 }
 
 // === Default Values Pattern ===
-println("\n=== Default Values Pattern ===")
+pln("\n=== Default Values Pattern ===")
 
 func withDefaults(config, defaults) {
     var result = {}
@@ -385,6 +385,6 @@ var defaultConfig = {"timeout": 30, "retries": 3, "debug": false}
 var userConfig = {"timeout": 60, "debug": true}
 
 var merged = withDefaults(userConfig, defaultConfig)
-println("Merged config: timeout=" + merged["timeout"] + ", retries=" + merged["retries"] + ", debug=" + merged["debug"])
+pln("Merged config: timeout=" + merged["timeout"] + ", retries=" + merged["retries"] + ", debug=" + merged["debug"])
 
-println("\n=== Done ===")
+pln("\n=== Done ===")

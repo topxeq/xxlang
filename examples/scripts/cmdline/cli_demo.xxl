@@ -53,7 +53,7 @@ let parseArgs = fn(args) {
             i = i + 1
             result["file"] = args[i]
         } else if string.hasPrefix(arg, "-") {
-            fmt.println("Unknown option:", arg)
+            fmt.pln("Unknown option:", arg)
             result["help"] = true
         } else {
             remaining = array.push(remaining, arg)
@@ -68,24 +68,24 @@ let parseArgs = fn(args) {
 
 // Show help message
 let showHelp = fn(programName) {
-    fmt.println("Usage:", programName, "[options] [arguments]")
-    fmt.println("")
-    fmt.println("Options:")
-    fmt.println("  -h, --help      Show this help message")
-    fmt.println("  -v, --version   Show version information")
-    fmt.println("  -n, --name      Set name (requires value)")
-    fmt.println("  -c, --count     Set count (requires integer value)")
-    fmt.println("  --verbose       Enable verbose output")
-    fmt.println("  --file          Input file path")
-    fmt.println("")
-    fmt.println("Examples:")
-    fmt.println("  xxlang cmdline_demo.xxl --name John --count 5")
-    fmt.println("  xxlang cmdline_demo.xxl --verbose file1.txt file2.txt")
+    fmt.pln("Usage:", programName, "[options] [arguments]")
+    fmt.pln("")
+    fmt.pln("Options:")
+    fmt.pln("  -h, --help      Show this help message")
+    fmt.pln("  -v, --version   Show version information")
+    fmt.pln("  -n, --name      Set name (requires value)")
+    fmt.pln("  -c, --count     Set count (requires integer value)")
+    fmt.pln("  --verbose       Enable verbose output")
+    fmt.pln("  --file          Input file path")
+    fmt.pln("")
+    fmt.pln("Examples:")
+    fmt.pln("  xxlang cmdline_demo.xxl --name John --count 5")
+    fmt.pln("  xxlang cmdline_demo.xxl --verbose file1.txt file2.txt")
 }
 
 // Show version
 let showVersion = fn() {
-    fmt.println("cmdline_demo version", VERSION)
+    fmt.pln("cmdline_demo version", VERSION)
 }
 
 // Main function
@@ -111,39 +111,39 @@ let main = fn() {
 
     // Verbose output
     if options["verbose"] {
-        fmt.println("[VERBOSE] Parsed options:")
-        fmt.println("  name:", options["name"])
-        fmt.println("  count:", options["count"])
-        fmt.println("  file:", options["file"])
-        fmt.println("  remaining:", options["remaining"])
+        fmt.pln("[VERBOSE] Parsed options:")
+        fmt.pln("  name:", options["name"])
+        fmt.pln("  count:", options["count"])
+        fmt.pln("  file:", options["file"])
+        fmt.pln("  remaining:", options["remaining"])
     }
 
     // Main logic - demonstrate using the parsed options
     if options["name"] != "" {
         let count = options["count"]
-        fmt.println("Hello,", options["name"], "!")
-        fmt.println("Repeating", count, "times:")
+        fmt.pln("Hello,", options["name"], "!")
+        fmt.pln("Repeating", count, "times:")
 
         let i = 0
         while i < count {
-            fmt.println("  ", i + 1, ". Hello,", options["name"])
+            fmt.pln("  ", i + 1, ". Hello,", options["name"])
             i = i + 1
         }
     }
 
     // Handle file if specified
     if options["file"] != "" {
-        fmt.println("Processing file:", options["file"])
+        fmt.pln("Processing file:", options["file"])
         // In a real application, you would read and process the file here
     }
 
     // Handle remaining positional arguments
     let remaining = options["remaining"]
     if array.len(remaining) > 0 {
-        fmt.println("Positional arguments:")
+        fmt.pln("Positional arguments:")
         let i = 0
         while i < array.len(remaining) {
-            fmt.println("  [", i, "]", remaining[i])
+            fmt.pln("  [", i, "]", remaining[i])
             i = i + 1
         }
     }

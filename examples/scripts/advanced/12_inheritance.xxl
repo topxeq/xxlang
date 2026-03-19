@@ -2,7 +2,7 @@
 // Class inheritance, super calls, and polymorphism
 
 // === Basic Inheritance ===
-println("=== Basic Inheritance ===")
+pln("=== Basic Inheritance ===")
 
 class Animal {
     func init(name) {
@@ -51,18 +51,18 @@ class Cat : Animal {
 var dog = new Dog("Rex", "German Shepherd")
 var cat = new Cat("Whiskers", "orange")
 
-println("Dog: ", dog.introduce())
-println("  speaks: ", dog.speak())
-println("  breed: ", dog.breed)
-println("  ", dog.fetch())
+pln("Dog: ", dog.introduce())
+pln("  speaks: ", dog.speak())
+pln("  breed: ", dog.breed)
+pln("  ", dog.fetch())
 
-println("\nCat: ", cat.introduce())
-println("  speaks: ", cat.speak())
-println("  color: ", cat.color)
-println("  ", cat.climb())
+pln("\nCat: ", cat.introduce())
+pln("  speaks: ", cat.speak())
+pln("  color: ", cat.color)
+pln("  ", cat.climb())
 
 // === Super Call in Overridden Method ===
-println("\n=== Super Call in Overridden Method ===")
+pln("\n=== Super Call in Overridden Method ===")
 
 class Vehicle {
     func init(brand) {
@@ -106,11 +106,11 @@ class Motorcycle : Vehicle {
 var car = new Car("Toyota", "Camry")
 var bike = new Motorcycle("Honda")
 
-println("Car: ", car.info())
-println("Bike: ", bike.info())
+pln("Car: ", car.info())
+pln("Bike: ", bike.info())
 
 // === Polymorphism ===
-println("\n=== Polymorphism ===")
+pln("\n=== Polymorphism ===")
 
 class Shape {
     func init(name) {
@@ -168,9 +168,9 @@ var shapes = [
     new Triangle(3, 8)
 ]
 
-println("Shapes:")
+pln("Shapes:")
 for (shape in shapes) {
-    println("  ", shape.describe())
+    pln("  ", shape.describe())
 }
 
 // Calculate total area
@@ -178,10 +178,10 @@ var totalArea = 0
 for (shape in shapes) {
     totalArea = totalArea + shape.area()
 }
-println("Total area: ", totalArea)
+pln("Total area: ", totalArea)
 
 // === Multi-level Inheritance ===
-println("\n=== Multi-level Inheritance ===")
+pln("\n=== Multi-level Inheritance ===")
 
 class Employee {
     func init(name, id) {
@@ -231,14 +231,14 @@ class Manager : SalariedEmployee {
 var emp = new SalariedEmployee("Alice", "E001", 50000)
 var mgr = new Manager("Bob", "M001", 80000, 20000)
 
-println("Employee: ", emp.getDetails())
-println("  Pay: $", emp.calculatePay())
+pln("Employee: ", emp.getDetails())
+pln("  Pay: $", emp.calculatePay())
 
-println("\nManager: ", mgr.getDetails())
-println("  Pay: $", mgr.calculatePay())
+pln("\nManager: ", mgr.getDetails())
+pln("  Pay: $", mgr.calculatePay())
 
 // === Inheritance with Collections ===
-println("\n=== Inheritance with Collections ===")
+pln("\n=== Inheritance with Collections ===")
 
 class Item {
     func init(name, price) {
@@ -277,16 +277,16 @@ var cart = [
     new DiscountedItem("Phone", 500, 15)
 ]
 
-println("Shopping Cart:")
+pln("Shopping Cart:")
 var total = 0
 for (item in cart) {
-    println("  ", item.getDescription())
+    pln("  ", item.getDescription())
     total = total + item.getTotal()
 }
-println("Total: $", total)
+pln("Total: $", total)
 
 // === Abstract-like Pattern ===
-println("\n=== Abstract-like Pattern ===")
+pln("\n=== Abstract-like Pattern ===")
 
 // Base class that should not be instantiated directly
 class DataProcessor {
@@ -296,14 +296,14 @@ class DataProcessor {
 
     // "Abstract" method - should be overridden
     func process(data) {
-        println("  Warning: process() not implemented")
+        pln("  Warning: process() not implemented")
         return data
     }
 
     func run(data) {
-        println("Running ", this.name, "...")
+        pln("Running ", this.name, "...")
         var result = this.process(data)
-        println("Done. Result: ", result)
+        pln("Done. Result: ", result)
         return result
     }
 }

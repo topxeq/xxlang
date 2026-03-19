@@ -2,45 +2,45 @@
 // Math functions and numerical operations
 
 // === Basic Math Operations ===
-println("=== Basic Math Operations ===")
+pln("=== Basic Math Operations ===")
 
 var a = 10
 var b = 3
 
-println("a = ", a, ", b = ", b)
-println("a + b = ", a + b)
-println("a - b = ", a - b)
-println("a * b = ", a * b)
-println("a / b = ", a / b)
-println("a % b = ", a % b)
+pln("a = ", a, ", b = ", b)
+pln("a + b = ", a + b)
+pln("a - b = ", a - b)
+pln("a * b = ", a * b)
+pln("a / b = ", a / b)
+pln("a % b = ", a % b)
 
 // === Math Functions ===
-println("\n=== Math Functions ===")
+pln("\n=== Math Functions ===")
 
 // Absolute value
-println("abs(-15) = ", abs(-15))
-println("abs(15) = ", abs(15))
+pln("abs(-15) = ", abs(-15))
+pln("abs(15) = ", abs(15))
 
 // Min/Max
-println("min(10, 20) = ", min(10, 20))
-println("max(10, 20) = ", max(10, 20))
+pln("min(10, 20) = ", min(10, 20))
+pln("max(10, 20) = ", max(10, 20))
 
 // Floor/Ceil
 var x = 3.7
-println("\nFloat: ", x)
-println("floor(3.7) = ", floor(x))
-println("ceil(3.7) = ", ceil(x))
+pln("\nFloat: ", x)
+pln("floor(3.7) = ", floor(x))
+pln("ceil(3.7) = ", ceil(x))
 
 // Truncation
-println("int(3.7) = ", int(x))
-println("int(-3.7) = ", int(-3.7))
+pln("int(3.7) = ", int(x))
+pln("int(-3.7) = ", int(-3.7))
 
 // === Power and Square Root ===
-println("\n=== Power and Square Root ===")
+pln("\n=== Power and Square Root ===")
 
-println("pow(2, 10) = ", pow(2, 10))
-println("sqrt(25) = ", sqrt(25))
-println("sqrt(2) = ", sqrt(2))
+pln("pow(2, 10) = ", pow(2, 10))
+pln("sqrt(25) = ", sqrt(25))
+pln("sqrt(2) = ", sqrt(2))
 
 // Custom power function for integers
 func intPow(base, exp) {
@@ -52,10 +52,10 @@ func intPow(base, exp) {
     return result
 }
 
-println("intPow(2, 8) = ", intPow(2, 8))
+pln("intPow(2, 8) = ", intPow(2, 8))
 
 // === Number Type Checking ===
-println("\n=== Number Type Checking ===")
+pln("\n=== Number Type Checking ===")
 
 func isInt(n) {
     return typeOf(n) == "INT"
@@ -69,35 +69,35 @@ func isNumber(n) {
     return isInt(n) || isFloat(n)
 }
 
-println("isInt(42): ", isInt(42))
-println("isFloat(3.14): ", isFloat(3.14))
-println("isNumber(42): ", isNumber(42))
-println("isNumber('42'): ", isNumber("42"))
+pln("isInt(42): ", isInt(42))
+pln("isFloat(3.14): ", isFloat(3.14))
+pln("isNumber(42): ", isNumber(42))
+pln("isNumber('42'): ", isNumber("42"))
 
 // === Number Conversion ===
-println("\n=== Number Conversion ===")
+pln("\n=== Number Conversion ===")
 
 // String to number
 var strNum = "42"
 var parsed = int(strNum)
-println("int('42') = ", parsed, " (type: ", typeOf(parsed), ")")
+pln("int('42') = ", parsed, " (type: ", typeOf(parsed), ")")
 
 var strFloat = "3.14159"
 var parsedFloat = float(strFloat)
-println("float('3.14159') = ", parsedFloat, " (type: ", typeOf(parsedFloat), ")")
+pln("float('3.14159') = ", parsedFloat, " (type: ", typeOf(parsedFloat), ")")
 
 // Float to int
 var pi = 3.14159
 var piInt = int(pi)
-println("int(3.14159) = ", piInt)
+pln("int(3.14159) = ", piInt)
 
 // Int to float
 var n = 42
 var nFloat = float(n)
-println("float(42) = ", nFloat, " (type: ", typeOf(nFloat), ")")
+pln("float(42) = ", nFloat, " (type: ", typeOf(nFloat), ")")
 
 // === Number Formatting ===
-println("\n=== Number Formatting ===")
+pln("\n=== Number Formatting ===")
 
 // Format decimal places using floor
 func formatFloat(n, decimals) {
@@ -114,11 +114,11 @@ func formatFloat(n, decimals) {
 }
 
 var precise = 3.14159265359
-println("formatFloat(pi, 2) = ", formatFloat(precise, 2))
-println("formatFloat(pi, 4) = ", formatFloat(precise, 4))
+pln("formatFloat(pi, 2) = ", formatFloat(precise, 2))
+pln("formatFloat(pi, 4) = ", formatFloat(precise, 4))
 
 // === Prime Numbers ===
-println("\n=== Prime Numbers ===")
+pln("\n=== Prime Numbers ===")
 
 func isPrime(n) {
     if (n < 2) { return false }
@@ -132,17 +132,17 @@ func isPrime(n) {
     return true
 }
 
-println("Prime numbers up to 30:")
+pln("Prime numbers up to 30:")
 var primes = []
 for (var i = 2; i <= 30; i++) {
     if (isPrime(i)) {
         push(primes, i)
     }
 }
-println(primes)
+pln(primes)
 
 // === GCD and LCM ===
-println("\n=== GCD and LCM ===")
+pln("\n=== GCD and LCM ===")
 
 func gcd(a, b) {
     while (b != 0) {
@@ -157,13 +157,13 @@ func lcm(a, b) {
     return abs(a * b) / gcd(a, b)
 }
 
-println("gcd(48, 18) = ", gcd(48, 18))
-println("gcd(54, 24) = ", gcd(54, 24))
-println("lcm(4, 6) = ", lcm(4, 6))
-println("lcm(12, 18) = ", lcm(12, 18))
+pln("gcd(48, 18) = ", gcd(48, 18))
+pln("gcd(54, 24) = ", gcd(54, 24))
+pln("lcm(4, 6) = ", lcm(4, 6))
+pln("lcm(12, 18) = ", lcm(12, 18))
 
 // === Factorial ===
-println("\n=== Factorial ===")
+pln("\n=== Factorial ===")
 
 func factorial(n) {
     if (n < 0) { return null }
@@ -175,11 +175,11 @@ func factorial(n) {
     return result
 }
 
-println("factorial(5) = ", factorial(5))
-println("factorial(10) = ", factorial(10))
+pln("factorial(5) = ", factorial(5))
+pln("factorial(10) = ", factorial(10))
 
 // === Fibonacci Sequence ===
-println("\n=== Fibonacci Sequence ===")
+pln("\n=== Fibonacci Sequence ===")
 
 func fibIterative(n) {
     if (n <= 0) { return 0 }
@@ -195,8 +195,8 @@ func fibIterative(n) {
     return b
 }
 
-println("Fibonacci(10) = ", fibIterative(10))
-println("Fibonacci(20) = ", fibIterative(20))
+pln("Fibonacci(10) = ", fibIterative(10))
+pln("Fibonacci(20) = ", fibIterative(20))
 
 // Generate sequence
 var fibSeq = []
@@ -208,10 +208,10 @@ for (var i = 0; i < 15; i++) {
     prev = curr
     curr = next
 }
-println("First 15 Fibonacci numbers: ", fibSeq)
+pln("First 15 Fibonacci numbers: ", fibSeq)
 
 // === Statistics ===
-println("\n=== Statistics ===")
+pln("\n=== Statistics ===")
 
 func mean(arr) {
     if (len(arr) == 0) { return 0 }
@@ -232,14 +232,14 @@ func stdDev(arr) {
 }
 
 var data = [10, 12, 23, 23, 16, 23, 21, 16]
-println("Data: ", data)
-println("Sum: ", sum(data))
-println("Mean: ", mean(data))
-println("Min: ", min(data[0], min(data[1], min(data[2], min(data[3], min(data[4], min(data[5], min(data[6], data[7])))))))
-println("Max: ", max(data[0], max(data[1], max(data[2], max(data[3], max(data[4], max(data[5], max(data[6], data[7])))))))
+pln("Data: ", data)
+pln("Sum: ", sum(data))
+pln("Mean: ", mean(data))
+pln("Min: ", min(data[0], min(data[1], min(data[2], min(data[3], min(data[4], min(data[5], min(data[6], data[7])))))))
+pln("Max: ", max(data[0], max(data[1], max(data[2], max(data[3], max(data[4], max(data[5], max(data[6], data[7])))))))
 
 // === Bitwise-like Operations ===
-println("\n=== Bitwise-like Operations ===")
+pln("\n=== Bitwise-like Operations ===")
 
 // Check if bit is set (using division/modulo)
 func isBitSet(n, bit) {
@@ -249,12 +249,12 @@ func isBitSet(n, bit) {
     return n % 2 == 1
 }
 
-println("isBitSet(5, 0) = ", isBitSet(5, 0))  // true (5 = 101 binary)
-println("isBitSet(5, 1) = ", isBitSet(5, 1))  // false
-println("isBitSet(5, 2) = ", isBitSet(5, 2))  // true
+pln("isBitSet(5, 0) = ", isBitSet(5, 0))  // true (5 = 101 binary)
+pln("isBitSet(5, 1) = ", isBitSet(5, 1))  // false
+pln("isBitSet(5, 2) = ", isBitSet(5, 2))  // true
 
 // === Clamp Function ===
-println("\n=== Clamp Function ===")
+pln("\n=== Clamp Function ===")
 
 func clamp(value, minVal, maxVal) {
     if (value < minVal) { return minVal }
@@ -262,20 +262,20 @@ func clamp(value, minVal, maxVal) {
     return value
 }
 
-println("clamp(5, 0, 10) = ", clamp(5, 0, 10))
-println("clamp(-5, 0, 10) = ", clamp(-5, 0, 10))
-println("clamp(15, 0, 10) = ", clamp(15, 0, 10))
+pln("clamp(5, 0, 10) = ", clamp(5, 0, 10))
+pln("clamp(-5, 0, 10) = ", clamp(-5, 0, 10))
+pln("clamp(15, 0, 10) = ", clamp(15, 0, 10))
 
 // === Number Range ===
-println("\n=== Number Range ===")
+pln("\n=== Number Range ===")
 
 // Generate range using built-in range function
-println("range(1, 6, 1) = ", range(1, 6, 1))
-println("range(0, 10, 2) = ", range(0, 10, 2))
+pln("range(1, 6, 1) = ", range(1, 6, 1))
+pln("range(0, 10, 2) = ", range(0, 10, 2))
 
 // === Average ===
-println("\n=== Average ===")
+pln("\n=== Average ===")
 
 var scores = [85, 92, 78, 95, 88]
-println("Scores: ", scores)
-println("Average: ", avg(scores))
+pln("Scores: ", scores)
+pln("Average: ", avg(scores))

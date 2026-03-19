@@ -2,93 +2,93 @@
 // String operations, methods, and patterns
 
 // === String Basics ===
-println("=== String Basics ===")
+pln("=== String Basics ===")
 var greeting = "Hello, World!"
 var name = "Alice"
 var empty = ""
 
-println("greeting: ", greeting)
-println("name: ", name)
-println("empty: '", empty, "'")
+pln("greeting: ", greeting)
+pln("name: ", name)
+pln("empty: '", empty, "'")
 
 // === String Length ===
-println("\n=== String Length ===")
-println("len(greeting): ", len(greeting))
-println("len(name): ", len(name))
+pln("\n=== String Length ===")
+pln("len(greeting): ", len(greeting))
+pln("len(name): ", len(name))
 
 // === String Concatenation ===
-println("\n=== String Concatenation ===")
+pln("\n=== String Concatenation ===")
 var first = "Hello"
 var last = "World"
 var full = first + ", " + last + "!"
-println("Concatenated: ", full)
+pln("Concatenated: ", full)
 
 // Build string in loop
 var builder = ""
 for (var i = 0; i < 5; i++) {
     builder = builder + string(i)
 }
-println("Built string: ", builder)
+pln("Built string: ", builder)
 
 // === String Comparison ===
-println("\n=== String Comparison ===")
+pln("\n=== String Comparison ===")
 var a = "apple"
 var b = "apple"
 var c = "banana"
 
-println("a == b: ", a == b)  // true
-println("a == c: ", a == c)  // false
-println("a != c: ", a != c)  // true
+pln("a == b: ", a == b)  // true
+pln("a == c: ", a == c)  // false
+pln("a != c: ", a != c)  // true
 
 // === String Methods ===
-println("\n=== String Methods ===")
+pln("\n=== String Methods ===")
 
 var text = "Hello, World!"
 
 // Contains
-println("text.contains('World'): ", text.contains("World"))
-println("text.contains('world'): ", text.contains("world"))
+pln("text.contains('World'): ", text.contains("World"))
+pln("text.contains('world'): ", text.contains("world"))
 
 // Index
-println("text.index('World'): ", text.index("World"))
-println("text.index('xyz'): ", text.index("xyz"))
+pln("text.indexOf('World'): ", text.indexOf("World"))
+pln("text.indexOf('xyz'): ", text.indexOf("xyz"))
 
 // Substring
-println("\n=== Substring Operations ===")
+pln("\n=== Substring Operations ===")
 var str = "Hello, World!"
-println("str.subStr(0, 5): ", str.subStr(0, 5))    // "Hello"
-println("str.subStr(7, 12): ", str.subStr(7, 12))  // "World"
+pln("str.subStr(0, 5): ", str.subStr(0, 5))    // "Hello"
+pln("str.subStr(7, 12): ", str.subStr(7, 12))  // "World"
 
 // Character at position
-println("\n=== Character Access ===")
+pln("\n=== Character Access ===")
 for (var i = 0; i < 5; i++) {
-    println("  str[", i, "]: ", str[i])
+    pln("  str[", i, "]: ", str[i])
 }
 
 // === String Searching ===
-println("\n=== String Searching ===")
+pln("\n=== String Searching ===")
 var sentence = "The quick brown fox jumps over the lazy dog"
 
-println("sentence.contains('fox'): ", sentence.contains("fox"))
-println("sentence.contains('cat'): ", sentence.contains("cat"))
-println("sentence.index('quick'): ", sentence.index("quick"))
-println("sentence.index('lazy'): ", sentence.index("lazy"))
+pln("sentence.contains('fox'): ", sentence.contains("fox"))
+pln("sentence.contains('cat'): ", sentence.contains("cat"))
+pln("sentence.indexOf('quick'): ", sentence.indexOf("quick"))
+pln("sentence.indexOf('lazy'): ", sentence.indexOf("lazy"))
 
 // === Case Conversion ===
-println("\n=== Case Conversion ===")
+pln("\n=== Case Conversion ===")
 var mixed = "HeLLo WoRLD"
-println("Original: ", mixed)
-println("upper: ", upper(mixed))
-println("lower: ", lower(mixed))
+pln("Original: ", mixed)
+pln("upper: ", upper(mixed))
+pln("lower: ", lower(mixed))
 
 // === String Trimming ===
-println("\n=== String Trimming ===")
+pln("\n=== String Trimming ===")
 var padded = "   hello world   "
-println("Original: '", padded, "'")
-println("trim: '", trim(padded), "'")
+pln("Original: '", padded, "'")
+pln("trim: '", trim(padded), "'")
 
 // === String Splitting (manual) ===
-println("\n=== String Splitting Pattern ===")
+pln("\n=== String Splitting Pattern ===")
 
 func splitBySpace(s) {
     var parts = []
@@ -114,11 +114,11 @@ func splitBySpace(s) {
 
 var csv = "one two three four five"
 var parts = splitBySpace(csv)
-println("Original: ", csv)
-println("Parts: ", parts)
+pln("Original: ", csv)
+pln("Parts: ", parts)
 
 // === String Joining ===
-println("\n=== String Joining ===")
+pln("\n=== String Joining ===")
 
 func joinArray(arr, sep) {
     if (len(arr) == 0) {
@@ -132,15 +132,15 @@ func joinArray(arr, sep) {
 }
 
 var words = ["apple", "banana", "cherry"]
-println("words: ", words)
-println("joined: ", joinArray(words, ", "))
-println("joined with |: ", joinArray(words, " | "))
+pln("words: ", words)
+pln("joined: ", joinArray(words, ", "))
+pln("joined with |: ", joinArray(words, " | "))
 
 // === String Replacement ===
-println("\n=== String Replacement ===")
+pln("\n=== String Replacement ===")
 
 func replaceStr(s, old, newStr) {
-    var idx = s.index(old)
+    var idx = s.indexOf(old)
     if (idx < 0) {
         return s
     }
@@ -149,11 +149,11 @@ func replaceStr(s, old, newStr) {
 
 var original = "Hello World"
 var replaced = replaceStr(original, "World", "Xxlang")
-println("Original: ", original)
-println("Replaced: ", replaced)
+pln("Original: ", original)
+pln("Replaced: ", replaced)
 
 // === String Prefix/Suffix Check ===
-println("\n=== Prefix/Suffix Check ===")
+pln("\n=== Prefix/Suffix Check ===")
 
 func hasPrefix(s, prefix) {
     if (len(prefix) > len(s)) {
@@ -170,13 +170,13 @@ func hasSuffix(s, suffix) {
 }
 
 var filename = "document.pdf"
-println("filename: ", filename)
-println("hasPrefix('doc'): ", hasPrefix(filename, "doc"))
-println("hasSuffix('.pdf'): ", hasSuffix(filename, ".pdf"))
-println("hasSuffix('.txt'): ", hasSuffix(filename, ".txt"))
+pln("filename: ", filename)
+pln("hasPrefix('doc'): ", hasPrefix(filename, "doc"))
+pln("hasSuffix('.pdf'): ", hasSuffix(filename, ".pdf"))
+pln("hasSuffix('.txt'): ", hasSuffix(filename, ".txt"))
 
 // === String Reversal ===
-println("\n=== String Reversal ===")
+pln("\n=== String Reversal ===")
 
 func reverseString(s) {
     var result = ""
@@ -188,48 +188,48 @@ func reverseString(s) {
 
 var original2 = "Hello"
 var reversed = reverseString(original2)
-println("Original: ", original2)
-println("Reversed: ", reversed)
+pln("Original: ", original2)
+pln("Reversed: ", reversed)
 
 // === Palindrome Check ===
-println("\n=== Palindrome Check ===")
+pln("\n=== Palindrome Check ===")
 
 func isPalindrome(s) {
-    var lower = lower(s)
+    var lower = s.lower()
     return lower == reverseString(lower)
 }
 
-println("isPalindrome('racecar'): ", isPalindrome("racecar"))
-println("isPalindrome('hello'): ", isPalindrome("hello"))
-println("isPalindrome('Level'): ", isPalindrome("Level"))
+pln("isPalindrome('racecar'): ", isPalindrome("racecar"))
+pln("isPalindrome('hello'): ", isPalindrome("hello"))
+pln("isPalindrome('Level'): ", isPalindrome("Level"))
 
 // === String to Number Conversion ===
-println("\n=== String to Number Conversion ===")
+pln("\n=== String to Number Conversion ===")
 
 var numStr = "42"
-var num = parseInt(numStr)
-println("parseInt('42'): ", num)
-println("typeOf: ", typeOf(num))
+var num = int(numStr)
+pln("int('42'): ", num)
+pln("typeOf: ", typeOf(num))
 
 var floatStr = "3.14159"
-var floatNum = parseFloat(floatStr)
-println("parseFloat('3.14159'): ", floatNum)
-println("typeOf: ", typeOf(floatNum))
+var floatNum = float(floatStr)
+pln("float('3.14159'): ", floatNum)
+pln("typeOf: ", typeOf(floatNum))
 
 // === Number to String Conversion ===
-println("\n=== Number to String Conversion ===")
+pln("\n=== Number to String Conversion ===")
 
 var n = 42
 var s = string(n)
-println("string(42): ", s)
-println("typeOf: ", typeOf(s))
+pln("string(42): ", s)
+pln("typeOf: ", typeOf(s))
 
 var f = 3.14
 var sf = string(f)
-println("string(3.14): ", sf)
+pln("string(3.14): ", sf)
 
 // === String Formatting Pattern ===
-println("\n=== String Formatting Pattern ===")
+pln("\n=== String Formatting Pattern ===")
 
 func format(template, args) {
     var result = ""
@@ -254,19 +254,19 @@ func format(template, args) {
 }
 
 var formatted = format("Name: {}, Age: {}, City: {}", ["Alice", 30, "Beijing"])
-println("Formatted: ", formatted)
+pln("Formatted: ", formatted)
 
 // === String Escape Sequences ===
-println("\n=== String Escape Sequences ===")
+pln("\n=== String Escape Sequences ===")
 
 var escaped = "Line1\nLine2\tTabbed"
-println("With escapes: ", escaped)
+pln("With escapes: ", escaped)
 
 var quoted = "She said \"Hello\""
-println("With quotes: ", quoted)
+pln("With quotes: ", quoted)
 
 // === Multi-line String Pattern ===
-println("\n=== Building Multi-line String ===")
+pln("\n=== Building Multi-line String ===")
 
 func buildLines(lines) {
     var result = ""
@@ -278,5 +278,5 @@ func buildLines(lines) {
 
 var lines = ["First line", "Second line", "Third line"]
 var multiLine = buildLines(lines)
-println("Multi-line string:")
-print(multiLine)
+pln("Multi-line string:")
+pr(multiLine)

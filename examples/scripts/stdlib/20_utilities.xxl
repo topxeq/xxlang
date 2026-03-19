@@ -2,7 +2,7 @@
 // Utility functions and practical patterns
 
 // === Deep Clone ===
-println("=== Deep Clone ===")
+pln("=== Deep Clone ===")
 
 func deepClone(obj) {
     var t = typeOf(obj)
@@ -31,11 +31,11 @@ var cloned = deepClone(original2)
 cloned["a"] = 100
 cloned["b"][0] = 999
 
-println("Original: ", original2)
-println("Cloned (modified): ", cloned)
+pln("Original: ", original2)
+pln("Cloned (modified): ", cloned)
 
 // === Deep Equality ===
-println("\n=== Deep Equality ===")
+pln("\n=== Deep Equality ===")
 
 func deepEqual(a, b) {
     var ta = typeOf(a)
@@ -70,11 +70,11 @@ var obj1 = {"a": 1, "b": [1, 2, 3]}
 var obj2 = {"a": 1, "b": [1, 2, 3]}
 var obj3 = {"a": 1, "b": [1, 2, 4]}
 
-println("obj1 == obj2: ", deepEqual(obj1, obj2))
-println("obj1 == obj3: ", deepEqual(obj1, obj3))
+pln("obj1 == obj2: ", deepEqual(obj1, obj2))
+pln("obj1 == obj3: ", deepEqual(obj1, obj3))
 
 // === Object Merge ===
-println("\n=== Object Merge ===")
+pln("\n=== Object Merge ===")
 
 func merge(target, source) {
     var result = deepClone(target)
@@ -94,12 +94,12 @@ var base = {"a": 1, "b": {"x": 10, "y": 20}}
 var override = {"b": {"y": 999, "z": 30}, "c": 3}
 var merged2 = merge(base, override)
 
-println("Base: ", base)
-println("Override: ", override)
-println("Merged: ", merged2)
+pln("Base: ", base)
+pln("Override: ", override)
+pln("Merged: ", merged2)
 
 // === Pick and Omit ===
-println("\n=== Pick and Omit ===")
+pln("\n=== Pick and Omit ===")
 
 func pick(obj, keysList) {
     var result = {}
@@ -127,20 +127,20 @@ func omit(obj, keysList) {
 }
 
 var user2 = {"name": "Alice", "age": 30, "email": "alice@example.com", "password": "secret"}
-println("User: ", user2)
-println("Pick name, age: ", pick(user2, ["name", "age"]))
-println("Omit password: ", omit(user2, ["password"]))
+pln("User: ", user2)
+pln("Pick name, age: ", pick(user2, ["name", "age"]))
+pln("Omit password: ", omit(user2, ["password"]))
 
 // === Range Generation ===
-println("\n=== Range Generation ===")
+pln("\n=== Range Generation ===")
 
 // Use built-in range function
-println("range(0, 10, 1): ", range(0, 10, 1))
-println("range(0, 10, 2): ", range(0, 10, 2))
-println("range(10, 0, -1): ", range(10, 0, -1))
+pln("range(0, 10, 1): ", range(0, 10, 1))
+pln("range(0, 10, 2): ", range(0, 10, 2))
+pln("range(10, 0, -1): ", range(10, 0, -1))
 
 // === Chunk Array ===
-println("\n=== Chunk Array ===")
+pln("\n=== Chunk Array ===")
 
 func chunk(arr, size) {
     var result = []
@@ -162,10 +162,10 @@ func chunk(arr, size) {
 }
 
 var numbers2 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-println("Chunk([1..10], 3): ", chunk(numbers2, 3))
+pln("Chunk([1..10], 3): ", chunk(numbers2, 3))
 
 // === Flatten Array ===
-println("\n=== Flatten Array ===")
+pln("\n=== Flatten Array ===")
 
 func flatten(arr, depth) {
     if (depth == 0) { return arr }
@@ -189,12 +189,12 @@ func flattenDeep(arr) {
 }
 
 var nested2 = [1, [2, 3], [[4, 5], 6], [[[7]]]]
-println("Original: ", nested2)
-println("Flatten depth 1: ", flatten(nested2, 1))
-println("Flatten deep: ", flattenDeep(nested2))
+pln("Original: ", nested2)
+pln("Flatten depth 1: ", flatten(nested2, 1))
+pln("Flatten deep: ", flattenDeep(nested2))
 
 // === Unique Values ===
-println("\n=== Unique Values ===")
+pln("\n=== Unique Values ===")
 
 func unique(arr) {
     var seen = {}
@@ -212,11 +212,11 @@ func unique(arr) {
 }
 
 var withDupes = [1, 2, 2, 3, 3, 3, 4, 4, 4, 4]
-println("With duplicates: ", withDupes)
-println("Unique: ", unique(withDupes))
+pln("With duplicates: ", withDupes)
+pln("Unique: ", unique(withDupes))
 
 // === Group By ===
-println("\n=== Group By ===")
+pln("\n=== Group By ===")
 
 func groupBy(arr, keyFn) {
     var groups = {}
@@ -240,13 +240,13 @@ var people2 = [
 ]
 
 var byDept = groupBy(people2, func(p) { return p["dept"] })
-println("Grouped by department:")
+pln("Grouped by department:")
 for (dept, members in byDept) {
-    println("  ", dept, ": ", members)
+    pln("  ", dept, ": ", members)
 }
 
 // === Intersection and Difference ===
-println("\n=== Set Operations ===")
+pln("\n=== Set Operations ===")
 
 func intersection(arr1, arr2) {
     var set2 = {}
@@ -281,13 +281,13 @@ func difference(arr1, arr2) {
 var setA = [1, 2, 3, 4, 5]
 var setB = [3, 4, 5, 6, 7]
 
-println("Set A: ", setA)
-println("Set B: ", setB)
-println("Intersection: ", intersection(setA, setB))
-println("Difference (A - B): ", difference(setA, setB))
+pln("Set A: ", setA)
+pln("Set B: ", setB)
+pln("Intersection: ", intersection(setA, setB))
+pln("Difference (A - B): ", difference(setA, setB))
 
 // === Find and FindIndex ===
-println("\n=== Find and FindIndex ===")
+pln("\n=== Find and FindIndex ===")
 
 func find(arr, predicate) {
     for (item in arr) {
@@ -314,13 +314,13 @@ var users = [
 ]
 
 var found = find(users, func(u) { return u["age"] > 28 })
-println("Found user with age > 28: ", found)
+pln("Found user with age > 28: ", found)
 
 var idx = findIndex(users, func(u) { return u["name"] == "Bob" })
-println("Index of Bob: ", idx)
+pln("Index of Bob: ", idx)
 
 // === Some and Every ===
-println("\n=== Some and Every ===")
+pln("\n=== Some and Every ===")
 
 func some(arr, predicate) {
     for (item in arr) {
@@ -341,12 +341,12 @@ func every(arr, predicate) {
 }
 
 var testArr = [2, 4, 6, 8, 10]
-println("Array: ", testArr)
-println("Has odd number: ", some(testArr, func(x) { return x % 2 != 0 }))
-println("All even: ", every(testArr, func(x) { return x % 2 == 0 }))
+pln("Array: ", testArr)
+pln("Has odd number: ", some(testArr, func(x) { return x % 2 != 0 }))
+pln("All even: ", every(testArr, func(x) { return x % 2 == 0 }))
 
 // === Zip ===
-println("\n=== Zip ===")
+pln("\n=== Zip ===")
 
 func zip(arr1, arr2) {
     var result = []
@@ -362,10 +362,10 @@ func zip(arr1, arr2) {
 var names = ["Alice", "Bob", "Charlie"]
 var ages = [25, 30, 35]
 var pairs = zip(names, ages)
-println("Zipped: ", pairs)
+pln("Zipped: ", pairs)
 
 // === Object Path Access ===
-println("\n=== Object Path Access ===")
+pln("\n=== Object Path Access ===")
 
 func getAtPath(obj, path) {
     var current = obj
@@ -400,11 +400,11 @@ func setAtPath(obj, path, value) {
 }
 
 var deep = {"a": {"b": {"c": 42}}}
-println("getAtPath(deep, ['a','b','c']): ", getAtPath(deep, ["a", "b", "c"]))
-println("getAtPath(deep, ['a','x']): ", getAtPath(deep, ["a", "x"]))
+pln("getAtPath(deep, ['a','b','c']): ", getAtPath(deep, ["a", "b", "c"]))
+pln("getAtPath(deep, ['a','x']): ", getAtPath(deep, ["a", "x"]))
 
 // === Count Occurrences ===
-println("\n=== Count Occurrences ===")
+pln("\n=== Count Occurrences ===")
 
 func countOccurrences(arr) {
     var counts = {}
@@ -420,11 +420,11 @@ func countOccurrences(arr) {
 }
 
 var fruits = ["apple", "banana", "apple", "cherry", "banana", "apple"]
-println("Fruits: ", fruits)
-println("Counts: ", countOccurrences(fruits))
+pln("Fruits: ", fruits)
+pln("Counts: ", countOccurrences(fruits))
 
 // === Partition ===
-println("\n=== Partition ===")
+pln("\n=== Partition ===")
 
 func partition(arr, predicate) {
     var pass = []
@@ -443,12 +443,12 @@ func partition(arr, predicate) {
 
 var nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 var parts = partition(nums, func(x) { return x % 2 == 0 })
-println("Numbers: ", nums)
-println("Evens: ", parts[0])
-println("Odds: ", parts[1])
+pln("Numbers: ", nums)
+pln("Evens: ", parts[0])
+pln("Odds: ", parts[1])
 
 // === Object Transformation ===
-println("\n=== Object Transformation ===")
+pln("\n=== Object Transformation ===")
 
 func mapValues(obj, fn) {
     var result = {}
@@ -470,6 +470,6 @@ var prices = {"apple": 1.5, "banana": 0.75, "cherry": 2.0}
 var withTax = mapValues(prices, func(v) { return v * 1.1 })
 var upperKeys = mapKeys(prices, func(k) { return upper(k) })
 
-println("Original prices: ", prices)
-println("With 10% tax: ", withTax)
-println("Upper case keys: ", upperKeys)
+pln("Original prices: ", prices)
+pln("With 10% tax: ", withTax)
+pln("Upper case keys: ", upperKeys)

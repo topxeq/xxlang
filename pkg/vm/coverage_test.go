@@ -3739,8 +3739,8 @@ func TestRunConcatBuiltin(t *testing.T) {
 func TestRunPush(t *testing.T) {
 	input := `
 		var arr = [1, 2]
-		var result = push(arr, 3)
-		len(result)
+		push(arr, 3)
+		len(arr)
 	`
 	vm := runVM(t, input)
 	testIntegerObject(t, 3, vm.LastPopped())

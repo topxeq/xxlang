@@ -2,7 +2,7 @@
 // Closures, captured variables, and functional patterns
 
 // === Basic Closure ===
-println("=== Basic Closure ===")
+pln("=== Basic Closure ===")
 
 func makeCounter() {
     var count = 0
@@ -13,23 +13,23 @@ func makeCounter() {
 }
 
 var counter = makeCounter()
-println("counter(): ", counter())  // 1
-println("counter(): ", counter())  // 2
-println("counter(): ", counter())  // 3
+pln("counter(): ", counter())  // 1
+pln("counter(): ", counter())  // 2
+pln("counter(): ", counter())  // 3
 
 // === Independent Counters ===
-println("\n=== Independent Counters ===")
+pln("\n=== Independent Counters ===")
 var counter1 = makeCounter()
 var counter2 = makeCounter()
 
-println("counter1(): ", counter1())  // 1
-println("counter1(): ", counter1())  // 2
-println("counter2(): ", counter2())  // 1 (independent)
-println("counter1(): ", counter1())  // 3
-println("counter2(): ", counter2())  // 2
+pln("counter1(): ", counter1())  // 1
+pln("counter1(): ", counter1())  // 2
+pln("counter2(): ", counter2())  // 1 (independent)
+pln("counter1(): ", counter1())  // 3
+pln("counter2(): ", counter2())  // 2
 
 // === Closure Capturing Parameters ===
-println("\n=== Closure Capturing Parameters ===")
+pln("\n=== Closure Capturing Parameters ===")
 
 func makeAdder(x) {
     return func(y) {
@@ -40,12 +40,12 @@ func makeAdder(x) {
 var add5 = makeAdder(5)
 var add10 = makeAdder(10)
 
-println("add5(3): ", add5(3))    // 8
-println("add5(7): ", add5(7))    // 12
-println("add10(3): ", add10(3))  // 13
+pln("add5(3): ", add5(3))    // 8
+pln("add5(7): ", add5(7))    // 12
+pln("add10(3): ", add10(3))  // 13
 
 // === Closure with Multiple Captured Variables ===
-println("\n=== Closure with Multiple Captured Variables ===")
+pln("\n=== Closure with Multiple Captured Variables ===")
 
 func makeAccumulator(initial) {
     var total = initial
@@ -59,14 +59,14 @@ func makeAccumulator(initial) {
 }
 
 var acc = makeAccumulator(100)
-println("acc(10): ", acc(10))
-println("acc(20): ", acc(20))
-println("acc(30): ", acc(30))
+pln("acc(10): ", acc(10))
+pln("acc(20): ", acc(20))
+pln("acc(30): ", acc(30))
 
 // === Closure for Data Privacy ===
 // NOTE: When multiple closures share the same variable, use a map
 // to ensure they share state correctly. See docs/SCOPE_zh.md for details.
-println("\n=== Closure for Data Privacy ===")
+pln("\n=== Closure for Data Privacy ===")
 
 func createBankAccount(initialBalance) {
     // Use a map to share state between multiple closures
@@ -91,19 +91,19 @@ func createBankAccount(initialBalance) {
 }
 
 var account = createBankAccount(100)
-println("Initial balance: ", account["getBalance"]())
-println("After deposit(50): ", account["deposit"](50))
-println("After withdraw(30): ", account["withdraw"](30))
-println("Final balance: ", account["getBalance"]())
+pln("Initial balance: ", account["getBalance"]())
+pln("After deposit(50): ", account["deposit"](50))
+pln("After withdraw(30): ", account["withdraw"](30))
+pln("Final balance: ", account["getBalance"]())
 
 // === Closure as Callback ===
-println("\n=== Closure as Callback ===")
+pln("\n=== Closure as Callback ===")
 
 func withTimer(label, action) {
     // Simulate timing (just demonstrate closure pattern)
-    println("Starting: ", label)
+    pln("Starting: ", label)
     var result = action()
-    println("Completed: ", label)
+    pln("Completed: ", label)
     return result
 }
 
@@ -114,10 +114,10 @@ var expensiveResult = withTimer("calculation", func() {
     }
     return sum
 })
-println("Result: ", expensiveResult)
+pln("Result: ", expensiveResult)
 
 // === Closure for Partial Application ===
-println("\n=== Closure for Partial Application ===")
+pln("\n=== Closure for Partial Application ===")
 
 func partial(f, x) {
     return func(y) {
@@ -136,11 +136,11 @@ func power(base, exp) {
 var square = partial(power, 2)
 var cube = partial(power, 3)
 
-println("square(5): ", square(5))  // 25
-println("cube(3): ", cube(3))      // 27
+pln("square(5): ", square(5))  // 25
+pln("cube(3): ", cube(3))      // 27
 
 // === Closure for Memoization ===
-println("\n=== Closure for Memoization ===")
+pln("\n=== Closure for Memoization ===")
 
 func memoize(f) {
     var cache = {}
@@ -148,7 +148,7 @@ func memoize(f) {
     return func(x) {
         var key = string(x)
         if (hasKey(cache, key)) {
-            println("  (cache hit for ", x, ")")
+            pln("  (cache hit for ", x, ")")
             return cache[key]
         }
         var result = f(x)
@@ -158,18 +158,18 @@ func memoize(f) {
 }
 
 func slowSquare(x) {
-    println("  (computing square of ", x, ")")
+    pln("  (computing square of ", x, ")")
     return x * x
 }
 
 var fastSquare = memoize(slowSquare)
-println("fastSquare(5): ", fastSquare(5))
-println("fastSquare(5): ", fastSquare(5))  // Should hit cache
-println("fastSquare(3): ", fastSquare(3))
-println("fastSquare(5): ", fastSquare(5))  // Should hit cache
+pln("fastSquare(5): ", fastSquare(5))
+pln("fastSquare(5): ", fastSquare(5))  // Should hit cache
+pln("fastSquare(3): ", fastSquare(3))
+pln("fastSquare(5): ", fastSquare(5))  // Should hit cache
 
 // === Closure for Iterator Pattern ===
-println("\n=== Closure for Iterator Pattern ===")
+pln("\n=== Closure for Iterator Pattern ===")
 
 func rangeIterator(start, end) {
     var current = start
@@ -186,12 +186,12 @@ func rangeIterator(start, end) {
 var iter = rangeIterator(0, 5)
 var iterVal = iter()
 while (iterVal != null) {
-    println("Iterator value: ", iterVal)
+    pln("Iterator value: ", iterVal)
     iterVal = iter()
 }
 
 // === Closure for Once-Only Execution ===
-println("\n=== Closure for Once-Only Execution ===")
+pln("\n=== Closure for Once-Only Execution ===")
 
 func once(f) {
     var called = false
@@ -207,16 +207,16 @@ func once(f) {
 }
 
 var initialize = once(func() {
-    println("  Initializing...")
+    pln("  Initializing...")
     return "initialized"
 })
 
-println("First call: ", initialize())
-println("Second call: ", initialize())
-println("Third call: ", initialize())
+pln("First call: ", initialize())
+pln("Second call: ", initialize())
+pln("Third call: ", initialize())
 
 // === Higher-Order Functions with Closures ===
-println("\n=== Higher-Order Functions with Closures ===")
+pln("\n=== Higher-Order Functions with Closures ===")
 
 func makeMultiplier(factor) {
     return func(x) {
@@ -236,12 +236,12 @@ func mapArray(arr, f) {
 }
 
 var numbers = [1, 2, 3, 4, 5]
-println("Original: ", numbers)
-println("Doubled: ", mapArray(numbers, double))
-println("Tripled: ", mapArray(numbers, triple))
+pln("Original: ", numbers)
+pln("Doubled: ", mapArray(numbers, double))
+pln("Tripled: ", mapArray(numbers, triple))
 
 // === Closure in Loop (Classic Pattern) ===
-println("\n=== Closure in Loop ===")
+pln("\n=== Closure in Loop ===")
 
 func makeFunctions() {
     var funcs = []
@@ -255,6 +255,6 @@ func makeFunctions() {
 }
 
 var funcs = makeFunctions()
-println("funcs[0](10): ", funcs[0](10))
-println("funcs[1](10): ", funcs[1](10))
-println("funcs[2](10): ", funcs[2](10))
+pln("funcs[0](10): ", funcs[0](10))
+pln("funcs[1](10): ", funcs[1](10))
+pln("funcs[2](10): ", funcs[2](10))

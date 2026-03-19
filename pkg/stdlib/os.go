@@ -631,3 +631,4 @@ func setConfigStrImpl(name, value string) objects.Object {
 
 	return Null()
 }
+

@@ -8,47 +8,47 @@ var age = 30
 var score = 95.5
 var isActive = true
 
-println("Name: ", name)
-println("Age: ", age)
-println("Score: ", score)
-println("Active: ", isActive)
+pln("Name: ", name)
+pln("Age: ", age)
+pln("Score: ", score)
+pln("Active: ", isActive)
 
 // === Constants ===
 // Use 'const' for immutable values
 const PI = 3.14159
 const MAX_SIZE = 100
 
-println("PI = ", PI)
-println("MAX_SIZE = ", MAX_SIZE)
+pln("PI = ", PI)
+pln("MAX_SIZE = ", MAX_SIZE)
 
 // === Reassignment ===
 // Variables declared with 'var' can be reassigned
 age = 31
-println("New age: ", age)
+pln("New age: ", age)
 
 // === Type Checking ===
 // Use typeOf() to check the type of any value
-println("typeOf(name): ", typeOf(name))       // STRING
-println("typeOf(age): ", typeOf(age))         // INT
-println("typeOf(score): ", typeOf(score))     // FLOAT
-println("typeOf(isActive): ", typeOf(isActive)) // BOOL
-println("typeOf(null): ", typeOf(null))       // NULL
+pln("typeOf(name): ", typeOf(name))       // STRING
+pln("typeOf(age): ", typeOf(age))         // INT
+pln("typeOf(score): ", typeOf(score))     // FLOAT
+pln("typeOf(isActive): ", typeOf(isActive)) // BOOL
+pln("typeOf(null): ", typeOf(null))       // NULL
 
 // === Null Value ===
 var empty = null
-println("Empty value: ", empty)
-println("typeOf(empty): ", typeOf(empty))
+pln("Empty value: ", empty)
+pln("typeOf(empty): ", typeOf(empty))
 
 // === Type Conversion ===
 // Convert between types using built-in functions
 var numStr = "42"
 var numInt = int(numStr)
-println("String '42' converted to int: ", numInt)
-println("typeOf(numInt): ", typeOf(numInt))
+pln("String '42' converted to int: ", numInt)
+pln("typeOf(numInt): ", typeOf(numInt))
 
 var floatVal = 3.7
 var intVal = int(floatVal)
-println("Float 3.7 converted to int: ", intVal)
+pln("Float 3.7 converted to int: ", intVal)
 
 var numFloat = float(numInt)
-println("Int 42 converted to float: ", numFloat)
+pln("Int 42 converted to float: ", numFloat)

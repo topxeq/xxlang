@@ -2,76 +2,76 @@
 // Map creation, manipulation, and methods
 
 // === Map Creation ===
-println("=== Map Creation ===")
+pln("=== Map Creation ===")
 var empty = {}
 var person = {"name": "Alice", "age": 30, "city": "Beijing"}
 var config = {"debug": true, "timeout": 30, "retries": 3}
 
-println("empty: ", empty)
-println("person: ", person)
-println("config: ", config)
+pln("empty: ", empty)
+pln("person: ", person)
+pln("config: ", config)
 
 // === Map Access ===
-println("\n=== Map Access ===")
-println("person['name']: ", person["name"])
-println("person['age']: ", person["age"])
-println("person['city']: ", person["city"])
+pln("\n=== Map Access ===")
+pln("person['name']: ", person["name"])
+pln("person['age']: ", person["age"])
+pln("person['city']: ", person["city"])
 
 // === Map Modification ===
-println("\n=== Map Modification ===")
+pln("\n=== Map Modification ===")
 var user = {"name": "Bob"}
-println("Original: ", user)
+pln("Original: ", user)
 
 user["age"] = 25          // Add new key
-println("After adding age: ", user)
+pln("After adding age: ", user)
 
 user["name"] = "Charlie"  // Modify existing key
-println("After changing name: ", user)
+pln("After changing name: ", user)
 
 // === Map Length ===
-println("\n=== Map Length ===")
-println("len(person): ", len(person))
-println("person.len(): ", person.len())
+pln("\n=== Map Length ===")
+pln("len(person): ", len(person))
+pln("person.len(): ", person.len())
 
 // === Map Methods: keys and values ===
-println("\n=== Map Methods: keys/values ===")
+pln("\n=== Map Methods: keys/values ===")
 var scores = {"Alice": 95, "Bob": 87, "Charlie": 92}
 
-println("scores.keys(): ", scores.keys())
-println("scores.values(): ", scores.values())
+pln("scores.keys(): ", scores.keys())
+pln("scores.values(): ", scores.values())
 
 // === Map Methods: hasKey ===
-println("\n=== Map Methods: hasKey ===")
+pln("\n=== Map Methods: hasKey ===")
 var data = {"a": 1, "b": 2, "c": 3}
 
-println("hasKey(data, 'a'): ", hasKey(data, "a"))
-println("hasKey(data, 'x'): ", hasKey(data, "x"))
-println("data.hasKey('b'): ", data.hasKey("b"))
+pln("hasKey(data, 'a'): ", hasKey(data, "a"))
+pln("hasKey(data, 'x'): ", hasKey(data, "x"))
+pln("data.hasKey('b'): ", data.hasKey("b"))
 
 // === Map Methods: delete ===
-println("\n=== Map Methods: delete ===")
+pln("\n=== Map Methods: delete ===")
 var items = {"apple": 5, "banana": 3, "cherry": 8}
-println("Before delete: ", items)
+pln("Before delete: ", items)
 
 delete(items, "banana")
-println("After delete 'banana': ", items)
+pln("After delete 'banana': ", items)
 
 // === Iterating Over Maps ===
-println("\n=== Iterating Over Maps ===")
+pln("\n=== Iterating Over Maps ===")
 var grades = {"Math": 90, "Science": 85, "English": 92}
 
-println("Using for-in (key, value):")
+pln("Using for-in (key, value):")
 for (subject, grade in grades) {
-    println("  ", subject, ": ", grade)
+    pln("  ", subject, ": ", grade)
 }
 
-println("\nUsing keys():")
+pln("\nUsing keys():")
 for (key in grades.keys()) {
-    println("  ", key, " = ", grades[key])
+    pln("  ", key, " = ", grades[key])
 }
 
 // === Nested Maps ===
-println("\n=== Nested Maps ===")
+pln("\n=== Nested Maps ===")
 var company = {
     "name": "TechCorp",
     "address": {
@@ -82,12 +82,12 @@ var company = {
     "employees": 150
 }
 
-println("Company name: ", company["name"])
-println("City: ", company["address"]["city"])
-println("Employees: ", company["employees"])
+pln("Company name: ", company["name"])
+pln("City: ", company["address"]["city"])
+pln("Employees: ", company["employees"])
 
 // === Map as Counters ===
-println("\n=== Map as Counters ===")
+pln("\n=== Map as Counters ===")
 var text = "hello world"
 var charCount = {}
 
@@ -99,15 +99,15 @@ for (char in ["h", "e", "l", "l", "o", " ", "w", "o", "r", "l", "d"]) {
     }
 }
 
-println("Character counts:")
+pln("Character counts:")
 for (char, count in charCount) {
     if (char != " ") {
-        println("  '", char, "': ", count)
+        pln("  '", char, "': ", count)
     }
 }
 
 // === Map Merging ===
-println("\n=== Map Merging ===")
+pln("\n=== Map Merging ===")
 func mergeMaps(m1, m2) {
     var result = {}
 
@@ -125,12 +125,12 @@ var defaults = {"timeout": 30, "retries": 3}
 var userConfig = {"timeout": 60, "debug": true}
 var merged = mergeMaps(defaults, userConfig)
 
-println("defaults: ", defaults)
-println("userConfig: ", userConfig)
-println("merged: ", merged)
+pln("defaults: ", defaults)
+pln("userConfig: ", userConfig)
+pln("merged: ", merged)
 
 // === Safe Access Pattern ===
-println("\n=== Safe Access Pattern ===")
+pln("\n=== Safe Access Pattern ===")
 func safeGet(map, key, defaultVal) {
     if (hasKey(map, key)) {
         return map[key]
@@ -139,23 +139,23 @@ func safeGet(map, key, defaultVal) {
 }
 
 var settings = {"theme": "dark"}
-println("safeGet(settings, 'theme', 'light'): ", safeGet(settings, "theme", "light"))
-println("safeGet(settings, 'language', 'en'): ", safeGet(settings, "language", "en"))
+pln("safeGet(settings, 'theme', 'light'): ", safeGet(settings, "theme", "light"))
+pln("safeGet(settings, 'language', 'en'): ", safeGet(settings, "language", "en"))
 
 // === Map to Array Conversion ===
-println("\n=== Map to Array Conversion ===")
+pln("\n=== Map to Array Conversion ===")
 var mapData = {"a": 1, "b": 2, "c": 3}
 
 // Get keys as array
 var keyArr = mapData.keys()
-println("Keys array: ", keyArr)
+pln("Keys array: ", keyArr)
 
 // Get values as array
 var valArr = mapData.values()
-println("Values array: ", valArr)
+pln("Values array: ", valArr)
 
 // === Grouping Pattern ===
-println("\n=== Grouping Pattern ===")
+pln("\n=== Grouping Pattern ===")
 var people = [
     {"name": "Alice", "dept": "Engineering"},
     {"name": "Bob", "dept": "Marketing"},
@@ -172,13 +172,13 @@ for (p in people) {
     push(byDept[dept], p["name"])
 }
 
-println("Grouped by department:")
+pln("Grouped by department:")
 for (dept, names in byDept) {
-    println("  ", dept, ": ", names)
+    pln("  ", dept, ": ", names)
 }
 
 // === Map Lookup Table ===
-println("\n=== Map Lookup Table ===")
+pln("\n=== Map Lookup Table ===")
 var operations = {
     "add": func(a, b) { return a + b },
     "sub": func(a, b) { return a - b },
@@ -193,5 +193,5 @@ func calculate(op, a, b) {
     return null
 }
 
-println("calculate('add', 5, 3): ", calculate("add", 5, 3))
-println("calculate('mul', 4, 7): ", calculate("mul", 4, 7))
+pln("calculate('add', 5, 3): ", calculate("add", 5, 3))
+pln("calculate('mul', 4, 7): ", calculate("mul", 4, 7))

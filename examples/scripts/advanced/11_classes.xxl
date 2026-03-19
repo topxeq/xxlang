@@ -2,7 +2,7 @@
 // Object-oriented programming: classes, instances, and methods
 
 // === Basic Class Definition ===
-println("=== Basic Class Definition ===")
+pln("=== Basic Class Definition ===")
 
 class Point {
     func init(x, y) {
@@ -21,13 +21,13 @@ class Point {
 }
 
 var p1 = new Point(3, 4)
-println("Point p1: ", p1.toString())
-println("p1.x = ", p1.x)
-println("p1.y = ", p1.y)
-println("Distance from origin: ", p1.distance())
+pln("Point p1: ", p1.toString())
+pln("p1.x = ", p1.x)
+pln("p1.y = ", p1.y)
+pln("Distance from origin: ", p1.distance())
 
 // === Class Methods ===
-println("\n=== Class Methods ===")
+pln("\n=== Class Methods ===")
 
 class Calculator {
     func init() {
@@ -60,11 +60,11 @@ class Calculator {
 }
 
 var calc = new Calculator()
-println("calc.add(10).multiply(3).getResult(): ",
+pln("calc.add(10).multiply(3).getResult(): ",
     calc.add(10).multiply(3).getResult())
 
 // === Class with Multiple Constructors Pattern ===
-println("\n=== Class with Factory Methods ===")
+pln("\n=== Class with Factory Methods ===")
 
 class Rectangle {
     func init(width, height) {
@@ -93,15 +93,15 @@ func createSquare(size) {
 var rect = new Rectangle(5, 3)
 var square = createSquare(4)
 
-println("Rectangle: ", rect.toString())
-println("  Area: ", rect.area())
-println("  Perimeter: ", rect.perimeter())
+pln("Rectangle: ", rect.toString())
+pln("  Area: ", rect.area())
+pln("  Perimeter: ", rect.perimeter())
 
-println("Square: ", square.toString())
-println("  Area: ", square.area())
+pln("Square: ", square.toString())
+pln("  Area: ", square.area())
 
 // === Class with Validation ===
-println("\n=== Class with Validation ===")
+pln("\n=== Class with Validation ===")
 
 class BankAccount {
     func init(owner, initialBalance) {
@@ -116,7 +116,7 @@ class BankAccount {
 
     func deposit(amount) {
         if (amount <= 0) {
-            println("  Invalid deposit amount")
+            pln("  Invalid deposit amount")
             return false
         }
         this.balance = this.balance + amount
@@ -125,11 +125,11 @@ class BankAccount {
 
     func withdraw(amount) {
         if (amount <= 0) {
-            println("  Invalid withdrawal amount")
+            pln("  Invalid withdrawal amount")
             return false
         }
         if (amount > this.balance) {
-            println("  Insufficient funds")
+            pln("  Insufficient funds")
             return false
         }
         this.balance = this.balance - amount
@@ -146,21 +146,21 @@ class BankAccount {
 }
 
 var account = new BankAccount("Alice", 100)
-println("Created: ", account.toString())
+pln("Created: ", account.toString())
 
 print("Depositing $50... ")
 account.deposit(50)
-println("Balance: $", account.getBalance())
+pln("Balance: $", account.getBalance())
 
 print("Withdrawing $30... ")
 account.withdraw(30)
-println("Balance: $", account.getBalance())
+pln("Balance: $", account.getBalance())
 
 print("Withdrawing $200... ")
 account.withdraw(200)  // Should fail
 
 // === Class Composition ===
-println("\n=== Class Composition ===")
+pln("\n=== Class Composition ===")
 
 class Engine {
     func init(horsepower) {
@@ -170,12 +170,12 @@ class Engine {
 
     func start() {
         this.running = true
-        println("  Engine started (", this.horsepower, " HP)")
+        pln("  Engine started (", this.horsepower, " HP)")
     }
 
     func stop() {
         this.running = false
-        println("  Engine stopped")
+        pln("  Engine stopped")
     }
 
     func isRunning() {
@@ -190,12 +190,12 @@ class Car {
     }
 
     func start() {
-        println("Starting ", this.brand, ":")
+        pln("Starting ", this.brand, ":")
         this.engine.start()
     }
 
     func stop() {
-        println("Stopping ", this.brand, ":")
+        pln("Stopping ", this.brand, ":")
         this.engine.stop()
     }
 }
@@ -205,7 +205,7 @@ car.start()
 car.stop()
 
 // === Class as Data Container ===
-println("\n=== Class as Data Container ===")
+pln("\n=== Class as Data Container ===")
 
 class Person {
     func init(name, age, email) {
@@ -229,7 +229,7 @@ var people = [
     new Person("Charlie", 30, "charlie@example.com")
 ]
 
-println("People:")
+pln("People:")
 for (p in people) {
     var status = ""
     if (p.isAdult()) {
@@ -237,11 +237,11 @@ for (p in people) {
     } else {
         status = " (minor)"
     }
-    println("  ", p.introduce(), status)
+    pln("  ", p.introduce(), status)
 }
 
 // === Class with Collection ===
-println("\n=== Class with Collection ===")
+pln("\n=== Class with Collection ===")
 
 class Library {
     func init(name) {
@@ -254,9 +254,9 @@ class Library {
     }
 
     func listBooks() {
-        println("Books in ", this.name, ":")
+        pln("Books in ", this.name, ":")
         for (book in this.books) {
-            println("  - ", book["title"], " by ", book["author"])
+            pln("  - ", book["title"], " by ", book["author"])
         }
     }
 
@@ -278,10 +278,10 @@ lib.addBook("Dune", "Herbert")
 lib.listBooks()
 
 var orwellBooks = lib.findByAuthor("Orwell")
-println("Books by Orwell: ", orwellBooks)
+pln("Books by Orwell: ", orwellBooks)
 
 // === Static-like Methods ===
-println("\n=== Utility Methods ===")
+pln("\n=== Utility Methods ===")
 
 class MathUtils {
     func init() {
@@ -299,6 +299,6 @@ class MathUtils {
 }
 
 var math = new MathUtils()
-println("Circle radius 5:")
-println("  Area: ", math.circleArea(5))
-println("  Circumference: ", math.circleCircumference(5))
+pln("Circle radius 5:")
+pln("  Area: ", math.circleArea(5))
+pln("  Circumference: ", math.circleCircumference(5))

@@ -3,6 +3,8 @@
 package compiler
 
 import (
+	"sort"
+
 	"github.com/topxeq/xxlang/pkg/objects"
 )
 
@@ -65,9 +67,17 @@ func (o *Optimizer) FoldConstants() *Bytecode {
 	newConstants := make([]objects.Object, len(constants))
 	copy(newConstants, constants)
 
-	i := 0
+	// Track position mapping: old position -> new position
+	// This is needed to update jump targets
+	oldToNewPos := make(map[int]int)
+
+	i := 0          // Position in original instructions
+	newPos := 0     // Position in new instructions
 	for i < len(instructions) {
 		op := Opcode(instructions[i])
+
+		// Record the mapping before processing
+		oldToNewPos[i] = newPos
 
 		// Check for constant folding pattern
 		if op == OpConstant && i+6 < len(instructions) {
@@ -90,6 +100,7 @@ func (o *Optimizer) FoldConstants() *Bytecode {
 					// Emit single OpConstant with folded result
 					instr := Make(OpConstant, newIdx)
 					newInstructions = append(newInstructions, instr...)
+					newPos += len(instr)
 
 					// Skip the three instructions we just folded
 					i += 7
@@ -111,14 +122,76 @@ func (o *Optimizer) FoldConstants() *Bytecode {
 		}
 
 		newInstructions = append(newInstructions, instructions[i:i+instrLen]...)
+		newPos += instrLen
 		i += instrLen
 	}
+
+	// Update jump targets based on position mapping
+	newInstructions = o.updateJumpTargets(newInstructions, oldToNewPos)
 
 	// Update bytecode
 	o.bytecode.Instructions = newInstructions
 	o.bytecode.Constants = newConstants
 
 	return o.bytecode
+}
+
+// updateJumpTargets updates all jump instruction targets based on position mapping
+func (o *Optimizer) updateJumpTargets(instructions []byte, posMap map[int]int) []byte {
+	// Build a sorted list of old positions for binary search
+	oldPositions := make([]int, 0, len(posMap))
+	for oldPos := range posMap {
+		oldPositions = append(oldPositions, oldPos)
+	}
+	// Sort positions for binary search
+	sort.Ints(oldPositions)
+
+	// Scan for jump instructions and update their targets
+	i := 0
+	for i < len(instructions) {
+		op := Opcode(instructions[i])
+
+		// Check if this is a jump instruction
+		if op == OpJump || op == OpJumpIfFalse || op == OpJumpIfTrue {
+			// Read the current target position (this is the OLD target in original bytecode)
+			if i+2 < len(instructions) {
+				oldTarget := int(instructions[i+1])<<8 | int(instructions[i+2])
+
+				// Find the new target position
+				newTarget := oldTarget
+				if newPos, ok := posMap[oldTarget]; ok {
+					// Direct match - target is exactly at an instruction boundary
+					newTarget = newPos
+				} else {
+					// Find the smallest old position >= oldTarget
+					for _, oldPos := range oldPositions {
+						if oldPos >= oldTarget {
+							newTarget = posMap[oldPos]
+							break
+						}
+					}
+				}
+
+				// Update the jump target
+				instructions[i+1] = byte(newTarget >> 8)
+				instructions[i+2] = byte(newTarget)
+			}
+		}
+
+		// Move to next instruction
+		def, err := Lookup(byte(op))
+		if err != nil {
+			i++
+			continue
+		}
+		instrLen := 1
+		for _, w := range def.OperandWidths {
+			instrLen += w
+		}
+		i += instrLen
+	}
+
+	return instructions
 }
 
 // foldBinaryOp evaluates a binary operation on constant operands

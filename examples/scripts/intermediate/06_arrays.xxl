@@ -2,150 +2,150 @@
 // Array creation, manipulation, and methods
 
 // === Array Creation ===
-println("=== Array Creation ===")
+pln("=== Array Creation ===")
 var empty = []
 var numbers = [1, 2, 3, 4, 5]
 var mixed = [1, "hello", true, 3.14, null]
 
-println("empty: ", empty)
-println("numbers: ", numbers)
-println("mixed: ", mixed)
+pln("empty: ", empty)
+pln("numbers: ", numbers)
+pln("mixed: ", mixed)
 
 // === Array Access ===
-println("\n=== Array Access ===")
+pln("\n=== Array Access ===")
 var fruits = ["apple", "banana", "cherry", "date"]
-println("First element: ", fruits[0])
-println("Second element: ", fruits[1])
-println("Last element: ", fruits[3])
+pln("First element: ", fruits[0])
+pln("Second element: ", fruits[1])
+pln("Last element: ", fruits[3])
 
 // === Array Modification ===
-println("\n=== Array Modification ===")
+pln("\n=== Array Modification ===")
 var arr = [10, 20, 30]
-println("Original: ", arr)
+pln("Original: ", arr)
 
 arr[1] = 25
-println("After arr[1] = 25: ", arr)
+pln("After arr[1] = 25: ", arr)
 
 // === Array Length ===
-println("\n=== Array Length ===")
-println("len(fruits): ", len(fruits))
-println("fruits.len(): ", fruits.len())
+pln("\n=== Array Length ===")
+pln("len(fruits): ", len(fruits))
+pln("fruits.len(): ", fruits.len())
 
 // === Array Methods: push and pop ===
-println("\n=== Array Methods: push/pop ===")
+pln("\n=== Array Methods: push/pop ===")
 var stack = [1, 2, 3]
-println("Original: ", stack)
+pln("Original: ", stack)
 
 push(stack, 4)
-println("After push(4): ", stack)
+pln("After push(4): ", stack)
 
 push(stack, 5)
-println("After push(5): ", stack)
+pln("After push(5): ", stack)
 
 pop(stack)
-println("After pop(): ", stack)
+pln("After pop(): ", stack)
 
 // === Array Methods: first and last ===
-println("\n=== Array Methods: first/last ===")
+pln("\n=== Array Methods: first/last ===")
 var nums = [100, 200, 300, 400]
-println("nums.first(): ", nums.first())
-println("nums.last(): ", nums.last())
+pln("nums.first(): ", nums.first())
+pln("nums.last(): ", nums.last())
 
 // === Array Methods: indexOf and contains ===
-println("\n=== Array Methods: indexOf/contains ===")
+pln("\n=== Array Methods: indexOf/contains ===")
 var colors = ["red", "green", "blue", "yellow"]
-println("colors.indexOf('blue'): ", colors.indexOf("blue"))
-println("colors.indexOf('purple'): ", colors.indexOf("purple"))
-println("colors.contains('green'): ", colors.contains("green"))
-println("colors.contains('orange'): ", colors.contains("orange"))
+pln("colors.indexOf('blue'): ", colors.indexOf("blue"))
+pln("colors.indexOf('purple'): ", colors.indexOf("purple"))
+pln("colors.contains('green'): ", colors.contains("green"))
+pln("colors.contains('orange'): ", colors.contains("orange"))
 
 // === Array Methods: reverse ===
-println("\n=== Array Methods: reverse ===")
+pln("\n=== Array Methods: reverse ===")
 var original = [1, 2, 3, 4, 5]
 var reversed = reverse(original)
-println("original: ", original)
-println("reversed: ", reversed)
+pln("original: ", original)
+pln("reversed: ", reversed)
 
 // === Array Methods: sort ===
-println("\n=== Array Methods: sort ===")
+pln("\n=== Array Methods: sort ===")
 var unsorted = [5, 2, 8, 1, 9, 3]
 var sorted = sort(unsorted)
-println("unsorted: ", unsorted)
-println("sorted: ", sorted)
+pln("unsorted: ", unsorted)
+pln("sorted: ", sorted)
 
 // === Array Methods: sum ===
-println("\n=== Array Methods: sum ===")
+pln("\n=== Array Methods: sum ===")
 var scores = [85, 92, 78, 95, 88]
-println("scores: ", scores)
-println("sum(scores): ", sum(scores))
-println("Average: ", sum(scores) / len(scores))
+pln("scores: ", scores)
+pln("sum(scores): ", sum(scores))
+pln("Average: ", sum(scores) / len(scores))
 
 // === Array Concatenation ===
-println("\n=== Array Concatenation ===")
+pln("\n=== Array Concatenation ===")
 var a1 = [1, 2, 3]
 var a2 = [4, 5, 6]
 var combined = concat(a1, a2)
-println("a1: ", a1)
-println("a2: ", a2)
-println("concat(a1, a2): ", combined)
+pln("a1: ", a1)
+pln("a2: ", a2)
+pln("concat(a1, a2): ", combined)
 
 // === Iterating Over Arrays ===
-println("\n=== Iterating Over Arrays ===")
+pln("\n=== Iterating Over Arrays ===")
 var items = ["a", "b", "c", "d"]
 
 // Using for-in loop
-println("Using for-in:")
+pln("Using for-in:")
 for (item in items) {
-    println("  item: ", item)
+    pln("  item: ", item)
 }
 
 // Using index-based loop
-println("Using index-based loop:")
+pln("Using index-based loop:")
 for (var i = 0; i < len(items); i++) {
-    println("  items[", i, "] = ", items[i])
+    pln("  items[", i, "] = ", items[i])
 }
 
 // === 2D Arrays ===
-println("\n=== 2D Arrays ===")
+pln("\n=== 2D Arrays ===")
 var matrix = [
     [1, 2, 3],
     [4, 5, 6],
     [7, 8, 9]
 ]
 
-println("Matrix:")
+pln("Matrix:")
 for (row in matrix) {
-    println(row)
+    pln(row)
 }
 
-println("matrix[0][0]: ", matrix[0][0])
-println("matrix[1][2]: ", matrix[1][2])
+pln("matrix[0][0]: ", matrix[0][0])
+pln("matrix[1][2]: ", matrix[1][2])
 
 // === Array as Stack ===
-println("\n=== Array as Stack ===")
+pln("\n=== Array as Stack ===")
 var stack2 = []
 
 // Push elements
 push(stack2, 10)
 push(stack2, 20)
 push(stack2, 30)
-println("Stack after pushes: ", stack2)
+pln("Stack after pushes: ", stack2)
 
 // Pop elements
-println("Popped: ", stack2.last())
+pln("Popped: ", stack2.last())
 pop(stack2)
-println("Stack after pop: ", stack2)
+pln("Stack after pop: ", stack2)
 
 // === Array Building ===
-println("\n=== Building Arrays Dynamically ===")
+pln("\n=== Building Arrays Dynamically ===")
 var squares = []
 for (var i = 1; i <= 5; i++) {
     push(squares, i * i)
 }
-println("Squares: ", squares)
+pln("Squares: ", squares)
 
 // === Filtering Pattern ===
-println("\n=== Filtering Pattern ===")
+pln("\n=== Filtering Pattern ===")
 var allNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 var evens = []
 
@@ -154,22 +154,22 @@ for (n in allNumbers) {
         push(evens, n)
     }
 }
-println("All numbers: ", allNumbers)
-println("Even numbers: ", evens)
+pln("All numbers: ", allNumbers)
+pln("Even numbers: ", evens)
 
 // === Mapping Pattern ===
-println("\n=== Mapping Pattern ===")
+pln("\n=== Mapping Pattern ===")
 var original2 = [1, 2, 3, 4, 5]
 var doubled = []
 
 for (n in original2) {
     push(doubled, n * 2)
 }
-println("Original: ", original2)
-println("Doubled: ", doubled)
+pln("Original: ", original2)
+pln("Doubled: ", doubled)
 
 // === Searching in Array ===
-println("\n=== Searching in Array ===")
+pln("\n=== Searching in Array ===")
 func findIndex(arr, value) {
     for (var i = 0; i < len(arr); i++) {
         if (arr[i] == value) {
@@ -180,5 +180,5 @@ func findIndex(arr, value) {
 }
 
 var searchArr = [10, 20, 30, 40, 50]
-println("findIndex([10,20,30,40,50], 30): ", findIndex(searchArr, 30))
-println("findIndex([10,20,30,40,50], 99): ", findIndex(searchArr, 99))
+pln("findIndex([10,20,30,40,50], 30): ", findIndex(searchArr, 30))
+pln("findIndex([10,20,30,40,50], 99): ", findIndex(searchArr, 99))

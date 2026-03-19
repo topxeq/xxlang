@@ -265,6 +265,42 @@ var stringMethods = map[string]*Builtin{
 		}
 		return &Bool{Value: strings.HasSuffix(self.Value, suffix.Value)}
 	}},
+	"subStr": {Fn: func(args ...Object) Object {
+		if len(args) < 2 || len(args) > 3 {
+			return newError("wrong number of arguments for subStr. got=%d, want=2 or 3", len(args))
+		}
+		self, ok := args[0].(*String)
+		if !ok {
+			return newError("receiver for subStr must be STRING, got %s", args[0].Type())
+		}
+		start, ok := args[1].(*Int)
+		if !ok {
+			return newError("start index for subStr must be INT, got %s", args[1].Type())
+		}
+		s := self.Value
+		startIdx := int(start.Value)
+		if startIdx < 0 {
+			startIdx = 0
+		}
+		if startIdx > len(s) {
+			startIdx = len(s)
+		}
+		if len(args) == 3 {
+			end, ok := args[2].(*Int)
+			if !ok {
+				return newError("end index for subStr must be INT, got %s", args[2].Type())
+			}
+			endIdx := int(end.Value)
+			if endIdx < startIdx {
+				endIdx = startIdx
+			}
+			if endIdx > len(s) {
+				endIdx = len(s)
+			}
+			return &String{Value: s[startIdx:endIdx]}
+		}
+		return &String{Value: s[startIdx:]}
+	}},
 	"toInt": {Fn: func(args ...Object) Object {
 		if len(args) != 1 {
 			return newError("wrong number of arguments for toInt. got=%d, want=1", len(args))

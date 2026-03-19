@@ -3,7 +3,7 @@
 // Note: This demonstrates concepts, not production cryptography
 
 // === Base Encoding Concepts ===
-println("=== Base Encoding Concepts ===")
+pln("=== Base Encoding Concepts ===")
 
 // Hex-like encoding (simplified)
 func toHexDigit(n) {
@@ -22,13 +22,13 @@ func simpleHex(n) {
     return simpleHex(n / 16) + toHexDigit(n % 16)
 }
 
-println("Hex encoding:")
-println("  10 -> ", simpleHex(10))
-println("  255 -> ", simpleHex(255))
-println("  4096 -> ", simpleHex(4096))
+pln("Hex encoding:")
+pln("  10 -> ", simpleHex(10))
+pln("  255 -> ", simpleHex(255))
+pln("  4096 -> ", simpleHex(4096))
 
 // === Simple XOR Cipher Concept ===
-println("\n=== XOR Cipher Concept ===")
+pln("\n=== XOR Cipher Concept ===")
 
 // Simulated XOR (conceptual - actual XOR not available)
 func simpleEncrypt(text, key) {
@@ -48,13 +48,13 @@ func simpleEncrypt(text, key) {
     return result
 }
 
-println("Simple cipher demonstration:")
-println("  Original: hello")
-println("  Key: abc")
-println("  (Conceptual - actual encryption requires crypto modules)")
+pln("Simple cipher demonstration:")
+pln("  Original: hello")
+pln("  Key: abc")
+pln("  (Conceptual - actual encryption requires crypto modules)")
 
 // === Caesar Cipher ===
-println("\n=== Caesar Cipher ===")
+pln("\n=== Caesar Cipher ===")
 
 func caesarEncrypt(text, shift) {
     var result = ""
@@ -99,12 +99,12 @@ var caesarPlain = "Hello World"
 var caesarEncrypted = caesarEncrypt(caesarPlain, 3)
 var caesarDecrypted = caesarDecrypt(caesarEncrypted, 3)
 
-println("Caesar plaintext: ", caesarPlain)
-println("Caesar encrypted (shift 3): ", caesarEncrypted)
-println("Caesar decrypted: ", caesarDecrypted)
+pln("Caesar plaintext: ", caesarPlain)
+pln("Caesar encrypted (shift 3): ", caesarEncrypted)
+pln("Caesar decrypted: ", caesarDecrypted)
 
 // === Simple Hash Concept ===
-println("\n=== Simple Hash Concept ===")
+pln("\n=== Simple Hash Concept ===")
 
 // Simple checksum (not cryptographic)
 func simpleChecksum(text) {
@@ -135,13 +135,13 @@ func simpleHash(text) {
     return hash
 }
 
-println("Simple hash demonstration:")
-println("  hash('hello') = ", simpleHash("hello"))
-println("  hash('world') = ", simpleHash("world"))
-println("  hash('hello world') = ", simpleHash("hello world"))
+pln("Simple hash demonstration:")
+pln("  hash('hello') = ", simpleHash("hello"))
+pln("  hash('world') = ", simpleHash("world"))
+pln("  hash('hello world') = ", simpleHash("hello world"))
 
 // === Password Hashing Pattern ===
-println("\n=== Password Hashing Pattern ===")
+pln("\n=== Password Hashing Pattern ===")
 
 func hashPassword(password, salt) {
     // Combine password and salt
@@ -157,14 +157,14 @@ var password = "mySecretPassword"
 var salt = "randomSalt123"
 var hashedPw = hashPassword(password, salt)
 
-println("Password: ", password)
-println("Salt: ", salt)
-println("Hash: ", hashedPw)
-println("Verify correct: ", verifyPassword(password, salt, hashedPw))
-println("Verify wrong: ", verifyPassword("wrongPassword", salt, hashedPw))
+pln("Password: ", password)
+pln("Salt: ", salt)
+pln("Hash: ", hashedPw)
+pln("Verify correct: ", verifyPassword(password, salt, hashedPw))
+pln("Verify wrong: ", verifyPassword("wrongPassword", salt, hashedPw))
 
 // === Token Generation Pattern ===
-println("\n=== Token Generation Pattern ===")
+pln("\n=== Token Generation Pattern ===")
 
 var tokenCounter = 1000
 
@@ -173,13 +173,13 @@ func generateSimpleToken() {
     return "TK" + simpleHex(tokenCounter) + "-" + simpleHash(string(tokenCounter))
 }
 
-println("Generated tokens:")
+pln("Generated tokens:")
 for (var i = 0; i < 3; i++) {
-    println("  ", generateSimpleToken())
+    pln("  ", generateSimpleToken())
 }
 
 // === Encoding/Decoding Pattern ===
-println("\n=== Encoding/Decoding Pattern ===")
+pln("\n=== Encoding/Decoding Pattern ===")
 
 // Simple substitution cipher
 func substitute(text, alphabet, key) {
@@ -208,12 +208,12 @@ var original = "hello world"
 var encoded = substitute(original, alphabet, key)
 var decoded = substitute(encoded, key, alphabet)
 
-println("Original: ", original)
-println("Substituted: ", encoded)
-println("Decoded: ", decoded)
+pln("Original: ", original)
+pln("Substituted: ", encoded)
+pln("Decoded: ", decoded)
 
 // === Checksum Verification ===
-println("\n=== Checksum Verification ===")
+pln("\n=== Checksum Verification ===")
 
 func createChecksum(text) {
     var sum = 0
@@ -229,12 +229,12 @@ func verifyChecksum(text, checksum) {
 
 var data = "Important data to verify"
 var cs = createChecksum(data)
-println("Data: ", data)
-println("Checksum: ", cs)
-println("Verify: ", verifyChecksum(data, cs))
+pln("Data: ", data)
+pln("Checksum: ", cs)
+pln("Verify: ", verifyChecksum(data, cs))
 
 // === Message Authentication Pattern ===
-println("\n=== Message Authentication Pattern ===")
+pln("\n=== Message Authentication Pattern ===")
 
 func signMessage(message, secret) {
     return simpleHash(message + secret)
@@ -248,24 +248,24 @@ var msg = "Hello from Alice"
 var secret = "sharedSecret123"
 var signature = signMessage(msg, secret)
 
-println("Message: ", msg)
-println("Signature: ", signature)
-println("Verify with correct secret: ", verifySignature(msg, signature, secret))
-println("Verify with wrong secret: ", verifySignature(msg, signature, "wrongSecret"))
+pln("Message: ", msg)
+pln("Signature: ", signature)
+pln("Verify with correct secret: ", verifySignature(msg, signature, secret))
+pln("Verify with wrong secret: ", verifySignature(msg, signature, "wrongSecret"))
 
 // === Security Best Practices ===
-println("\n=== Security Best Practices ===")
+pln("\n=== Security Best Practices ===")
 
 // 1. Never store plain text passwords
 // 2. Always use salt for password hashing
 // 3. Use appropriate key lengths
 // 4. Don't roll your own crypto for production
 
-println("Key security principles:")
-println("  1. Use proven cryptographic libraries for production")
-println("  2. Always salt password hashes")
-println("  3. Use appropriate key derivation functions")
-println("  4. Never store passwords in plain text")
-println("")
-println("This script demonstrates patterns only.")
-println("For real cryptography, use the crypto module.")
+pln("Key security principles:")
+pln("  1. Use proven cryptographic libraries for production")
+pln("  2. Always salt password hashes")
+pln("  3. Use appropriate key derivation functions")
+pln("  4. Never store passwords in plain text")
+pln("")
+pln("This script demonstrates patterns only.")
+pln("For real cryptography, use the crypto module.")

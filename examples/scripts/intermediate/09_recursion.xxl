@@ -2,7 +2,7 @@
 // Recursive algorithms: factorial, fibonacci, tree traversal, etc.
 
 // === Basic Recursion: Factorial ===
-println("=== Basic Recursion: Factorial ===")
+pln("=== Basic Recursion: Factorial ===")
 
 func factorial(n) {
     if (n <= 1) {
@@ -11,13 +11,13 @@ func factorial(n) {
     return n * factorial(n - 1)
 }
 
-println("factorial(0) = ", factorial(0))
-println("factorial(1) = ", factorial(1))
-println("factorial(5) = ", factorial(5))
-println("factorial(10) = ", factorial(10))
+pln("factorial(0) = ", factorial(0))
+pln("factorial(1) = ", factorial(1))
+pln("factorial(5) = ", factorial(5))
+pln("factorial(10) = ", factorial(10))
 
 // === Fibonacci Sequence ===
-println("\n=== Fibonacci Sequence ===")
+pln("\n=== Fibonacci Sequence ===")
 
 func fib(n) {
     if (n <= 1) {
@@ -26,14 +26,14 @@ func fib(n) {
     return fib(n - 1) + fib(n - 2)
 }
 
-println("Fibonacci sequence:")
+pln("Fibonacci sequence:")
 for (var i = 0; i <= 10; i++) {
-    println("  fib(", i, ") = ", fib(i))
+    pln("  fib(", i, ") = ", fib(i))
 }
 
 // === Tail Recursion ===
 // Note: Tail recursion optimization may have issues in current version
-println("\n=== Tail Recursion (using iterative approach) ===")
+pln("\n=== Tail Recursion (using iterative approach) ===")
 
 func factorialIterative(n) {
     var result = 1
@@ -43,11 +43,11 @@ func factorialIterative(n) {
     return result
 }
 
-println("factorialIterative(10) = ", factorialIterative(10))
-println("factorialIterative(15) = ", factorialIterative(15))
+pln("factorialIterative(10) = ", factorialIterative(10))
+pln("factorialIterative(15) = ", factorialIterative(15))
 
 // === Recursive Sum ===
-println("\n=== Recursive Sum ===")
+pln("\n=== Recursive Sum ===")
 
 func sumTo(n) {
     if (n <= 0) {
@@ -56,11 +56,11 @@ func sumTo(n) {
     return n + sumTo(n - 1)
 }
 
-println("sumTo(10) = ", sumTo(10))
-println("sumTo(100) = ", sumTo(100))
+pln("sumTo(10) = ", sumTo(10))
+pln("sumTo(100) = ", sumTo(100))
 
 // === Recursive Array Sum ===
-println("\n=== Recursive Array Sum ===")
+pln("\n=== Recursive Array Sum ===")
 
 func arraySum(arr, index) {
     if (index >= len(arr)) {
@@ -70,10 +70,10 @@ func arraySum(arr, index) {
 }
 
 var nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-println("arraySum([1..10], 0) = ", arraySum(nums, 0))
+pln("arraySum([1..10], 0) = ", arraySum(nums, 0))
 
 // === Recursive Array Length ===
-println("\n=== Recursive Array Length ===")
+pln("\n=== Recursive Array Length ===")
 
 func recursiveLen(arr, index) {
     if (index >= len(arr)) {
@@ -82,10 +82,10 @@ func recursiveLen(arr, index) {
     return 1 + recursiveLen(arr, index + 1)
 }
 
-println("recursiveLen([1,2,3,4,5], 0) = ", recursiveLen([1, 2, 3, 4, 5], 0))
+pln("recursiveLen([1,2,3,4,5], 0) = ", recursiveLen([1, 2, 3, 4, 5], 0))
 
 // === Recursive Find Max ===
-println("\n=== Recursive Find Max ===")
+pln("\n=== Recursive Find Max ===")
 
 func findMax(arr, index) {
     if (index >= len(arr) - 1) {
@@ -99,17 +99,17 @@ func findMax(arr, index) {
 }
 
 var values = [3, 7, 2, 9, 4, 8, 1, 6, 5]
-println("findMax([3,7,2,9,4,8,1,6,5], 0) = ", findMax(values, 0))
+pln("findMax([3,7,2,9,4,8,1,6,5], 0) = ", findMax(values, 0))
 
 // === Recursive Binary Search ===
-println("\n=== Recursive Binary Search ===")
+pln("\n=== Recursive Binary Search ===")
 
 func binarySearch(arr, target, low, high) {
     if (low > high) {
         return -1
     }
 
-    var mid = (low + high) / 2
+    var mid = int((low + high) / 2)
 
     if (arr[mid] == target) {
         return mid
@@ -121,13 +121,13 @@ func binarySearch(arr, target, low, high) {
 }
 
 var sorted = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19]
-println("binarySearch for 7: ", binarySearch(sorted, 7, 0, len(sorted) - 1))
-println("binarySearch for 1: ", binarySearch(sorted, 1, 0, len(sorted) - 1))
-println("binarySearch for 19: ", binarySearch(sorted, 19, 0, len(sorted) - 1))
-println("binarySearch for 8: ", binarySearch(sorted, 8, 0, len(sorted) - 1))
+pln("binarySearch for 7: ", binarySearch(sorted, 7, 0, len(sorted) - 1))
+pln("binarySearch for 1: ", binarySearch(sorted, 1, 0, len(sorted) - 1))
+pln("binarySearch for 19: ", binarySearch(sorted, 19, 0, len(sorted) - 1))
+pln("binarySearch for 8: ", binarySearch(sorted, 8, 0, len(sorted) - 1))
 
 // === Recursive GCD ===
-println("\n=== Recursive GCD (Euclidean Algorithm) ===")
+pln("\n=== Recursive GCD (Euclidean Algorithm) ===")
 
 func gcd(a, b) {
     if (b == 0) {
@@ -136,12 +136,12 @@ func gcd(a, b) {
     return gcd(b, a % b)
 }
 
-println("gcd(48, 18) = ", gcd(48, 18))
-println("gcd(54, 24) = ", gcd(54, 24))
-println("gcd(17, 13) = ", gcd(17, 13))
+pln("gcd(48, 18) = ", gcd(48, 18))
+pln("gcd(54, 24) = ", gcd(54, 24))
+pln("gcd(17, 13) = ", gcd(17, 13))
 
 // === Recursive Power ===
-println("\n=== Recursive Power ===")
+pln("\n=== Recursive Power ===")
 
 func power(base, exp) {
     if (exp == 0) {
@@ -158,12 +158,12 @@ func power(base, exp) {
     return base * power(base, exp - 1)
 }
 
-println("power(2, 10) = ", power(2, 10))
-println("power(3, 5) = ", power(3, 5))
-println("power(5, 0) = ", power(5, 0))
+pln("power(2, 10) = ", power(2, 10))
+pln("power(3, 5) = ", power(3, 5))
+pln("power(5, 0) = ", power(5, 0))
 
 // === Recursive String Reverse ===
-println("\n=== Recursive String Reverse ===")
+pln("\n=== Recursive String Reverse ===")
 
 func reverseString(s, index) {
     if (index < 0) {
@@ -176,11 +176,11 @@ func reverseStr(s) {
     return reverseString(s, len(s) - 1)
 }
 
-println("reverseStr('hello') = ", reverseStr("hello"))
-println("reverseStr('recursion') = ", reverseStr("recursion"))
+pln("reverseStr('hello') = ", reverseStr("hello"))
+pln("reverseStr('recursion') = ", reverseStr("recursion"))
 
 // === Recursive Tree Structure ===
-println("\n=== Recursive Tree (Nested Arrays) ===")
+pln("\n=== Recursive Tree (Nested Arrays) ===")
 
 func treeSum(tree) {
     var total = 0
@@ -195,11 +195,11 @@ func treeSum(tree) {
 }
 
 var nestedTree = [1, [2, 3], [4, [5, 6]], 7]
-println("Tree: ", nestedTree)
-println("Tree sum: ", treeSum(nestedTree))
+pln("Tree: ", nestedTree)
+pln("Tree sum: ", treeSum(nestedTree))
 
 // === Recursive Tree Depth ===
-println("\n=== Recursive Tree Depth ===")
+pln("\n=== Recursive Tree Depth ===")
 
 func treeDepth(tree) {
     if (typeOf(tree) != "ARRAY") {
@@ -215,10 +215,10 @@ func treeDepth(tree) {
     return 1 + maxDepth
 }
 
-println("Tree depth: ", treeDepth(nestedTree))
+pln("Tree depth: ", treeDepth(nestedTree))
 
 // === Memoized Fibonacci ===
-println("\n=== Memoized Fibonacci ===")
+pln("\n=== Memoized Fibonacci ===")
 
 var fibCache = {}
 
@@ -235,11 +235,11 @@ func fibMemo(n) {
     return result
 }
 
-println("fibMemo(30) = ", fibMemo(30))
-println("fibMemo(35) = ", fibMemo(35))
+pln("fibMemo(30) = ", fibMemo(30))
+pln("fibMemo(35) = ", fibMemo(35))
 
 // Compare performance
-println("\n=== Performance Comparison ===")
-println("Computing fib(20) recursively vs memoized:")
-println("  fib(20) = ", fib(20))
-println("  fibMemo(20) = ", fibMemo(20))
+pln("\n=== Performance Comparison ===")
+pln("Computing fib(20) recursively vs memoized:")
+pln("  fib(20) = ", fib(20))
+pln("  fibMemo(20) = ", fibMemo(20))

@@ -28,14 +28,14 @@ while i < array.len(args) {
         // Disable interpretation (default)
         interpretEscapes = false
     } else if arg == "--help" {
-        fmt.println("Usage: echo [OPTION]... [STRING]...")
-        fmt.println("Echo the STRING(s) to standard output.")
-        fmt.println("")
-        fmt.println("  -n    do not output the trailing newline")
-        fmt.println("  -e    enable interpretation of backslash escapes")
-        fmt.println("  -E    disable interpretation of backslash escapes (default)")
-        fmt.println("")
-        fmt.println("Example: echo -n -e 'Hello\\nWorld'")
+        fmt.pln("Usage: echo [OPTION]... [STRING]...")
+        fmt.pln("Echo the STRING(s) to standard output.")
+        fmt.pln("")
+        fmt.pln("  -n    do not output the trailing newline")
+        fmt.pln("  -e    enable interpretation of backslash escapes")
+        fmt.pln("  -E    disable interpretation of backslash escapes (default)")
+        fmt.pln("")
+        fmt.pln("Example: echo -n -e 'Hello\\nWorld'")
         return 0
     } else if string.hasPrefix(arg, "-") {
         // Check for combined flags like -ne
@@ -83,5 +83,5 @@ if interpretEscapes {
 if noNewline {
     fmt.print(output)
 } else {
-    fmt.println(output)
+    fmt.pln(output)
 }

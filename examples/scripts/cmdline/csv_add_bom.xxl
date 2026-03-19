@@ -21,13 +21,13 @@ func addBOMToCSV(filename) {
     var bytes = io.readBytes(filename)
 
     if (typeOf(bytes) == "ERROR") {
-        println("Error reading file: ", bytes)
+        pln("Error reading file: ", bytes)
         return false
     }
 
     // Check if already has BOM
     if (hasBOM(bytes)) {
-        println("File already has BOM: ", filename)
+        pln("File already has BOM: ", filename)
         return true
     }
 
@@ -42,11 +42,11 @@ func addBOMToCSV(filename) {
     // Write back
     var result = io.writeBytes(filename, newBytes)
     if (typeOf(result) == "ERROR") {
-        println("Error writing file: ", result)
+        pln("Error writing file: ", result)
         return false
     }
 
-    println("BOM added to: ", filename)
+    pln("BOM added to: ", filename)
     return true
 }
 
@@ -54,15 +54,15 @@ func addBOMToCSV(filename) {
 // args() returns: [executable, "run", script_path, arg1, arg2, ...]
 var cmdArgs = io.args()
 if (len(cmdArgs) < 4) {
-    println("Usage: xxl run csv_add_bom.xxl <csv_file>")
-    println("       Adds UTF-8 BOM to CSV file if not present")
+    pln("Usage: xxl run csv_add_bom.xxl <csv_file>")
+    pln("       Adds UTF-8 BOM to CSV file if not present")
     io.exit(1)
 }
 
 var filename = cmdArgs[3]
 
 if (!io.exists(filename)) {
-    println("File not found: ", filename)
+    pln("File not found: ", filename)
     io.exit(1)
 }
 
@@ -71,4 +71,4 @@ if (!success) {
     io.exit(1)
 }
 
-println("Done!")
+pln("Done!")

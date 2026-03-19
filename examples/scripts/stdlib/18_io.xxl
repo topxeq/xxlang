@@ -2,20 +2,20 @@
 // Input/Output operations and file handling
 
 // === Basic Output ===
-println("=== Basic Output ===")
+pln("=== Basic Output ===")
 
 // print adds no newline
 print("Hello ")
 print("World\n")
 
-// println adds newline
-println("This is a complete line")
+// pln adds newline
+pln("This is a complete line")
 
 // Print multiple values
-println("Name: ", "Alice", ", Age: ", 30)
+pln("Name: ", "Alice", ", Age: ", 30)
 
 // === Formatted Output ===
-println("\n=== Formatted Output ===")
+pln("\n=== Formatted Output ===")
 
 func printf(format, args) {
     var result = ""
@@ -48,21 +48,21 @@ printf("Name: %s, Age: %d\n", ["Alice", 30])
 printf("Score: %f, Grade: %s\n", [95.5, "A"])
 
 // === Reading Input (via built-in) ===
-println("\n=== Reading Input ===")
+pln("\n=== Reading Input ===")
 
 // Note: input() reads from stdin
 // This is demonstrated but not executed to avoid blocking
 
-// println("Enter your name: ")
+// pln("Enter your name: ")
 // var name = input()
-// println("Hello, ", name, "!")
+// pln("Hello, ", name, "!")
 
 // For demonstration, simulate input
 var simulatedInput = "Alice"
-println("Simulated input: ", simulatedInput)
+pln("Simulated input: ", simulatedInput)
 
 // === File Operations ===
-println("\n=== File Operations ===")
+pln("\n=== File Operations ===")
 
 // Note: File operations require the actual file to exist
 // These demonstrate the API usage
@@ -71,39 +71,39 @@ println("\n=== File Operations ===")
 /*
 var content = "Hello, File!\nThis is line 2.\n"
 fileWrite("test_output.txt", content)
-println("File written successfully")
+pln("File written successfully")
 */
 
 // Read from file
 /*
 var fileContent = fileRead("test_output.txt")
-println("File content:\n", fileContent)
+pln("File content:\n", fileContent)
 */
 
 // Append to file
 /*
 fileAppend("test_output.txt", "Appended line.\n")
-println("Content appended")
+pln("Content appended")
 */
 
 // Check if file exists
 /*
 if (fileExists("test_output.txt")) {
-    println("File exists")
+    pln("File exists")
 }
 */
 
 // Delete file
 /*
 fileDelete("test_output.txt")
-println("File deleted")
+pln("File deleted")
 */
 
-println("File operation APIs demonstrated above.")
-println("Uncomment and provide actual file paths to test.")
+pln("File operation APIs demonstrated above.")
+pln("Uncomment and provide actual file paths to test.")
 
 // === Working with Paths ===
-println("\n=== Working with Paths ===")
+pln("\n=== Working with Paths ===")
 
 func getFilename(path) {
     // Extract filename from path
@@ -138,13 +138,13 @@ func getBasename(filename) {
 }
 
 var testPath = "/home/user/documents/report.pdf"
-println("Path: ", testPath)
-println("Filename: ", getFilename(testPath))
-println("Extension: ", getExtension(getFilename(testPath)))
-println("Basename: ", getBasename(getFilename(testPath)))
+pln("Path: ", testPath)
+pln("Filename: ", getFilename(testPath))
+pln("Extension: ", getExtension(getFilename(testPath)))
+pln("Basename: ", getBasename(getFilename(testPath)))
 
 // === CSV Processing ===
-println("\n=== CSV Processing ===")
+pln("\n=== CSV Processing ===")
 
 func parseCSV(line, delimiter) {
     var fields = []
@@ -184,12 +184,12 @@ func toCSV(fields, delimiter) {
 
 var csvLine = "Alice,30,Beijing"
 var parsed = parseCSV(csvLine, ",")
-println("CSV line: ", csvLine)
-println("Parsed: ", parsed)
-println("Reconstructed: ", toCSV(parsed, ","))
+pln("CSV line: ", csvLine)
+pln("Parsed: ", parsed)
+pln("Reconstructed: ", toCSV(parsed, ","))
 
 // === JSON-like Processing ===
-println("\n=== JSON-like Processing ===")
+pln("\n=== JSON-like Processing ===")
 
 func simpleStringify(obj) {
     var t = typeOf(obj)
@@ -235,29 +235,29 @@ var testData = {
     }
 }
 
-println("Object: ", testData)
-println("JSON-like: ", simpleStringify(testData))
+pln("Object: ", testData)
+pln("JSON-like: ", simpleStringify(testData))
 
 // === Logging ===
-println("\n=== Logging ===")
+pln("\n=== Logging ===")
 
 func createLogger(name) {
     return {
         "name": name,
         "log": func(level, message) {
-            println("[", level, "] ", name, ": ", message)
+            pln("[", level, "] ", name, ": ", message)
         },
         "debug": func(msg) {
-            println("[DEBUG] ", name, ": ", msg)
+            pln("[DEBUG] ", name, ": ", msg)
         },
         "info": func(msg) {
-            println("[INFO] ", name, ": ", msg)
+            pln("[INFO] ", name, ": ", msg)
         },
         "warn": func(msg) {
-            println("[WARN] ", name, ": ", msg)
+            pln("[WARN] ", name, ": ", msg)
         },
         "error": func(msg) {
-            println("[ERROR] ", name, ": ", msg)
+            pln("[ERROR] ", name, ": ", msg)
         }
     }
 }
@@ -269,7 +269,7 @@ logger["warn"]("Low memory")
 logger["error"]("Connection failed")
 
 // === Output Formatting ===
-println("\n=== Output Formatting ===")
+pln("\n=== Output Formatting ===")
 
 // Table formatting
 func printTable(headers, rows) {
@@ -293,9 +293,9 @@ func printTable(headers, rows) {
         separator = separator + "-" + padRight("", widths[i], "-") + "-+"
     }
 
-    println(separator)
-    println(headerLine)
-    println(separator)
+    pln(separator)
+    pln(headerLine)
+    pln(separator)
 
     // Print rows
     for (row in rows) {
@@ -303,9 +303,9 @@ func printTable(headers, rows) {
         for (var i = 0; i < len(row); i++) {
             rowLine = rowLine + " " + padRight(string(row[i]), widths[i], " ") + " |"
         }
-        println(rowLine)
+        pln(rowLine)
     }
-    println(separator)
+    pln(separator)
 }
 
 var headers = ["Name", "Age", "City"]
@@ -315,11 +315,11 @@ var rows = [
     ["Charlie", "28", "Shenzhen"]
 ]
 
-println("")
+pln("")
 printTable(headers, rows)
 
 // === Progress Indicator ===
-println("\n=== Progress Indicator ===")
+pln("\n=== Progress Indicator ===")
 
 func printProgress(current, total, width) {
     var percent = current * 100 / total
@@ -334,9 +334,9 @@ func printProgress(current, total, width) {
     print("\r" + bar)
 }
 
-println("Progress simulation:")
+pln("Progress simulation:")
 for (var i = 0; i <= 10; i++) {
     printProgress(i, 10, 20)
     // In real code, would have delay here
 }
-println("")
+pln("")

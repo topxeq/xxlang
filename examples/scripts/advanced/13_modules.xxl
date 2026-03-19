@@ -5,7 +5,7 @@
 // Some imports may require actual module files to exist.
 
 // === Module Import Syntax ===
-println("=== Module Import Syntax ===")
+pln("=== Module Import Syntax ===")
 
 // Import specific exports
 // import { add, subtract } from "./math.xxl"
@@ -16,11 +16,11 @@ println("=== Module Import Syntax ===")
 // Import with relative path
 // import { helper } from "./utils/helper.xxl"
 
-println("Module import syntax demonstrated above.")
-println("Actual imports require module files to exist.")
+pln("Module import syntax demonstrated above.")
+pln("Actual imports require module files to exist.")
 
 // === Creating a Module Pattern ===
-println("\n=== Creating a Module Pattern (Simulation) ===")
+pln("\n=== Creating a Module Pattern (Simulation) ===")
 
 // Simulating what a module file would look like:
 // File: math_utils.xxl
@@ -56,12 +56,12 @@ var mathUtils = {
 
 // Using the "module"
 var math = mathUtils
-println("math.add(5, 3) = ", math["add"](5, 3))
-println("math.multiply(4, 7) = ", math["multiply"](4, 7))
-println("math.PI = ", math["PI"])
+pln("math.add(5, 3) = ", math["add"](5, 3))
+pln("math.multiply(4, 7) = ", math["multiply"](4, 7))
+pln("math.PI = ", math["PI"])
 
 // === Module Pattern: Private State ===
-println("\n=== Module Pattern: Private State ===")
+pln("\n=== Module Pattern: Private State ===")
 
 // Factory function creating a module with private state
 func createCounterModule() {
@@ -88,15 +88,15 @@ func createCounterModule() {
 }
 
 var counterMod = createCounterModule()
-println("Counter module demo:")
-println("  increment: ", counterMod["increment"]())
-println("  increment: ", counterMod["increment"]())
-println("  getCount: ", counterMod["getCount"]())
-println("  decrement: ", counterMod["decrement"]())
-println("  getCount: ", counterMod["getCount"]())
+pln("Counter module demo:")
+pln("  increment: ", counterMod["increment"]())
+pln("  increment: ", counterMod["increment"]())
+pln("  getCount: ", counterMod["getCount"]())
+pln("  decrement: ", counterMod["decrement"]())
+pln("  getCount: ", counterMod["getCount"]())
 
 // === Module Pattern: Singleton ===
-println("\n=== Module Pattern: Singleton ===")
+pln("\n=== Module Pattern: Singleton ===")
 
 func createConfigModule() {
     // Single instance with private state
@@ -129,13 +129,13 @@ func createConfigModule() {
 }
 
 var config = createConfigModule()
-println("Initial config: ", config["getAll"]())
+pln("Initial config: ", config["getAll"]())
 config["set"]("debug", true)
 config["set"]("timeout", 60)
-println("Modified config: ", config["getAll"]())
+pln("Modified config: ", config["getAll"]())
 
 // === Module Pattern: Namespace ===
-println("\n=== Module Pattern: Namespace ===")
+pln("\n=== Module Pattern: Namespace ===")
 
 // Organize related functions into namespaces
 var StringUtils = {
@@ -173,11 +173,11 @@ var ArrayUtils = {
     }
 }
 
-println("StringUtils.capitalize('hello') = ", StringUtils["capitalize"]("hello"))
-println("ArrayUtils.contains([1,2,3], 2) = ", ArrayUtils["contains"]([1, 2, 3], 2))
+pln("StringUtils.capitalize('hello') = ", StringUtils["capitalize"]("hello"))
+pln("ArrayUtils.contains([1,2,3], 2) = ", ArrayUtils["contains"]([1, 2, 3], 2))
 
 // === Module Pattern: Service ===
-println("\n=== Module Pattern: Service ===")
+pln("\n=== Module Pattern: Service ===")
 
 func createLoggerService(name) {
     var logs = []
@@ -202,25 +202,25 @@ func createLoggerService(name) {
         },
         "debug": func(msg) {
             if (shouldLog("DEBUG")) {
-                println("[DEBUG] ", name, ": ", msg)
+                pln("[DEBUG] ", name, ": ", msg)
                 push(logs, {"level": "DEBUG", "msg": msg})
             }
         },
         "info": func(msg) {
             if (shouldLog("INFO")) {
-                println("[INFO] ", name, ": ", msg)
+                pln("[INFO] ", name, ": ", msg)
                 push(logs, {"level": "INFO", "msg": msg})
             }
         },
         "warn": func(msg) {
             if (shouldLog("WARN")) {
-                println("[WARN] ", name, ": ", msg)
+                pln("[WARN] ", name, ": ", msg)
                 push(logs, {"level": "WARN", "msg": msg})
             }
         },
         "error": func(msg) {
             if (shouldLog("ERROR")) {
-                println("[ERROR] ", name, ": ", msg)
+                pln("[ERROR] ", name, ": ", msg)
                 push(logs, {"level": "ERROR", "msg": msg})
             }
         },
@@ -238,7 +238,7 @@ logger["warn"]("Low memory warning")
 logger["error"]("Connection failed")
 
 // === Module Pattern: Factory Registry ===
-println("\n=== Module Pattern: Factory Registry ===")
+pln("\n=== Module Pattern: Factory Registry ===")
 
 func createShapeFactory() {
     var shapes = {}
@@ -269,10 +269,10 @@ shapeFactory["register"]("rectangle", func(args) {
 var circle = shapeFactory["create"]("circle", {"radius": 5})
 var rectangle = shapeFactory["create"]("rectangle", {"width": 10, "height": 20})
 
-println("Created shapes: ", circle, " ", rectangle)
+pln("Created shapes: ", circle, " ", rectangle)
 
 // === Module Composition ===
-println("\n=== Module Composition ===")
+pln("\n=== Module Composition ===")
 
 func createApp() {
     var logger = createLoggerService("App")
@@ -293,5 +293,5 @@ func createApp() {
 
 var app = createApp()
 app["start"]()
-println("Config: ", app["config"]["getAll"]())
+pln("Config: ", app["config"]["getAll"]())
 app["stop"]()

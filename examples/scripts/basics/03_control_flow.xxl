@@ -4,86 +4,86 @@
 // === Basic If Statement ===
 var age = 18
 
-println("=== Basic If Statement ===")
+pln("=== Basic If Statement ===")
 if (age >= 18) {
-    println("You are an adult")
+    pln("You are an adult")
 }
 
 // === If-Else Statement ===
 var score = 75
 
-println("\n=== If-Else Statement ===")
+pln("\n=== If-Else Statement ===")
 if (score >= 60) {
-    println("Passed!")
+    pln("Passed!")
 } else {
-    println("Failed")
+    pln("Failed")
 }
 
 // === Nested If-Else Chain ===
 // Note: Xxlang uses nested if-else for multi-way conditions
-println("\n=== Nested If-Else Chain ===")
+pln("\n=== Nested If-Else Chain ===")
 var grade = 85
 
 if (grade >= 90) {
-    println("Grade: A")
+    pln("Grade: A")
 } else {
     if (grade >= 80) {
-        println("Grade: B")
+        pln("Grade: B")
     } else {
         if (grade >= 70) {
-            println("Grade: C")
+            pln("Grade: C")
         } else {
             if (grade >= 60) {
-                println("Grade: D")
+                pln("Grade: D")
             } else {
-                println("Grade: F")
+                pln("Grade: F")
             }
         }
     }
 }
 
 // === Nested If Statements ===
-println("\n=== Nested If Statements ===")
+pln("\n=== Nested If Statements ===")
 var isLoggedIn = true
 var isAdmin = true
 
 if (isLoggedIn) {
     if (isAdmin) {
-        println("Welcome, Admin!")
+        pln("Welcome, Admin!")
     } else {
-        println("Welcome, User!")
+        pln("Welcome, User!")
     }
 } else {
-    println("Please log in")
+    pln("Please log in")
 }
 
 // === Switch-like Pattern (using if-else) ===
-println("\n=== Switch-like Pattern ===")
+pln("\n=== Switch-like Pattern ===")
 var day = 3
 
 // Xxlang uses if-else chains for switch-like behavior
 if (day == 1) {
-    println("Monday")
+    pln("Monday")
 } else {
     if (day == 2) {
-        println("Tuesday")
+        pln("Tuesday")
     } else {
         if (day == 3) {
-            println("Wednesday")
+            pln("Wednesday")
         } else {
             if (day == 4) {
-                println("Thursday")
+                pln("Thursday")
             } else {
                 if (day == 5) {
-                    println("Friday")
+                    pln("Friday")
                 } else {
                     if (day == 6) {
-                        println("Saturday")
+                        pln("Saturday")
                     } else {
                         if (day == 7) {
-                            println("Sunday")
+                            pln("Sunday")
                         } else {
-                            println("Invalid day")
+                            pln("Invalid day")
                         }
                     }
                 }
@@ -93,7 +93,7 @@ if (day == 1) {
 }
 
 // === Season Example ===
-println("\n=== Season Example ===")
+pln("\n=== Season Example ===")
 var month = 2
 var season = ""
 
@@ -115,10 +115,10 @@ if (month == 12 || month == 1 || month == 2) {
     }
 }
 
-println("Month ", month, " is ", season)
+pln("Month ", month, " is ", season)
 
 // === Conditional Logic ===
-println("\n=== Conditional Logic ===")
+pln("\n=== Conditional Logic ===")
 var num = 15
 var parity = ""
 
@@ -128,32 +128,32 @@ if (num % 2 == 0) {
     parity = "odd"
 }
 
-println(num, " is ", parity)
+pln(num, " is ", parity)
 
 // === Complex Conditions ===
-println("\n=== Complex Conditions ===")
+pln("\n=== Complex Conditions ===")
 var hasLicense = true
 var hasInsurance = true
 var age2 = 25
 
 if (age2 >= 18 && hasLicense && hasInsurance) {
-    println("You can drive legally")
+    pln("You can drive legally")
 } else {
-    println("You cannot drive legally")
+    pln("You cannot drive legally")
 }
 
 // === Short-Circuit Example ===
-println("\n=== Short-Circuit Evaluation ===")
+pln("\n=== Short-Circuit Evaluation ===")
 var divisor = 0
 var dividend = 10
 
 // Check divisor first to prevent division by zero
 if (divisor == 0) {
-    println("Cannot divide: divisor is zero")
+    pln("Cannot divide: divisor is zero")
 } else {
     if (dividend / divisor > 5) {
-        println("Result is greater than 5")
+        pln("Result is greater than 5")
     } else {
-        println("Result is too small")
+        pln("Result is too small")
     }
 }

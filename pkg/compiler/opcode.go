@@ -250,6 +250,14 @@ const (
 	// Register iterator operations (for for-in loops)
 	OpRegIterKey   // R[dst] = key at index (array: index, map: keys[index])
 	OpRegIterValue // R[dst] = value at index (array: arr[index], map: map[keys[index]])
+
+	// Register array building (for large arrays that exceed register space)
+	OpRegArrayEmpty  // R[dst] = empty array
+	OpRegArrayAppend // R[dst] = append(R[arr], R[elem])
+
+	// Register map building (for large maps)
+	OpRegMapEmpty // R[dst] = empty map
+	OpRegMapSet   // R[dst] = R[map] with R[key] = R[val]
 )
 
 // Definition describes an opcode's format
@@ -497,6 +505,13 @@ var definitions = map[Opcode]*Definition{
 	// Register iterator operations
 	OpRegIterKey:   {"OpRegIterKey", []int{1, 1, 1}},   // dst, iter_reg, index_reg
 	OpRegIterValue: {"OpRegIterValue", []int{1, 1, 1}}, // dst, iter_reg, index_reg
+
+	// Register array building (for large arrays)
+	OpRegArrayEmpty:  {"OpRegArrayEmpty", []int{1}},        // dst
+	OpRegArrayAppend: {"OpRegArrayAppend", []int{1, 1, 1}},   // dst, arr_reg, elem_reg
+	OpRegMapEmpty:    {"OpRegMapEmpty", []int{1}},            // dst
+	OpRegMapSet:      {"OpRegMapSet", []int{1, 1, 1, 1}},     // dst, map_reg, key_reg, val_reg
+
 }
 
 // Lookup finds an opcode's definition
@@ -606,7 +621,7 @@ const (
 
 // IsRegisterOpcode returns true if the opcode is a register-based operation
 func IsRegisterOpcode(op Opcode) bool {
-	return op >= OpRegAdd && op <= OpRegIterValue
+	return op >= OpRegAdd && op <= OpRegMapSet
 }
 
 // MakeRegInstruction creates a fixed 4-byte register instruction

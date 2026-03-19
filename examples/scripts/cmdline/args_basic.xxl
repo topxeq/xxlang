@@ -10,24 +10,24 @@ let fmt = load("fmt")
 // ============================================================
 // Pattern 1: Simple positional arguments
 // ============================================================
-fmt.println("=== Pattern 1: Simple positional arguments ===")
+fmt.pln("=== Pattern 1: Simple positional arguments ===")
 
 let args = env.args()
-fmt.println("Program:", args[0])
-fmt.println("Argument count:", array.len(args))
+fmt.pln("Program:", args[0])
+fmt.pln("Argument count:", array.len(args))
 
 // Print all arguments
 let i = 0
 while i < array.len(args) {
-    fmt.println("  args[", i, "] =", args[i])
+    fmt.pln("  args[", i, "] =", args[i])
     i = i + 1
 }
-fmt.println("")
+fmt.pln("")
 
 // ============================================================
 // Pattern 2: Get first argument with default
 // ============================================================
-fmt.println("=== Pattern 2: First argument with default ===")
+fmt.pln("=== Pattern 2: First argument with default ===")
 
 let getArg = fn(index, default) {
     let args = env.args()
@@ -39,14 +39,14 @@ let getArg = fn(index, default) {
 
 let inputFile = getArg(1, "default.txt")
 let outputFile = getArg(2, "output.txt")
-fmt.println("Input file:", inputFile)
-fmt.println("Output file:", outputFile)
-fmt.println("")
+fmt.pln("Input file:", inputFile)
+fmt.pln("Output file:", outputFile)
+fmt.pln("")
 
 // ============================================================
 // Pattern 3: Flag detection
 // ============================================================
-fmt.println("=== Pattern 3: Flag detection ===")
+fmt.pln("=== Pattern 3: Flag detection ===")
 
 let hasFlag = fn(flagName) {
     let args = env.args()
@@ -63,14 +63,14 @@ let hasFlag = fn(flagName) {
 let hasHelp = hasFlag("--help") || hasFlag("-h")
 let hasVerbose = hasFlag("--verbose") || hasFlag("-v")
 
-fmt.println("Has --help:", hasHelp)
-fmt.println("Has --verbose:", hasVerbose)
-fmt.println("")
+fmt.pln("Has --help:", hasHelp)
+fmt.pln("Has --verbose:", hasVerbose)
+fmt.pln("")
 
 // ============================================================
 // Pattern 4: Get option value
 // ============================================================
-fmt.println("=== Pattern 4: Get option value ===")
+fmt.pln("=== Pattern 4: Get option value ===")
 
 let getOption = fn(shortName, longName, default) {
     let args = env.args()
@@ -89,14 +89,14 @@ let getOption = fn(shortName, longName, default) {
 let name = getOption("-n", "--name", "World")
 let count = string.parseInt(getOption("-c", "--count", "1"))
 
-fmt.println("Name:", name)
-fmt.println("Count:", count)
-fmt.println("")
+fmt.pln("Name:", name)
+fmt.pln("Count:", count)
+fmt.pln("")
 
 // ============================================================
 // Pattern 5: Environment variables as fallback
 // ============================================================
-fmt.println("=== Pattern 5: Environment variables as fallback ===")
+fmt.pln("=== Pattern 5: Environment variables as fallback ===")
 
 let getConfig = fn(argName, envName, default) {
     let args = env.args()
@@ -118,14 +118,14 @@ let getConfig = fn(argName, envName, default) {
 let host = getConfig("--host", "APP_HOST", "localhost")
 let port = getConfig("--port", "APP_PORT", "8080")
 
-fmt.println("Host:", host)
-fmt.println("Port:", port)
-fmt.println("")
+fmt.pln("Host:", host)
+fmt.pln("Port:", port)
+fmt.pln("")
 
 // ============================================================
 // Pattern 6: Collect remaining positional arguments
 // ============================================================
-fmt.println("=== Pattern 6: Collect positional arguments ===")
+fmt.pln("=== Pattern 6: Collect positional arguments ===")
 
 let getPositionalArgs = fn() {
     let args = env.args()
@@ -148,12 +148,12 @@ let getPositionalArgs = fn() {
 }
 
 let files = getPositionalArgs()
-fmt.println("Files to process:", array.len(files))
+fmt.pln("Files to process:", array.len(files))
 let j = 0
 while j < array.len(files) {
-    fmt.println("  -", files[j])
+    fmt.pln("  -", files[j])
     j = j + 1
 }
 
-fmt.println("")
-fmt.println("Done!")
+fmt.pln("")
+fmt.pln("Done!")
