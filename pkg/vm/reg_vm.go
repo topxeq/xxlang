@@ -523,6 +523,70 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 		regs[dst] = NewObject(&objects.Map{Pairs: pairs})
 		frame.IP += 4
 
+	case compiler.OpRegArrayEmpty:
+		dst := code[frame.IP+1]
+		regs[dst] = NewObject(&objects.Array{Elements: []objects.Object{}})
+		frame.IP += 2
+
+	case compiler.OpRegArrayAppend:
+		dst := code[frame.IP+1]
+		arrReg := code[frame.IP+2]
+		elemReg := code[frame.IP+3]
+
+		arr := regs[arrReg].ToObject()
+		arrObj, ok := arr.(*objects.Array)
+		if !ok {
+			return fmt.Errorf("OpRegArrayAppend: expected array, got %T", arr)
+		}
+
+		// Create new array with appended element
+		newElements := make([]objects.Object, len(arrObj.Elements)+1)
+		copy(newElements, arrObj.Elements)
+		newElements[len(arrObj.Elements)] = regs[elemReg].ToObject()
+
+		regs[dst] = NewObject(&objects.Array{Elements: newElements})
+		frame.IP += 4
+
+	case compiler.OpRegMapEmpty:
+		dst := code[frame.IP+1]
+		regs[dst] = NewObject(&objects.Map{Pairs: make(map[objects.HashKey]objects.MapPair)})
+		frame.IP += 2
+
+	case compiler.OpRegMapSet:
+		dst := code[frame.IP+1]
+		mapReg := code[frame.IP+2]
+		keyReg := code[frame.IP+3]
+		valReg := code[frame.IP+4]
+
+		mapObj := regs[mapReg].ToObject()
+		m, ok := mapObj.(*objects.Map)
+		if !ok {
+			return fmt.Errorf("OpRegMapSet: expected map, got %T", mapObj)
+		}
+
+		// Create new map with added key-value pair
+		newPairs := make(map[objects.HashKey]objects.MapPair, len(m.Pairs)+1)
+		for k, v := range m.Pairs {
+			newPairs[k] = v
+		}
+		keyObj := regs[keyReg].ToObject()
+		valObj := regs[valReg].ToObject()
+		newPairs[keyObj.HashKey()] = objects.MapPair{Key: keyObj, Value: valObj}
+
+		regs[dst] = NewObject(&objects.Map{Pairs: newPairs})
+		frame.IP += 5
+
+	case compiler.OpRegPush:
+		srcReg := code[frame.IP+1]
+		vm.tempStack.Push(regs[srcReg])
+		frame.IP += 2
+
+	case compiler.OpRegPop:
+		dstReg := code[frame.IP+1]
+		val := vm.tempStack.Pop()
+		regs[dstReg] = val
+		frame.IP += 2
+
 	case compiler.OpRegIndex:
 		dst, objReg, keyReg := DecodeReg3(code, frame.IP)
 		obj := regs[objReg].ToObject()
@@ -790,6 +854,9 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 		var method objects.Object
 
 		// Handle Instance objects
+		// Track if this is a map function value (not a built-in method)
+		isMapFunctionValue := false
+
 		if instance, ok := obj.(*objects.Instance); ok {
 			// Find method
 			method = vm.findMethod(instance.Class, name.Value)
@@ -797,11 +864,18 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 				return fmt.Errorf("method '%s' not found in class", name.Value)
 			}
 		} else if mapObj, ok := obj.(*objects.Map); ok {
-			// Check for map method
-			var methodFound bool
-			method, methodFound = objects.GetMethod(objects.MapType, name.Value)
-			if !methodFound {
-				return fmt.Errorf("method '%s' not found on Map", name.Value)
+			// First check if the map has a key with this name (for callable map values)
+			key := &objects.String{Value: name.Value}
+			if pair, found := mapObj.Pairs[key.HashKey()]; found {
+				method = pair.Value
+				isMapFunctionValue = true // This is a function stored in the map, not a built-in method
+			} else {
+				// Otherwise check for built-in map method
+				var methodFound bool
+				method, methodFound = objects.GetMethod(objects.MapType, name.Value)
+				if !methodFound {
+					return fmt.Errorf("method '%s' not found on Map", name.Value)
+				}
 			}
 			_ = mapObj // avoid unused variable error
 		} else if m, ok := objects.GetMethod(obj.Type(), name.Value); ok {
@@ -811,35 +885,59 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 			return fmt.Errorf("cannot call method '%s' on type %s", name.Value, obj.Type())
 		}
 
-		// Shift arguments: R0->R1, R1->R2, etc. to make room for receiver in R0
-		for i := numArgs; i > 0; i-- {
-			regs[i] = regs[i-1]
-		}
-		// Put receiver in R0
-		regs[0] = NewObject(obj)
-
 		// Call the method
-		switch fn := method.(type) {
-		case *objects.Builtin:
-			// Collect args including receiver
-			args := make([]objects.Object, numArgs+1)
-			for i := 0; i <= numArgs; i++ {
-				args[i] = regs[i].ToObject()
+		// For map function values, don't add receiver as first argument
+		if isMapFunctionValue {
+			// Call without receiver - just use provided arguments
+			switch fn := method.(type) {
+			case *objects.Builtin:
+				args := make([]objects.Object, numArgs)
+				for i := 0; i < numArgs; i++ {
+					args[i] = regs[i].ToObject()
+				}
+				result := fn.Fn(args...)
+				regs[compiler.ReturnRegister] = NewObject(result)
+			case *compiler.CompiledFunction:
+				if err := vm.callCompiledFunction(fn, numArgs, frame); err != nil {
+					return err
+				}
+			case *Closure:
+				if err := vm.callClosure(fn, numArgs, frame); err != nil {
+					return err
+				}
+			default:
+				return fmt.Errorf("method '%s' is not callable", name.Value)
 			}
-			result := fn.Fn(args...)
-			regs[compiler.ReturnRegister] = NewObject(result)
-		case *compiler.CompiledFunction:
-			// Call with numArgs+1 (including receiver)
-			if err := vm.callCompiledFunction(fn, numArgs+1, frame); err != nil {
-				return err
+		} else {
+			// Shift arguments: R0->R1, R1->R2, etc. to make room for receiver in R0
+			for i := numArgs; i > 0; i-- {
+				regs[i] = regs[i-1]
 			}
-		case *Closure:
-			// Call with numArgs+1 (including receiver)
-			if err := vm.callClosure(fn, numArgs+1, frame); err != nil {
-				return err
+			// Put receiver in R0
+			regs[0] = NewObject(obj)
+
+			switch fn := method.(type) {
+			case *objects.Builtin:
+				// Collect args including receiver
+				args := make([]objects.Object, numArgs+1)
+				for i := 0; i <= numArgs; i++ {
+					args[i] = regs[i].ToObject()
+				}
+				result := fn.Fn(args...)
+				regs[compiler.ReturnRegister] = NewObject(result)
+			case *compiler.CompiledFunction:
+				// Call with numArgs+1 (including receiver)
+				if err := vm.callCompiledFunction(fn, numArgs+1, frame); err != nil {
+					return err
+				}
+			case *Closure:
+				// Call with numArgs+1 (including receiver)
+				if err := vm.callClosure(fn, numArgs+1, frame); err != nil {
+					return err
+				}
+			default:
+				return fmt.Errorf("method '%s' is not callable", name.Value)
 			}
-		default:
-			return fmt.Errorf("method '%s' is not callable", name.Value)
 		}
 
 		frame.IP += 5

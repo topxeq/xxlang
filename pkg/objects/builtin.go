@@ -258,6 +258,14 @@ var Builtins = map[string]*Builtin{
 			return &String{Value: string(obj.Type())}
 		},
 	},
+	"toStr": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for toStr. got=%d, want=1", len(args))
+			}
+			return &String{Value: args[0].Inspect()}
+		},
+	},
 
 	// ============================================================
 	// String Functions

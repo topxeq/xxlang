@@ -162,6 +162,8 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(103, "checkEmpty")
 	// OTP utilities
 	s.DefineBuiltin(104, "genOtpCode")
+	// Type conversion
+	s.DefineBuiltin(105, "toStr")
 	return s
 }
 
@@ -848,17 +850,67 @@ func (c *Compiler) Compile(node parser.Node) error {
 		}
 
 	case *parser.PrefixExpression:
-		if err := c.Compile(node.Right); err != nil {
-			return err
-		}
-
 		switch node.Operator {
-		case "-":
-			c.emit(OpNeg)
-		case "!":
-			c.emit(OpNot)
+		case "++", "--":
+			// Prefix increment/decrement: ++x or --x
+			// Returns the new value (unlike postfix which returns old value)
+			switch right := node.Right.(type) {
+			case *parser.Identifier:
+				symbol, ok := c.symbolTable.Resolve(right.Value)
+				if !ok {
+					return fmt.Errorf("undefined variable %s", right.Value)
+				}
+
+				// Get current value
+				switch symbol.Scope {
+				case GlobalScope:
+					c.emit(OpGetGlobal, symbol.Index)
+				case LocalScope:
+					c.emit(OpGetLocal, symbol.Index)
+				case FreeScope:
+					c.emit(OpGetFree, symbol.Index)
+				}
+
+				// Add 1 or subtract 1
+				one := c.addConstant(objects.NewInt(1))
+				c.emit(OpConstant, one)
+
+				switch node.Operator {
+				case "++":
+					c.emit(OpAdd)
+				case "--":
+					c.emit(OpSub)
+				}
+
+				// Store result (OpSetGlobal pushes the value back)
+				switch symbol.Scope {
+				case GlobalScope:
+					c.emit(OpSetGlobal, symbol.Index)
+				case LocalScope:
+					c.emit(OpSetLocal, symbol.Index)
+				case FreeScope:
+					c.emit(OpSetFree, symbol.Index)
+				}
+				// Result is already on stack from OpSetGlobal
+
+			default:
+				return fmt.Errorf("prefix %s operator not supported for type: %T", node.Operator, right)
+			}
+
 		default:
-			return fmt.Errorf("unknown operator %s", node.Operator)
+			// Handle other prefix operators: - and !
+			if err := c.Compile(node.Right); err != nil {
+				return err
+			}
+
+			switch node.Operator {
+			case "-":
+				c.emit(OpNeg)
+			case "!":
+				c.emit(OpNot)
+			default:
+				return fmt.Errorf("unknown operator %s", node.Operator)
+			}
 		}
 
 	case *parser.InfixExpression:
@@ -1148,6 +1200,8 @@ func (c *Compiler) Compile(node parser.Node) error {
 				c.emit(OpMul)
 			case "/=":
 				c.emit(OpDiv)
+			case "%=":
+				c.emit(OpMod)
 			}
 
 			// Store result
@@ -1180,9 +1234,6 @@ func (c *Compiler) Compile(node parser.Node) error {
 				c.emit(OpGetFree, symbol.Index)
 			}
 
-			// Duplicate for result (postfix returns old value)
-			c.emit(OpDup)
-
 			// Add 1 or subtract 1
 			one := c.addConstant(objects.NewInt(1))
 			c.emit(OpConstant, one)
@@ -1194,7 +1245,7 @@ func (c *Compiler) Compile(node parser.Node) error {
 				c.emit(OpSub)
 			}
 
-			// Store result
+			// Store result (OpSetGlobal pushes the value back)
 			switch symbol.Scope {
 			case GlobalScope:
 				c.emit(OpSetGlobal, symbol.Index)
@@ -1202,6 +1253,16 @@ func (c *Compiler) Compile(node parser.Node) error {
 				c.emit(OpSetLocal, symbol.Index)
 			case FreeScope:
 				c.emit(OpSetFree, symbol.Index)
+			}
+			// Result is the new value on stack from OpSetGlobal
+			// For postfix, we need to return old value, so we decrement/increment back
+			one2 := c.addConstant(objects.NewInt(1))
+			c.emit(OpConstant, one2)
+			switch node.Operator {
+			case "++":
+				c.emit(OpSub) // new - 1 = old
+			case "--":
+				c.emit(OpAdd) // new + 1 = old
 			}
 		}
 

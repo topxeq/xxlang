@@ -2189,6 +2189,8 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["checkEmpty"], // 103
 		// OTP utilities
 		objects.Builtins["genOtpCode"], // 104
+		// Type conversion
+		objects.Builtins["toStr"], // 105
 	}
 
 	if index < 0 || index >= len(builtins) {

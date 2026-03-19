@@ -16,6 +16,7 @@
 package vm
 
 import (
+	"fmt"
 	"math"
 	"sync"
 
@@ -435,15 +436,62 @@ func (v Value) Add(other Value) (Value, bool) {
 		return NewInt(v.GetInt() + other.GetInt()), true
 	}
 
-	// String concatenation
-	if v.IsObject() && other.IsObject() {
-		obj1 := v.GetObject()
-		obj2 := other.GetObject()
-		if s1, ok1 := obj1.(*objects.String); ok1 {
-			if s2, ok2 := obj2.(*objects.String); ok2 {
-				return NewObject(&objects.String{Value: s1.Value + s2.Value}), true
+	// String concatenation - check if either operand is a string object
+	var str1, str2 string
+	var hasStr1, hasStr2 bool
+
+	if v.IsObject() {
+		if s, ok := v.GetObject().(*objects.String); ok {
+			str1 = s.Value
+			hasStr1 = true
+		}
+	}
+	if other.IsObject() {
+		if s, ok := other.GetObject().(*objects.String); ok {
+			str2 = s.Value
+			hasStr2 = true
+		}
+	}
+
+	// If either is a string, perform string concatenation
+	if hasStr1 || hasStr2 {
+		// Convert first operand to string if not already
+		if !hasStr1 {
+			if v.IsInt() {
+				str1 = fmt.Sprintf("%d", v.GetInt())
+			} else if v.IsFloat() {
+				str1 = fmt.Sprintf("%g", v.GetFloat())
+			} else if v.IsNull() {
+				str1 = "null"
+			} else if v.IsBool() {
+				if v.GetBool() {
+					str1 = "true"
+				} else {
+					str1 = "false"
+				}
+			} else {
+				str1 = v.GetObject().Inspect()
 			}
 		}
+		// Convert second operand to string if not already
+		if !hasStr2 {
+			if other.IsInt() {
+				str2 = fmt.Sprintf("%d", other.GetInt())
+			} else if other.IsFloat() {
+				str2 = fmt.Sprintf("%g", other.GetFloat())
+			} else if other.IsNull() {
+				str2 = "null"
+			} else if other.IsBool() {
+				if other.GetBool() {
+					str2 = "true"
+				} else {
+					str2 = "false"
+				}
+			} else {
+				str2 = other.GetObject().Inspect()
+			}
+		}
+		return NewObject(&objects.String{Value: str1 + str2}), true
 	}
 
 	// Mixed: convert to floats
