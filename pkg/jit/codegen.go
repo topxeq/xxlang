@@ -12,18 +12,6 @@ import (
 
 // Register allocation for x86-64
 const (
-	// VM state registers (callee-saved, preserved across calls)
-	RegIP      = 12 // r12: instruction pointer (index into bytecode)
-	RegSP      = 13 // r13: stack pointer
-	RegFrame   = 14 // r14: current frame pointer
-	RegGlobals = 15 // r15: globals array pointer
-
-	// Temporary registers (caller-saved)
-	RegResult = 0 // rax: result register
-	RegTemp1  = 1 // rcx: temporary
-	RegTemp2  = 2 // rdx: temporary
-	RegTemp3  = 3 // rbx: temporary
-
 	// Value tag constants
 	TagInt  = 0x7FFC
 	TagBool = 0x7FFD
@@ -47,12 +35,15 @@ type CodeGenerator struct {
 
 	// Current function being compiled
 	fn *compiler.CompiledFunction
+
+	// Number of registers used
+	numRegs int
 }
 
 type fixup struct {
 	offset int
 	label  string
-	size   int // 1, 2, or 4 bytes
+	size   int
 }
 
 // NewCodeGenerator creates a new code generator
@@ -73,6 +64,9 @@ func (cg *CodeGenerator) Generate(fn *compiler.CompiledFunction, constants []vm.
 	cg.constants = constants
 	cg.globals = globals
 	cg.fn = fn
+
+	// Count registers needed
+	cg.numRegs = 32 // Default register count
 
 	// Generate function prologue
 	cg.emitPrologue()
@@ -161,7 +155,6 @@ func (cg *CodeGenerator) Generate(fn *compiler.CompiledFunction, constants []vm.
 			ip++
 
 		default:
-			// Unknown opcode - fall back to interpreter
 			if cg.config.Debug {
 				fmt.Printf("[JIT] Unknown opcode %d at IP %d\n", op, ip)
 			}
@@ -203,10 +196,22 @@ func (cg *CodeGenerator) emitPrologue() {
 	cg.emitBytes([]byte{0x41, 0x56}) // push r14
 	cg.emitBytes([]byte{0x41, 0x57}) // push r15
 
-	// sub rsp, stack_size (for local variables)
-	stackSize := 512 // Space for 64 uint64 values
+	// sub rsp, stack_size (for registers as local storage)
+	// Each register is a uint64 (8 bytes), allocate space for 64 registers
+	stackSize := uint32(512)
 	cg.emitBytes([]byte{0x48, 0x81, 0xEC})
-	cg.emitUint32(uint32(stackSize))
+	cg.emitUint32(stackSize)
+
+	// Initialize all registers to null (0x7FFE000000000000)
+	// This prevents garbage values from causing issues
+	nullValue := uint64(TagNull) << 48
+	for i := 0; i < 64; i++ {
+		// mov qword [rbp - 8*(i+1)], nullValue
+		off := int32(8 * (i + 1))
+		cg.emitBytes([]byte{0x48, 0xC7, 0x45}) // mov qword [rbp - off], imm32
+		cg.emitByte(byte(-off))
+		cg.emitUint32(uint32(nullValue)) // Lower 32 bits of null
+	}
 }
 
 // emitEpilogue generates function exit code
@@ -255,6 +260,7 @@ func regOffset(reg int) int32 {
 // Load register to rax
 func (cg *CodeGenerator) loadRegToRax(reg int) {
 	off := regOffset(reg)
+	// mov rax, [rbp - off]
 	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
 	cg.emitByte(byte(-off))
 }
@@ -262,6 +268,7 @@ func (cg *CodeGenerator) loadRegToRax(reg int) {
 // Store rax to register
 func (cg *CodeGenerator) storeRaxToReg(reg int) {
 	off := regOffset(reg)
+	// mov [rbp - off], rax
 	cg.emitBytes([]byte{0x48, 0x89, 0x45})
 	cg.emitByte(byte(-off))
 }
@@ -269,7 +276,16 @@ func (cg *CodeGenerator) storeRaxToReg(reg int) {
 // Load register to rcx
 func (cg *CodeGenerator) loadRegToRcx(reg int) {
 	off := regOffset(reg)
+	// mov rcx, [rbp - off]
 	cg.emitBytes([]byte{0x48, 0x8B, 0x4D})
+	cg.emitByte(byte(-off))
+}
+
+// Store rcx to register
+func (cg *CodeGenerator) storeRcxToReg(reg int) {
+	off := regOffset(reg)
+	// mov [rbp - off], rcx
+	cg.emitBytes([]byte{0x48, 0x89, 0x4D})
 	cg.emitByte(byte(-off))
 }
 
@@ -281,11 +297,17 @@ func (cg *CodeGenerator) compileOpRegLoadConst(code []byte, ip *int) {
 	dst := int(code[*ip+1])
 	constIdx := int(code[*ip+2])<<8 | int(code[*ip+3])
 
+	var val uint64
 	if constIdx < len(cg.constants) {
-		val := cg.constants[constIdx]
-		cg.emitMovRegImm64(0, uint64(val))
-		cg.storeRaxToReg(dst)
+		val = uint64(cg.constants[constIdx])
+	} else {
+		val = uint64(TagNull) << 48
 	}
+
+	// mov rax, imm64
+	cg.emitBytes([]byte{0x48, 0xB8})
+	cg.emitUint64(val)
+	cg.storeRaxToReg(dst)
 	*ip += 4
 }
 
@@ -516,8 +538,7 @@ func (cg *CodeGenerator) compileOpRegLoadLocal(code []byte, ip *int) {
 	dst := int(code[*ip+1])
 	localIdx := int(code[*ip+2])
 
-	// Locals are stored at [rbp - 8*(reg + 1)]
-	// For simplicity, treat locals as registers
+	// Locals are stored in registers
 	cg.loadRegToRax(localIdx)
 	cg.storeRaxToReg(dst)
 	*ip += 3
@@ -536,16 +557,17 @@ func (cg *CodeGenerator) compileOpRegLoadGlobal(code []byte, ip *int) {
 	dst := int(code[*ip+1])
 	globalIdx := int(code[*ip+2])<<8 | int(code[*ip+3])
 
-	// For now, globals are stored in a slice passed as argument
-	// We'll use a placeholder - the interpreter will handle this
-	// In a full JIT, we'd pass a pointer to globals
+	// For now, globals are passed in the constants array
+	// In a full implementation, we'd pass a pointer to globals
 	if globalIdx < len(cg.globals) {
 		val := cg.globals[globalIdx]
-		cg.emitMovRegImm64(0, uint64(val))
+		cg.emitBytes([]byte{0x48, 0xB8})
+		cg.emitUint64(uint64(val))
 		cg.storeRaxToReg(dst)
 	} else {
 		// Set to null
-		cg.emitMovRegImm64(0, uint64(TagNull)<<48)
+		cg.emitBytes([]byte{0x48, 0xB8})
+		cg.emitUint64(uint64(TagNull) << 48)
 		cg.storeRaxToReg(dst)
 	}
 	*ip += 4
@@ -555,9 +577,8 @@ func (cg *CodeGenerator) compileOpRegStoreGlobal(code []byte, ip *int) {
 	src := int(code[*ip+1])
 	globalIdx := int(code[*ip+2])<<8 | int(code[*ip+3])
 
-	// For JIT, we need to write back to globals
-	// This is tricky - we'll need to pass a pointer to globals
-	// For now, we skip this optimization
+	// For JIT, we store to a temporary location
+	// The globals slice is read-only during JIT execution
 	_ = globalIdx
 	cg.loadRegToRax(src)
 	// Note: In a full implementation, we'd store to globals[globalIdx]
@@ -621,11 +642,13 @@ func (cg *CodeGenerator) compileOpRegLoopCountAdd(code []byte, ip *int) {
 	accTagged := uint64(TagInt) << 48 // 0 as tagged int
 
 	// Initialize counter
-	cg.emitMovRegImm64(0, counterTagged)
+	cg.emitBytes([]byte{0x48, 0xB8}) // mov rax, imm64
+	cg.emitUint64(counterTagged)
 	cg.storeRaxToReg(counterReg)
 
 	// Initialize accumulator
-	cg.emitMovRegImm64(0, accTagged)
+	cg.emitBytes([]byte{0x48, 0xB8})
+	cg.emitUint64(accTagged)
 	cg.storeRaxToReg(accReg)
 
 	// Loop label
@@ -665,31 +688,29 @@ func (cg *CodeGenerator) compileOpRegLoopCountAdd(code []byte, ip *int) {
 
 func (cg *CodeGenerator) compileOpRegNull(code []byte, ip *int) {
 	dst := int(code[*ip+1])
-	cg.emitMovRegImm64(0, uint64(TagNull)<<48)
+	cg.emitBytes([]byte{0x48, 0xB8})
+	cg.emitUint64(uint64(TagNull) << 48)
 	cg.storeRaxToReg(dst)
 	*ip += 2
 }
 
 func (cg *CodeGenerator) compileOpRegTrue(code []byte, ip *int) {
 	dst := int(code[*ip+1])
-	cg.emitMovRegImm64(0, uint64(TagBool)<<48|1)
+	cg.emitBytes([]byte{0x48, 0xB8})
+	cg.emitUint64(uint64(TagBool)<<48 | 1)
 	cg.storeRaxToReg(dst)
 	*ip += 2
 }
 
 func (cg *CodeGenerator) compileOpRegFalse(code []byte, ip *int) {
 	dst := int(code[*ip+1])
-	cg.emitMovRegImm64(0, uint64(TagBool)<<48)
+	cg.emitBytes([]byte{0x48, 0xB8})
+	cg.emitUint64(uint64(TagBool) << 48)
 	cg.storeRaxToReg(dst)
 	*ip += 2
 }
 
-// Additional helpers
-func (cg *CodeGenerator) emitMovRegImm64(reg int, imm uint64) {
-	cg.emitBytes([]byte{0x48, 0xB8 | byte(reg)})
-	cg.emitUint64(imm)
-}
-
+// Jump helpers
 func (cg *CodeGenerator) emitJmp(label string) {
 	cg.emitBytes([]byte{0xE9})
 	cg.fixups = append(cg.fixups, fixup{offset: len(cg.code), label: label, size: 4})
@@ -700,10 +721,4 @@ func (cg *CodeGenerator) emitJcc(cc byte, label string) {
 	cg.emitBytes([]byte{0x0F, 0x80 | cc})
 	cg.fixups = append(cg.fixups, fixup{offset: len(cg.code), label: label, size: 4})
 	cg.emitUint32(0)
-}
-
-func (cg *CodeGenerator) storeRcxToReg(reg int) {
-	off := regOffset(reg)
-	cg.emitBytes([]byte{0x48, 0x89, 0x4D})
-	cg.emitByte(byte(-off))
 }

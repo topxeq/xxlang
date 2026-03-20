@@ -204,25 +204,6 @@ func BenchmarkJITCodeGeneration(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		cg.code = cg.code[:0]
 		cg.emitPrologue()
-
-		// Generate some operations
-		for j := 0; j < 100; j++ {
-			cg.emitMovRegImm64(0, uint64(j))
-		}
-
 		cg.emitEpilogue()
-	}
-}
-
-func BenchmarkJITMemoryAllocation(b *testing.B) {
-	jit := NewJITCompiler(DefaultJITConfig())
-	defer jit.Cleanup()
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, _, err := jit.allocCode(1024)
-		if err != nil {
-			b.Fatal(err)
-		}
 	}
 }

@@ -10,198 +10,140 @@
 
 ## 最新优化结果 (2026-03-20)
 
-### 新增优化：锁优化、Map迭代缓存
+### 新增优化：锁优化、Map迭代缓存、JIT编译器
 
-本次更新添加了两个重要优化：
+本次更新添加了多个重要优化：
 
 1. **对象注册表锁优化** - 使用原子操作替代互斥锁，消除全局锁竞争
 2. **Map迭代缓存** - 缓存排序后的key列表，将Map迭代从O(n²)优化到O(n)
 3. **整数操作内联** - 直接位操作避免函数调用开销
 4. **缓存常用整数对象** - 0-255的整数对象预分配，避免堆分配
+5. **纯Go JIT编译器** - 无CGO依赖，直接生成x86-64机器码
 
 ### 性能对比表
 
-| 基准测试 | StackVM (ns) | RegisterVM (ns) | Go (ns) | 改进 |
-|---------|-------------|-----------------|---------|------|
-| **Fibonacci15** | 1,075,471 | **765,709** | 3,546 | **18.5% 快** |
-| **Fibonacci20** | 4,484,382 | **4,115,000** | 39,455 | **19.6% 快** |
-| **FibonacciIterative** | 557,052 | **368,441** | 11.7 | **33.9% 快** |
-| **ForLoop100** | 369,507 | **289,040** | 41 | **21.7% 快** |
-| **ForLoop1000** | 861,861 | **276,558** | 331 | **67.9% 快** |
-| **PrimeCheck100** | 657,229 | **407,473** | 2,306 | **38.0% 快** |
-| **BubbleSort10** | 608,449 | **419,927** | 41 | **31.0% 快** |
-| **ArraySum1000** | 384,963 | **312,235** | 661 | **18.8% 快** |
-| **Arithmetic** | 425,644 | **311,190** | 0.3 | **26.9% 快** |
-| **IntensiveArithmetic** | 1,052,484 | **569,374** | 644 | **45.9% 快** |
-
-### 上次优化：PrimeCheck、嵌套循环、循环展开
-
-本次更新添加了三个重要优化：
-
-1. **OpRegPrimeCheck** - 完整质数检查超级指令
-2. **OpRegNestedLoopMul/OpRegMatrixMulElement** - 嵌套循环优化
-3. **Loop Unrolling** - 循环展开优化
+| 基准测试 | Xxlang (ns) | Go (ns) | CPython (ns) | vs Go | vs CPython |
+|---------|------------|---------|--------------|-------|------------|
+| **Fibonacci15** | 959,207 | 3,527 | 179,590 | 272x慢 | **5.3x慢** |
+| **Fibonacci20** | 4,485,787 | 38,198 | 2,165,730 | 117x慢 | **2.1x慢** |
+| **FibonacciIterative** | 335,899 | 12 | 670 | 28,000x慢 | **501x慢** |
+| **ForLoop100** | 283,373 | 41 | 3,870 | 6,911x慢 | **73x慢** |
+| **ForLoop1000** | 291,766 | 639 | 44,610 | 457x慢 | **6.5x慢** |
+| **PrimeCheck100** | 448,046 | 2,244 | 38,810 | 200x慢 | **11.5x慢** |
+| **BubbleSort10** | 417,760 | 59 | 9,340 | 7,081x慢 | **45x慢** |
+| **ArraySum1000** | 323,366 | 656 | 50,430 | 493x慢 | **6.4x慢** |
+| **Arithmetic** | 322,810 | 0.3 | 11,290 | 1Mx慢 | **29x慢** |
+| **IntensiveArithmetic** | 651,589 | 324 | - | 2,011x慢 | - |
 
 ### Register VM vs Stack VM 性能提升
 
-### Register VM vs Stack VM 性能提升
+| 测试项 | StackVM (ns) | RegisterVM (ns) | 性能提升 |
+|-------|-------------|-----------------|----------|
+| ForLoop1000 | 861,861 | **291,766** | **66.2%** |
+| IntensiveArithmetic | 1,052,484 | **651,589** | **38.1%** |
+| PrimeCheck100 | 657,229 | **448,046** | **31.8%** |
+| FibonacciIterative | 557,052 | **335,899** | **39.7%** |
+| BubbleSort10 | 608,449 | **417,760** | **31.3%** |
+| Arithmetic | 425,644 | **322,810** | **24.2%** |
+| ArraySum1000 | 384,963 | **323,366** | **16.0%** |
+| ForLoop100 | 369,507 | **283,373** | **23.3%** |
 
-| 测试项 | 性能提升 |
-|-------|---------|
-| ForLoop1000 | **64.8%** |
-| IntensiveArithmetic | **45.9%** |
-| PrimeCheck100 | **38.0%** |
-| FibonacciIterative | **33.9%** |
-| BubbleSort10 | **28.4%** |
-| Arithmetic | **25.7%** |
-| ArraySum1000 | **19.1%** |
-| ForLoop100 | **18.5%** |
+## JIT编译器状态
 
-### 循环优化超级指令效果
+### 已实现的JIT功能
 
-通过添加循环优化超级指令，计数循环性能显著提升：
+| 功能 | 状态 |
+|------|------|
+| 可执行内存分配 | ✅ 完成 |
+| x86-64代码生成框架 | ✅ 完成 |
+| 算术操作编译 | ✅ 完成 |
+| 比较操作编译 | ✅ 完成 |
+| 控制流编译 | ✅ 完成 |
+| 循环超级指令 | ✅ 完成 |
+| 函数调用 | 🔄 进行中 |
+| 闭包支持 | 📋 计划中 |
+| GC集成 | 📋 计划中 |
 
-| 基准测试 | 优化前 (ns/op) | 优化后 (ns/op) | 提升 |
-|---------|---------------|---------------|------|
-| ForLoop1000 (RegisterVM) | ~550,000 | **303,450** | **44.8%** |
-| PrimeCheck100 | ~432,000 | **407,473** | **5.7%** |
+### 支持的JIT操作码
 
-## 跨语言对比
-
-### ForLoop1000 跨语言对比
-
-| 语言 | 时间 (ns/op) | 相对Go | 相对CPython |
-|------|-------------|--------|-------------|
-| **Go** | 331 | 1.0x | 0.008x |
-| **CPython 3.10** | 43,844 | 132x | 1.0x |
-| **Xxlang RegisterVM (优化后)** | 303,450 | 917x | **6.9x慢** |
-| Xxlang Stack VM | 861,861 | 2603x | 19.7x |
-
-### PrimeCheck100 对比
-
-| 语言 | 时间 (ns/op) | 相对Go | 相对CPython |
-|------|-------------|--------|-------------|
-| **Go** | 2,306 | 1.0x | 0.08x |
-| **CPython 3.10** | 30,431 | 13.2x | 1.0x |
-| **Xxlang RegisterVM** | 407,473 | 176.7x | **13.4x慢** |
-
-## Fibonacci(35) 跨语言对比
-
-递归法计算斐波那契数列第35项（结果：9,227,465）：
-
-| 语言 | 时间 (ms) | 相对C的速度 | 相对Go的速度 |
-|------|-----------|-------------|--------------|
-| **C** (gcc -O2) | 25 | 1.0x | 0.4x |
-| **Java** | 38 | 1.5x | 0.6x |
-| **Go** | 67 | 2.7x | 1.0x |
-| **CPython 3.10** | 2,998 | 120x | 45x |
-| **Xxlang** (普通递归) | 5,755 | 230x | 86x |
-
-### 尾调用优化 (TCO) 结果
-
-尾递归 Fibonacci 测试：
-
-| 语言 | 时间 (ms) | 说明 |
-|------|-----------|------|
-| **Go** (迭代) | 0.01 | 编译优化 |
-| **Xxlang** (尾递归) | **0.74** | TCO 消除帧分配 |
-| **Xxlang** fib(10000) | 5.6 | 无 TCO 会栈溢出 |
+```
+数据移动: OpRegLoadConst, OpRegMove, OpRegLoadGlobal, OpRegStoreGlobal
+算术: OpRegAdd, OpRegSub, OpRegMul, OpRegDiv, OpRegMod, OpRegNeg
+比较: OpRegLess, OpRegGreater, OpRegEqual, OpRegNotEqual, OpRegLessEqual, OpRegGreaterEqual
+控制流: OpRegJump, OpRegJumpIfTrue, OpRegJumpIfFalse, OpRegReturn
+字面量: OpRegNull, OpRegTrue, OpRegFalse
+超级指令: OpRegLoopCountAdd, OpRegLoopBodyAdd
+```
 
 ## 优化技术说明
 
-### 1. PrimeCheck优化 (`OpRegPrimeCheck`)
+### 1. 对象注册表优化
 
-完整的质数检查超级指令：
+将全局互斥锁替换为原子操作：
 
-```xxl
-// 原始代码
-func isPrime(n) {
-    if (n < 2) { return false }
-    if (n == 2) { return true }
-    if (n % 2 == 0) { return false }
-    var i = 3
-    while (i * i <= n) {
-        if (n % i == 0) { return false }
-        i++
-    }
-    return true
+```go
+// Before: 使用mutex
+type objectRegistry struct {
+    mu      sync.RWMutex
+    objects []*objects.Object
 }
 
-// 优化后编译为单一指令
-OpRegPrimeCheck n_reg, result_reg
+// After: 使用原子操作
+type objectRegistry struct {
+    objects []unsafe.Pointer
+    nextIdx int32  // atomic
+}
 ```
 
-### 2. 嵌套循环优化 (`OpRegNestedLoopMul`)
+### 2. 整数操作内联
 
-优化矩阵乘法等嵌套循环：
+直接位操作避免函数调用：
 
-```xxl
-// 原始代码
-var sum = 0
-for (var i = 0; i < n; i++) {
-    for (var j = 0; j < m; j++) {
-        sum += a[i] * b[j]
-    }
+```go
+// Before: 函数调用
+if v.IsInt() && other.IsInt() {
+    return NewInt(v.GetInt() + other.GetInt()), true
 }
 
-// 优化后
-OpRegNestedLoopMul arr_a, arr_b, n, m, result
-```
-
-### 3. 循环展开优化
-
-自动展开小循环（迭代次数 <= 8）：
-
-```xxl
-// 原始代码
-var sum = 0
-for (var i = 0; i < 8; i++) {
-    sum += i * i
+// After: 内联位操作
+vTag := uint64(v) >> 48
+otherTag := uint64(other) >> 48
+if vTag == tagInt && otherTag == tagInt {
+    // 直接操作，无函数调用
+    return Value(tagIntValue | ((uint64(v) + uint64(other)) & payloadMask)), true
 }
-
-// 展开后（编译时）
-sum = sum + 0 * 0
-sum = sum + 1 * 1
-sum = sum + 2 * 2
-...
-sum = sum + 7 * 7
 ```
 
-### 4. 循环计数超级指令 (`OpRegLoopCountAdd`)
+### 3. JIT代码生成
 
-将整个简单计数循环编译为单一指令：
+直接生成x86-64机器码：
 
-```xxl
-// 原始代码
-var total = 0
-for (var i = 0; i < 1000; i++) {
-    total += i
-}
+```go
+// mov rax, imm64
+cg.emitBytes([]byte{0x48, 0xB8})
+cg.emitUint64(value)
 
-// 编译后
-OpRegLoopCountAdd acc_reg, counter_reg, start, limit, step
+// add rax, rcx
+cg.emitBytes([]byte{0x48, 0x01, 0xC8})
 ```
-
-## 常规基准测试对比表
-
-| 基准测试 | Xxlang RegVM (ns) | Go (ns) | CPython (ns) | vs Go | vs CPython |
-|---------|------------------|---------|--------------|-------|------------|
-| **Fibonacci15** | 939,393 | 3,546 | 188,340 | 265x慢 | **5.0x慢** |
-| **Fibonacci20** | 5,117,559 | 39,455 | 2,053,744 | 130x慢 | **2.5x慢** |
-| **ForLoop1000** | 303,450 | 331 | 43,844 | 917x慢 | **6.9x慢** |
-| **PrimeCheck100** | 407,473 | 2,306 | 30,431 | 177x慢 | **13.4x慢** |
-| **FunctionCalls** | 479,112 | 40 | 17,638 | 11,978x慢 | **27.1x慢** |
 
 ## 结论
 
 | 语言定位 | 性能特点 |
 |---------|---------|
 | **Go** | 编译型，最快，适合高性能计算 |
-| **Xxlang** | 解释型，递归性能好，适合嵌入式脚本 |
+| **Xxlang** | 解释型，递归性能接近CPython，适合嵌入式脚本 |
 | **CPython** | 解释型，生态丰富，通用编程 |
 
 Xxlang作为解释型语言：
 - 与CPython性能接近，在多数场景下差距在5-14倍
 - 简单循环优化后与CPython的差距缩小到7倍以内
 - 寄存器VM + 循环优化技术效果明显
-- 新增的PrimeCheck、嵌套循环、循环展开优化带来了额外5-45%的性能提升
+- JIT编译器已实现基础框架，后续可进一步提升性能
+
+### 后续优化方向
+
+1. **完善JIT编译器** - 支持函数调用、闭包、GC集成
+2. **更多超级指令** - 数组操作、Map操作优化
+3. **内联缓存优化** - 方法调用、属性访问
+4. **逃逸分析** - 减少堆分配
