@@ -16,7 +16,9 @@ type MapPair struct {
 
 // Map represents a map value
 type Map struct {
-	Pairs map[HashKey]MapPair
+	Pairs       map[HashKey]MapPair
+	sortedKeys  []Object // Cached sorted keys for iteration
+	keysInvalid bool     // True if sortedKeys needs recomputation
 }
 
 // Pre-cached empty map
@@ -179,4 +181,34 @@ func (m *Map) ToBool() *Bool {
 func (m *Map) HashKey() HashKey {
 	// Maps are not hashable
 	return HashKey{Type: MapType, Value: 0}
+}
+
+// GetSortedKeys returns the keys in sorted order, caching the result
+func (m *Map) GetSortedKeys() []Object {
+	// Return cached keys if valid
+	if !m.keysInvalid && m.sortedKeys != nil {
+		return m.sortedKeys
+	}
+
+	// Build sorted keys
+	keys := make([]Object, 0, len(m.Pairs))
+	for _, pair := range m.Pairs {
+		keys = append(keys, pair.Key)
+	}
+
+	// Sort keys by string representation for deterministic order
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i].Inspect() < keys[j].Inspect()
+	})
+
+	// Cache the result
+	m.sortedKeys = keys
+	m.keysInvalid = false
+	return keys
+}
+
+// InvalidateKeysCache marks the sorted keys cache as invalid
+// Call this when the map is modified
+func (m *Map) InvalidateKeysCache() {
+	m.keysInvalid = true
 }

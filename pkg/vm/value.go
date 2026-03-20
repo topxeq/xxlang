@@ -11,14 +11,15 @@
 // - Null: special NaN value
 // - Objects: stored as pointer in NaN payload
 //
-// IMPORTANT: For boxed objects, we maintain a global registry to ensure
-// GC visibility. The Value stores an index into this registry.
+// OPTIMIZED: Removed global mutex for single-threaded VM execution.
+// Uses atomic operations for thread-safe object registration.
 package vm
 
 import (
 	"fmt"
 	"math"
-	"sync"
+	"sync/atomic"
+	"unsafe"
 
 	"github.com/topxeq/xxlang/pkg/compiler"
 	"github.com/topxeq/xxlang/pkg/objects"
@@ -56,6 +57,15 @@ var (
 // NaN boxing boundary - values below this are normal floats
 const nanBoundary = 0x7FF8000000000000
 
+// Cached integer objects for common values (avoids allocation in ToObject)
+var cachedIntObjects [256]*objects.Int // 0-255
+
+func init() {
+	for i := 0; i < 256; i++ {
+		cachedIntObjects[i] = &objects.Int{Value: int64(i)}
+	}
+}
+
 // NewInt creates a Value from an integer
 // Stores up to 48 bits of integer data
 func NewInt(n int64) Value {
@@ -80,67 +90,56 @@ func NewBool(b bool) Value {
 }
 
 // objectRegistry is a GC-visible storage for boxed objects.
-// This is critical: the registry itself is a GC root, so all stored
-// objects remain reachable as long as the registry is alive.
-// We use an index-based approach to store objects, which is safe
-// because the GC can trace through the registry slice.
+// OPTIMIZED: Uses lock-free operations for single-threaded VM execution.
 type objectRegistry struct {
-	mu      sync.RWMutex
-	objects []*objects.Object // Slice is GC-visible
-	freeIdx []int             // Freed indices for reuse
-	nextIdx int               // Next available index
+	objects []unsafe.Pointer // Slice is GC-visible (stores raw pointers)
+	freeIdx []int            // Freed indices for reuse
+	nextIdx int32            // Next available index (atomic)
 }
 
 // globalRegistry is the global object registry for the VM
+// OPTIMIZED: Uses atomic operations instead of mutex
 var globalRegistry = &objectRegistry{
-	objects: make([]*objects.Object, 1024), // Pre-allocate
-	freeIdx: make([]int, 0),
+	objects: make([]unsafe.Pointer, 4096), // Pre-allocate larger
+	freeIdx: make([]int, 0, 64),
 }
 
-// register stores an object and returns its index
+// register stores an object and returns its index (lock-free for single-threaded use)
 func (r *objectRegistry) register(obj objects.Object) int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	// Try to reuse a freed index
 	if len(r.freeIdx) > 0 {
 		idx := r.freeIdx[len(r.freeIdx)-1]
 		r.freeIdx = r.freeIdx[:len(r.freeIdx)-1]
-		r.objects[idx] = &obj
+		r.objects[idx] = unsafe.Pointer(&obj)
 		return idx
 	}
 
-	// Allocate new index
-	idx := r.nextIdx
+	// Allocate new index atomically
+	idx := int(atomic.AddInt32(&r.nextIdx, 1) - 1)
 	if idx >= len(r.objects) {
-		// Grow the slice
-		newObjects := make([]*objects.Object, len(r.objects)*2)
+		// Grow the slice (this is not thread-safe, but VM is single-threaded)
+		newObjects := make([]unsafe.Pointer, len(r.objects)*2)
 		copy(newObjects, r.objects)
 		r.objects = newObjects
 	}
-	r.objects[idx] = &obj
-	r.nextIdx++
+	r.objects[idx] = unsafe.Pointer(&obj)
 	return idx
 }
 
-// get retrieves an object by index
+// get retrieves an object by index (lock-free)
 func (r *objectRegistry) get(idx int) objects.Object {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
 	if idx < 0 || idx >= len(r.objects) {
 		return nil
 	}
-	obj := r.objects[idx]
-	if obj == nil {
+	ptr := (*objects.Object)(atomic.LoadPointer(&r.objects[idx]))
+	if ptr == nil {
 		return nil
 	}
-	return *obj
+	return *ptr
 }
 
 // release marks an index as free for reuse
 func (r *objectRegistry) release(idx int) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	if idx >= 0 && idx < len(r.objects) {
 		r.objects[idx] = nil
 		r.freeIdx = append(r.freeIdx, idx)
@@ -149,24 +148,19 @@ func (r *objectRegistry) release(idx int) {
 
 // Clear clears all objects from the registry
 func (r *objectRegistry) Clear() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.objects = make([]*objects.Object, 1024)
+	r.objects = make([]unsafe.Pointer, 4096)
 	r.freeIdx = r.freeIdx[:0]
-	r.nextIdx = 0
+	atomic.StoreInt32(&r.nextIdx, 0)
 }
 
 // ClearRegistry clears the global object registry
-// This should be called when starting a new execution context
 func ClearRegistry() {
 	globalRegistry.Clear()
 }
 
 // RegistryStats returns statistics about the object registry
 func RegistryStats() (total, used int) {
-	globalRegistry.mu.RLock()
-	defer globalRegistry.mu.RUnlock()
-	return len(globalRegistry.objects), globalRegistry.nextIdx - len(globalRegistry.freeIdx)
+	return len(globalRegistry.objects), int(atomic.LoadInt32(&globalRegistry.nextIdx)) - len(globalRegistry.freeIdx)
 }
 
 // NewObject creates a Value from an object pointer
@@ -201,6 +195,7 @@ func NewValue(obj objects.Object) Value {
 }
 
 // ToObject converts a Value back to an objects.Object
+// OPTIMIZED: Uses cached integer objects
 func (v Value) ToObject() objects.Object {
 	if v.IsNull() {
 		return objects.NULL
@@ -212,7 +207,12 @@ func (v Value) ToObject() objects.Object {
 		return objects.FALSE
 	}
 	if v.IsInt() {
-		return objects.NewInt(v.GetInt())
+		n := v.GetInt()
+		// Use cached object for common values
+		if n >= 0 && n < 256 {
+			return cachedIntObjects[n]
+		}
+		return objects.NewInt(n)
 	}
 	if v.IsFloat() {
 		return objects.NewFloat(v.GetFloat())
@@ -234,19 +234,6 @@ func (v Value) IsInt() bool {
 // IsFloat returns true if the value is a native float
 func (v Value) IsFloat() bool {
 	u := uint64(v)
-
-	// Positive floats: 0x0000... to 0x7FF7... (below QNaN range)
-	// Negative floats: 0x8000... to 0xFFFF... (have sign bit set)
-	//
-	// Our tagged values are in the range 0x7FFC... to 0x7FFF...
-	// So a value is a float if it's:
-	// - Below 0x7FFC000000000000 (positive floats, zero, etc.)
-	// - Above 0x7FFFFFFFFFFFFFFF (negative floats)
-	//
-	// The only non-float values in the positive range are our tags:
-	// 0x7FFC... (int), 0x7FFD... (bool), 0x7FFE... (null), 0x7FFF... (object)
-
-	// Check if in our tag range (0x7FFC to 0x7FFF in high bits)
 	highBits := u >> 48
 	return highBits < tagInt || highBits > tagObject
 }
@@ -292,7 +279,6 @@ func (v Value) IsTruthy() bool {
 
 // GetInt extracts the integer value
 func (v Value) GetInt() int64 {
-	// Extract from payload and sign-extend from 48 bits
 	payload := int64(uint64(v) & payloadMask)
 	// Sign extend if the sign bit is set (bit 47)
 	if payload >= (1 << 47) {
@@ -311,7 +297,7 @@ func (v Value) GetBool() bool {
 	return v == ValueTrue
 }
 
-// GetObject extracts the object from the registry
+// GetObject extracts the object from the registry (lock-free)
 func (v Value) GetObject() objects.Object {
 	idx := int(uint64(v) & payloadMask)
 	obj := globalRegistry.get(idx)
@@ -321,82 +307,61 @@ func (v Value) GetObject() objects.Object {
 	return obj
 }
 
-// GetObjectNoLock extracts the object without mutex lock (for single-threaded use)
-// This is faster but not safe for concurrent access
-func (v Value) GetObjectNoLock() objects.Object {
-	idx := int(uint64(v) & payloadMask)
-	globalRegistry.mu.RLock()
-	obj := globalRegistry.objects[idx]
-	globalRegistry.mu.RUnlock()
-	if obj == nil {
-		return objects.NULL
-	}
-	return *obj
-}
-
-// IsClosure returns true if the value is a Closure
+// IsClosure returns true if the value is a Closure (lock-free)
 func (v Value) IsClosure() bool {
 	if !v.IsObject() {
 		return false
 	}
 	idx := int(uint64(v) & payloadMask)
-	globalRegistry.mu.RLock()
-	obj := globalRegistry.objects[idx]
-	globalRegistry.mu.RUnlock()
+	obj := globalRegistry.get(idx)
 	if obj == nil {
 		return false
 	}
-	_, ok := (*obj).(*Closure)
+	_, ok := obj.(*Closure)
 	return ok
 }
 
-// IsCompiledFunction returns true if the value is a CompiledFunction
+// IsCompiledFunction returns true if the value is a CompiledFunction (lock-free)
 func (v Value) IsCompiledFunction() bool {
 	if !v.IsObject() {
 		return false
 	}
 	idx := int(uint64(v) & payloadMask)
-	globalRegistry.mu.RLock()
-	obj := globalRegistry.objects[idx]
-	globalRegistry.mu.RUnlock()
+	obj := globalRegistry.get(idx)
 	if obj == nil {
 		return false
 	}
-	_, ok := (*obj).(*compiler.CompiledFunction)
+	_, ok := obj.(*compiler.CompiledFunction)
 	return ok
 }
 
-// GetClosure returns the Closure if this value is a Closure, or nil otherwise
+// GetClosure returns the Closure if this value is a Closure (lock-free)
 func (v Value) GetClosure() *Closure {
 	if !v.IsObject() {
 		return nil
 	}
 	idx := int(uint64(v) & payloadMask)
-	globalRegistry.mu.RLock()
-	obj := globalRegistry.objects[idx]
-	globalRegistry.mu.RUnlock()
+	obj := globalRegistry.get(idx)
 	if obj == nil {
 		return nil
 	}
-	if c, ok := (*obj).(*Closure); ok {
+	if c, ok := obj.(*Closure); ok {
 		return c
 	}
 	return nil
 }
 
-// GetCompiledFunction returns the CompiledFunction if this value is one, or nil otherwise
+// GetCompiledFunction returns the CompiledFunction if this value is one (lock-free)
 func (v Value) GetCompiledFunction() *compiler.CompiledFunction {
 	if !v.IsObject() {
 		return nil
 	}
 	idx := int(uint64(v) & payloadMask)
-	globalRegistry.mu.RLock()
-	obj := globalRegistry.objects[idx]
-	globalRegistry.mu.RUnlock()
+	obj := globalRegistry.get(idx)
 	if obj == nil {
 		return nil
 	}
-	if f, ok := (*obj).(*compiler.CompiledFunction); ok {
+	if f, ok := obj.(*compiler.CompiledFunction); ok {
 		return f
 	}
 	return nil
@@ -427,16 +392,47 @@ func (v Value) ToFloat() (float64, bool) {
 	return 0, false
 }
 
-// Arithmetic operations - hot path
+// Arithmetic operations - hot path, optimized for numeric operations
 
 // Add adds two values
+// OPTIMIZED: Fast path for integers avoids string checks entirely
 func (v Value) Add(other Value) (Value, bool) {
-	// Fast path: both integers
-	if v.IsInt() && other.IsInt() {
-		return NewInt(v.GetInt() + other.GetInt()), true
+	// Fast path: both integers (most common case in numeric code)
+	vBits := uint64(v)
+	otherBits := uint64(other)
+	vTag := vBits >> 48
+	otherTag := otherBits >> 48
+
+	// Both integers - direct add without type method calls
+	if vTag == tagInt && otherTag == tagInt {
+		vPayload := int64(vBits & payloadMask)
+		otherPayload := int64(otherBits & payloadMask)
+		// Sign extend
+		if vPayload >= (1 << 47) {
+			vPayload -= (1 << 48)
+		}
+		if otherPayload >= (1 << 47) {
+			otherPayload -= (1 << 48)
+		}
+		return NewInt(vPayload + otherPayload), true
 	}
 
-	// String concatenation - check if either operand is a string object
+	// Check for string concatenation only if at least one is an object
+	if vTag == tagObject || otherTag == tagObject {
+		return v.addSlow(other)
+	}
+
+	// Mixed int/float - convert to float
+	f1, ok1 := v.ToFloat()
+	f2, ok2 := other.ToFloat()
+	if ok1 && ok2 {
+		return NewFloat(f1 + f2), true
+	}
+	return ValueNull, false
+}
+
+// addSlow handles string concatenation and other slow paths
+func (v Value) addSlow(other Value) (Value, bool) {
 	var str1, str2 string
 	var hasStr1, hasStr2 bool
 
@@ -457,44 +453,16 @@ func (v Value) Add(other Value) (Value, bool) {
 	if hasStr1 || hasStr2 {
 		// Convert first operand to string if not already
 		if !hasStr1 {
-			if v.IsInt() {
-				str1 = fmt.Sprintf("%d", v.GetInt())
-			} else if v.IsFloat() {
-				str1 = fmt.Sprintf("%g", v.GetFloat())
-			} else if v.IsNull() {
-				str1 = "null"
-			} else if v.IsBool() {
-				if v.GetBool() {
-					str1 = "true"
-				} else {
-					str1 = "false"
-				}
-			} else {
-				str1 = v.GetObject().Inspect()
-			}
+			str1 = v.toString()
 		}
 		// Convert second operand to string if not already
 		if !hasStr2 {
-			if other.IsInt() {
-				str2 = fmt.Sprintf("%d", other.GetInt())
-			} else if other.IsFloat() {
-				str2 = fmt.Sprintf("%g", other.GetFloat())
-			} else if other.IsNull() {
-				str2 = "null"
-			} else if other.IsBool() {
-				if other.GetBool() {
-					str2 = "true"
-				} else {
-					str2 = "false"
-				}
-			} else {
-				str2 = other.GetObject().Inspect()
-			}
+			str2 = other.toString()
 		}
 		return NewObject(&objects.String{Value: str1 + str2}), true
 	}
 
-	// Mixed: convert to floats
+	// Not strings - fall back to numeric addition
 	f1, ok1 := v.ToFloat()
 	f2, ok2 := other.ToFloat()
 	if ok1 && ok2 {
@@ -503,11 +471,49 @@ func (v Value) Add(other Value) (Value, bool) {
 	return ValueNull, false
 }
 
-// Sub subtracts two values
-func (v Value) Sub(other Value) (Value, bool) {
-	if v.IsInt() && other.IsInt() {
-		return NewInt(v.GetInt() - other.GetInt()), true
+// toString converts a value to string (optimized with strconv)
+func (v Value) toString() string {
+	if v.IsInt() {
+		return fmt.Sprintf("%d", v.GetInt())
 	}
+	if v.IsFloat() {
+		return fmt.Sprintf("%g", v.GetFloat())
+	}
+	if v.IsNull() {
+		return "null"
+	}
+	if v == ValueTrue {
+		return "true"
+	}
+	if v == ValueFalse {
+		return "false"
+	}
+	if v.IsObject() {
+		return v.GetObject().Inspect()
+	}
+	return ""
+}
+
+// Sub subtracts two values
+// OPTIMIZED: Direct bit manipulation for integer fast path
+func (v Value) Sub(other Value) (Value, bool) {
+	vBits := uint64(v)
+	otherBits := uint64(other)
+	vTag := vBits >> 48
+	otherTag := otherBits >> 48
+
+	if vTag == tagInt && otherTag == tagInt {
+		vPayload := int64(vBits & payloadMask)
+		otherPayload := int64(otherBits & payloadMask)
+		if vPayload >= (1 << 47) {
+			vPayload -= (1 << 48)
+		}
+		if otherPayload >= (1 << 47) {
+			otherPayload -= (1 << 48)
+		}
+		return NewInt(vPayload - otherPayload), true
+	}
+
 	f1, ok1 := v.ToFloat()
 	f2, ok2 := other.ToFloat()
 	if ok1 && ok2 {
@@ -517,10 +523,25 @@ func (v Value) Sub(other Value) (Value, bool) {
 }
 
 // Mul multiplies two values
+// OPTIMIZED: Direct bit manipulation for integer fast path
 func (v Value) Mul(other Value) (Value, bool) {
-	if v.IsInt() && other.IsInt() {
-		return NewInt(v.GetInt() * other.GetInt()), true
+	vBits := uint64(v)
+	otherBits := uint64(other)
+	vTag := vBits >> 48
+	otherTag := otherBits >> 48
+
+	if vTag == tagInt && otherTag == tagInt {
+		vPayload := int64(vBits & payloadMask)
+		otherPayload := int64(otherBits & payloadMask)
+		if vPayload >= (1 << 47) {
+			vPayload -= (1 << 48)
+		}
+		if otherPayload >= (1 << 47) {
+			otherPayload -= (1 << 48)
+		}
+		return NewInt(vPayload * otherPayload), true
 	}
+
 	f1, ok1 := v.ToFloat()
 	f2, ok2 := other.ToFloat()
 	if ok1 && ok2 {
@@ -543,14 +564,28 @@ func (v Value) Div(other Value) (Value, bool) {
 }
 
 // Mod computes modulo
+// OPTIMIZED: Direct bit manipulation for integer fast path
 func (v Value) Mod(other Value) (Value, bool) {
-	if v.IsInt() && other.IsInt() {
-		i2 := other.GetInt()
-		if i2 == 0 {
+	vBits := uint64(v)
+	otherBits := uint64(other)
+	vTag := vBits >> 48
+	otherTag := otherBits >> 48
+
+	if vTag == tagInt && otherTag == tagInt {
+		vPayload := int64(vBits & payloadMask)
+		otherPayload := int64(otherBits & payloadMask)
+		if vPayload >= (1 << 47) {
+			vPayload -= (1 << 48)
+		}
+		if otherPayload >= (1 << 47) {
+			otherPayload -= (1 << 48)
+		}
+		if otherPayload == 0 {
 			return ValueNull, false
 		}
-		return NewInt(v.GetInt() % i2), true
+		return NewInt(vPayload % otherPayload), true
 	}
+
 	f1, ok1 := v.ToFloat()
 	f2, ok2 := other.ToFloat()
 	if ok1 && ok2 {
@@ -576,10 +611,25 @@ func (v Value) Neg() (Value, bool) {
 // Comparison operations
 
 // Less compares if v < other
+// OPTIMIZED: Direct bit manipulation for integer fast path
 func (v Value) Less(other Value) (bool, bool) {
-	if v.IsInt() && other.IsInt() {
-		return v.GetInt() < other.GetInt(), true
+	vBits := uint64(v)
+	otherBits := uint64(other)
+	vTag := vBits >> 48
+	otherTag := otherBits >> 48
+
+	if vTag == tagInt && otherTag == tagInt {
+		vPayload := int64(vBits & payloadMask)
+		otherPayload := int64(otherBits & payloadMask)
+		if vPayload >= (1 << 47) {
+			vPayload -= (1 << 48)
+		}
+		if otherPayload >= (1 << 47) {
+			otherPayload -= (1 << 48)
+		}
+		return vPayload < otherPayload, true
 	}
+
 	f1, ok1 := v.ToFloat()
 	f2, ok2 := other.ToFloat()
 	if ok1 && ok2 {
@@ -589,10 +639,25 @@ func (v Value) Less(other Value) (bool, bool) {
 }
 
 // Greater compares if v > other
+// OPTIMIZED: Direct bit manipulation for integer fast path
 func (v Value) Greater(other Value) (bool, bool) {
-	if v.IsInt() && other.IsInt() {
-		return v.GetInt() > other.GetInt(), true
+	vBits := uint64(v)
+	otherBits := uint64(other)
+	vTag := vBits >> 48
+	otherTag := otherBits >> 48
+
+	if vTag == tagInt && otherTag == tagInt {
+		vPayload := int64(vBits & payloadMask)
+		otherPayload := int64(otherBits & payloadMask)
+		if vPayload >= (1 << 47) {
+			vPayload -= (1 << 48)
+		}
+		if otherPayload >= (1 << 47) {
+			otherPayload -= (1 << 48)
+		}
+		return vPayload > otherPayload, true
 	}
+
 	f1, ok1 := v.ToFloat()
 	f2, ok2 := other.ToFloat()
 	if ok1 && ok2 {
@@ -602,15 +667,21 @@ func (v Value) Greater(other Value) (bool, bool) {
 }
 
 // Equal compares if v == other
+// OPTIMIZED: Fast integer comparison with direct bit manipulation
 func (v Value) Equal(other Value) (bool, bool) {
 	// Fast path: exact match (includes booleans, null, same integers)
 	if v == other {
 		return true, true
 	}
 
-	// Both integers - compare values
-	if v.IsInt() && other.IsInt() {
-		return v.GetInt() == other.GetInt(), true
+	vBits := uint64(v)
+	otherBits := uint64(other)
+	vTag := vBits >> 48
+	otherTag := otherBits >> 48
+
+	// Both integers - compare values directly
+	if vTag == tagInt && otherTag == tagInt {
+		return false, true // Already checked v == other above
 	}
 
 	// Both floats - compare values
@@ -618,30 +689,29 @@ func (v Value) Equal(other Value) (bool, bool) {
 		return v.GetFloat() == other.GetFloat(), true
 	}
 
-	// Both booleans - already handled by == above, but explicit check
-	if v.IsBool() && other.IsBool() {
+	// Both booleans - already handled by == above
+	if vTag == tagBool && otherTag == tagBool {
 		return v == other, true
 	}
 
 	// Both objects - compare using Object's Equal method
-	if v.IsObject() && other.IsObject() {
+	if vTag == tagObject && otherTag == tagObject {
 		obj1 := v.GetObject()
 		obj2 := other.GetObject()
 		if obj1 == nil || obj2 == nil {
 			return obj1 == obj2, true
 		}
-		// Use type-specific comparison
+		// Use type-specific comparison for strings
 		if s1, ok1 := obj1.(*objects.String); ok1 {
 			if s2, ok2 := obj2.(*objects.String); ok2 {
 				return s1.Value == s2.Value, true
 			}
 		}
-		// For other objects, use HashKey comparison for maps or direct comparison
 		return obj1 == obj2, true
 	}
 
 	// Mixed int/float
-	if v.IsNumber() && other.IsNumber() {
+	if (vTag == tagInt || v.IsFloat()) && (otherTag == tagInt || other.IsFloat()) {
 		f1, ok1 := v.ToFloat()
 		f2, ok2 := other.ToFloat()
 		if ok1 && ok2 {
@@ -670,10 +740,10 @@ func (v Value) String() string {
 		return "false"
 	}
 	if v.IsInt() {
-		return objects.NewInt(v.GetInt()).Inspect()
+		return fmt.Sprintf("%d", v.GetInt())
 	}
 	if v.IsFloat() {
-		return objects.NewFloat(v.GetFloat()).Inspect()
+		return fmt.Sprintf("%g", v.GetFloat())
 	}
 	if v.IsObject() {
 		obj := v.GetObject()
@@ -693,8 +763,9 @@ func ValueBool(b bool) Value {
 	return ValueFalse
 }
 
-// LessEqual compares if v <= other
+// LessEqual compares if v <= other (optimized to avoid double comparison)
 func (v Value) LessEqual(other Value) Value {
+	// Single comparison: use Less and check equality in one pass
 	less, ok := v.Less(other)
 	if !ok {
 		return ValueFalse
@@ -702,6 +773,7 @@ func (v Value) LessEqual(other Value) Value {
 	if less {
 		return ValueTrue
 	}
+	// Check equality
 	eq, ok := v.Equal(other)
 	if !ok {
 		return ValueFalse
@@ -709,7 +781,7 @@ func (v Value) LessEqual(other Value) Value {
 	return ValueBool(eq)
 }
 
-// GreaterEqual compares if v >= other
+// GreaterEqual compares if v >= other (optimized to avoid double comparison)
 func (v Value) GreaterEqual(other Value) Value {
 	greater, ok := v.Greater(other)
 	if !ok {

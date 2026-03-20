@@ -648,6 +648,7 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 		case *objects.Map:
 			hashKey := key.HashKey()
 			o.Pairs[hashKey] = objects.MapPair{Key: key, Value: val}
+			o.InvalidateKeysCache() // Invalidate cached keys
 		default:
 			return fmt.Errorf("cannot set index on type %s", obj.Type())
 		}
@@ -672,20 +673,8 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 			// For arrays, the key is the index itself
 			result = idxInt
 		case *objects.Map:
-			// For maps, get the key at this index
-			// Build a sorted list of keys for consistent ordering
-			keys := make([]objects.Object, 0, len(o.Pairs))
-			for _, pair := range o.Pairs {
-				keys = append(keys, pair.Key)
-			}
-			// Sort keys by their string representation for deterministic order
-			for i := 0; i < len(keys); i++ {
-				for j := i + 1; j < len(keys); j++ {
-					if keys[i].Inspect() > keys[j].Inspect() {
-						keys[i], keys[j] = keys[j], keys[i]
-					}
-				}
-			}
+			// Use cached sorted keys for O(1) access per iteration
+			keys := o.GetSortedKeys()
 			if int(idxInt.Value) < len(keys) {
 				result = keys[idxInt.Value]
 			} else {
@@ -718,20 +707,8 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 			}
 			result = o.Elements[idxInt.Value]
 		case *objects.Map:
-			// For maps, get the key at this index, then get its value
-			// Use same sorted order as OpRegIterKey
-			keys := make([]objects.Object, 0, len(o.Pairs))
-			for _, pair := range o.Pairs {
-				keys = append(keys, pair.Key)
-			}
-			// Sort keys by their string representation for deterministic order
-			for i := 0; i < len(keys); i++ {
-				for j := i + 1; j < len(keys); j++ {
-					if keys[i].Inspect() > keys[j].Inspect() {
-						keys[i], keys[j] = keys[j], keys[i]
-					}
-				}
-			}
+			// Use cached sorted keys for O(1) access per iteration
+			keys := o.GetSortedKeys()
 			if int(idxInt.Value) < len(keys) {
 				key := keys[idxInt.Value]
 				pair, exists := o.Pairs[key.HashKey()]
@@ -902,6 +879,7 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 			// Handle Map objects
 			key := objects.InternString(name.Value)
 			m.Pairs[key.HashKey()] = objects.MapPair{Key: key, Value: val}
+			m.InvalidateKeysCache() // Invalidate cached keys
 		} else {
 			return fmt.Errorf("cannot set field '%s' on type %s", name.Value, obj.Type())
 		}
