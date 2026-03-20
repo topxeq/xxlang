@@ -366,6 +366,32 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		// Global + Constant superinstructions
+		case compiler.OpGetGlobalConstAdd:
+			if err := vm.executeGetGlobalConstAdd(); err != nil {
+				return err
+			}
+
+		case compiler.OpGetGlobalConstSub:
+			if err := vm.executeGetGlobalConstSub(); err != nil {
+				return err
+			}
+
+		case compiler.OpGetGlobalConstMul:
+			if err := vm.executeGetGlobalConstMul(); err != nil {
+				return err
+			}
+
+		case compiler.OpGetGlobalConstLess:
+			if err := vm.executeGetGlobalConstLess(); err != nil {
+				return err
+			}
+
+		case compiler.OpGetGlobalConstEqual:
+			if err := vm.executeGetGlobalConstEqual(); err != nil {
+				return err
+			}
+
 		case compiler.OpConstantAdd:
 			if err := vm.executeConstantAdd(); err != nil {
 				return err
@@ -1503,6 +1529,110 @@ func (vm *VM) executeGetLocalConstEqual() error {
 	constVal := constants[constIdx].(*objects.Int).Value
 
 	if localVal == constVal {
+		vm.stack.Push(objects.TRUE)
+	} else {
+		vm.stack.Push(objects.FALSE)
+	}
+	return nil
+}
+
+// executeGetGlobalConstAdd adds a constant to a global variable
+// Pattern: OpGetGlobal + OpConstant + OpAdd
+func (vm *VM) executeGetGlobalConstAdd() error {
+	frame := vm.currentFrame()
+	globalIdx := int(frame.Instructions()[frame.IP+1])<<8 | int(frame.Instructions()[frame.IP+2])
+	constIdx := int(frame.Instructions()[frame.IP+3])<<8 | int(frame.Instructions()[frame.IP+4])
+	frame.IP += 4
+
+	globalVal := vm.globals[globalIdx].(*objects.Int).Value
+
+	constants := frame.Constants
+	if constants == nil {
+		constants = vm.constants
+	}
+	constVal := constants[constIdx].(*objects.Int).Value
+
+	vm.stack.Push(objects.NewInt(globalVal + constVal))
+	return nil
+}
+
+// executeGetGlobalConstSub subtracts a constant from a global variable
+func (vm *VM) executeGetGlobalConstSub() error {
+	frame := vm.currentFrame()
+	globalIdx := int(frame.Instructions()[frame.IP+1])<<8 | int(frame.Instructions()[frame.IP+2])
+	constIdx := int(frame.Instructions()[frame.IP+3])<<8 | int(frame.Instructions()[frame.IP+4])
+	frame.IP += 4
+
+	globalVal := vm.globals[globalIdx].(*objects.Int).Value
+
+	constants := frame.Constants
+	if constants == nil {
+		constants = vm.constants
+	}
+	constVal := constants[constIdx].(*objects.Int).Value
+
+	vm.stack.Push(objects.NewInt(globalVal - constVal))
+	return nil
+}
+
+// executeGetGlobalConstMul multiplies a global variable by a constant
+func (vm *VM) executeGetGlobalConstMul() error {
+	frame := vm.currentFrame()
+	globalIdx := int(frame.Instructions()[frame.IP+1])<<8 | int(frame.Instructions()[frame.IP+2])
+	constIdx := int(frame.Instructions()[frame.IP+3])<<8 | int(frame.Instructions()[frame.IP+4])
+	frame.IP += 4
+
+	globalVal := vm.globals[globalIdx].(*objects.Int).Value
+
+	constants := frame.Constants
+	if constants == nil {
+		constants = vm.constants
+	}
+	constVal := constants[constIdx].(*objects.Int).Value
+
+	vm.stack.Push(objects.NewInt(globalVal * constVal))
+	return nil
+}
+
+// executeGetGlobalConstLess compares a global variable with a constant for less than
+func (vm *VM) executeGetGlobalConstLess() error {
+	frame := vm.currentFrame()
+	globalIdx := int(frame.Instructions()[frame.IP+1])<<8 | int(frame.Instructions()[frame.IP+2])
+	constIdx := int(frame.Instructions()[frame.IP+3])<<8 | int(frame.Instructions()[frame.IP+4])
+	frame.IP += 4
+
+	globalVal := vm.globals[globalIdx].(*objects.Int).Value
+
+	constants := frame.Constants
+	if constants == nil {
+		constants = vm.constants
+	}
+	constVal := constants[constIdx].(*objects.Int).Value
+
+	if globalVal < constVal {
+		vm.stack.Push(objects.TRUE)
+	} else {
+		vm.stack.Push(objects.FALSE)
+	}
+	return nil
+}
+
+// executeGetGlobalConstEqual compares a global variable with a constant for equality
+func (vm *VM) executeGetGlobalConstEqual() error {
+	frame := vm.currentFrame()
+	globalIdx := int(frame.Instructions()[frame.IP+1])<<8 | int(frame.Instructions()[frame.IP+2])
+	constIdx := int(frame.Instructions()[frame.IP+3])<<8 | int(frame.Instructions()[frame.IP+4])
+	frame.IP += 4
+
+	globalVal := vm.globals[globalIdx].(*objects.Int).Value
+
+	constants := frame.Constants
+	if constants == nil {
+		constants = vm.constants
+	}
+	constVal := constants[constIdx].(*objects.Int).Value
+
+	if globalVal == constVal {
 		vm.stack.Push(objects.TRUE)
 	} else {
 		vm.stack.Push(objects.FALSE)

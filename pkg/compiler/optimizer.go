@@ -40,11 +40,18 @@ func (o *Optimizer) Optimize() *Bytecode {
 	if o.flags.InlineFunctions {
 		o.bytecode = o.InlineFunctions()
 	}
+	// Strength reduction before superinstructions to allow patterns to be recognized
+	if o.flags.StrengthReduction {
+		o.bytecode = o.StrengthReduction()
+	}
 	if o.flags.Superinstructions {
 		o.bytecode = o.GenerateSuperinstructions()
 	}
 	if o.flags.TypeSpecialization {
 		o.bytecode = o.GenerateTypeSpecializations()
+	}
+	if o.flags.DeadCodeElimination {
+		o.bytecode = o.DeadCodeElimination()
 	}
 
 	// Also optimize function bytecode in constants (without recursion)
@@ -68,11 +75,18 @@ func (o *Optimizer) optimizeFunctionsInConstantsNoRecurse() {
 			funcOpt := NewOptimizerWithFlags(funcBytecode, o.flags)
 
 			// Apply optimization passes directly (without calling Optimize to avoid recursion)
+			// Strength reduction before superinstructions
+			if funcOpt.flags.StrengthReduction {
+				funcOpt.bytecode = funcOpt.StrengthReduction()
+			}
 			if funcOpt.flags.Superinstructions {
 				funcOpt.bytecode = funcOpt.GenerateSuperinstructions()
 			}
 			if funcOpt.flags.TypeSpecialization {
 				funcOpt.bytecode = funcOpt.GenerateTypeSpecializations()
+			}
+			if funcOpt.flags.DeadCodeElimination {
+				funcOpt.bytecode = funcOpt.DeadCodeElimination()
 			}
 
 			// Update the function's instructions
@@ -1252,4 +1266,168 @@ func (o *Optimizer) isSimpleBinaryBody(body []byte, numParams int) bool {
 	default:
 		return false
 	}
+}
+
+// StrengthReduction replaces expensive operations with cheaper equivalents
+// Examples: x * 2 -> x + x, x * 1 -> x, x + 0 -> x
+func (o *Optimizer) StrengthReduction() *Bytecode {
+	instructions := o.bytecode.Instructions
+	constants := o.bytecode.Constants
+
+	if len(instructions) < 5 {
+		return o.bytecode
+	}
+
+	newInstructions := make([]byte, 0, len(instructions))
+	oldToNewPos := make(map[int]int)
+
+	i := 0
+	newPos := 0
+	for i < len(instructions) {
+		oldPos := i
+		op := Opcode(instructions[i])
+
+		oldToNewPos[oldPos] = newPos
+
+		// Pattern: OpGetLocal + OpConstant + OpMul where constant is 2
+		// Replace with: OpGetLocal + OpGetLocal + OpAdd (faster)
+		if op == OpGetLocal && i+5 < len(instructions) {
+			localIdx := int(instructions[i+1])
+
+			if Opcode(instructions[i+2]) == OpConstant {
+				constIdx := int(instructions[i+3])<<8 | int(instructions[i+4])
+
+				if c, ok := constants[constIdx].(*objects.Int); ok {
+					if Opcode(instructions[i+5]) == OpMul {
+						// x * 2 -> x + x (addition is faster than multiplication)
+						if c.Value == 2 && localIdx <= 255 {
+							// Replace with GetLocal + GetLocal + Add
+							newInstructions = append(newInstructions, byte(OpGetLocal), byte(localIdx))
+							newInstructions = append(newInstructions, byte(OpGetLocal), byte(localIdx))
+							newInstructions = append(newInstructions, byte(OpAdd))
+							newPos += 5
+							i += 6
+							continue
+						}
+						// x * 1 -> x (identity)
+						if c.Value == 1 {
+							// Just keep the GetLocal (skip the multiply)
+							newInstructions = append(newInstructions, byte(OpGetLocal), byte(localIdx))
+							newPos += 2
+							i += 6
+							continue
+						}
+						// x * 0 -> 0
+						if c.Value == 0 {
+							// Replace with just the constant 0
+							newInstructions = append(newInstructions, byte(OpConstant))
+							newInstructions = append(newInstructions, byte(constIdx>>8), byte(constIdx))
+							newPos += 3
+							i += 6
+							continue
+						}
+					}
+
+					if Opcode(instructions[i+5]) == OpAdd {
+						// x + 0 -> x (identity)
+						if c.Value == 0 {
+							newInstructions = append(newInstructions, byte(OpGetLocal), byte(localIdx))
+							newPos += 2
+							i += 6
+							continue
+						}
+					}
+				}
+			}
+		}
+
+		// Copy instruction as-is
+		def, err := Lookup(byte(op))
+		if err != nil {
+			i++
+			continue
+		}
+
+		instrLen := 1
+		for _, w := range def.OperandWidths {
+			instrLen += w
+		}
+
+		newInstructions = append(newInstructions, instructions[i:i+instrLen]...)
+		newPos += instrLen
+		i += instrLen
+	}
+
+	// Update jump targets
+	newInstructions = o.updateJumpTargets(newInstructions, oldToNewPos)
+
+	o.bytecode.Instructions = newInstructions
+	return o.bytecode
+}
+
+// DeadCodeElimination removes unreachable code and unused variables
+func (o *Optimizer) DeadCodeElimination() *Bytecode {
+	instructions := o.bytecode.Instructions
+
+	if len(instructions) < 3 {
+		return o.bytecode
+	}
+
+	newInstructions := make([]byte, 0, len(instructions))
+	oldToNewPos := make(map[int]int)
+
+	i := 0
+	newPos := 0
+	for i < len(instructions) {
+		oldPos := i
+		op := Opcode(instructions[i])
+
+		oldToNewPos[oldPos] = newPos
+
+		// Pattern: OpPop after OpReturn (dead code)
+		// Skip the OpPop as it's never reached
+		if op == OpReturn && i+1 < len(instructions) {
+			def, err := Lookup(byte(op))
+			if err != nil {
+				i++
+				continue
+			}
+			instrLen := 1
+			for _, w := range def.OperandWidths {
+				instrLen += w
+			}
+
+			newInstructions = append(newInstructions, instructions[i:i+instrLen]...)
+			newPos += instrLen
+			i += instrLen
+
+			// Skip any OpPop immediately after OpReturn
+			for i < len(instructions) && Opcode(instructions[i]) == OpPop {
+				i++
+			}
+			continue
+		}
+
+		// Copy instruction as-is
+		def, err := Lookup(byte(op))
+		if err != nil {
+			i++
+			continue
+		}
+
+		instrLen := 1
+		for _, w := range def.OperandWidths {
+			instrLen += w
+		}
+
+		newInstructions = append(newInstructions, instructions[i:i+instrLen]...)
+		newPos += instrLen
+		i += instrLen
+	}
+
+	// Update jump targets
+	newInstructions = o.updateJumpTargets(newInstructions, oldToNewPos)
+
+	o.bytecode.Instructions = newInstructions
+	return o.bytecode
 }

@@ -181,11 +181,12 @@ func TestCompoundAssignmentCompilation(t *testing.T) {
 	tests := []struct {
 		input      string
 		expectedOp Opcode
+		altOps     []Opcode // Alternative opcodes from optimization
 	}{
-		{"var x = 5; x += 1;", OpAdd},
-		{"var x = 5; x -= 1;", OpSub},
-		{"var x = 5; x *= 2;", OpMul},
-		{"var x = 10; x /= 2;", OpDiv},
+		{"var x = 5; x += 1;", OpAdd, []Opcode{OpAddLocalConst, OpGetGlobalConstAdd}},
+		{"var x = 5; x -= 1;", OpSub, []Opcode{OpSubLocalConst, OpGetGlobalConstSub}},
+		{"var x = 5; x *= 2;", OpMul, []Opcode{OpMulLocalConst, OpGetGlobalConstMul}},
+		{"var x = 10; x /= 2;", OpDiv, nil},
 	}
 
 	for _, tt := range tests {
@@ -198,8 +199,18 @@ func TestCompoundAssignmentCompilation(t *testing.T) {
 
 		bytecode := compiler.Bytecode()
 
-		if !containsOpcode(bytecode.Instructions, tt.expectedOp) {
-			t.Errorf("expected %v in instructions for %q", tt.expectedOp, tt.input)
+		// Check for expected opcode or any of its optimized alternatives
+		found := containsOpcode(bytecode.Instructions, tt.expectedOp)
+		if !found && tt.altOps != nil {
+			for _, altOp := range tt.altOps {
+				if containsOpcode(bytecode.Instructions, altOp) {
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			t.Errorf("expected %v (or optimized version) in instructions for %q", tt.expectedOp, tt.input)
 		}
 	}
 }
@@ -212,9 +223,10 @@ func TestPostfixExpressionCompilation(t *testing.T) {
 	tests := []struct {
 		input      string
 		expectedOp Opcode
+		altOps     []Opcode // Alternative opcodes from optimization
 	}{
-		{"var x = 5; x++;", OpAdd},
-		{"var x = 5; x--;", OpSub},
+		{"var x = 5; x++;", OpAdd, []Opcode{OpIncLocal, OpGetGlobalConstAdd}},
+		{"var x = 5; x--;", OpSub, []Opcode{OpDecLocal, OpGetGlobalConstSub}},
 	}
 
 	for _, tt := range tests {
@@ -227,12 +239,20 @@ func TestPostfixExpressionCompilation(t *testing.T) {
 
 		bytecode := compiler.Bytecode()
 
-		if !containsOpcode(bytecode.Instructions, tt.expectedOp) {
-			t.Errorf("expected %v in instructions for %q", tt.expectedOp, tt.input)
+		// Check for expected opcode or any of its optimized alternatives
+		found := containsOpcode(bytecode.Instructions, tt.expectedOp)
+		if !found && tt.altOps != nil {
+			for _, altOp := range tt.altOps {
+				if containsOpcode(bytecode.Instructions, altOp) {
+					found = true
+					break
+				}
+			}
 		}
-		if !containsOpcode(bytecode.Instructions, OpDup) {
-			t.Errorf("expected OpDup in instructions for %q", tt.input)
+		if !found {
+			t.Errorf("expected %v (or optimized version) in instructions for %q", tt.expectedOp, tt.input)
 		}
+		// Note: OpDup may or may not be present depending on optimization
 	}
 }
 

@@ -69,6 +69,13 @@ const (
 	OpGetLocalConstGreater // GetLocal + Constant + Greater
 	OpGetLocalConstEqual   // GetLocal + Constant + Equal
 
+	// Superinstructions for global + constant operations (common in main code)
+	OpGetGlobalConstAdd   // GetGlobal + Constant + Add
+	OpGetGlobalConstSub   // GetGlobal + Constant + Sub
+	OpGetGlobalConstMul   // GetGlobal + Constant + Mul
+	OpGetGlobalConstLess  // GetGlobal + Constant + Less
+	OpGetGlobalConstEqual // GetGlobal + Constant + Equal
+
 	// Type-specialized instructions (for hot path optimization)
 	OpIncLocal      // Increment local variable by 1 (optimized for loop counters)
 	OpDecLocal      // Decrement local variable by 1
@@ -389,6 +396,13 @@ var definitions = map[Opcode]*Definition{
 	OpGetLocalConstLess:    {"OpGetLocalConstLess", []int{1, 2}},    // 1-byte local, 2-byte const
 	OpGetLocalConstGreater: {"OpGetLocalConstGreater", []int{1, 2}}, // 1-byte local, 2-byte const
 	OpGetLocalConstEqual:   {"OpGetLocalConstEqual", []int{1, 2}},   // 1-byte local, 2-byte const
+
+	// Global + Constant superinstructions (common in main code)
+	OpGetGlobalConstAdd:   {"OpGetGlobalConstAdd", []int{2, 2}},   // 2-byte global, 2-byte const
+	OpGetGlobalConstSub:   {"OpGetGlobalConstSub", []int{2, 2}},   // 2-byte global, 2-byte const
+	OpGetGlobalConstMul:   {"OpGetGlobalConstMul", []int{2, 2}},   // 2-byte global, 2-byte const
+	OpGetGlobalConstLess:  {"OpGetGlobalConstLess", []int{2, 2}},  // 2-byte global, 2-byte const
+	OpGetGlobalConstEqual: {"OpGetGlobalConstEqual", []int{2, 2}}, // 2-byte global, 2-byte const
 
 	// Type-specialized instructions
 	OpIncLocal:      {"OpIncLocal", []int{1}},         // 1-byte: local index
