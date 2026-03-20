@@ -143,6 +143,16 @@ func (vm *RegVM) Globals() []Value {
 	return vm.globals
 }
 
+// GetConstants returns the constants array (for JIT)
+func (vm *RegVM) GetConstants() []Value {
+	return vm.constants
+}
+
+// GetGlobals returns the globals array (for JIT, same as Globals)
+func (vm *RegVM) GetGlobals() []Value {
+	return vm.globals
+}
+
 // GlobalsAsObjects returns the globals as objects.Object slice
 func (vm *RegVM) GlobalsAsObjects() []objects.Object {
 	result := make([]objects.Object, len(vm.globals))
