@@ -19,28 +19,28 @@ func fib(n) {
 }
 
 // Test with timing
-import "time"
+import { unixMs } from "time"
 
 // Warmup
 var _ = fib(10)
 
 // Run tests
-print("fib(10) = " + fib(10).toStr())
-print("fib(20) = " + fib(20).toStr())
-print("fib(30) = " + fib(30).toStr())
+pln("fib(10) = " + fib(10).toStr())
+pln("fib(20) = " + fib(20).toStr())
+pln("fib(30) = " + fib(30).toStr())
 
 // Time fib(35)
-var start = time.unixMs()
+var start = unixMs()
 var result = fib(35)
-var elapsed = time.unixMs() - start
-print("fib(35) = " + result.toStr() + " (took " + elapsed.toStr() + " ms)")
+var elapsed = unixMs() - start
+pln("fib(35) = " + result.toStr() + " (took " + elapsed.toStr() + " ms)")
 
 // Run multiple iterations for better measurement
 var iterations = 3
 var total = 0
 for (var i = 0; i < iterations; i++) {
-    var s = time.unixMs()
+    var s = unixMs()
     var r = fib(35)
-    total = total + (time.unixMs() - s)
+    total = total + (unixMs() - s)
 }
-print("Average over " + iterations.toStr() + " runs: " + (total / iterations).toStr() + " ms")
+pln("Average over " + iterations.toStr() + " runs: " + (total / iterations).toStr() + " ms")

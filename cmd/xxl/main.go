@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/topxeq/xxlang/pkg/compiler"
+	"github.com/topxeq/xxlang/pkg/jit"
 	"github.com/topxeq/xxlang/pkg/lexer"
 	"github.com/topxeq/xxlang/pkg/objects"
 	"github.com/topxeq/xxlang/pkg/parser"
@@ -21,6 +22,14 @@ import (
 // VMType controls which VM to use
 // Default is register VM for best performance (21% faster on average)
 var useStackVM = false
+
+// JITEnabled controls whether JIT compilation is enabled
+// Default is false (interpreter mode)
+var useJIT = false
+
+// JITConfig holds JIT compiler settings
+var jitHotThreshold = 100
+var jitMaxCodeSize = 4096
 
 const (
 	PROMPT          = ">> "
@@ -166,6 +175,14 @@ func parseVMFlag(args []string) []string {
 			}
 		} else if arg == "--stack-vm" {
 			useStackVM = true
+		} else if arg == "--jit" {
+			useJIT = true
+		} else if strings.HasPrefix(arg, "--jit-threshold=") {
+			threshold := strings.TrimPrefix(arg, "--jit-threshold=")
+			fmt.Sscanf(threshold, "%d", &jitHotThreshold)
+			useJIT = true
+		} else if arg == "--no-jit" {
+			useJIT = false
 		} else {
 			result = append(result, arg)
 		}
@@ -195,6 +212,9 @@ func printUsage() {
 	fmt.Println("      --vm=register     Use register-based VM (default, faster)")
 	fmt.Println("      --vm=stack        Use stack-based VM (for compatibility)")
 	fmt.Println("      --stack-vm        Same as --vm=stack")
+	fmt.Println("      --jit             Enable JIT compilation for hot paths (experimental, limited support)")
+	fmt.Println("      --jit-threshold=N Set JIT hot path threshold (default: 100)")
+	fmt.Println("      --no-jit          Disable JIT compilation (default)")
 	fmt.Println()
 	fmt.Println("Script Arguments:")
 	fmt.Println("  Use '--' to separate interpreter arguments from script arguments.")
@@ -506,6 +526,41 @@ func executeCodeRegister(program *parser.Program, sourcePath, code string) {
 
 	// Execution
 	bytecode := c.Bytecode()
+
+	// Use JIT VM if enabled
+	if useJIT {
+		jitConfig := jit.JITConfig{
+			HotThreshold: jitHotThreshold,
+			MaxCodeSize:  jitMaxCodeSize,
+			Debug:        false,
+		}
+		jitVM := jit.NewJITVMWithGlobals(bytecode, globals, jitConfig)
+		jitVM.SetSourcePath(sourcePath)
+		jitVM.SetCurrentModule(mainModule)
+
+		if err := jitVM.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "Runtime Error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "\n%s", jitVM.GetCallStack())
+			os.Exit(1)
+		}
+
+		// Print JIT stats
+		stats := jitVM.GetJITStats()
+		if stats.CompiledFunctions > 0 {
+			fmt.Fprintf(os.Stderr, "[JIT] Compiled %d functions, %d bytes\n", stats.CompiledFunctions, stats.TotalCodeSize)
+		}
+
+		// Print result if it's meaningful
+		result := jitVM.LastPoppedObject()
+		if result != nil && result != objects.NULL {
+			fmt.Println(result.Inspect())
+		}
+
+		jitVM.Cleanup()
+		return
+	}
+
+	// Standard register VM execution
 	v := vm.NewRegVMWithGlobals(bytecode, globals)
 	v.SetSourcePath(sourcePath)
 	v.SetCurrentModule(mainModule)

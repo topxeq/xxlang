@@ -9,7 +9,7 @@ func fib(n) {
 }
 
 // Test different sizes
-print("fib(10) = " + fib(10).toStr())
-print("fib(20) = " + fib(20).toStr())
-print("fib(30) = " + fib(30).toStr())
-print("fib(35) = " + fib(35).toStr())
+pln("fib(10) = " + fib(10).toStr())
+pln("fib(20) = " + fib(20).toStr())
+pln("fib(30) = " + fib(30).toStr())
+pln("fib(35) = " + fib(35).toStr())
