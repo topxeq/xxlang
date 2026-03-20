@@ -267,16 +267,7 @@ func (j *JITCompiler) GetStats() JITStats {
 	return j.stats
 }
 
-// hashBytecode generates a hash for bytecode
-func hashBytecode(code []byte) uint64 {
-	// Simple FNV-1a hash
-	h := uint64(14695981039346656037)
-	for _, b := range code {
-		h ^= uint64(b)
-		h *= 1099511628211
-	}
-	return h
-}
+// hashBytecode is defined in cache.go
 
 // GetFunctionPointer returns a callable pointer for the compiled function
 func (cf *CompiledFunc) GetFunctionPointer() uintptr {

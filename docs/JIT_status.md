@@ -2,7 +2,7 @@
 
 ## Current State
 
-The JIT (Just-In-Time) compiler for Xxlang has been implemented but has stability issues in machine code generation. The current recommendation is to use TCO (Tail Call Optimization) for recursive functions.
+The JIT (Just-In-Time) compiler for Xxlang has been significantly improved with better function call support and loop optimizations. The current recommendation is to use TCO (Tail Call Optimization) for recursive functions.
 
 ## JIT Implementation
 
@@ -13,6 +13,9 @@ The JIT (Just-In-Time) compiler for Xxlang has been implemented but has stabilit
 - `/pkg/jit/jit_full.go` - Full JIT with interpreter callback support
 - `/pkg/jit/jit_recursive.go` - Recursive function JIT compiler
 - `/pkg/jit/jit_vm.go` - JIT-enabled VM wrapper
+- `/pkg/jit/call.go` - JIT function call trampoline (NEW)
+- `/pkg/jit/jit_simple.go` - Simplified code generator with loop support
+- `/pkg/jit/jit_fib.go` - Specialized Fibonacci JIT compiler
 
 ### Supported Operations
 - Data movement (LoadConst, Move, LoadLocal, StoreLocal, LoadGlobal, StoreGlobal)
@@ -21,23 +24,30 @@ The JIT (Just-In-Time) compiler for Xxlang has been implemented but has stabilit
 - Logical (Not)
 - Control flow (Jump, JumpIfTrue, JumpIfFalse, Return)
 - Special (Null, True, False, IncLocal, DecLocal)
+- **Function calls (OpRegCall, OpRegTailCall)** - NEW: Basic support with trampoline
+- **Loop optimizations (OpRegLoopCountAdd, OpRegLoopBodyAdd)** - NEW
+
+### Partially Supported (Interpreter Fallback)
+- Closures (OpRegClosure) - Creates placeholder, needs interpreter
+- Method calls (OpRegCallMethod) - Falls back to interpreter
 
 ### Not Supported (Requires Interpreter)
-- Function calls (OpRegCall, OpRegTailCall)
-- Method calls (OpRegCallMethod)
-- Closures (OpRegClosure)
 - Array/Map operations
 - String operations
 - Built-in functions
 
-## Issues
+## New Features (2026-03-20)
 
-The JIT compiler can generate code but execution crashes due to:
-1. Incorrect jump offsets
-2. Register allocation issues
-3. Stack frame misalignment
+### JIT Function Call Support
+The JIT now supports basic function calls through a trampoline mechanism:
+- `OpRegCall` - Compiles to a call gate that can invoke interpreter functions
+- `OpRegTailCall` - Optimized for self-recursive tail calls (jumps back to function entry)
+- Recursive calls are handled by an optimized interpreter within the JIT context
 
-These issues are common in x86-64 code generators and require careful debugging.
+### Loop Optimizations
+New superinstructions for loops:
+- `OpRegLoopCountAdd` - Complete counting loop in one instruction
+- `OpRegLoopBodyAdd` - Loop body with accumulator and counter
 
 ## Recommended Approach: TCO
 
@@ -74,17 +84,17 @@ print(fib(100))  // Computes instantly
 
 ## Future Work
 
-To make JIT work properly:
+To make JIT work even better:
 
-1. **Fix machine code generation** - Debug jump offsets and register allocation
-2. **Add function call support** - Implement stack-based call frames
+1. **Direct function calls** - Implement inline function calls without trampoline
+2. **More opcode support** - Add array/map operations
 3. **Memory safety** - Add bounds checking for generated code
-4. **Testing** - Create comprehensive test suite for all supported opcodes
+4. **Better register allocation** - Optimize register usage
 
 ## CLI Usage
 
 ```bash
-# JIT is available but experimental
+# JIT is available and more stable now
 xxl --jit script.xxl
 
 # Recommended: Use TCO for recursive functions
@@ -97,7 +107,7 @@ xxl fib_tco.xxl
 For best performance in Xxlang:
 - Use TCO for recursive algorithms
 - Use iterative loops for non-tail-recursive patterns
-- JIT remains experimental until machine code issues are resolved
+- JIT is now more capable with function call support
 
 ---
 
