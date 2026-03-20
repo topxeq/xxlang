@@ -325,7 +325,7 @@ var Builtins = map[string]*Builtin{
 				elements[i] = NewString(part)
 			}
 
-			return &Array{Elements: elements}
+			return NewArray(elements)
 		},
 	},
 	"join": {
@@ -820,7 +820,7 @@ var Builtins = map[string]*Builtin{
 			if start.Value < 0 || start.Value > arrLen || end < start.Value || end > arrLen {
 				return newError("slice indices out of range")
 			}
-			return &Array{Elements: arr.Elements[start.Value:end]}
+			return NewArray(arr.Elements[start.Value:end])
 		},
 	},
 	"concat": {
@@ -840,7 +840,7 @@ var Builtins = map[string]*Builtin{
 			newElements := make([]Object, len(arr1.Elements)+len(arr2.Elements))
 			copy(newElements, arr1.Elements)
 			copy(newElements[len(arr1.Elements):], arr2.Elements)
-			return &Array{Elements: newElements}
+			return NewArray(newElements)
 		},
 	},
 	"indexOf": {
@@ -902,7 +902,7 @@ var Builtins = map[string]*Builtin{
 				keys[i] = pair.Key
 				i++
 			}
-			return &Array{Elements: keys}
+			return NewArray(keys)
 		},
 	},
 	"values": {
@@ -921,7 +921,7 @@ var Builtins = map[string]*Builtin{
 				vals[i] = pair.Value
 				i++
 			}
-			return &Array{Elements: vals}
+			return NewArray(vals)
 		},
 	},
 	"hasKey": {
@@ -995,7 +995,7 @@ var Builtins = map[string]*Builtin{
 					elements[start-i] = NewInt(i)
 				}
 			}
-			return &Array{Elements: elements}
+			return NewArray(elements)
 		},
 	},
 	"sort": {
@@ -1020,7 +1020,7 @@ var Builtins = map[string]*Builtin{
 					}
 				}
 			}
-			return &Array{Elements: sorted}
+			return NewArray(sorted)
 		},
 	},
 	"sum": {
@@ -1096,7 +1096,7 @@ var Builtins = map[string]*Builtin{
 			for i := 0; i < len(arr.Elements); i++ {
 				reversed[i] = arr.Elements[len(arr.Elements)-1-i]
 			}
-			return &Array{Elements: reversed}
+			return NewArray(reversed)
 		},
 	},
 
@@ -1630,7 +1630,7 @@ var Builtins = map[string]*Builtin{
 				}
 			}
 
-			return &Array{Elements: result}
+			return NewArray(result)
 		},
 	},
 	"flatten": {
@@ -1654,7 +1654,7 @@ var Builtins = map[string]*Builtin{
 			}
 
 			result := flattenArray(arr.Elements, depth)
-			return &Array{Elements: result}
+			return NewArray(result)
 		},
 	},
 	"without": {
@@ -1680,7 +1680,7 @@ var Builtins = map[string]*Builtin{
 				}
 			}
 
-			return &Array{Elements: result}
+			return NewArray(result)
 		},
 	},
 	"take": {
@@ -1707,7 +1707,7 @@ var Builtins = map[string]*Builtin{
 				count = len(arr.Elements)
 			}
 
-			return &Array{Elements: arr.Elements[:count]}
+			return NewArray(arr.Elements[:count])
 		},
 	},
 	"drop": {
@@ -1734,7 +1734,7 @@ var Builtins = map[string]*Builtin{
 				count = len(arr.Elements)
 			}
 
-			return &Array{Elements: arr.Elements[count:]}
+			return NewArray(arr.Elements[count:])
 		},
 	},
 
@@ -1760,7 +1760,7 @@ var Builtins = map[string]*Builtin{
 				}
 			}
 
-			return &Map{Pairs: result}
+			return NewMap(result)
 		},
 	},
 	"entries": {
@@ -1776,10 +1776,10 @@ var Builtins = map[string]*Builtin{
 
 			result := make([]Object, 0, len(m.Pairs))
 			for _, pair := range m.Pairs {
-				result = append(result, &Array{Elements: []Object{pair.Key, pair.Value}})
+				result = append(result, NewArray([]Object{pair.Key, pair.Value}))
 			}
 
-			return &Array{Elements: result}
+			return NewArray(result)
 		},
 	},
 
@@ -1870,7 +1870,7 @@ var Builtins = map[string]*Builtin{
 				}
 			}
 
-			return &Map{Pairs: result}
+			return NewMap(result)
 		},
 	},
 
@@ -2234,7 +2234,7 @@ var Builtins = map[string]*Builtin{
 				result[i], result[j] = result[j], result[i]
 			})
 
-			return &Array{Elements: result}
+			return NewArray(result)
 		},
 	},
 	"sample": {
@@ -2276,7 +2276,7 @@ var Builtins = map[string]*Builtin{
 				result = append(result, arr.Elements[indices[i]])
 			}
 
-			return &Array{Elements: result}
+			return NewArray(result)
 		},
 	},
 	"chunk": {
@@ -2305,10 +2305,10 @@ var Builtins = map[string]*Builtin{
 				if end > len(arr.Elements) {
 					end = len(arr.Elements)
 				}
-				chunks = append(chunks, &Array{Elements: arr.Elements[i:end]})
+				chunks = append(chunks, NewArray(arr.Elements[i:end]))
 			}
 
-			return &Array{Elements: chunks}
+			return NewArray(chunks)
 		},
 	},
 
@@ -2477,7 +2477,7 @@ func deepCopyObject(obj Object) Object {
 		for i, elem := range o.Elements {
 			elements[i] = deepCopyObject(elem)
 		}
-		return &Array{Elements: elements}
+		return NewArray(elements)
 	case *Map:
 		pairs := make(map[HashKey]MapPair)
 		for k, v := range o.Pairs {
@@ -2486,7 +2486,7 @@ func deepCopyObject(obj Object) Object {
 				Value: deepCopyObject(v.Value),
 			}
 		}
-		return &Map{Pairs: pairs}
+		return NewMap(pairs)
 	default:
 		// For other types, return as-is (functions, builtins, etc.)
 		return obj
@@ -2499,13 +2499,13 @@ func shallowCopyObject(obj Object) Object {
 	case *Array:
 		elements := make([]Object, len(o.Elements))
 		copy(elements, o.Elements)
-		return &Array{Elements: elements}
+		return NewArray(elements)
 	case *Map:
 		pairs := make(map[HashKey]MapPair)
 		for k, v := range o.Pairs {
 			pairs[k] = v
 		}
-		return &Map{Pairs: pairs}
+		return NewMap(pairs)
 	default:
 		// For primitive types, return as-is
 		return obj

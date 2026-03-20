@@ -207,7 +207,7 @@ var stringMethods = map[string]*Builtin{
 		for i, part := range parts {
 			elements[i] = NewString(part)
 		}
-		return &Array{Elements: elements}
+		return NewArray(elements)
 	}},
 	"contains": {Fn: func(args ...Object) Object {
 		if len(args) != 2 {
@@ -359,7 +359,7 @@ var arrayMethods = map[string]*Builtin{
 		newElements := make([]Object, len(self.Elements)+1)
 		copy(newElements, self.Elements)
 		newElements[len(self.Elements)] = args[1]
-		return &Array{Elements: newElements}
+		return NewArray(newElements)
 	}},
 	"pop": {Fn: func(args ...Object) Object {
 		if len(args) != 1 {
@@ -375,7 +375,9 @@ var arrayMethods = map[string]*Builtin{
 		lastElem := self.Elements[len(self.Elements)-1]
 		newElements := make([]Object, len(self.Elements)-1)
 		copy(newElements, self.Elements[:len(self.Elements)-1])
-		return &Array{Elements: newElements, LastPopped: lastElem}
+		result := NewArray(newElements)
+		result.LastPopped = lastElem
+		return result
 	}},
 	"first": {Fn: func(args ...Object) Object {
 		if len(args) != 1 {
@@ -448,7 +450,7 @@ var arrayMethods = map[string]*Builtin{
 		for i := 0; i < len(self.Elements); i++ {
 			reversed[i] = self.Elements[len(self.Elements)-1-i]
 		}
-		return &Array{Elements: reversed}
+		return NewArray(reversed)
 	}},
 	"join": {Fn: func(args ...Object) Object {
 		if len(args) != 2 {
@@ -505,7 +507,7 @@ var mapMethods = map[string]*Builtin{
 			keys[i] = pair.Key
 			i++
 		}
-		return &Array{Elements: keys}
+		return NewArray(keys)
 	}},
 	"values": {Fn: func(args ...Object) Object {
 		if len(args) != 1 {
@@ -521,7 +523,7 @@ var mapMethods = map[string]*Builtin{
 			vals[i] = pair.Value
 			i++
 		}
-		return &Array{Elements: vals}
+		return NewArray(vals)
 	}},
 	"hasKey": {Fn: func(args ...Object) Object {
 		if len(args) != 2 {
@@ -548,7 +550,7 @@ var mapMethods = map[string]*Builtin{
 				newPairs[k] = v
 			}
 		}
-		return &Map{Pairs: newPairs}
+		return NewMap(newPairs)
 	}},
 }
 
