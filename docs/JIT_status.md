@@ -2,7 +2,7 @@
 
 ## Current State
 
-The JIT (Just-In-Time) compiler for Xxlang has been significantly improved with better function call support, loop optimizations, and an optimized code generator.
+The JIT (Just-In-Time) compiler for Xxlang now supports **native x86-64 execution** for pure arithmetic and loop code, providing up to 1.75x speedup over the interpreter.
 
 ## JIT Implementation
 
@@ -10,39 +10,66 @@ The JIT (Just-In-Time) compiler for Xxlang has been significantly improved with 
 - `/pkg/jit/jit.go` - Core JIT compiler
 - `/pkg/jit/codegen.go` - Basic x86-64 code generator
 - `/pkg/jit/codegen_ext.go` - Extended code generator
-- `/pkg/jit/codegen_optimized.go` - **NEW** Optimized code generator with register caching
+- `/pkg/jit/codegen_optimized.go` - Optimized code generator with register caching
+- `/pkg/jit/native_executor.go` - **NEW** Native JIT executor for direct x86-64 execution
+- `/pkg/jit/native_codegen.go` - **NEW** Pure native code generator (no VM callbacks)
 - `/pkg/jit/jit_full.go` - Full JIT with interpreter callback support
 - `/pkg/jit/jit_recursive.go` - Recursive function JIT compiler
-- `/pkg/jit/jit_vm.go` - JIT-enabled VM wrapper
+- `/pkg/jit/jit_vm.go` - JIT-enabled VM wrapper with native execution
 - `/pkg/jit/call.go` - JIT function call trampoline
 - `/pkg/jit/jit_simple.go` - Simplified code generator with loop support
 - `/pkg/jit/jit_fib.go` - Specialized Fibonacci JIT compiler
 
-### Supported Operations
+## Native Execution
+
+The JIT now supports direct native execution for pure arithmetic and loop code:
+
+### When Native Execution is Enabled
+
+Native execution is automatically enabled when bytecode contains only:
+- Arithmetic: Add, Sub, Mul, Div, Mod, Neg
+- Comparison: Less, Greater, Equal, NotEqual, LessEqual, GreaterEqual
+- Logic: And, Or, Not
+- Control flow: Jump, JumpIfTrue, JumpIfFalse, Return
+- Constants: LoadConst, Null, True, False
+- Locals: LoadLocal, StoreLocal, IncLocal, DecLocal
+- Loop optimizations: LoopCountAdd, LoopBodyAdd
+
+### When Interpreter Fallback Occurs
+
+The interpreter is used when bytecode contains:
+- Function calls (OpRegCall, OpRegTailCall)
+- Builtin calls (OpRegBuiltin)
+- Global variables (OpRegLoadGlobal, OpRegStoreGlobal)
+- Arrays/Maps (OpRegArray, OpRegMap, OpRegIndex, etc.)
+- Objects (OpRegGetField, OpRegSetField, OpRegMethod)
+
+### Performance
+
+| Benchmark | Interpreter | JIT Native | Speedup |
+|-----------|-------------|------------|---------|
+| Loop 100k | 351 ms | 201 ms | **1.75x** |
+| Arithmetic 10k | 227 ms | 199 ms | **1.14x** |
+
+## Supported Operations
 - Data movement (LoadConst, Move, LoadLocal, StoreLocal, LoadGlobal, StoreGlobal)
 - Arithmetic (Add, Sub, Mul, Div, Mod, Neg)
 - Comparison (Less, Greater, Equal, NotEqual, LessEqual, GreaterEqual)
-- Logical (Not)
+- Logical (And, Or, Not)
 - Control flow (Jump, JumpIfTrue, JumpIfFalse, Return)
 - Special (Null, True, False, IncLocal, DecLocal)
 - Function calls (OpRegCall, OpRegTailCall) - Basic support with trampoline
-- **Loop optimizations (OpRegLoopCountAdd, OpRegLoopBodyAdd)** - Full support
+- **Loop optimizations (OpRegLoopCountAdd, OpRegLoopBodyAdd)** - Full support with native execution
 - **Array operations (OpRegArray, OpRegArrayEmpty, OpRegArrayAppend)** - Stub support
 - **Map operations (OpRegMap, OpRegMapSet)** - Stub support
 - **Index operations (OpRegIndex, OpRegSetIndex)** - Stub support
-
-### Optimized Code Generator
-The new `OptimizedCodeGenerator` uses hardware registers (rax, rbx, rcx, rdx, r8-r11) to cache VM registers 0-7, significantly reducing memory traffic for tight loops and arithmetic operations.
 
 ## Performance
 
 ### JIT Compilation Performance
 - **JIT compile time**: ~30-40 µs for typical functions
 - **Memory allocation**: ~1.5-9 µs depending on code size
-
-### Interpreter Performance
-- **Simple loops**: ~350-400 µs per iteration
-- **TCO functions**: ~300-600 µs for fib(35)
+- **Native execution**: 1.14x-1.75x faster than interpreter for pure arithmetic/loop code
 
 ## Recommended Approach: TCO
 

@@ -111,7 +111,7 @@ func (j *JITCompiler) allocCodePageLocked() (*CodePage, error) {
 }
 
 // allocCode allocates code in an executable page
-func (j *JITCompiler) allocCode(size int) ([]byte, *CodePage, error) {
+func (j *JITCompiler) AllocCode(size int) ([]byte, *CodePage, error) {
 	j.pageLock.Lock()
 	defer j.pageLock.Unlock()
 
@@ -211,7 +211,7 @@ func (j *JITCompiler) Compile(fn *compiler.CompiledFunction, constants []vm.Valu
 	}
 
 	// Allocate executable memory
-	mem, page, err := j.allocCode(len(code))
+	mem, page, err := j.AllocCode(len(code))
 	if err != nil {
 		return nil, fmt.Errorf("memory allocation failed: %w", err)
 	}
