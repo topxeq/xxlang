@@ -491,22 +491,27 @@ func (c *FibJITCompiler) compileInstruction(op compiler.Opcode, code []byte, ip 
 
 	// Control flow
 	case compiler.OpRegJump:
-		offset := int16(uint16(code[*ip+1])<<8 | uint16(code[*ip+2]))
-		target := *ip + 3 + int(offset)
+		// Format: opcode(1) + unused(1) + offset(2) = 4 bytes
+		// In VM: IP += offset (offset is relative to current IP)
+		// Skip the unused byte at code[*ip+1]
+		offset := int16(uint16(code[*ip+2])<<8 | uint16(code[*ip+3]))
+		target := *ip + int(offset)
 		c.compileJump(target)
-		*ip += 3
+		*ip += 4
 
 	case compiler.OpRegJumpIfFalse:
 		cond := int(code[*ip+1])
 		offset := int16(uint16(code[*ip+2])<<8 | uint16(code[*ip+3]))
-		target := *ip + 4 + int(offset)
+		// In VM: IP += offset (offset is relative to current IP)
+		target := *ip + int(offset)
 		c.compileJumpIfFalse(cond, target)
 		*ip += 4
 
 	case compiler.OpRegJumpIfTrue:
 		cond := int(code[*ip+1])
 		offset := int16(uint16(code[*ip+2])<<8 | uint16(code[*ip+3]))
-		target := *ip + 4 + int(offset)
+		// In VM: IP += offset (offset is relative to current IP)
+		target := *ip + int(offset)
 		c.compileJumpIfTrue(cond, target)
 		*ip += 4
 
