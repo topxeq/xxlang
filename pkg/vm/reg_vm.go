@@ -175,6 +175,15 @@ func (vm *RegVM) LastPoppedObject() objects.Object {
 	return frame.Registers[compiler.ReturnRegister].ToObject()
 }
 
+// SetLastResult sets the result value in the ReturnRegister
+// This is used by JIT execution to store native execution results
+func (vm *RegVM) SetLastResult(val Value) {
+	frame := vm.currentFrame()
+	if frame != nil {
+		frame.Registers[compiler.ReturnRegister] = val
+	}
+}
+
 // NewRegVMWithObjectGlobals creates a register VM with globals as objects.Object
 func NewRegVMWithObjectGlobals(bytecode *compiler.Bytecode, globals []objects.Object) *RegVM {
 	// Convert objects.Object to Value

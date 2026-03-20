@@ -26,6 +26,11 @@ type FibJITCompiler struct {
 	config JITConfig
 }
 
+// SavedRegsSize is the bytes used for saved callee-saved registers on stack
+// Layout: rbp(8) + rbx(8) + r12(8) + r13(8) + r14(8) + r15(8) = 48 bytes
+// Local variables start at [rbp - SavedRegsSize - localOffset]
+const FibSavedRegsSize = 48
+
 // NewFibJITCompiler creates a new Fibonacci JIT compiler
 func NewFibJITCompiler(config JITConfig) *FibJITCompiler {
 	return &FibJITCompiler{
@@ -257,6 +262,7 @@ func (c *FibJITCompiler) isSimpleFibonacci(fn *compiler.CompiledFunction) bool {
 
 // compileIterativeFibonacci compiles an optimized iterative Fibonacci
 // This is the fast path for the classic recursive Fibonacci
+// Supports System V AMD64 ABI: argument n is passed in rdi
 func (c *FibJITCompiler) compileIterativeFibonacci(fn *compiler.CompiledFunction) ([]byte, error) {
 	// Transform: fib(n) = fib(n-1) + fib(n-2)
 	// To: iterative version with a, b, temp
@@ -268,77 +274,90 @@ func (c *FibJITCompiler) compileIterativeFibonacci(fn *compiler.CompiledFunction
 	// Prologue with space for locals
 	c.emitPrologue(32) // Enough space for our variables
 
-	// Store parameter n from Go stack to [rbp-8]
-	// In Go: first argument is at [rbp+16]
-	c.emitBytes([]byte{0x48, 0x8B, 0x45, 0x10}) // mov rax, [rbp+16]
-	c.emitBytes([]byte{0x48, 0x89, 0x45, 0xF8}) // mov [rbp-8], rax
+	// Stack layout after prologue:
+	// [rbp] = old rbp
+	// [rbp-8] = saved rbx
+	// [rbp-16] = saved r12
+	// [rbp-24] = saved r13
+	// [rbp-32] = saved r14
+	// [rbp-40] = saved r15
+	// [rbp-48] = n (input parameter) <- locals start here
+	// [rbp-56] = a (fib(i-2))
+	// [rbp-64] = b (fib(i-1))
+	// [rbp-72] = counter i
+	// [rbp-80] = temp
 
-	// Register allocation (using stack slots relative to rbp):
-	// [rbp-8]  = n (input parameter)
-	// [rbp-16] = a (fib(i-2))
-	// [rbp-24] = b (fib(i-1))
-	// [rbp-32] = counter i
-	// [rbp-40] = temp
+	// Store parameter n from rdi to [rbp-48]
+	// System V AMD64 ABI: first argument is in rdi
+	c.emitBytes([]byte{0x48, 0x89, 0x7D, 0xD0}) // mov [rbp-48], rdi
 
 	// Base case: if n <= 1, return n
-	// Load n from [rbp-8]
-	c.emitBytes([]byte{0x48, 0x8B, 0x45, 0xF8}) // mov rax, [rbp-8]
+	// Load n from [rbp-48]
+	c.emitBytes([]byte{0x48, 0x8B, 0x45, 0xD0}) // mov rax, [rbp-48]
 	// Compare with 1
 	c.emitBytes([]byte{0x48, 0x83, 0xF8, 0x01}) // cmp rax, 1
-	// Jump if greater to loop_init
+	// Jump if greater to loop code (skip the base case return)
+	// The epilogue is 15 bytes: lea(4) + pop r15(2) + pop r14(2) + pop r13(2) + pop r12(2) + pop rbx(1) + pop rbp(1) + ret(1)
 	c.emitBytes([]byte{0x7F})                   // jg rel8
-	c.emitByte(0x05)                            // jump over the ret instruction
+	c.emitByte(0x0F)                            // jump 15 bytes forward (over the epilogue)
 	// Return n (already in rax)
 	c.emitEpilogue()
 
 	// Initialize: a = 0, b = 1, i = 2
 	// a = 0
-	c.emitBytes([]byte{0x48, 0xC7, 0x45, 0xF0, 0x00, 0x00, 0x00, 0x00}) // mov qword [rbp-16], 0
+	c.emitBytes([]byte{0x48, 0xC7, 0x45, 0xC8, 0x00, 0x00, 0x00, 0x00}) // mov qword [rbp-56], 0
 	// b = 1
-	c.emitBytes([]byte{0x48, 0xC7, 0x45, 0xE8, 0x01, 0x00, 0x00, 0x00}) // mov qword [rbp-24], 1
+	c.emitBytes([]byte{0x48, 0xC7, 0x45, 0xC0, 0x01, 0x00, 0x00, 0x00}) // mov qword [rbp-64], 1
 	// i = 2
-	c.emitBytes([]byte{0x48, 0xC7, 0x45, 0xE0, 0x02, 0x00, 0x00, 0x00}) // mov qword [rbp-32], 2
+	c.emitBytes([]byte{0x48, 0xC7, 0x45, 0xB8, 0x02, 0x00, 0x00, 0x00}) // mov qword [rbp-72], 2
 
 	// Loop label
 	c.labels["loop"] = len(c.code)
 
 	// Loop: temp = a + b; a = b; b = temp; i++
 	// temp = a + b
-	c.emitBytes([]byte{0x48, 0x8B, 0x45, 0xF0}) // mov rax, [rbp-16] (a)
-	c.emitBytes([]byte{0x48, 0x03, 0x45, 0xE8}) // add rax, [rbp-24] (b)
-	c.emitBytes([]byte{0x48, 0x89, 0x45, 0xD8}) // mov [rbp-40], rax (temp)
+	c.emitBytes([]byte{0x48, 0x8B, 0x45, 0xC8}) // mov rax, [rbp-56] (a)
+	c.emitBytes([]byte{0x48, 0x03, 0x45, 0xC0}) // add rax, [rbp-64] (b)
+	c.emitBytes([]byte{0x48, 0x89, 0x45, 0xB0}) // mov [rbp-80], rax (temp)
 
 	// a = b
-	c.emitBytes([]byte{0x48, 0x8B, 0x45, 0xE8}) // mov rax, [rbp-24] (b)
-	c.emitBytes([]byte{0x48, 0x89, 0x45, 0xF0}) // mov [rbp-16], rax (a)
+	c.emitBytes([]byte{0x48, 0x8B, 0x45, 0xC0}) // mov rax, [rbp-64] (b)
+	c.emitBytes([]byte{0x48, 0x89, 0x45, 0xC8}) // mov [rbp-56], rax (a)
 
 	// b = temp
-	c.emitBytes([]byte{0x48, 0x8B, 0x45, 0xD8}) // mov rax, [rbp-40] (temp)
-	c.emitBytes([]byte{0x48, 0x89, 0x45, 0xE8}) // mov [rbp-24], rax (b)
+	c.emitBytes([]byte{0x48, 0x8B, 0x45, 0xB0}) // mov rax, [rbp-80] (temp)
+	c.emitBytes([]byte{0x48, 0x89, 0x45, 0xC0}) // mov [rbp-64], rax (b)
 
 	// i++
-	c.emitBytes([]byte{0x48, 0xFF, 0x45, 0xE0}) // inc qword [rbp-32]
+	c.emitBytes([]byte{0x48, 0xFF, 0x45, 0xB8}) // inc qword [rbp-72]
 
 	// Check: if i <= n, continue loop
-	c.emitBytes([]byte{0x48, 0x8B, 0x45, 0xE0}) // mov rax, [rbp-32] (i)
-	c.emitBytes([]byte{0x48, 0x3B, 0x45, 0xF8}) // cmp rax, [rbp-8] (n)
+	c.emitBytes([]byte{0x48, 0x8B, 0x45, 0xB8}) // mov rax, [rbp-72] (i)
+	c.emitBytes([]byte{0x48, 0x3B, 0x45, 0xD0}) // cmp rax, [rbp-48] (n)
 	c.emitBytes([]byte{0x7E})                   // jle rel8
-	c.fixups = append(c.fixups, fixup{offset: len(c.code) + 1, label: "loop", size: 1})
+	// Record the position of the rel8 placeholder
+	jleRel8Pos := len(c.code)
 	c.emitByte(0x00) // placeholder
 
 	// Return b
-	c.emitBytes([]byte{0x48, 0x8B, 0x45, 0xE8}) // mov rax, [rbp-24] (b)
+	c.emitBytes([]byte{0x48, 0x8B, 0x45, 0xC0}) // mov rax, [rbp-64] (b)
 	c.emitEpilogue()
 
-	// Resolve fixups
-	for i := range c.fixups {
-		if c.fixups[i].label == "loop" {
-			target := c.labels["loop"]
-			offset := int8(target - (c.fixups[i].offset + 1))
-			c.code[c.fixups[i].offset-1] = 0x7E // jle
-			c.code[c.fixups[i].offset] = byte(offset)
-		}
+	// Resolve the loop fixup
+	// jle is a backward jump, so offset = target - (current_position + 1)
+	// But since target < current, the offset is negative
+	target := c.labels["loop"]
+	// The offset is relative to the instruction after jle (i.e., after the rel8 byte)
+	// offset = target - (jleRel8Pos + 1)
+	offset := target - (jleRel8Pos + 1)
+	// Check that offset fits in int8
+	if offset < -128 || offset > 127 {
+		// For a loop, offset should always be negative and within range
+		// If not, we'd need to use a near jump (rel32) instead
+		// For now, just clamp - this shouldn't happen for reasonable loops
+		offset = -128
 	}
+	c.code[jleRel8Pos] = byte(int8(offset))
 
 	return c.code, nil
 }
@@ -659,6 +678,85 @@ func (c *FibJITCompiler) compileInstruction(op compiler.Opcode, code []byte, ip 
 // Low-Level Code Generation
 // ============================================================================
 
+// localOffset returns the stack offset for local variable 'slot'
+// Local variables are stored at [rbp - FibSavedRegsSize - (slot+1)*8]
+func (c *FibJITCompiler) localOffset(slot int) int {
+	return FibSavedRegsSize + (slot+1)*8
+}
+
+// emitMovRaxToSlot stores rax to local variable slot
+func (c *FibJITCompiler) emitMovRaxToSlot(slot int) {
+	offset := c.localOffset(slot)
+	if offset <= 127 {
+		c.emitBytes([]byte{0x48, 0x89, 0x45})
+		c.emitByte(byte(-offset))
+	} else {
+		c.emitBytes([]byte{0x48, 0x89, 0x85})
+		c.emitUint32(uint32(-offset))
+	}
+}
+
+// emitMovSlotToRax loads local variable slot to rax
+func (c *FibJITCompiler) emitMovSlotToRax(slot int) {
+	offset := c.localOffset(slot)
+	if offset <= 127 {
+		c.emitBytes([]byte{0x48, 0x8B, 0x45})
+		c.emitByte(byte(-offset))
+	} else {
+		c.emitBytes([]byte{0x48, 0x8B, 0x85})
+		c.emitUint32(uint32(-offset))
+	}
+}
+
+// emitAddSlotToRax adds local variable slot to rax
+func (c *FibJITCompiler) emitAddSlotToRax(slot int) {
+	offset := c.localOffset(slot)
+	if offset <= 127 {
+		c.emitBytes([]byte{0x48, 0x03, 0x45})
+		c.emitByte(byte(-offset))
+	} else {
+		c.emitBytes([]byte{0x48, 0x03, 0x85})
+		c.emitUint32(uint32(-offset))
+	}
+}
+
+// emitAddRaxToSlot adds rax to local variable slot
+func (c *FibJITCompiler) emitAddRaxToSlot(slot int) {
+	offset := c.localOffset(slot)
+	if offset <= 127 {
+		c.emitBytes([]byte{0x48, 0x01, 0x45})
+		c.emitByte(byte(-offset))
+	} else {
+		c.emitBytes([]byte{0x48, 0x01, 0x85})
+		c.emitUint32(uint32(-offset))
+	}
+}
+
+// emitIncSlot increments local variable slot
+func (c *FibJITCompiler) emitIncSlot(slot int) {
+	offset := c.localOffset(slot)
+	if offset <= 127 {
+		c.emitBytes([]byte{0x48, 0xFF, 0x45})
+		c.emitByte(byte(-offset))
+	} else {
+		c.emitBytes([]byte{0x48, 0xFF, 0x85})
+		c.emitUint32(uint32(-offset))
+	}
+}
+
+// emitMovImm32ToSlot moves 32-bit immediate to local variable slot
+func (c *FibJITCompiler) emitMovImm32ToSlot(slot int, val uint32) {
+	offset := c.localOffset(slot)
+	if offset <= 127 {
+		c.emitBytes([]byte{0x48, 0xC7, 0x45})
+		c.emitByte(byte(-offset))
+	} else {
+		c.emitBytes([]byte{0x48, 0xC7, 0x85})
+		c.emitUint32(uint32(-offset))
+	}
+	c.emitUint32(val)
+}
+
 // emitPrologue generates function entry code
 func (c *FibJITCompiler) emitPrologue(numLocals int) {
 	// push rbp
@@ -690,7 +788,7 @@ func (c *FibJITCompiler) emitPrologue(numLocals int) {
 
 // emitStoreParams stores parameters from registers to stack slots
 // Go calling convention: arguments are on the stack at [rbp+16], [rbp+24], etc.
-// We copy them to [rbp-8], [rbp-16], etc. for our register slots
+// We copy them to our local slots starting at [rbp - FibSavedRegsSize - 8]
 func (c *FibJITCompiler) emitStoreParams(numParams int) {
 	// In Go's calling convention for a function:
 	// - [rbp+8] = return address
@@ -698,44 +796,59 @@ func (c *FibJITCompiler) emitStoreParams(numParams int) {
 	// - [rbp+24] = second argument
 	// - etc.
 	//
-	// We store them at:
-	// - [rbp-8] = R0 (first param)
-	// - [rbp-16] = R1 (second param)
+	// We store them at local slots:
+	// - Slot 0 = [rbp - FibSavedRegsSize - 8]
+	// - Slot 1 = [rbp - FibSavedRegsSize - 16]
 	// - etc.
 
 	for i := 0; i < numParams && i < 16; i++ {
 		// mov rax, [rbp + 16 + i*8]  ; load argument from caller's stack
-		// mov [rbp - (i+1)*8], rax   ; store to our register slot
-		srcOffset := 16 + i*8   // positive offset from rbp
-		dstOffset := -(i + 1) * 8 // negative offset from rbp
+		srcOffset := 16 + i * 8 // positive offset from rbp
 
 		// mov rax, [rbp + srcOffset]
-		c.emitBytes([]byte{0x48, 0x8B, 0x45}) // mov rax, [rbp+disp8]
-		c.emitByte(byte(srcOffset))
+		if srcOffset <= 127 {
+			c.emitBytes([]byte{0x48, 0x8B, 0x45}) // mov rax, [rbp+disp8]
+			c.emitByte(byte(srcOffset))
+		} else {
+			c.emitBytes([]byte{0x48, 0x8B, 0x85}) // mov rax, [rbp+disp32]
+			c.emitUint32(uint32(srcOffset))
+		}
 
-		// mov [rbp + dstOffset], rax
-		c.emitBytes([]byte{0x48, 0x89, 0x45}) // mov [rbp+disp8], rax
-		c.emitByte(byte(dstOffset))
+		// Store to local slot i
+		c.emitMovRaxToSlot(i)
 	}
 }
 
 // emitEpilogue generates function exit code
 func (c *FibJITCompiler) emitEpilogue() {
-	// lea rsp, [rbp - 40] (5 * 8 = 40 bytes for saved registers)
-	// This restores rsp to point after the saved registers
+	// The prologue did:
+	//   push rbp; mov rbp, rsp
+	//   push rbx, r12, r13, r14, r15 (40 bytes total)
+	//   sub rsp, stackSize
+	//
+	// Stack layout:
+	//   [rbp] = old rbp
+	//   [rbp-8] = saved rbx
+	//   [rbp-16] = saved r12
+	//   [rbp-24] = saved r13
+	//   [rbp-32] = saved r14
+	//   [rbp-40] = saved r15
+	//   [rbp-48...] = locals
+	//
+	// Restore rsp to point to saved registers
+	// lea rsp, [rbp - 40] (40 = 5 saved registers * 8 bytes)
 	c.emitBytes([]byte{0x48, 0x8D, 0x65, 0xD8}) // lea rsp, [rbp - 40]
 
-	// Restore callee-saved registers in reverse order
+	// Pop callee-saved registers in reverse order
 	c.emitBytes([]byte{0x41, 0x5F}) // pop r15
 	c.emitBytes([]byte{0x41, 0x5E}) // pop r14
 	c.emitBytes([]byte{0x41, 0x5D}) // pop r13
 	c.emitBytes([]byte{0x41, 0x5C}) // pop r12
 	c.emitByte(0x5B)                // pop rbx
 
-	// pop rbp
-	c.emitByte(0x5D)
-	// ret
-	c.emitByte(0xC3)
+	// pop rbp and return
+	c.emitByte(0x5D) // pop rbp
+	c.emitByte(0xC3) // ret
 }
 
 // compileLoadConst loads a constant into a register
@@ -756,166 +869,197 @@ func (c *FibJITCompiler) compileLoadConst(dst, constIdx int) {
 	// mov rax, imm64
 	c.emitBytes([]byte{0x48, 0xB8})
 	c.emitUint64(uint64(val))
-	// mov [rbp - (dst+1)*8], rax
-	c.emitBytes([]byte{0x48, 0x89, 0x45})
-	c.emitByte(byte(-(dst + 1) * 8))
+	// Store to local slot
+	c.emitMovRaxToSlot(dst)
 }
 
 // compileMove moves a value between registers
 func (c *FibJITCompiler) compileMove(dst, src int) {
-	// mov rax, [rbp - (src+1)*8]
-	c.emitBytes([]byte{0x48, 0x8B, 0x45})
-	c.emitByte(byte(-(src + 1) * 8))
-	// mov [rbp - (dst+1)*8], rax
-	c.emitBytes([]byte{0x48, 0x89, 0x45})
-	c.emitByte(byte(-(dst + 1) * 8))
+	c.emitMovSlotToRax(src)
+	c.emitMovRaxToSlot(dst)
 }
 
 // compileAdd adds two registers
 func (c *FibJITCompiler) compileAdd(dst, left, right int) {
-	// mov rax, [rbp - (left+1)*8]
-	c.emitBytes([]byte{0x48, 0x8B, 0x45})
-	c.emitByte(byte(-(left + 1) * 8))
-	// add rax, [rbp - (right+1)*8]
-	c.emitBytes([]byte{0x48, 0x03, 0x45})
-	c.emitByte(byte(-(right + 1) * 8))
-	// mov [rbp - (dst+1)*8], rax
-	c.emitBytes([]byte{0x48, 0x89, 0x45})
-	c.emitByte(byte(-(dst + 1) * 8))
+	c.emitMovSlotToRax(left)
+	c.emitAddSlotToRax(right)
+	c.emitMovRaxToSlot(dst)
 }
 
 // compileSub subtracts two registers
 func (c *FibJITCompiler) compileSub(dst, left, right int) {
-	c.emitBytes([]byte{0x48, 0x8B, 0x45})
-	c.emitByte(byte(-(left + 1) * 8))
-	c.emitBytes([]byte{0x48, 0x2B, 0x45})
-	c.emitByte(byte(-(right + 1) * 8))
-	c.emitBytes([]byte{0x48, 0x89, 0x45})
-	c.emitByte(byte(-(dst + 1) * 8))
+	c.emitMovSlotToRax(left)
+	// sub rax, [rbp - offset]
+	offset := c.localOffset(right)
+	if offset <= 127 {
+		c.emitBytes([]byte{0x48, 0x2B, 0x45})
+		c.emitByte(byte(-offset))
+	} else {
+		c.emitBytes([]byte{0x48, 0x2B, 0x85})
+		c.emitUint32(uint32(-offset))
+	}
+	c.emitMovRaxToSlot(dst)
 }
 
 // compileMul multiplies two registers
 func (c *FibJITCompiler) compileMul(dst, left, right int) {
-	c.emitBytes([]byte{0x48, 0x8B, 0x45})
-	c.emitByte(byte(-(left + 1) * 8))
-	c.emitBytes([]byte{0x48, 0x0F, 0xAF, 0x45})
-	c.emitByte(byte(-(right + 1) * 8))
-	c.emitBytes([]byte{0x48, 0x89, 0x45})
-	c.emitByte(byte(-(dst + 1) * 8))
+	c.emitMovSlotToRax(left)
+	// imul rax, [rbp - offset]
+	offset := c.localOffset(right)
+	if offset <= 127 {
+		c.emitBytes([]byte{0x48, 0x0F, 0xAF, 0x45})
+		c.emitByte(byte(-offset))
+	} else {
+		c.emitBytes([]byte{0x48, 0x0F, 0xAF, 0x85})
+		c.emitUint32(uint32(-offset))
+	}
+	c.emitMovRaxToSlot(dst)
 }
 
 // compileDiv divides two registers
 func (c *FibJITCompiler) compileDiv(dst, left, right int) {
-	c.emitBytes([]byte{0x48, 0x8B, 0x45})
-	c.emitByte(byte(-(left + 1) * 8))
+	c.emitMovSlotToRax(left)
 	c.emitBytes([]byte{0x48, 0x99}) // cqo (sign extend)
-	c.emitBytes([]byte{0x48, 0xF7, 0x7D})
-	c.emitByte(byte(-(right + 1) * 8)) // idiv [rbp-offset]
-	c.emitBytes([]byte{0x48, 0x89, 0x45})
-	c.emitByte(byte(-(dst + 1) * 8))
+	// idiv [rbp - offset]
+	offset := c.localOffset(right)
+	if offset <= 127 {
+		c.emitBytes([]byte{0x48, 0xF7, 0x7D})
+		c.emitByte(byte(-offset))
+	} else {
+		c.emitBytes([]byte{0x48, 0xF7, 0xBD})
+		c.emitUint32(uint32(-offset))
+	}
+	c.emitMovRaxToSlot(dst)
 }
 
 // compileMod computes modulo of two registers
 func (c *FibJITCompiler) compileMod(dst, left, right int) {
-	c.emitBytes([]byte{0x48, 0x8B, 0x45})
-	c.emitByte(byte(-(left + 1) * 8))
+	c.emitMovSlotToRax(left)
 	c.emitBytes([]byte{0x48, 0x99})
-	c.emitBytes([]byte{0x48, 0xF7, 0x7D})
-	c.emitByte(byte(-(right + 1) * 8))
-	c.emitBytes([]byte{0x48, 0x89, 0x55}) // mov [rbp-offset], rdx (remainder)
-	c.emitByte(byte(-(dst + 1) * 8))
+	offset := c.localOffset(right)
+	if offset <= 127 {
+		c.emitBytes([]byte{0x48, 0xF7, 0x7D})
+		c.emitByte(byte(-offset))
+	} else {
+		c.emitBytes([]byte{0x48, 0xF7, 0xBD})
+		c.emitUint32(uint32(-offset))
+	}
+	// Result is in rdx (remainder)
+	c.emitBytes([]byte{0x48, 0x89, 0xD0}) // mov rax, rdx
+	c.emitMovRaxToSlot(dst)
 }
 
 // compileNeg negates a register
 func (c *FibJITCompiler) compileNeg(dst, src int) {
-	c.emitBytes([]byte{0x48, 0x8B, 0x45})
-	c.emitByte(byte(-(src + 1) * 8))
+	c.emitMovSlotToRax(src)
 	c.emitBytes([]byte{0x48, 0xF7, 0xD8}) // neg rax
-	c.emitBytes([]byte{0x48, 0x89, 0x45})
-	c.emitByte(byte(-(dst + 1) * 8))
+	c.emitMovRaxToSlot(dst)
 }
 
 // compileLess compares two registers for less than
 func (c *FibJITCompiler) compileLess(dst, left, right int) {
-	c.emitBytes([]byte{0x48, 0x8B, 0x45})
-	c.emitByte(byte(-(left + 1) * 8))
-	c.emitBytes([]byte{0x48, 0x3B, 0x45})
-	c.emitByte(byte(-(right + 1) * 8))
-	c.emitBytes([]byte{0x48, 0x31, 0xC0})   // xor rax, rax
-	c.emitBytes([]byte{0x0F, 0x9C, 0xC0})   // setl al
-	c.emitBytes([]byte{0x48, 0x89, 0x45})
-	c.emitByte(byte(-(dst + 1) * 8))
+	c.emitMovSlotToRax(left)
+	// cmp rax, [rbp - offset]
+	offset := c.localOffset(right)
+	if offset <= 127 {
+		c.emitBytes([]byte{0x48, 0x3B, 0x45})
+		c.emitByte(byte(-offset))
+	} else {
+		c.emitBytes([]byte{0x48, 0x3B, 0x85})
+		c.emitUint32(uint32(-offset))
+	}
+	c.emitBytes([]byte{0x48, 0x31, 0xC0}) // xor rax, rax
+	c.emitBytes([]byte{0x0F, 0x9C, 0xC0}) // setl al
+	c.emitMovRaxToSlot(dst)
 }
 
 // compileLessEqual compares two registers for less than or equal
 func (c *FibJITCompiler) compileLessEqual(dst, left, right int) {
-	c.emitBytes([]byte{0x48, 0x8B, 0x45})
-	c.emitByte(byte(-(left + 1) * 8))
-	c.emitBytes([]byte{0x48, 0x3B, 0x45})
-	c.emitByte(byte(-(right + 1) * 8))
+	c.emitMovSlotToRax(left)
+	offset := c.localOffset(right)
+	if offset <= 127 {
+		c.emitBytes([]byte{0x48, 0x3B, 0x45})
+		c.emitByte(byte(-offset))
+	} else {
+		c.emitBytes([]byte{0x48, 0x3B, 0x85})
+		c.emitUint32(uint32(-offset))
+	}
 	c.emitBytes([]byte{0x48, 0x31, 0xC0})
-	c.emitBytes([]byte{0x0F, 0x9E, 0xC0})   // setle al
-	c.emitBytes([]byte{0x48, 0x89, 0x45})
-	c.emitByte(byte(-(dst + 1) * 8))
+	c.emitBytes([]byte{0x0F, 0x9E, 0xC0}) // setle al
+	c.emitMovRaxToSlot(dst)
 }
 
 // compileGreater compares two registers for greater than
 func (c *FibJITCompiler) compileGreater(dst, left, right int) {
-	c.emitBytes([]byte{0x48, 0x8B, 0x45})
-	c.emitByte(byte(-(left + 1) * 8))
-	c.emitBytes([]byte{0x48, 0x3B, 0x45})
-	c.emitByte(byte(-(right + 1) * 8))
+	c.emitMovSlotToRax(left)
+	offset := c.localOffset(right)
+	if offset <= 127 {
+		c.emitBytes([]byte{0x48, 0x3B, 0x45})
+		c.emitByte(byte(-offset))
+	} else {
+		c.emitBytes([]byte{0x48, 0x3B, 0x85})
+		c.emitUint32(uint32(-offset))
+	}
 	c.emitBytes([]byte{0x48, 0x31, 0xC0})
-	c.emitBytes([]byte{0x0F, 0x9F, 0xC0})   // setg al
-	c.emitBytes([]byte{0x48, 0x89, 0x45})
-	c.emitByte(byte(-(dst + 1) * 8))
+	c.emitBytes([]byte{0x0F, 0x9F, 0xC0}) // setg al
+	c.emitMovRaxToSlot(dst)
 }
 
 // compileGreaterEqual compares two registers for greater than or equal
 func (c *FibJITCompiler) compileGreaterEqual(dst, left, right int) {
-	c.emitBytes([]byte{0x48, 0x8B, 0x45})
-	c.emitByte(byte(-(left + 1) * 8))
-	c.emitBytes([]byte{0x48, 0x3B, 0x45})
-	c.emitByte(byte(-(right + 1) * 8))
+	c.emitMovSlotToRax(left)
+	offset := c.localOffset(right)
+	if offset <= 127 {
+		c.emitBytes([]byte{0x48, 0x3B, 0x45})
+		c.emitByte(byte(-offset))
+	} else {
+		c.emitBytes([]byte{0x48, 0x3B, 0x85})
+		c.emitUint32(uint32(-offset))
+	}
 	c.emitBytes([]byte{0x48, 0x31, 0xC0})
-	c.emitBytes([]byte{0x0F, 0x9D, 0xC0})   // setge al
-	c.emitBytes([]byte{0x48, 0x89, 0x45})
-	c.emitByte(byte(-(dst + 1) * 8))
+	c.emitBytes([]byte{0x0F, 0x9D, 0xC0}) // setge al
+	c.emitMovRaxToSlot(dst)
 }
 
 // compileEqual compares two registers for equality
 func (c *FibJITCompiler) compileEqual(dst, left, right int) {
-	c.emitBytes([]byte{0x48, 0x8B, 0x45})
-	c.emitByte(byte(-(left + 1) * 8))
-	c.emitBytes([]byte{0x48, 0x3B, 0x45})
-	c.emitByte(byte(-(right + 1) * 8))
+	c.emitMovSlotToRax(left)
+	offset := c.localOffset(right)
+	if offset <= 127 {
+		c.emitBytes([]byte{0x48, 0x3B, 0x45})
+		c.emitByte(byte(-offset))
+	} else {
+		c.emitBytes([]byte{0x48, 0x3B, 0x85})
+		c.emitUint32(uint32(-offset))
+	}
 	c.emitBytes([]byte{0x48, 0x31, 0xC0})
-	c.emitBytes([]byte{0x0F, 0x94, 0xC0})   // sete al
-	c.emitBytes([]byte{0x48, 0x89, 0x45})
-	c.emitByte(byte(-(dst + 1) * 8))
+	c.emitBytes([]byte{0x0F, 0x94, 0xC0}) // sete al
+	c.emitMovRaxToSlot(dst)
 }
 
 // compileNotEqual compares two registers for inequality
 func (c *FibJITCompiler) compileNotEqual(dst, left, right int) {
-	c.emitBytes([]byte{0x48, 0x8B, 0x45})
-	c.emitByte(byte(-(left + 1) * 8))
-	c.emitBytes([]byte{0x48, 0x3B, 0x45})
-	c.emitByte(byte(-(right + 1) * 8))
+	c.emitMovSlotToRax(left)
+	offset := c.localOffset(right)
+	if offset <= 127 {
+		c.emitBytes([]byte{0x48, 0x3B, 0x45})
+		c.emitByte(byte(-offset))
+	} else {
+		c.emitBytes([]byte{0x48, 0x3B, 0x85})
+		c.emitUint32(uint32(-offset))
+	}
 	c.emitBytes([]byte{0x48, 0x31, 0xC0})
-	c.emitBytes([]byte{0x0F, 0x95, 0xC0})   // setne al
-	c.emitBytes([]byte{0x48, 0x89, 0x45})
-	c.emitByte(byte(-(dst + 1) * 8))
+	c.emitBytes([]byte{0x0F, 0x95, 0xC0}) // setne al
+	c.emitMovRaxToSlot(dst)
 }
 
 // compileNot performs logical not
 func (c *FibJITCompiler) compileNot(dst, src int) {
-	c.emitBytes([]byte{0x48, 0x8B, 0x45})
-	c.emitByte(byte(-(src + 1) * 8))
-	c.emitBytes([]byte{0x48, 0x85, 0xC0})   // test rax, rax
+	c.emitMovSlotToRax(src)
+	c.emitBytes([]byte{0x48, 0x85, 0xC0}) // test rax, rax
 	c.emitBytes([]byte{0x48, 0x31, 0xC0})
-	c.emitBytes([]byte{0x0F, 0x94, 0xC0})   // sete al
-	c.emitBytes([]byte{0x48, 0x89, 0x45})
-	c.emitByte(byte(-(dst + 1) * 8))
+	c.emitBytes([]byte{0x0F, 0x94, 0xC0}) // sete al
+	c.emitMovRaxToSlot(dst)
 }
 
 // compileJump generates an unconditional jump
@@ -928,9 +1072,7 @@ func (c *FibJITCompiler) compileJump(target int) {
 
 // compileJumpIfFalse generates a conditional jump if false
 func (c *FibJITCompiler) compileJumpIfFalse(cond, target int) {
-	// Load condition
-	c.emitBytes([]byte{0x48, 0x8B, 0x45})
-	c.emitByte(byte(-(cond + 1) * 8))
+	c.emitMovSlotToRax(cond)
 	// Test if zero
 	c.emitBytes([]byte{0x48, 0x85, 0xC0})
 	// jz rel32
@@ -942,8 +1084,7 @@ func (c *FibJITCompiler) compileJumpIfFalse(cond, target int) {
 
 // compileJumpIfTrue generates a conditional jump if true
 func (c *FibJITCompiler) compileJumpIfTrue(cond, target int) {
-	c.emitBytes([]byte{0x48, 0x8B, 0x45})
-	c.emitByte(byte(-(cond + 1) * 8))
+	c.emitMovSlotToRax(cond)
 	c.emitBytes([]byte{0x48, 0x85, 0xC0})
 	// jnz rel32
 	c.emitBytes([]byte{0x0F, 0x85})
@@ -954,10 +1095,7 @@ func (c *FibJITCompiler) compileJumpIfTrue(cond, target int) {
 
 // compileReturn generates a return instruction
 func (c *FibJITCompiler) compileReturn(src int) {
-	// Load return value into rax
-	c.emitBytes([]byte{0x48, 0x8B, 0x45})
-	c.emitByte(byte(-(src + 1) * 8))
-	// Epilogue will restore stack and return
+	c.emitMovSlotToRax(src)
 	c.emitEpilogue()
 }
 
@@ -972,36 +1110,36 @@ func (c *FibJITCompiler) compileLoadGlobal(dst, globalIdx int) {
 	}
 	c.emitBytes([]byte{0x48, 0xB8})
 	c.emitUint64(uint64(val))
-	c.emitBytes([]byte{0x48, 0x89, 0x45})
-	c.emitByte(byte(-(dst + 1) * 8))
+	c.emitMovRaxToSlot(dst)
 }
 
 // compileIncLocal increments a local variable
 func (c *FibJITCompiler) compileIncLocal(local int) {
-	// inc qword [rbp - (local+1)*8]
-	c.emitBytes([]byte{0x48, 0xFF, 0x45})
-	c.emitByte(byte(-(local + 1) * 8))
+	c.emitIncSlot(local)
 }
 
 // compileDecLocal decrements a local variable
 func (c *FibJITCompiler) compileDecLocal(local int) {
-	// dec qword [rbp - (local+1)*8]
-	c.emitBytes([]byte{0x48, 0xFF, 0x4D})
-	c.emitByte(byte(-(local + 1) * 8))
+	offset := c.localOffset(local)
+	if offset <= 127 {
+		c.emitBytes([]byte{0x48, 0xFF, 0x4D})
+		c.emitByte(byte(-offset))
+	} else {
+		c.emitBytes([]byte{0x48, 0xFF, 0x8D})
+		c.emitUint32(uint32(-offset))
+	}
 }
 
 // compileNull sets a register to null (0)
 func (c *FibJITCompiler) compileNull(dst int) {
 	c.emitBytes([]byte{0x48, 0x31, 0xC0}) // xor rax, rax
-	c.emitBytes([]byte{0x48, 0x89, 0x45})
-	c.emitByte(byte(-(dst + 1) * 8))
+	c.emitMovRaxToSlot(dst)
 }
 
 // compileTrue sets a register to true (1)
 func (c *FibJITCompiler) compileTrue(dst int) {
 	c.emitBytes([]byte{0x48, 0xC7, 0xC0, 0x01, 0x00, 0x00, 0x00}) // mov rax, 1
-	c.emitBytes([]byte{0x48, 0x89, 0x45})
-	c.emitByte(byte(-(dst + 1) * 8))
+	c.emitMovRaxToSlot(dst)
 }
 
 // compileFalse sets a register to false (0)
@@ -1011,16 +1149,14 @@ func (c *FibJITCompiler) compileFalse(dst int) {
 
 // compilePush pushes a register onto the stack
 func (c *FibJITCompiler) compilePush(src int) {
-	c.emitBytes([]byte{0x48, 0x8B, 0x45})
-	c.emitByte(byte(-(src + 1) * 8))
+	c.emitMovSlotToRax(src)
 	c.emitByte(0x50) // push rax
 }
 
 // compilePop pops a value from the stack into a register
 func (c *FibJITCompiler) compilePop(dst int) {
 	c.emitByte(0x58) // pop rax
-	c.emitBytes([]byte{0x48, 0x89, 0x45})
-	c.emitByte(byte(-(dst + 1) * 8))
+	c.emitMovRaxToSlot(dst)
 }
 
 // ============================================================================
@@ -1052,24 +1188,17 @@ func (c *FibJITCompiler) compileLoopCountAdd(accReg, counterReg, startIdx, limit
 	}
 
 	// Initialize counter with start value
-	// mov qword [rbp - (counterReg+1)*8], start
-	c.emitBytes([]byte{0x48, 0xC7, 0x45}) // mov qword [rbp+disp8], imm32
-	c.emitByte(byte(-(counterReg + 1) * 8))
-	c.emitUint32(uint32(start))
+	c.emitMovImm32ToSlot(counterReg, uint32(start))
 
 	// Initialize accumulator with 0
-	c.emitBytes([]byte{0x48, 0xC7, 0x45})
-	c.emitByte(byte(-(accReg + 1) * 8))
-	c.emitUint32(0)
+	c.emitMovImm32ToSlot(accReg, 0)
 
 	// Loop label
 	loopLabel := fmt.Sprintf("loop_%d", len(c.code))
 	c.labels[loopLabel] = len(c.code)
 
 	// Load counter and compare with limit
-	// mov rax, [rbp - counterReg*8 - 8]
-	c.emitBytes([]byte{0x48, 0x8B, 0x45})
-	c.emitByte(byte(-(counterReg + 1) * 8))
+	c.emitMovSlotToRax(counterReg)
 
 	// cmp rax, limit
 	c.emitBytes([]byte{0x48, 0x3D})
@@ -1086,23 +1215,21 @@ func (c *FibJITCompiler) compileLoopCountAdd(accReg, counterReg, startIdx, limit
 	c.emitUint32(0)
 
 	// Add counter to accumulator
-	// mov rax, [rbp - counterReg*8 - 8]
-	c.emitBytes([]byte{0x48, 0x8B, 0x45})
-	c.emitByte(byte(-(counterReg + 1) * 8))
-
-	// add [rbp - accReg*8 - 8], rax
-	c.emitBytes([]byte{0x48, 0x01, 0x45})
-	c.emitByte(byte(-(accReg + 1) * 8))
+	c.emitMovSlotToRax(counterReg)
+	c.emitAddRaxToSlot(accReg)
 
 	// Increment counter by step
 	if step == 1 {
-		// inc qword [rbp - counterReg*8 - 8]
-		c.emitBytes([]byte{0x48, 0xFF, 0x45})
-		c.emitByte(byte(-(counterReg + 1) * 8))
+		c.emitIncSlot(counterReg)
 	} else {
-		// add qword [rbp - counterReg*8 - 8], step
-		c.emitBytes([]byte{0x48, 0x81, 0x45})
-		c.emitByte(byte(-(counterReg + 1) * 8))
+		offset := c.localOffset(counterReg)
+		if offset <= 127 {
+			c.emitBytes([]byte{0x48, 0x81, 0x45})
+			c.emitByte(byte(-offset))
+		} else {
+			c.emitBytes([]byte{0x48, 0x81, 0x85})
+			c.emitUint32(uint32(-offset))
+		}
 		c.emitUint32(uint32(step))
 	}
 
@@ -1130,21 +1257,15 @@ func (c *FibJITCompiler) compileLoopBodyAdd(accReg, counterReg, limitIdx, jumpOf
 		}
 	}
 
-	// Load counter
-	c.emitBytes([]byte{0x48, 0x8B, 0x45})
-	c.emitByte(byte(-(counterReg + 1) * 8))
-
-	// Add to accumulator
-	c.emitBytes([]byte{0x48, 0x01, 0x45})
-	c.emitByte(byte(-(accReg + 1) * 8))
+	// Load counter and add to accumulator
+	c.emitMovSlotToRax(counterReg)
+	c.emitAddRaxToSlot(accReg)
 
 	// Increment counter
-	c.emitBytes([]byte{0x48, 0xFF, 0x45})
-	c.emitByte(byte(-(counterReg + 1) * 8))
+	c.emitIncSlot(counterReg)
 
 	// Load counter and compare with limit
-	c.emitBytes([]byte{0x48, 0x8B, 0x45})
-	c.emitByte(byte(-(counterReg + 1) * 8))
+	c.emitMovSlotToRax(counterReg)
 
 	// cmp rax, limit
 	c.emitBytes([]byte{0x48, 0x3D})
@@ -1168,26 +1289,29 @@ func (c *FibJITCompiler) compileLoopBodyAdd(accReg, counterReg, limitIdx, jumpOf
 
 // emitLoadRax loads a register into rax
 func (c *FibJITCompiler) emitLoadRax(reg int) {
-	c.emitBytes([]byte{0x48, 0x8B, 0x45})
-	c.emitByte(byte(-(reg + 1) * 8))
+	c.emitMovSlotToRax(reg)
 }
 
 // emitLoadRcx loads a register into rcx
 func (c *FibJITCompiler) emitLoadRcx(reg int) {
-	c.emitBytes([]byte{0x48, 0x8B, 0x4D})
-	c.emitByte(byte(-(reg + 1) * 8))
+	offset := c.localOffset(reg)
+	if offset <= 127 {
+		c.emitBytes([]byte{0x48, 0x8B, 0x4D})
+		c.emitByte(byte(-offset))
+	} else {
+		c.emitBytes([]byte{0x48, 0x8B, 0x8D})
+		c.emitUint32(uint32(-offset))
+	}
 }
 
 // emitStoreRax stores rax into a register
 func (c *FibJITCompiler) emitStoreRax(reg int) {
-	c.emitBytes([]byte{0x48, 0x89, 0x45})
-	c.emitByte(byte(-(reg + 1) * 8))
+	c.emitMovRaxToSlot(reg)
 }
 
 // emitAddReg adds a register to rax
 func (c *FibJITCompiler) emitAddReg(reg int) {
-	c.emitBytes([]byte{0x48, 0x03, 0x45})
-	c.emitByte(byte(-(reg + 1) * 8))
+	c.emitAddSlotToRax(reg)
 }
 
 // emitCompareConst compares rax with a constant
@@ -1203,15 +1327,12 @@ func (c *FibJITCompiler) emitCompareRaxRcx() {
 
 // emitIncReg increments a register
 func (c *FibJITCompiler) emitIncReg(reg int) {
-	c.emitBytes([]byte{0x48, 0xFF, 0x45})
-	c.emitByte(byte(-(reg + 1) * 8))
+	c.emitIncSlot(reg)
 }
 
 // emitMovConstToReg moves a constant to a register
 func (c *FibJITCompiler) emitMovConstToReg(val, reg int) {
-	c.emitBytes([]byte{0x48, 0xC7, 0x45})
-	c.emitByte(byte(-(reg + 1) * 8))
-	c.emitUint32(uint32(val))
+	c.emitMovImm32ToSlot(reg, uint32(val))
 }
 
 // emitJmp generates an unconditional jump to a label

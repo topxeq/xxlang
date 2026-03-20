@@ -219,10 +219,3 @@ func TestFibPerformanceComparison(t *testing.T) {
 	result := vmInst.LastPoppedObject()
 	t.Logf("Standard recursive fib(30) = %s (took %v)", result.Inspect(), recursiveElapsed)
 }
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}

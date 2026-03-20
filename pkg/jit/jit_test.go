@@ -15,7 +15,7 @@ func TestJITCompilerBasic(t *testing.T) {
 	jit := NewJITCompiler(DefaultJITConfig())
 
 	// Test code allocation
-	mem, page, err := jit.allocCode(1024)
+	mem, page, err := jit.AllocCode(1024)
 	if err != nil {
 		t.Fatalf("Failed to allocate code: %v", err)
 	}

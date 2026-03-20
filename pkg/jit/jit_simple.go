@@ -24,6 +24,11 @@ type SimpleCodeGenerator struct {
 	stackOffset int
 }
 
+// SavedRegsSize is the bytes used for saved callee-saved registers on stack
+// Layout: rbp(8) + rbx(8) + r12(8) + r13(8) + r14(8) + r15(8) = 48 bytes
+// Local variables start at [rbp - SavedRegsSize - localOffset]
+const SavedRegsSize = 48
+
 // NewSimpleCodeGenerator creates a new simple code generator
 func NewSimpleCodeGenerator() *SimpleCodeGenerator {
 	return &SimpleCodeGenerator{
@@ -108,8 +113,7 @@ func (cg *SimpleCodeGenerator) emitPrologue() {
 	cg.emitByte(0x55)
 	// mov rbp, rsp
 	cg.emitBytes([]byte{0x48, 0x89, 0xE5})
-	// sub rsp, 0x200 (512 bytes for locals)
-	cg.emitBytes([]byte{0x48, 0x81, 0xEC, 0x00, 0x02, 0x00, 0x00})
+	// push callee-saved registers (must be pushed before allocating local space)
 	// push rbx
 	cg.emitByte(0x53)
 	// push r12
@@ -120,10 +124,22 @@ func (cg *SimpleCodeGenerator) emitPrologue() {
 	cg.emitBytes([]byte{0x41, 0x56})
 	// push r15
 	cg.emitBytes([]byte{0x41, 0x57})
+	// sub rsp, 0x200 (512 bytes for locals)
+	// Stack layout after this:
+	// [rbp]     = old rbp
+	// [rbp-8]   = saved rbx
+	// [rbp-16]  = saved r12
+	// [rbp-24]  = saved r13
+	// [rbp-32]  = saved r14
+	// [rbp-40]  = saved r15
+	// [rbp-48] to [rbp-560] = local variables
+	cg.emitBytes([]byte{0x48, 0x81, 0xEC, 0x00, 0x02, 0x00, 0x00})
 }
 
 // emitEpilogue generates function exit code
 func (cg *SimpleCodeGenerator) emitEpilogue() {
+	// add rsp, 0x200 (deallocate local space FIRST)
+	cg.emitBytes([]byte{0x48, 0x81, 0xC4, 0x00, 0x02, 0x00, 0x00})
 	// pop r15
 	cg.emitBytes([]byte{0x41, 0x5F})
 	// pop r14
@@ -134,8 +150,6 @@ func (cg *SimpleCodeGenerator) emitEpilogue() {
 	cg.emitBytes([]byte{0x41, 0x5C})
 	// pop rbx
 	cg.emitByte(0x5B)
-	// add rsp, 0x200
-	cg.emitBytes([]byte{0x48, 0x81, 0xC4, 0x00, 0x02, 0x00, 0x00})
 	// pop rbp
 	cg.emitByte(0x5D)
 	// ret
@@ -443,69 +457,57 @@ func (cg *SimpleCodeGenerator) compileInstruction(op compiler.Opcode, code []byt
 // ============================================================================
 
 func (cg *SimpleCodeGenerator) compileLoadConst(dst, constIdx int) {
-	var val uint64
+	var val int64
 	if constIdx < len(cg.constants) {
-		val = uint64(cg.constants[constIdx])
-	} else {
-		val = 0
+		// Properly extract integer from NaN-boxed Value
+		if cg.constants[constIdx].IsInt() {
+			val = cg.constants[constIdx].GetInt()
+		}
+		// For floats, we could convert but for JIT we focus on integers
 	}
 
 	// mov rax, imm64
 	cg.emitBytes([]byte{0x48, 0xB8})
-	cg.emitUint64(val)
-	// mov [rbp - dst*8 - 8], rax
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(byte(-(dst + 1) * 8))
+	cg.emitUint64(uint64(val))
+	// mov [rbp - offset], rax
+	cg.emitMovRaxToSlot(dst)
 }
 
 func (cg *SimpleCodeGenerator) compileMove(dst, src int) {
-	// mov rax, [rbp - src*8 - 8]
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(src + 1) * 8))
-	// mov [rbp - dst*8 - 8], rax
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(byte(-(dst + 1) * 8))
+	// mov rax, [rbp - offset]
+	cg.emitMovSlotToRax(src)
+	// mov [rbp - offset], rax
+	cg.emitMovRaxToSlot(dst)
 }
 
 func (cg *SimpleCodeGenerator) compileAdd(dst, left, right int) {
-	// mov rax, [rbp - left*8 - 8]
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(left + 1) * 8))
-	// mov rcx, [rbp - right*8 - 8]
-	cg.emitBytes([]byte{0x48, 0x8B, 0x4D})
-	cg.emitByte(byte(-(right + 1) * 8))
+	// mov rax, [rbp - offset]
+	cg.emitMovSlotToRax(left)
+	// mov rcx, [rbp - offset]
+	cg.emitMovSlotToRcx(right)
 	// add rax, rcx
 	cg.emitBytes([]byte{0x48, 0x01, 0xC8})
-	// mov [rbp - dst*8 - 8], rax
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(byte(-(dst + 1) * 8))
+	// mov [rbp - offset], rax
+	cg.emitMovRaxToSlot(dst)
 }
 
 func (cg *SimpleCodeGenerator) compileSub(dst, left, right int) {
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(left + 1) * 8))
-	cg.emitBytes([]byte{0x48, 0x8B, 0x4D})
-	cg.emitByte(byte(-(right + 1) * 8))
+	cg.emitMovSlotToRax(left)
+	cg.emitMovSlotToRcx(right)
 	cg.emitBytes([]byte{0x48, 0x29, 0xC8})
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(byte(-(dst + 1) * 8))
+	cg.emitMovRaxToSlot(dst)
 }
 
 func (cg *SimpleCodeGenerator) compileMul(dst, left, right int) {
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(left + 1) * 8))
-	cg.emitBytes([]byte{0x48, 0x8B, 0x4D})
-	cg.emitByte(byte(-(right + 1) * 8))
+	cg.emitMovSlotToRax(left)
+	cg.emitMovSlotToRcx(right)
 	cg.emitBytes([]byte{0x48, 0x0F, 0xAF, 0xC1})
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(byte(-(dst + 1) * 8))
+	cg.emitMovRaxToSlot(dst)
 }
 
 func (cg *SimpleCodeGenerator) compileLess(dst, left, right int) {
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(left + 1) * 8))
-	cg.emitBytes([]byte{0x48, 0x8B, 0x4D})
-	cg.emitByte(byte(-(right + 1) * 8))
+	cg.emitMovSlotToRax(left)
+	cg.emitMovSlotToRcx(right)
 	// cmp rax, rcx
 	cg.emitBytes([]byte{0x48, 0x39, 0xC8})
 	// xor rax, rax
@@ -513,20 +515,16 @@ func (cg *SimpleCodeGenerator) compileLess(dst, left, right int) {
 	// setl al
 	cg.emitBytes([]byte{0x0F, 0x9C, 0xC0})
 	// Store result
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(byte(-(dst + 1) * 8))
+	cg.emitMovRaxToSlot(dst)
 }
 
 func (cg *SimpleCodeGenerator) compileEqual(dst, left, right int) {
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(left + 1) * 8))
-	cg.emitBytes([]byte{0x48, 0x8B, 0x4D})
-	cg.emitByte(byte(-(right + 1) * 8))
+	cg.emitMovSlotToRax(left)
+	cg.emitMovSlotToRcx(right)
 	cg.emitBytes([]byte{0x48, 0x39, 0xC8})
 	cg.emitBytes([]byte{0x48, 0x31, 0xC0})
 	cg.emitBytes([]byte{0x0F, 0x94, 0xC0})
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(byte(-(dst + 1) * 8))
+	cg.emitMovRaxToSlot(dst)
 }
 
 func (cg *SimpleCodeGenerator) compileJump(target int) {
@@ -542,9 +540,8 @@ func (cg *SimpleCodeGenerator) compileJump(target int) {
 }
 
 func (cg *SimpleCodeGenerator) compileJumpIfFalse(cond, target int) {
-	// mov rax, [rbp - cond*8 - 8]
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(cond + 1) * 8))
+	// mov rax, [rbp - offset]
+	cg.emitMovSlotToRax(cond)
 	// test rax, rax
 	cg.emitBytes([]byte{0x48, 0x85, 0xC0})
 	// jz rel32
@@ -559,8 +556,7 @@ func (cg *SimpleCodeGenerator) compileJumpIfFalse(cond, target int) {
 }
 
 func (cg *SimpleCodeGenerator) compileJumpIfTrue(cond, target int) {
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(cond + 1) * 8))
+	cg.emitMovSlotToRax(cond)
 	cg.emitBytes([]byte{0x48, 0x85, 0xC0})
 	// jnz rel32
 	cg.emitBytes([]byte{0x0F, 0x85})
@@ -574,169 +570,245 @@ func (cg *SimpleCodeGenerator) compileJumpIfTrue(cond, target int) {
 }
 
 func (cg *SimpleCodeGenerator) compileReturn(src int) {
-	// mov rax, [rbp - src*8 - 8]
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(src + 1) * 8))
+	// mov rax, [rbp - offset]
+	cg.emitMovSlotToRax(src)
 	cg.emitEpilogue()
 }
 
 func (cg *SimpleCodeGenerator) compileNull(dst int) {
 	cg.emitBytes([]byte{0x48, 0x31, 0xC0}) // xor rax, rax
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(byte(-(dst + 1) * 8))
+	cg.emitMovRaxToSlot(dst)
 }
 
 func (cg *SimpleCodeGenerator) compileTrue(dst int) {
 	cg.emitBytes([]byte{0x48, 0xC7, 0xC0, 0x01, 0x00, 0x00, 0x00}) // mov rax, 1
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(byte(-(dst + 1) * 8))
+	cg.emitMovRaxToSlot(dst)
 }
 
 func (cg *SimpleCodeGenerator) compileFalse(dst int) {
 	cg.emitBytes([]byte{0x48, 0x31, 0xC0}) // xor rax, rax
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(byte(-(dst + 1) * 8))
+	cg.emitMovRaxToSlot(dst)
 }
 
 func (cg *SimpleCodeGenerator) compileLoadGlobal(dst, globalIdx int) {
-	var val uint64
+	var val int64
 	if globalIdx < len(cg.globals) {
-		val = uint64(cg.globals[globalIdx])
-	} else {
-		val = 0
+		// Properly extract integer from NaN-boxed Value
+		if cg.globals[globalIdx].IsInt() {
+			val = cg.globals[globalIdx].GetInt()
+		}
 	}
 	cg.emitBytes([]byte{0x48, 0xB8})
-	cg.emitUint64(val)
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(byte(-(dst + 1) * 8))
+	cg.emitUint64(uint64(val))
+	cg.emitMovRaxToSlot(dst)
 }
 
 func (cg *SimpleCodeGenerator) compileIncLocal(local int) {
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(local + 1) * 8))
+	cg.emitMovSlotToRax(local)
 	cg.emitBytes([]byte{0x48, 0xFF, 0xC0}) // inc rax
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(byte(-(local + 1) * 8))
+	cg.emitMovRaxToSlot(local)
 }
 
 func (cg *SimpleCodeGenerator) compileDecLocal(local int) {
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(local + 1) * 8))
+	cg.emitMovSlotToRax(local)
 	cg.emitBytes([]byte{0x48, 0xFF, 0xC8}) // dec rax
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(byte(-(local + 1) * 8))
+	cg.emitMovRaxToSlot(local)
 }
 
 func (cg *SimpleCodeGenerator) compileNot(dst, src int) {
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(src + 1) * 8))
+	cg.emitMovSlotToRax(src)
 	// test rax, rax
 	cg.emitBytes([]byte{0x48, 0x85, 0xC0})
 	// setz al
 	cg.emitBytes([]byte{0x0F, 0x94, 0xC0})
 	// movzx eax, al
 	cg.emitBytes([]byte{0x0F, 0xB6, 0xC0})
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(byte(-(dst + 1) * 8))
+	cg.emitMovRaxToSlot(dst)
 }
 
 func (cg *SimpleCodeGenerator) compileDiv(dst, left, right int) {
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(left + 1) * 8))
-	cg.emitBytes([]byte{0x48, 0x8B, 0x4D})
-	cg.emitByte(byte(-(right + 1) * 8))
+	cg.emitMovSlotToRax(left)
+	cg.emitMovSlotToRcx(right)
 	// cqo (sign extend)
 	cg.emitBytes([]byte{0x48, 0x99})
 	// idiv rcx
 	cg.emitBytes([]byte{0x48, 0xF7, 0xF9})
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(byte(-(dst + 1) * 8))
+	cg.emitMovRaxToSlot(dst)
 }
 
 func (cg *SimpleCodeGenerator) compileMod(dst, left, right int) {
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(left + 1) * 8))
-	cg.emitBytes([]byte{0x48, 0x8B, 0x4D})
-	cg.emitByte(byte(-(right + 1) * 8))
+	cg.emitMovSlotToRax(left)
+	cg.emitMovSlotToRcx(right)
 	cg.emitBytes([]byte{0x48, 0x99})
 	cg.emitBytes([]byte{0x48, 0xF7, 0xF9})
 	// mov rax, rdx (remainder)
 	cg.emitBytes([]byte{0x48, 0x89, 0xD0})
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(byte(-(dst + 1) * 8))
+	cg.emitMovRaxToSlot(dst)
 }
 
 func (cg *SimpleCodeGenerator) compileNeg(dst, src int) {
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(src + 1) * 8))
+	cg.emitMovSlotToRax(src)
 	cg.emitBytes([]byte{0x48, 0xF7, 0xD8}) // neg rax
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(byte(-(dst + 1) * 8))
+	cg.emitMovRaxToSlot(dst)
 }
 
 func (cg *SimpleCodeGenerator) compileNotEqual(dst, left, right int) {
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(left + 1) * 8))
-	cg.emitBytes([]byte{0x48, 0x8B, 0x4D})
-	cg.emitByte(byte(-(right + 1) * 8))
+	cg.emitMovSlotToRax(left)
+	cg.emitMovSlotToRcx(right)
 	cg.emitBytes([]byte{0x48, 0x39, 0xC8})
 	cg.emitBytes([]byte{0x48, 0x31, 0xC0})
 	cg.emitBytes([]byte{0x0F, 0x95, 0xC0}) // setne al
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(byte(-(dst + 1) * 8))
+	cg.emitMovRaxToSlot(dst)
 }
 
 func (cg *SimpleCodeGenerator) compileGreater(dst, left, right int) {
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(left + 1) * 8))
-	cg.emitBytes([]byte{0x48, 0x8B, 0x4D})
-	cg.emitByte(byte(-(right + 1) * 8))
+	cg.emitMovSlotToRax(left)
+	cg.emitMovSlotToRcx(right)
 	cg.emitBytes([]byte{0x48, 0x39, 0xC8})
 	cg.emitBytes([]byte{0x48, 0x31, 0xC0})
 	cg.emitBytes([]byte{0x0F, 0x9F, 0xC0}) // setg al
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(byte(-(dst + 1) * 8))
+	cg.emitMovRaxToSlot(dst)
 }
 
 func (cg *SimpleCodeGenerator) compileLessEqual(dst, left, right int) {
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(left + 1) * 8))
-	cg.emitBytes([]byte{0x48, 0x8B, 0x4D})
-	cg.emitByte(byte(-(right + 1) * 8))
+	cg.emitMovSlotToRax(left)
+	cg.emitMovSlotToRcx(right)
 	cg.emitBytes([]byte{0x48, 0x39, 0xC8})
 	cg.emitBytes([]byte{0x48, 0x31, 0xC0})
 	cg.emitBytes([]byte{0x0F, 0x9E, 0xC0}) // setle al
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(byte(-(dst + 1) * 8))
+	cg.emitMovRaxToSlot(dst)
 }
 
 func (cg *SimpleCodeGenerator) compileGreaterEqual(dst, left, right int) {
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(left + 1) * 8))
-	cg.emitBytes([]byte{0x48, 0x8B, 0x4D})
-	cg.emitByte(byte(-(right + 1) * 8))
+	cg.emitMovSlotToRax(left)
+	cg.emitMovSlotToRcx(right)
 	cg.emitBytes([]byte{0x48, 0x39, 0xC8})
 	cg.emitBytes([]byte{0x48, 0x31, 0xC0})
 	cg.emitBytes([]byte{0x0F, 0x9D, 0xC0}) // setge al
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(byte(-(dst + 1) * 8))
+	cg.emitMovRaxToSlot(dst)
 }
 
 func (cg *SimpleCodeGenerator) compilePush(src int) {
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(src + 1) * 8))
+	cg.emitMovSlotToRax(src)
 	cg.emitByte(0x50) // push rax
 }
 
 func (cg *SimpleCodeGenerator) compilePop(dst int) {
 	cg.emitByte(0x58) // pop rax
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(byte(-(dst + 1) * 8))
+	cg.emitMovRaxToSlot(dst)
 }
 
 // ============================================================================
 // Helper Functions
 // ============================================================================
+
+// localOffset returns the stack offset for local variable 'slot'
+// Local variables are stored at [rbp - SavedRegsSize - (slot+1)*8]
+func (cg *SimpleCodeGenerator) localOffset(slot int) int {
+	return SavedRegsSize + (slot+1)*8
+}
+
+// emitMovRaxToSlot stores rax to local variable slot
+// Uses proper addressing mode based on offset size
+func (cg *SimpleCodeGenerator) emitMovRaxToSlot(slot int) {
+	offset := cg.localOffset(slot)
+	if offset <= 127 {
+		// Short form: mov [rbp - disp8], rax
+		cg.emitBytes([]byte{0x48, 0x89, 0x45})
+		cg.emitByte(byte(-offset))
+	} else {
+		// Long form: mov [rbp - disp32], rax
+		cg.emitBytes([]byte{0x48, 0x89, 0x85})
+		cg.emitUint32(uint32(-offset))
+	}
+}
+
+// emitMovSlotToRax loads local variable slot to rax
+func (cg *SimpleCodeGenerator) emitMovSlotToRax(slot int) {
+	offset := cg.localOffset(slot)
+	if offset <= 127 {
+		// Short form: mov rax, [rbp - disp8]
+		cg.emitBytes([]byte{0x48, 0x8B, 0x45})
+		cg.emitByte(byte(-offset))
+	} else {
+		// Long form: mov rax, [rbp - disp32]
+		cg.emitBytes([]byte{0x48, 0x8B, 0x85})
+		cg.emitUint32(uint32(-offset))
+	}
+}
+
+// emitMovRcxToSlot stores rcx to local variable slot
+func (cg *SimpleCodeGenerator) emitMovRcxToSlot(slot int) {
+	offset := cg.localOffset(slot)
+	if offset <= 127 {
+		cg.emitBytes([]byte{0x48, 0x89, 0x4D})
+		cg.emitByte(byte(-offset))
+	} else {
+		cg.emitBytes([]byte{0x48, 0x89, 0x8D})
+		cg.emitUint32(uint32(-offset))
+	}
+}
+
+// emitMovSlotToRcx loads local variable slot to rcx
+func (cg *SimpleCodeGenerator) emitMovSlotToRcx(slot int) {
+	offset := cg.localOffset(slot)
+	if offset <= 127 {
+		cg.emitBytes([]byte{0x48, 0x8B, 0x4D})
+		cg.emitByte(byte(-offset))
+	} else {
+		cg.emitBytes([]byte{0x48, 0x8B, 0x8D})
+		cg.emitUint32(uint32(-offset))
+	}
+}
+
+// emitAddRaxToSlot adds rax to local variable slot
+func (cg *SimpleCodeGenerator) emitAddRaxToSlot(slot int) {
+	offset := cg.localOffset(slot)
+	if offset <= 127 {
+		cg.emitBytes([]byte{0x48, 0x01, 0x45})
+		cg.emitByte(byte(-offset))
+	} else {
+		cg.emitBytes([]byte{0x48, 0x01, 0x85})
+		cg.emitUint32(uint32(-offset))
+	}
+}
+
+// emitIncSlot increments local variable slot
+func (cg *SimpleCodeGenerator) emitIncSlot(slot int) {
+	offset := cg.localOffset(slot)
+	if offset <= 127 {
+		cg.emitBytes([]byte{0x48, 0xFF, 0x45})
+		cg.emitByte(byte(-offset))
+	} else {
+		cg.emitBytes([]byte{0x48, 0xFF, 0x85})
+		cg.emitUint32(uint32(-offset))
+	}
+}
+
+// emitDecSlot decrements local variable slot
+func (cg *SimpleCodeGenerator) emitDecSlot(slot int) {
+	offset := cg.localOffset(slot)
+	if offset <= 127 {
+		cg.emitBytes([]byte{0x48, 0xFF, 0x4D})
+		cg.emitByte(byte(-offset))
+	} else {
+		cg.emitBytes([]byte{0x48, 0xFF, 0x8D})
+		cg.emitUint32(uint32(-offset))
+	}
+}
+
+// emitMovImm32ToSlot moves 32-bit immediate to local variable slot
+func (cg *SimpleCodeGenerator) emitMovImm32ToSlot(slot int, val uint32) {
+	offset := cg.localOffset(slot)
+	if offset <= 127 {
+		cg.emitBytes([]byte{0x48, 0xC7, 0x45}) // mov qword [rbp - disp8], imm32
+		cg.emitByte(byte(-offset))
+	} else {
+		cg.emitBytes([]byte{0x48, 0xC7, 0x85}) // mov qword [rbp - disp32], imm32
+		cg.emitUint32(uint32(-offset))
+	}
+	cg.emitUint32(val)
+}
 
 func (cg *SimpleCodeGenerator) emitByte(b byte) {
 	cg.code = append(cg.code, b)
@@ -790,24 +862,17 @@ func (cg *SimpleCodeGenerator) compileCall(funcReg, numArgs int) {
 	// Move arguments to the "argument area" (registers 16-23)
 	// This preserves R0-R7 for the callee
 	for i := 0; i < numArgs && i < 8; i++ {
-		// mov rax, [rbp - i*8 - 8]
-		cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-		cg.emitByte(byte(-(i + 1) * 8))
-		// mov [rbp - (16+i)*8 - 8], rax
-		cg.emitBytes([]byte{0x48, 0x89, 0x45})
-		cg.emitByte(byte(-(16 + i + 1) * 8))
+		cg.emitMovSlotToRax(i)
+		cg.emitMovRaxToSlot(16 + i)
 	}
 
 	// For the function pointer, store it in a known location
-	// mov rax, [rbp - funcReg*8 - 8]
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(funcReg + 1) * 8))
+	cg.emitMovSlotToRax(funcReg)
 
 	// Store function pointer for later use (using register slot 30)
-	// slot 30 = [rbp - 31*8] = [rbp - 248]
 	// Use mov with 32-bit displacement for larger offsets
 	cg.emitBytes([]byte{0x48, 0x89, 0x85}) // mov [rbp + disp32], rax
-	cg.emitUint32(0xFFFFFFF8)              // -8 as signed 32-bit (slot 30 would need -248, too large for disp8)
+	cg.emitUint32(uint32(-cg.localOffset(30)))
 
 	// Push argument count
 	// mov rcx, numArgs
@@ -829,11 +894,8 @@ func (cg *SimpleCodeGenerator) compileCall(funcReg, numArgs int) {
 	// Restore stack (pop argument count)
 	cg.emitByte(0x59) // pop rcx
 
-	// Store result in return register (R255, which is slot 255)
-	// But for simplicity, we store in R0
-	// mov [rbp - 8], rax
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(0xF8)
+	// Store result in return register (R0)
+	cg.emitMovRaxToSlot(0)
 }
 
 // compileTailCall compiles a tail call instruction
@@ -845,12 +907,8 @@ func (cg *SimpleCodeGenerator) compileTailCall(funcReg, numArgs int) {
 
 	// Move arguments to R0-R7
 	for i := 0; i < numArgs && i < 8; i++ {
-		// mov rax, [rbp - (16+i)*8 - 8]  ; args are in slots 16-23
-		cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-		cg.emitByte(byte(-(16 + i + 1) * 8))
-		// mov [rbp - i*8 - 8], rax
-		cg.emitBytes([]byte{0x48, 0x89, 0x45})
-		cg.emitByte(byte(-(i + 1) * 8))
+		cg.emitMovSlotToRax(16 + i)
+		cg.emitMovRaxToSlot(i)
 	}
 
 	// Jump to function entry (label L0)
@@ -873,8 +931,7 @@ func (cg *SimpleCodeGenerator) compileClosure(dst int) {
 	// Set the destination to null for now
 	// Real implementation would create a closure object
 	cg.emitBytes([]byte{0x48, 0x31, 0xC0}) // xor rax, rax
-	cg.emitBytes([]byte{0x48, 0x89, 0x45})
-	cg.emitByte(byte(-(dst + 1) * 8))
+	cg.emitMovRaxToSlot(dst)
 }
 
 // SetTrampolineAddress patches the trampoline address in generated code
@@ -889,23 +946,17 @@ func (cg *SimpleCodeGenerator) SetTrampolineAddress(code []byte, offset int, add
 // Performs: for (counter = start; counter < limit; counter += step) { acc += counter }
 func (cg *SimpleCodeGenerator) compileLoopCountAdd(accReg, counterReg, start, limit, step int) {
 	// Initialize counter with start value
-	cg.emitBytes([]byte{0x48, 0xC7, 0x45}) // mov qword [rbp - offset], imm32
-	cg.emitByte(byte(-(counterReg + 1) * 8))
-	cg.emitUint32(uint32(start))
+	cg.emitMovImm32ToSlot(counterReg, uint32(start))
 
 	// Initialize accumulator with 0
-	cg.emitBytes([]byte{0x48, 0xC7, 0x45})
-	cg.emitByte(byte(-(accReg + 1) * 8))
-	cg.emitUint32(0)
+	cg.emitMovImm32ToSlot(accReg, 0)
 
 	// Loop label
 	loopLabel := fmt.Sprintf("loop_%d", len(cg.code))
 	cg.labels[loopLabel] = len(cg.code)
 
 	// Load counter and compare with limit
-	// mov rax, [rbp - counterReg*8 - 8]
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(counterReg + 1) * 8))
+	cg.emitMovSlotToRax(counterReg)
 
 	// cmp rax, limit
 	cg.emitBytes([]byte{0x48, 0x3D})
@@ -922,23 +973,22 @@ func (cg *SimpleCodeGenerator) compileLoopCountAdd(accReg, counterReg, start, li
 	cg.emitUint32(0)
 
 	// Add counter to accumulator
-	// mov rax, [rbp - counterReg*8 - 8]
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(counterReg + 1) * 8))
-
-	// add [rbp - accReg*8 - 8], rax
-	cg.emitBytes([]byte{0x48, 0x01, 0x45})
-	cg.emitByte(byte(-(accReg + 1) * 8))
+	cg.emitMovSlotToRax(counterReg)
+	cg.emitAddRaxToSlot(accReg)
 
 	// Increment counter by step
 	if step == 1 {
-		// inc qword [rbp - counterReg*8 - 8]
-		cg.emitBytes([]byte{0x48, 0xFF, 0x45})
-		cg.emitByte(byte(-(counterReg + 1) * 8))
+		cg.emitIncSlot(counterReg)
 	} else {
-		// add qword [rbp - counterReg*8 - 8], step
-		cg.emitBytes([]byte{0x48, 0x81, 0x45})
-		cg.emitByte(byte(-(counterReg + 1) * 8))
+		// add qword [rbp - offset], step
+		offset := cg.localOffset(counterReg)
+		if offset <= 127 {
+			cg.emitBytes([]byte{0x48, 0x81, 0x45})
+			cg.emitByte(byte(-offset))
+		} else {
+			cg.emitBytes([]byte{0x48, 0x81, 0x85})
+			cg.emitUint32(uint32(-offset))
+		}
 		cg.emitUint32(uint32(step))
 	}
 
@@ -958,21 +1008,15 @@ func (cg *SimpleCodeGenerator) compileLoopCountAdd(accReg, counterReg, start, li
 // compileLoopBodyAdd compiles a loop body add instruction
 // Performs: acc += counter; counter++; if counter < limit jump to offset
 func (cg *SimpleCodeGenerator) compileLoopBodyAdd(accReg, counterReg, limit, jumpOffset int, currentIP int) {
-	// Load counter
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(counterReg + 1) * 8))
-
-	// Add to accumulator
-	cg.emitBytes([]byte{0x48, 0x01, 0x45})
-	cg.emitByte(byte(-(accReg + 1) * 8))
+	// Load counter and add to accumulator
+	cg.emitMovSlotToRax(counterReg)
+	cg.emitAddRaxToSlot(accReg)
 
 	// Increment counter
-	cg.emitBytes([]byte{0x48, 0xFF, 0x45})
-	cg.emitByte(byte(-(counterReg + 1) * 8))
+	cg.emitIncSlot(counterReg)
 
 	// Load counter and compare with limit
-	cg.emitBytes([]byte{0x48, 0x8B, 0x45})
-	cg.emitByte(byte(-(counterReg + 1) * 8))
+	cg.emitMovSlotToRax(counterReg)
 
 	// cmp rax, limit
 	cg.emitBytes([]byte{0x48, 0x3D})

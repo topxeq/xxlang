@@ -12,16 +12,19 @@ import (
 
 // NativeCodeGenerator generates pure native x86-64 code
 // No VM context needed - all values are in registers or stack
+// Globals are passed as first argument (in rdi per x86-64 calling convention)
 type NativeCodeGenerator struct {
-	code     []byte
-	labels   map[string]int
-	fixups   []fixup
+	code      []byte
+	labels    map[string]int
+	fixups    []fixup
 	constants []int64
+	globals   []int64 // Pre-extracted global values for initialization
 
 	// Register allocation
 	// We use: rax(0), rbx(1), rcx(2), rdx(3), r8(4), r9(5), r10(6), r11(7)
 	// r12-r15 are callee-saved, used for locals 8-11
 	// Stack is used for locals 12+
+	// rdi holds globals pointer (first argument)
 }
 
 // NewNativeCodeGenerator creates a new native code generator
@@ -62,46 +65,32 @@ func (cg *NativeCodeGenerator) Generate(fn *compiler.CompiledFunction, constants
 		return nil, err
 	}
 
+	// Always add epilogue at the end to ensure proper return
+	// The value to return should already be in rax (set by OpRegMove dst=255)
+	cg.emitEpilogue()
+
 	return cg.code, nil
 }
 
 // emitPrologue generates function entry code
+// Note: callee-saved registers are already saved by the bridge function (callNative)
+// So we only need to set up the stack frame
 func (cg *NativeCodeGenerator) emitPrologue() {
 	// push rbp
 	cg.emitByte(0x55)
 	// mov rbp, rsp
 	cg.emitBytes([]byte{0x48, 0x89, 0xE5})
 
-	// Save callee-saved registers (for locals 8-11)
-	// push rbx
-	cg.emitByte(0x53)
-	// push r12
-	cg.emitBytes([]byte{0x41, 0x54})
-	// push r13
-	cg.emitBytes([]byte{0x41, 0x55})
-	// push r14
-	cg.emitBytes([]byte{0x41, 0x56})
-	// push r15
-	cg.emitBytes([]byte{0x41, 0x57})
-
 	// Allocate stack space for spilled registers (256 bytes)
+	// We don't save callee-saved registers here - the bridge does that
 	cg.emitBytes([]byte{0x48, 0x81, 0xEC, 0x00, 0x01, 0x00, 0x00})
 }
 
 // emitEpilogue generates function exit code
+// Note: callee-saved registers are restored by the bridge function
 func (cg *NativeCodeGenerator) emitEpilogue() {
 	// add rsp, 0x100
 	cg.emitBytes([]byte{0x48, 0x81, 0xC4, 0x00, 0x01, 0x00, 0x00})
-	// pop r15
-	cg.emitBytes([]byte{0x41, 0x5F})
-	// pop r14
-	cg.emitBytes([]byte{0x41, 0x5E})
-	// pop r13
-	cg.emitBytes([]byte{0x41, 0x5D})
-	// pop r12
-	cg.emitBytes([]byte{0x41, 0x5C})
-	// pop rbx
-	cg.emitByte(0x5B)
 	// pop rbp
 	cg.emitByte(0x5D)
 	// ret
@@ -271,6 +260,21 @@ func (cg *NativeCodeGenerator) compileInstruction(op compiler.Opcode, code []byt
 		cg.compileLoopCountAdd(accReg, counterReg, startIdx, limitIdx, stepIdx)
 		*ip += 9
 
+	case compiler.OpRegLoadGlobal:
+		// R[dst] = Globals[idx]
+		// Globals pointer is in rdi (first argument)
+		dst := int(code[*ip+1])
+		globalIdx := int(code[*ip+2])<<8 | int(code[*ip+3])
+		cg.compileLoadGlobal(dst, globalIdx)
+		*ip += 4
+
+	case compiler.OpRegStoreGlobal:
+		// Globals[idx] = R[src]
+		src := int(code[*ip+1])
+		globalIdx := int(code[*ip+2])<<8 | int(code[*ip+3])
+		cg.compileStoreGlobal(src, globalIdx)
+		*ip += 4
+
 	default:
 		return fmt.Errorf("unsupported opcode: %s", def.Name)
 	}
@@ -290,7 +294,7 @@ func (cg *NativeCodeGenerator) isRegCached(r int) bool {
 // loadRegToRax loads a register to rax
 func (cg *NativeCodeGenerator) loadRegToRax(r int) {
 	if r < 8 {
-		// Standard registers
+		// Standard registers: rax, rbx, rcx, rdx, r8-r11
 		switch r {
 		case 0: // already rax
 		case 1:
@@ -308,11 +312,27 @@ func (cg *NativeCodeGenerator) loadRegToRax(r int) {
 		case 7:
 			cg.emitBytes([]byte{0x4C, 0x89, 0xD8}) // mov rax, r11
 		}
+	} else if r < 12 {
+		// Callee-saved registers: r12-r15 for VM regs 8-11
+		switch r {
+		case 8:
+			cg.emitBytes([]byte{0x4C, 0x89, 0xE0}) // mov rax, r12
+		case 9:
+			cg.emitBytes([]byte{0x4C, 0x89, 0xE8}) // mov rax, r13
+		case 10:
+			cg.emitBytes([]byte{0x4C, 0x89, 0xF0}) // mov rax, r14
+		case 11:
+			cg.emitBytes([]byte{0x4C, 0x89, 0xF8}) // mov rax, r15
+		}
 	} else {
-		// Spilled to stack
-		offset := (r - 8 + 1) * 8
-		cg.emitBytes([]byte{0x48, 0x8B, 0x45}) // mov rax, [rbp - offset]
-		cg.emitByte(byte(offset))
+		// Spilled to stack (reg 12+)
+		// Stack layout after prologue:
+		// [rbp] = old rbp
+		// [rbp-8] = rbx, [rbp-16] = r12, [rbp-24] = r13, [rbp-32] = r14, [rbp-40] = r15
+		// [rbp-48...] = spilled registers
+		offset := 48 + (r-12)*8
+		cg.emitBytes([]byte{0x48, 0x8B, 0x85}) // mov rax, [rbp - offset]
+		cg.emitUint32(uint32(offset))
 	}
 }
 
@@ -336,10 +356,23 @@ func (cg *NativeCodeGenerator) storeRaxToReg(r int) {
 		case 7:
 			cg.emitBytes([]byte{0x49, 0x89, 0xC3}) // mov r11, rax
 		}
+	} else if r < 12 {
+		// Callee-saved registers: r12-r15 for VM regs 8-11
+		switch r {
+		case 8:
+			cg.emitBytes([]byte{0x49, 0x89, 0xC4}) // mov r12, rax
+		case 9:
+			cg.emitBytes([]byte{0x49, 0x89, 0xC5}) // mov r13, rax
+		case 10:
+			cg.emitBytes([]byte{0x49, 0x89, 0xC6}) // mov r14, rax
+		case 11:
+			cg.emitBytes([]byte{0x49, 0x89, 0xC7}) // mov r15, rax
+		}
 	} else {
-		offset := (r - 8 + 1) * 8
-		cg.emitBytes([]byte{0x48, 0x89, 0x45}) // mov [rbp - offset], rax
-		cg.emitByte(byte(offset))
+		// Spilled to stack (reg 12+)
+		offset := 48 + (r-12)*8
+		cg.emitBytes([]byte{0x48, 0x89, 0x85}) // mov [rbp - offset], rax
+		cg.emitUint32(uint32(offset))
 	}
 }
 
@@ -364,8 +397,62 @@ func (cg *NativeCodeGenerator) compileLoadImm(dst int, val int64) {
 	cg.storeRaxToReg(dst)
 }
 
+// compileLoadGlobal loads a global variable
+// Globals pointer is in rdi (first argument per x86-64 calling convention)
+// Global variables are int64, so offset = globalIdx * 8
+func (cg *NativeCodeGenerator) compileLoadGlobal(dst, globalIdx int) {
+	// mov rax, [rdi + globalIdx*8]
+	// Using SIB addressing: [rdi + disp32] or [rdi + idx*8]
+	offset := globalIdx * 8
+
+	if offset < 128 {
+		// Short form: mov rax, [rdi + disp8]
+		cg.emitBytes([]byte{0x48, 0x8B, 0x47}) // mov rax, [rdi + disp8]
+		cg.emitByte(byte(offset))
+	} else {
+		// Long form: mov rax, [rdi + disp32]
+		cg.emitBytes([]byte{0x48, 0x8B, 0x87}) // mov rax, [rdi + disp32]
+		cg.emitUint32(uint32(offset))
+	}
+
+	// Store to destination register
+	cg.storeRaxToReg(dst)
+}
+
+// compileStoreGlobal stores a value to a global variable
+// Globals pointer is in rdi
+func (cg *NativeCodeGenerator) compileStoreGlobal(src, globalIdx int) {
+	// Load source to rax
+	cg.loadRegToRax(src)
+
+	// mov [rdi + offset], rax
+	offset := globalIdx * 8
+
+	if offset < 128 {
+		// Short form: mov [rdi + disp8], rax
+		cg.emitBytes([]byte{0x48, 0x89, 0x47}) // mov [rdi + disp8], rax
+		cg.emitByte(byte(offset))
+	} else {
+		// Long form: mov [rdi + disp32], rax
+		cg.emitBytes([]byte{0x48, 0x89, 0x87}) // mov [rdi + disp32], rax
+		cg.emitUint32(uint32(offset))
+	}
+}
+
 func (cg *NativeCodeGenerator) compileMove(dst, src int) {
 	if dst == src {
+		return
+	}
+
+	// Special case: dst = 255 (ReturnRegister) means put value in rax for return
+	if dst == 255 {
+		cg.loadRegToRax(src)
+		return
+	}
+
+	// Special case: src = 255 (ReturnRegister) means get value from rax
+	if src == 255 {
+		cg.storeRaxToReg(dst)
 		return
 	}
 

@@ -240,7 +240,7 @@ func BenchmarkJITMemoryAllocation(b *testing.B) {
 	for _, size := range sizes {
 		b.Run(fmt.Sprintf("Size%d", size), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_, _, err := jit.allocCode(size)
+				_, _, err := jit.AllocCode(size)
 				if err != nil {
 					b.Fatal(err)
 				}

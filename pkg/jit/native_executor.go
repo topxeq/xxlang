@@ -29,11 +29,11 @@ func NewNativeExecutor(config JITConfig) *NativeExecutor {
 // Functions must meet these criteria:
 // - No function calls (OpRegCall, OpRegTailCall)
 // - No builtin calls
-// - No global variable access
 // - No array/map operations
 // - Only: LoadConst, Move, Add, Sub, Mul, Div, Mod, Neg
 //        Less, Greater, Equal, NotEqual, LessEqual, GreaterEqual
 //        Jump, JumpIfTrue, JumpIfFalse, Return, Null, True, False
+//        LoadGlobal, StoreGlobal (with globals pointer passed as argument)
 func CanExecuteNatively(fn *compiler.CompiledFunction) bool {
 	code := fn.Instructions
 	ip := 0
@@ -53,12 +53,12 @@ func CanExecuteNatively(fn *compiler.CompiledFunction) bool {
 			compiler.OpRegIncLocal, compiler.OpRegDecLocal,
 			compiler.OpRegLoopCountAdd, compiler.OpRegLoopBodyAdd, compiler.OpRegLoopIncCheck,
 			compiler.OpRegAddConst, compiler.OpRegSubConst, compiler.OpRegMulConst,
-			compiler.OpRegAddLocalCheck, compiler.OpRegLoadLocal, compiler.OpRegStoreLocal:
-			// These are fine for native execution
+			compiler.OpRegAddLocalCheck, compiler.OpRegLoadLocal, compiler.OpRegStoreLocal,
+			compiler.OpRegLoadGlobal, compiler.OpRegStoreGlobal:
+			// These are fine for native execution (globals will be passed as first arg)
 
 		// Unsupported - requires VM context
 		case compiler.OpRegCall, compiler.OpRegTailCall,
-			compiler.OpRegLoadGlobal, compiler.OpRegStoreGlobal,
 			compiler.OpRegArray, compiler.OpRegArrayEmpty, compiler.OpRegArrayAppend,
 			compiler.OpRegMap, compiler.OpRegMapEmpty, compiler.OpRegMapSet,
 			compiler.OpRegIndex, compiler.OpRegSetIndex,
@@ -94,32 +94,72 @@ func CanExecuteNatively(fn *compiler.CompiledFunction) bool {
 	return true
 }
 
-// ExecuteFunction compiles and executes a function natively
-func (ne *NativeExecutor) ExecuteFunction(fn *compiler.CompiledFunction, constants []vm.Value) (int64, error) {
+// ExecuteFunction compiles and executes a function natively with globals
+func (ne *NativeExecutor) ExecuteFunction(fn *compiler.CompiledFunction, constants []vm.Value, globals []int64) (int64, error) {
 	// Check if can execute natively
 	if !CanExecuteNatively(fn) {
 		return 0, fmt.Errorf("function cannot be executed natively")
 	}
 
-	// Check cache
-	cf := ne.compiler.GetCompiled(fn)
-	if cf != nil {
-		return cf.Execute(), nil
+	// Extract integer constants
+	intConstants := make([]int64, len(constants))
+	for i, c := range constants {
+		if c.IsInt() {
+			intConstants[i], _ = c.ToInt()
+		}
 	}
 
-	// Compile
-	cf, err := ne.compiler.Compile(fn, constants, nil)
+	// Compile using native code generator
+	cg := NewNativeCodeGenerator()
+	code, err := cg.Generate(fn, intConstants)
 	if err != nil {
 		return 0, fmt.Errorf("compilation failed: %w", err)
 	}
 
-	// Execute
-	return cf.Execute(), nil
+	if ne.config.Debug {
+		fmt.Printf("[JIT] Generated native code: %d bytes\n", len(code))
+		// Print first 64 bytes of code in hex
+		fmt.Printf("[JIT] Code: %x...\n", code[:min(64, len(code))])
+	}
+
+	// Allocate executable memory
+	mem, _, err := ne.compiler.AllocCode(len(code))
+	if err != nil {
+		return 0, fmt.Errorf("memory allocation failed: %w", err)
+	}
+
+	copy(mem, code)
+
+	// Execute with globals pointer
+	// The native function takes globals pointer as first argument (in rdi)
+	entry := uintptr(unsafe.Pointer(&mem[0]))
+	result := callNativeWithGlobals(entry, globals)
+
+	return result, nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// callNativeWithGlobals calls a native function with globals pointer
+// This function is implemented in assembly (bridge_amd64.s)
+func callNative(entry uintptr, globals *int64) int64
+
+// callNativeWithGlobals calls a native function with globals pointer
+func callNativeWithGlobals(entry uintptr, globals []int64) int64 {
+	if len(globals) == 0 {
+		return callNative(entry, nil)
+	}
+	return callNative(entry, &globals[0])
 }
 
 // ExecuteBytecode executes a bytecode program natively
 // Returns the result as an int64 (for numeric results)
-func (ne *NativeExecutor) ExecuteBytecode(bytecode *compiler.Bytecode) (int64, error) {
+func (ne *NativeExecutor) ExecuteBytecode(bytecode *compiler.Bytecode, globals []int64) (int64, error) {
 	// Find main instructions (the top-level code)
 	mainFn := &compiler.CompiledFunction{
 		Instructions:  bytecode.Instructions,
@@ -133,7 +173,7 @@ func (ne *NativeExecutor) ExecuteBytecode(bytecode *compiler.Bytecode) (int64, e
 		constants[i] = vm.NewObject(c)
 	}
 
-	return ne.ExecuteFunction(mainFn, constants)
+	return ne.ExecuteFunction(mainFn, constants, globals)
 }
 
 // Cleanup releases JIT resources
@@ -175,7 +215,7 @@ func (ne *NativeExecutor) CompileProgram(bytecode *compiler.Bytecode) (*NativePr
 		NumParameters: 0,
 	}
 
-	// Use optimized code generator
+	// Use native code generator
 	cg := NewNativeCodeGenerator()
 	code, err := cg.Generate(mainFn, constants)
 	if err != nil {
@@ -199,8 +239,7 @@ func (ne *NativeExecutor) CompileProgram(bytecode *compiler.Bytecode) (*NativePr
 	}, nil
 }
 
-// Run executes the native program
-func (p *NativeProgram) Run() int64 {
-	fn := *(*func() int64)(unsafe.Pointer(&p.entry))
-	return fn()
+// Run executes the native program with globals
+func (p *NativeProgram) Run(globals []int64) int64 {
+	return callNativeWithGlobals(p.entry, globals)
 }

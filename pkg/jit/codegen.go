@@ -487,18 +487,23 @@ func (cg *CodeGenerator) compileOpRegNot(code []byte, ip *int) {
 }
 
 func (cg *CodeGenerator) compileOpRegJump(code []byte, ip *int) {
-	offset := int(int16(uint16(code[*ip+1])<<8 | uint16(code[*ip+2])))
-	target := *ip + 3 + offset
+	// OpRegJump format: opcode(1) | unused(1) | offset_hi(1) | offset_lo(1) = 4 bytes
+	// Offset is at bytes 2-3 (0-indexed from ip)
+	offset := int(int16(uint16(code[*ip+2])<<8 | uint16(code[*ip+3])))
+	// Target is calculated relative to the instruction start
+	target := *ip + offset
 
 	label := fmt.Sprintf("ip_%d", target)
 	cg.emitJmp(label)
-	*ip += 3
+	*ip += 4
 }
 
 func (cg *CodeGenerator) compileOpRegJumpIfFalse(code []byte, ip *int) {
 	cond := int(code[*ip+1])
+	// OpRegJumpIfFalse format: opcode(1) | cond(1) | offset_hi(1) | offset_lo(1) = 4 bytes
 	offset := int(int16(uint16(code[*ip+2])<<8 | uint16(code[*ip+3])))
-	target := *ip + 4 + offset
+	// Target is calculated relative to the instruction start (not ip+4)
+	target := *ip + offset
 
 	cg.loadRegToRax(cond)
 
@@ -513,8 +518,10 @@ func (cg *CodeGenerator) compileOpRegJumpIfFalse(code []byte, ip *int) {
 
 func (cg *CodeGenerator) compileOpRegJumpIfTrue(code []byte, ip *int) {
 	cond := int(code[*ip+1])
+	// OpRegJumpIfTrue format: opcode(1) | cond(1) | offset_hi(1) | offset_lo(1) = 4 bytes
 	offset := int(int16(uint16(code[*ip+2])<<8 | uint16(code[*ip+3])))
-	target := *ip + 4 + offset
+	// Target is calculated relative to the instruction start (not ip+4)
+	target := *ip + offset
 
 	cg.loadRegToRax(cond)
 

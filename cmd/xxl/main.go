@@ -26,6 +26,7 @@ var useJIT = false
 // JITConfig holds JIT compiler settings
 var jitHotThreshold = 100
 var jitMaxCodeSize = 4096
+var jitDebug = false
 
 const (
 	PROMPT          = ">> "
@@ -160,6 +161,9 @@ func parseFlags(args []string) []string {
 	for _, arg := range args {
 		if arg == "--jit" {
 			useJIT = true
+		} else if arg == "--jit-debug" {
+			useJIT = true
+			jitDebug = true
 		} else if strings.HasPrefix(arg, "--jit-threshold=") {
 			threshold := strings.TrimPrefix(arg, "--jit-threshold=")
 			fmt.Sscanf(threshold, "%d", &jitHotThreshold)
@@ -479,7 +483,7 @@ func executeCodeRegister(program *parser.Program, sourcePath, code string) {
 		jitConfig := jit.JITConfig{
 			HotThreshold: jitHotThreshold,
 			MaxCodeSize:  jitMaxCodeSize,
-			Debug:        false,
+			Debug:        jitDebug,
 		}
 		jitVM := jit.NewJITVMWithGlobals(bytecode, globals, jitConfig)
 		jitVM.SetSourcePath(sourcePath)

@@ -65,15 +65,36 @@ func (j *JITVM) Run() error {
 		NumParameters: 0,
 	}
 
-	if CanExecuteNatively(mainFn) {
+	canNative := CanExecuteNatively(mainFn)
+	if j.config.Debug {
+		fmt.Printf("[JIT] CanExecuteNatively: %v, bytecode length: %d\n", canNative, len(j.bytecode.Instructions))
+	}
+
+	if canNative {
 		// Try native execution
 		start := time.Now()
-		result, err := j.nativeExec.ExecuteFunction(mainFn, j.GetConstants())
+
+		// Convert vm.Value globals to int64 array
+		vmGlobals := j.GetGlobals()
+		if j.config.Debug {
+			fmt.Printf("[JIT] Globals array length: %d\n", len(vmGlobals))
+		}
+
+		globals := make([]int64, len(vmGlobals))
+		for i, g := range vmGlobals {
+			if g.IsInt() {
+				globals[i], _ = g.ToInt()
+			}
+		}
+
+		result, err := j.nativeExec.ExecuteFunction(mainFn, j.GetConstants(), globals)
 		if err == nil {
 			j.nativeExecs++
 			if j.config.Debug {
 				fmt.Printf("[JIT] Native execution succeeded in %v, result=%d\n", time.Since(start), result)
 			}
+			// Store the result so LastPoppedObject() can return it
+			j.RegVM.SetLastResult(vm.NewInt(result))
 			return nil
 		}
 		if j.config.Debug {
@@ -81,9 +102,43 @@ func (j *JITVM) Run() error {
 		}
 	}
 
+	// Try to find and compile recursive functions before falling back to interpreter
+	j.tryCompileRecursiveFunctions()
+
 	// Fall back to interpreter
 	j.interpExecs++
+	if j.config.Debug {
+		fmt.Printf("[JIT] Using interpreter (native=%v)\n", canNative)
+	}
 	return j.RegVM.Run()
+}
+
+// tryCompileRecursiveFunctions attempts to find and compile recursive functions
+// This enables future execution of compiled code when functions are called
+func (j *JITVM) tryCompileRecursiveFunctions() {
+	// Find all functions in constants and try to compile recursive ones
+	for _, c := range j.bytecode.Constants {
+		if fn, ok := c.(*compiler.CompiledFunction); ok {
+			// Check if this is a recursive function that can be optimized
+			fibCompiler := NewFibJITCompiler(j.config)
+			analysis := fibCompiler.analyzeFunction(fn)
+
+			if analysis.isSelfRecursive {
+				// Try to compile this recursive function
+				cf, err := j.jit.Compile(fn, j.GetConstants(), j.GetGlobals())
+				if err == nil {
+					if j.config.Debug {
+						fmt.Printf("[JIT] Pre-compiled recursive function: hash=%016x, size=%d bytes\n",
+							cf.Hash, cf.Size)
+					}
+				} else if j.config.Debug {
+					fmt.Printf("[JIT] Failed to compile recursive function: %v\n", err)
+				}
+			}
+
+			_ = fibCompiler // avoid unused variable error
+		}
+	}
 }
 
 // RunJIT attempts to run a function with JIT compilation
