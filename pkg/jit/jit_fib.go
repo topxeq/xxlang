@@ -143,6 +143,11 @@ func (c *FibJITCompiler) compileTailRecursive(fn *compiler.CompiledFunction, ana
 	// Generate prologue
 	c.emitPrologue(fn.NumLocals)
 
+	// Initialize parameters from registers (System V AMD64 ABI)
+	// Arguments are passed in: rdi, rsi, rdx, rcx, r8, r9
+	// Store them in stack slots: R0=[rbp-8], R1=[rbp-16], etc.
+	c.emitStoreParams(fn.NumParameters)
+
 	// Entry point label for the loop
 	entryLabel := "loop_entry"
 	c.labels[entryLabel] = len(c.code)
@@ -263,15 +268,17 @@ func (c *FibJITCompiler) compileIterativeFibonacci(fn *compiler.CompiledFunction
 	// Prologue with space for locals
 	c.emitPrologue(32) // Enough space for our variables
 
+	// Store parameter n from Go stack to [rbp-8]
+	// In Go: first argument is at [rbp+16]
+	c.emitBytes([]byte{0x48, 0x8B, 0x45, 0x10}) // mov rax, [rbp+16]
+	c.emitBytes([]byte{0x48, 0x89, 0x45, 0xF8}) // mov [rbp-8], rax
+
 	// Register allocation (using stack slots relative to rbp):
-	// [rbp-8]  = n (input parameter in R0, which we'll read from)
-	// [rbp-16] = a (fib(i-2)) = R1
-	// [rbp-24] = b (fib(i-1)) = R2
+	// [rbp-8]  = n (input parameter)
+	// [rbp-16] = a (fib(i-2))
+	// [rbp-24] = b (fib(i-1))
 	// [rbp-32] = counter i
 	// [rbp-40] = temp
-
-	// Copy input n from R0 (which is at [rbp-8]) to our local
-	// R0 is already at [rbp-8] since that's register slot 0
 
 	// Base case: if n <= 1, return n
 	// Load n from [rbp-8]
@@ -352,6 +359,7 @@ func (c *FibJITCompiler) compileGenericStackRecursive(fn *compiler.CompiledFunct
 // compileNormal compiles a non-recursive function
 func (c *FibJITCompiler) compileNormal(fn *compiler.CompiledFunction) ([]byte, error) {
 	c.emitPrologue(fn.NumLocals)
+	c.emitStoreParams(fn.NumParameters)
 
 	code := fn.Instructions
 	ip := 0
@@ -634,6 +642,37 @@ func (c *FibJITCompiler) emitPrologue(numLocals int) {
 	// sub rsp, imm32
 	c.emitBytes([]byte{0x48, 0x81, 0xEC})
 	c.emitUint32(uint32(stackSize))
+}
+
+// emitStoreParams stores parameters from registers to stack slots
+// Go calling convention: arguments are on the stack at [rbp+16], [rbp+24], etc.
+// We copy them to [rbp-8], [rbp-16], etc. for our register slots
+func (c *FibJITCompiler) emitStoreParams(numParams int) {
+	// In Go's calling convention for a function:
+	// - [rbp+8] = return address
+	// - [rbp+16] = first argument
+	// - [rbp+24] = second argument
+	// - etc.
+	//
+	// We store them at:
+	// - [rbp-8] = R0 (first param)
+	// - [rbp-16] = R1 (second param)
+	// - etc.
+
+	for i := 0; i < numParams && i < 16; i++ {
+		// mov rax, [rbp + 16 + i*8]  ; load argument from caller's stack
+		// mov [rbp - (i+1)*8], rax   ; store to our register slot
+		srcOffset := 16 + i*8   // positive offset from rbp
+		dstOffset := -(i + 1) * 8 // negative offset from rbp
+
+		// mov rax, [rbp + srcOffset]
+		c.emitBytes([]byte{0x48, 0x8B, 0x45}) // mov rax, [rbp+disp8]
+		c.emitByte(byte(srcOffset))
+
+		// mov [rbp + dstOffset], rax
+		c.emitBytes([]byte{0x48, 0x89, 0x45}) // mov [rbp+disp8], rax
+		c.emitByte(byte(dstOffset))
+	}
 }
 
 // emitEpilogue generates function exit code
