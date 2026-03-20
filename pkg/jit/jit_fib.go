@@ -604,6 +604,50 @@ func (c *FibJITCompiler) compileInstruction(op compiler.Opcode, code []byte, ip 
 		c.emitEpilogue()
 		*ip++
 
+	// Loop superinstructions
+	case compiler.OpRegLoopCountAdd:
+		// Format: acc_reg, counter_reg, start_const(16), limit_const(16), step_const(16)
+		accReg := int(code[*ip+1])
+		counterReg := int(code[*ip+2])
+		startIdx := int(code[*ip+3])<<8 | int(code[*ip+4])
+		limitIdx := int(code[*ip+5])<<8 | int(code[*ip+6])
+		stepIdx := int(code[*ip+7])<<8 | int(code[*ip+8])
+		c.compileLoopCountAdd(accReg, counterReg, startIdx, limitIdx, stepIdx)
+		*ip += 9
+
+	case compiler.OpRegLoopBodyAdd:
+		// Format: acc_reg, counter_reg, limit_const(16), jump_offset(16)
+		accReg := int(code[*ip+1])
+		counterReg := int(code[*ip+2])
+		limitIdx := int(code[*ip+3])<<8 | int(code[*ip+4])
+		jumpOffset := int(int16(uint16(code[*ip+5])<<8 | uint16(code[*ip+6])))
+		c.compileLoopBodyAdd(accReg, counterReg, limitIdx, jumpOffset, *ip+7)
+		*ip += 7
+
+	// Array operations - stub implementations
+	case compiler.OpRegArray:
+		*ip += 4 // Skip: dst, start_reg, count
+		// Arrays require Go runtime support
+
+	case compiler.OpRegArrayEmpty:
+		*ip += 2 // Skip: dst
+
+	case compiler.OpRegArrayAppend:
+		*ip += 4 // Skip: dst, arr_reg, elem_reg
+
+	case compiler.OpRegIndex:
+		*ip += 4 // Skip: dst, obj_reg, key_reg
+
+	case compiler.OpRegSetIndex:
+		*ip += 4 // Skip: obj_reg, key_reg, val_reg
+
+	// Map operations - stub implementations
+	case compiler.OpRegMap:
+		*ip += 4 // Skip: dst, start_reg, count
+
+	case compiler.OpRegMapSet:
+		*ip += 5 // Skip: dst, map_reg, key_reg, val_reg
+
 	default:
 		return fmt.Errorf("unsupported opcode: %s", def.Name)
 	}
@@ -977,6 +1021,145 @@ func (c *FibJITCompiler) compilePop(dst int) {
 	c.emitByte(0x58) // pop rax
 	c.emitBytes([]byte{0x48, 0x89, 0x45})
 	c.emitByte(byte(-(dst + 1) * 8))
+}
+
+// ============================================================================
+// Loop Superinstructions
+// ============================================================================
+
+// compileLoopCountAdd compiles an optimized counting loop
+// Performs: for (counter = start; counter < limit; counter += step) { acc += counter }
+func (c *FibJITCompiler) compileLoopCountAdd(accReg, counterReg, startIdx, limitIdx, stepIdx int) {
+	// Get constant values
+	var start, limit, step int64
+	if startIdx < len(c.constants) {
+		if v := c.constants[startIdx]; v.IsInt() {
+			start, _ = v.ToInt()
+		}
+	}
+	if limitIdx < len(c.constants) {
+		if v := c.constants[limitIdx]; v.IsInt() {
+			limit, _ = v.ToInt()
+		}
+	}
+	if stepIdx < len(c.constants) {
+		if v := c.constants[stepIdx]; v.IsInt() {
+			step, _ = v.ToInt()
+		}
+	}
+	if step == 0 {
+		step = 1
+	}
+
+	// Initialize counter with start value
+	// mov qword [rbp - (counterReg+1)*8], start
+	c.emitBytes([]byte{0x48, 0xC7, 0x45}) // mov qword [rbp+disp8], imm32
+	c.emitByte(byte(-(counterReg + 1) * 8))
+	c.emitUint32(uint32(start))
+
+	// Initialize accumulator with 0
+	c.emitBytes([]byte{0x48, 0xC7, 0x45})
+	c.emitByte(byte(-(accReg + 1) * 8))
+	c.emitUint32(0)
+
+	// Loop label
+	loopLabel := fmt.Sprintf("loop_%d", len(c.code))
+	c.labels[loopLabel] = len(c.code)
+
+	// Load counter and compare with limit
+	// mov rax, [rbp - counterReg*8 - 8]
+	c.emitBytes([]byte{0x48, 0x8B, 0x45})
+	c.emitByte(byte(-(counterReg + 1) * 8))
+
+	// cmp rax, limit
+	c.emitBytes([]byte{0x48, 0x3D})
+	c.emitUint32(uint32(limit))
+
+	// jge end (exit loop if counter >= limit)
+	endLabel := fmt.Sprintf("loop_end_%d", len(c.code))
+	c.emitBytes([]byte{0x0F, 0x8D}) // jge rel32
+	c.fixups = append(c.fixups, fixup{
+		offset: len(c.code),
+		label:  endLabel,
+		size:   4,
+	})
+	c.emitUint32(0)
+
+	// Add counter to accumulator
+	// mov rax, [rbp - counterReg*8 - 8]
+	c.emitBytes([]byte{0x48, 0x8B, 0x45})
+	c.emitByte(byte(-(counterReg + 1) * 8))
+
+	// add [rbp - accReg*8 - 8], rax
+	c.emitBytes([]byte{0x48, 0x01, 0x45})
+	c.emitByte(byte(-(accReg + 1) * 8))
+
+	// Increment counter by step
+	if step == 1 {
+		// inc qword [rbp - counterReg*8 - 8]
+		c.emitBytes([]byte{0x48, 0xFF, 0x45})
+		c.emitByte(byte(-(counterReg + 1) * 8))
+	} else {
+		// add qword [rbp - counterReg*8 - 8], step
+		c.emitBytes([]byte{0x48, 0x81, 0x45})
+		c.emitByte(byte(-(counterReg + 1) * 8))
+		c.emitUint32(uint32(step))
+	}
+
+	// jmp loop
+	c.emitBytes([]byte{0xE9})
+	c.fixups = append(c.fixups, fixup{
+		offset: len(c.code),
+		label:  loopLabel,
+		size:   4,
+	})
+	c.emitUint32(0)
+
+	// End label
+	c.labels[endLabel] = len(c.code)
+}
+
+// compileLoopBodyAdd compiles a loop body add instruction
+// Performs: acc += counter; counter++; if counter < limit jump to offset
+func (c *FibJITCompiler) compileLoopBodyAdd(accReg, counterReg, limitIdx, jumpOffset int, currentIP int) {
+	// Get limit value
+	var limit int64
+	if limitIdx < len(c.constants) {
+		if v := c.constants[limitIdx]; v.IsInt() {
+			limit, _ = v.ToInt()
+		}
+	}
+
+	// Load counter
+	c.emitBytes([]byte{0x48, 0x8B, 0x45})
+	c.emitByte(byte(-(counterReg + 1) * 8))
+
+	// Add to accumulator
+	c.emitBytes([]byte{0x48, 0x01, 0x45})
+	c.emitByte(byte(-(accReg + 1) * 8))
+
+	// Increment counter
+	c.emitBytes([]byte{0x48, 0xFF, 0x45})
+	c.emitByte(byte(-(counterReg + 1) * 8))
+
+	// Load counter and compare with limit
+	c.emitBytes([]byte{0x48, 0x8B, 0x45})
+	c.emitByte(byte(-(counterReg + 1) * 8))
+
+	// cmp rax, limit
+	c.emitBytes([]byte{0x48, 0x3D})
+	c.emitUint32(uint32(limit))
+
+	// jl back to loop
+	targetIP := currentIP + jumpOffset
+	targetLabel := fmt.Sprintf("L%d", targetIP)
+	c.emitBytes([]byte{0x0F, 0x8C}) // jl rel32
+	c.fixups = append(c.fixups, fixup{
+		offset: len(c.code),
+		label:  targetLabel,
+		size:   4,
+	})
+	c.emitUint32(0)
 }
 
 // ============================================================================

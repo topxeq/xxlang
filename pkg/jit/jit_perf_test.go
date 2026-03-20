@@ -48,6 +48,8 @@ func BenchmarkFibInterpreter(b *testing.B) {
 }
 
 // BenchmarkFibJIT benchmarks JIT compilation of Fibonacci
+// Note: Direct execution of recursive functions requires VM context.
+// This benchmark tests JIT compilation time and code generation.
 func BenchmarkFibJIT(b *testing.B) {
 	// Tail-recursive Fibonacci
 	code := `
@@ -96,19 +98,16 @@ func BenchmarkFibJIT(b *testing.B) {
 		Debug:        false,
 	}
 
-	// Pre-compile the function
-	jitCompiler := NewJITCompiler(config)
-	cf, err := jitCompiler.Compile(fibHelperFn, constants, nil)
-	if err != nil {
-		b.Skipf("JIT compilation failed: %v", err)
-	}
-	defer jitCompiler.Cleanup()
-
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		// Note: This executes the JIT code directly
-		// but doesn't pass arguments correctly - just measuring call overhead
-		cf.Execute()
+		// Benchmark JIT compilation time
+		// Note: We create a new compiler each iteration to measure compilation overhead
+		jitCompiler := NewJITCompiler(config)
+		_, err := jitCompiler.Compile(fibHelperFn, constants, nil)
+		jitCompiler.Cleanup()
+		if err != nil {
+			b.Skipf("JIT compilation failed: %v", err)
+		}
 	}
 }
 

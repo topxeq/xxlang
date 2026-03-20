@@ -160,29 +160,32 @@ func BenchmarkJITLoop(b *testing.B) {
 		}
 	})
 
-	// Try JIT
+	// Try JIT compilation (note: direct execution requires VM context)
 	config := JITConfig{
 		HotThreshold: 1,
 		MaxCodeSize:  8192,
 		Debug:        false,
 	}
 
-	jitCompiler := NewJITCompiler(config)
 	mainFn := &compiler.CompiledFunction{
 		Instructions:  bytecode.Instructions,
 		NumLocals:     16,
 		NumParameters: 0,
 	}
 
-	cf, err := jitCompiler.Compile(mainFn, constants, nil)
+	// Verify JIT can compile this code
+	jitCompiler := NewJITCompiler(config)
+	_, err := jitCompiler.Compile(mainFn, constants, nil)
+	jitCompiler.Cleanup()
 	if err != nil {
 		b.Skipf("JIT not supported: %v", err)
 	}
-	defer jitCompiler.Cleanup()
 
-	b.Run("JIT", func(b *testing.B) {
+	b.Run("JIT_Compile", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			cf.Execute()
+			jitC := NewJITCompiler(config)
+			_, _ = jitC.Compile(mainFn, constants, nil)
+			jitC.Cleanup()
 		}
 	})
 }
