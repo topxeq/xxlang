@@ -1627,9 +1627,9 @@ func (c *Compiler) analyzeInlineable(instructions []byte) (bool, []byte) {
 		}
 	}
 
-	// Only inline very simple functions (up to 10 instructions)
-	// to avoid code bloat
-	if numInstructions > 10 {
+	// Only inline simple functions (up to 15 instructions)
+	// to avoid code bloat. Increased from 10 to 15 to allow more expressions.
+	if numInstructions > 15 {
 		return false, nil
 	}
 
