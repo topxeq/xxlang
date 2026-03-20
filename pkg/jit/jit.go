@@ -179,13 +179,35 @@ func (j *JITCompiler) Compile(fn *compiler.CompiledFunction, constants []vm.Valu
 		return cf, nil
 	}
 
-	// Create code generator
-	cg := NewCodeGenerator(j.config)
+	var code []byte
+	var err error
 
-	// Generate machine code
-	code, err := cg.Generate(fn, constants, globals)
-	if err != nil {
-		return nil, fmt.Errorf("code generation failed: %w", err)
+	// Try Fibonacci JIT compiler first (handles recursive functions)
+	fibCompiler := NewFibJITCompiler(j.config)
+	code, err = fibCompiler.Compile(fn, constants, globals)
+	if err == nil {
+		if j.config.Debug {
+			fmt.Printf("[JIT] Fibonacci compiler succeeded: %d bytes\n", len(code))
+		}
+		// Continue to allocate and cache
+	} else {
+		if j.config.Debug {
+			fmt.Printf("[JIT] Fibonacci compiler failed: %v, trying simple generator\n", err)
+		}
+
+		// Try simple code generator (most reliable for non-recursive functions)
+		scg := NewSimpleCodeGenerator()
+		code, err = scg.Generate(fn, constants, globals)
+		if err != nil {
+			if j.config.Debug {
+				fmt.Printf("[JIT] Simple generator failed: %v\n", err)
+			}
+			return nil, fmt.Errorf("code generation failed: %w", err)
+		}
+
+		if j.config.Debug {
+			fmt.Printf("[JIT] Simple generator succeeded: %d bytes\n", len(code))
+		}
 	}
 
 	// Allocate executable memory
