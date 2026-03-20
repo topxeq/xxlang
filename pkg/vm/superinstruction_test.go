@@ -1690,3 +1690,80 @@ func TestArrayConcat(t *testing.T) {
 	vm := runVM(t, input)
 	testIntegerObject(t, 3, vm.LastPopped())
 }
+
+// ============================================
+// Tests for GetLocal + Constant superinstructions
+// ============================================
+
+func TestGetLocalConstAdd(t *testing.T) {
+	input := `
+		var i = 10
+		var result = i + 5
+		result
+	`
+	vm := runVM(t, input)
+	testIntegerObject(t, 15, vm.LastPopped())
+}
+
+func TestGetLocalConstSub(t *testing.T) {
+	input := `
+		var i = 10
+		var result = i - 3
+		result
+	`
+	vm := runVM(t, input)
+	testIntegerObject(t, 7, vm.LastPopped())
+}
+
+func TestGetLocalConstMul(t *testing.T) {
+	input := `
+		var i = 7
+		var result = i * 3
+		result
+	`
+	vm := runVM(t, input)
+	testIntegerObject(t, 21, vm.LastPopped())
+}
+
+func TestGetLocalConstLess(t *testing.T) {
+	input := `
+		var i = 5
+		var result = i < 10
+		result
+	`
+	vm := runVM(t, input)
+	testBooleanObject(t, true, vm.LastPopped())
+}
+
+func TestGetLocalConstGreater(t *testing.T) {
+	input := `
+		var i = 15
+		var result = i > 10
+		result
+	`
+	vm := runVM(t, input)
+	testBooleanObject(t, true, vm.LastPopped())
+}
+
+func TestGetLocalConstEqual(t *testing.T) {
+	input := `
+		var i = 5
+		var result = i == 5
+		result
+	`
+	vm := runVM(t, input)
+	testBooleanObject(t, true, vm.LastPopped())
+}
+
+func TestGetLocalConstInLoop(t *testing.T) {
+	// Test loop with i < 100 pattern (should use OpGetLocalConstLess)
+	input := `
+		var count = 0
+		for (var i = 0; i < 5; i++) {
+			count = count + 1
+		}
+		count
+	`
+	vm := runVM(t, input)
+	testIntegerObject(t, 5, vm.LastPopped())
+}

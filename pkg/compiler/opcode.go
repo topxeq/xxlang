@@ -61,6 +61,14 @@ const (
 	OpGetLocalEqual   // Get two locals and compare equal
 	OpGetLocalNotEqual // Get two locals and compare not equal
 
+	// New superinstructions for local + constant operations (very common in loops)
+	OpGetLocalConstAdd     // GetLocal + Constant + Add
+	OpGetLocalConstSub     // GetLocal + Constant + Sub
+	OpGetLocalConstMul     // GetLocal + Constant + Mul
+	OpGetLocalConstLess    // GetLocal + Constant + Less
+	OpGetLocalConstGreater // GetLocal + Constant + Greater
+	OpGetLocalConstEqual   // GetLocal + Constant + Equal
+
 	// Type-specialized instructions (for hot path optimization)
 	OpIncLocal      // Increment local variable by 1 (optimized for loop counters)
 	OpDecLocal      // Decrement local variable by 1
@@ -373,6 +381,14 @@ var definitions = map[Opcode]*Definition{
 	OpGetLocalGreater: {"OpGetLocalGreater", []int{1, 1}}, // 2x 1-byte local indices
 	OpGetLocalEqual:   {"OpGetLocalEqual", []int{1, 1}},   // 2x 1-byte local indices
 	OpGetLocalNotEqual: {"OpGetLocalNotEqual", []int{1, 1}}, // 2x 1-byte local indices
+
+	// Local + Constant superinstructions (very common in loops)
+	OpGetLocalConstAdd:     {"OpGetLocalConstAdd", []int{1, 2}},     // 1-byte local, 2-byte const
+	OpGetLocalConstSub:     {"OpGetLocalConstSub", []int{1, 2}},     // 1-byte local, 2-byte const
+	OpGetLocalConstMul:     {"OpGetLocalConstMul", []int{1, 2}},     // 1-byte local, 2-byte const
+	OpGetLocalConstLess:    {"OpGetLocalConstLess", []int{1, 2}},    // 1-byte local, 2-byte const
+	OpGetLocalConstGreater: {"OpGetLocalConstGreater", []int{1, 2}}, // 1-byte local, 2-byte const
+	OpGetLocalConstEqual:   {"OpGetLocalConstEqual", []int{1, 2}},   // 1-byte local, 2-byte const
 
 	// Type-specialized instructions
 	OpIncLocal:      {"OpIncLocal", []int{1}},         // 1-byte: local index

@@ -336,6 +336,36 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case compiler.OpGetLocalConstAdd:
+			if err := vm.executeGetLocalConstAdd(); err != nil {
+				return err
+			}
+
+		case compiler.OpGetLocalConstSub:
+			if err := vm.executeGetLocalConstSub(); err != nil {
+				return err
+			}
+
+		case compiler.OpGetLocalConstMul:
+			if err := vm.executeGetLocalConstMul(); err != nil {
+				return err
+			}
+
+		case compiler.OpGetLocalConstLess:
+			if err := vm.executeGetLocalConstLess(); err != nil {
+				return err
+			}
+
+		case compiler.OpGetLocalConstGreater:
+			if err := vm.executeGetLocalConstGreater(); err != nil {
+				return err
+			}
+
+		case compiler.OpGetLocalConstEqual:
+			if err := vm.executeGetLocalConstEqual(); err != nil {
+				return err
+			}
+
 		case compiler.OpConstantAdd:
 			if err := vm.executeConstantAdd(); err != nil {
 				return err
@@ -1297,6 +1327,189 @@ func (vm *VM) executeGetLocalNotEqual() error {
 	return nil
 }
 
+// executeGetLocalConstAdd adds a constant to a local variable
+// Pattern: OpGetLocal + OpConstant + OpAdd
+func (vm *VM) executeGetLocalConstAdd() error {
+	frame := vm.currentFrame()
+	localIdx := int(frame.Instructions()[frame.IP+1])
+	constIdx := int(frame.Instructions()[frame.IP+2])<<8 | int(frame.Instructions()[frame.IP+3])
+	frame.IP += 3
+
+	// Get local value
+	var localVal int64
+	if frame.This != nil && localIdx == 0 {
+		localVal = 0
+	} else {
+		idx := localIdx
+		if frame.This != nil && localIdx > 0 {
+			idx = localIdx - 1
+		}
+		localVal = frame.Locals[idx].(*objects.Int).Value
+	}
+
+	// Get constant value
+	constants := frame.Constants
+	if constants == nil {
+		constants = vm.constants
+	}
+	constVal := constants[constIdx].(*objects.Int).Value
+
+	vm.stack.Push(objects.NewInt(localVal + constVal))
+	return nil
+}
+
+// executeGetLocalConstSub subtracts a constant from a local variable
+func (vm *VM) executeGetLocalConstSub() error {
+	frame := vm.currentFrame()
+	localIdx := int(frame.Instructions()[frame.IP+1])
+	constIdx := int(frame.Instructions()[frame.IP+2])<<8 | int(frame.Instructions()[frame.IP+3])
+	frame.IP += 3
+
+	var localVal int64
+	if frame.This != nil && localIdx == 0 {
+		localVal = 0
+	} else {
+		idx := localIdx
+		if frame.This != nil && localIdx > 0 {
+			idx = localIdx - 1
+		}
+		localVal = frame.Locals[idx].(*objects.Int).Value
+	}
+
+	constants := frame.Constants
+	if constants == nil {
+		constants = vm.constants
+	}
+	constVal := constants[constIdx].(*objects.Int).Value
+
+	vm.stack.Push(objects.NewInt(localVal - constVal))
+	return nil
+}
+
+// executeGetLocalConstMul multiplies a local variable by a constant
+func (vm *VM) executeGetLocalConstMul() error {
+	frame := vm.currentFrame()
+	localIdx := int(frame.Instructions()[frame.IP+1])
+	constIdx := int(frame.Instructions()[frame.IP+2])<<8 | int(frame.Instructions()[frame.IP+3])
+	frame.IP += 3
+
+	var localVal int64
+	if frame.This != nil && localIdx == 0 {
+		localVal = 0
+	} else {
+		idx := localIdx
+		if frame.This != nil && localIdx > 0 {
+			idx = localIdx - 1
+		}
+		localVal = frame.Locals[idx].(*objects.Int).Value
+	}
+
+	constants := frame.Constants
+	if constants == nil {
+		constants = vm.constants
+	}
+	constVal := constants[constIdx].(*objects.Int).Value
+
+	vm.stack.Push(objects.NewInt(localVal * constVal))
+	return nil
+}
+
+// executeGetLocalConstLess compares a local variable with a constant for less-than
+func (vm *VM) executeGetLocalConstLess() error {
+	frame := vm.currentFrame()
+	localIdx := int(frame.Instructions()[frame.IP+1])
+	constIdx := int(frame.Instructions()[frame.IP+2])<<8 | int(frame.Instructions()[frame.IP+3])
+	frame.IP += 3
+
+	var localVal int64
+	if frame.This != nil && localIdx == 0 {
+		localVal = 0
+	} else {
+		idx := localIdx
+		if frame.This != nil && localIdx > 0 {
+			idx = localIdx - 1
+		}
+		localVal = frame.Locals[idx].(*objects.Int).Value
+	}
+
+	constants := frame.Constants
+	if constants == nil {
+		constants = vm.constants
+	}
+	constVal := constants[constIdx].(*objects.Int).Value
+
+	if localVal < constVal {
+		vm.stack.Push(objects.TRUE)
+	} else {
+		vm.stack.Push(objects.FALSE)
+	}
+	return nil
+}
+
+// executeGetLocalConstGreater compares a local variable with a constant for greater-than
+func (vm *VM) executeGetLocalConstGreater() error {
+	frame := vm.currentFrame()
+	localIdx := int(frame.Instructions()[frame.IP+1])
+	constIdx := int(frame.Instructions()[frame.IP+2])<<8 | int(frame.Instructions()[frame.IP+3])
+	frame.IP += 3
+
+	var localVal int64
+	if frame.This != nil && localIdx == 0 {
+		localVal = 0
+	} else {
+		idx := localIdx
+		if frame.This != nil && localIdx > 0 {
+			idx = localIdx - 1
+		}
+		localVal = frame.Locals[idx].(*objects.Int).Value
+	}
+
+	constants := frame.Constants
+	if constants == nil {
+		constants = vm.constants
+	}
+	constVal := constants[constIdx].(*objects.Int).Value
+
+	if localVal > constVal {
+		vm.stack.Push(objects.TRUE)
+	} else {
+		vm.stack.Push(objects.FALSE)
+	}
+	return nil
+}
+
+// executeGetLocalConstEqual compares a local variable with a constant for equality
+func (vm *VM) executeGetLocalConstEqual() error {
+	frame := vm.currentFrame()
+	localIdx := int(frame.Instructions()[frame.IP+1])
+	constIdx := int(frame.Instructions()[frame.IP+2])<<8 | int(frame.Instructions()[frame.IP+3])
+	frame.IP += 3
+
+	var localVal int64
+	if frame.This != nil && localIdx == 0 {
+		localVal = 0
+	} else {
+		idx := localIdx
+		if frame.This != nil && localIdx > 0 {
+			idx = localIdx - 1
+		}
+		localVal = frame.Locals[idx].(*objects.Int).Value
+	}
+
+	constants := frame.Constants
+	if constants == nil {
+		constants = vm.constants
+	}
+	constVal := constants[constIdx].(*objects.Int).Value
+
+	if localVal == constVal {
+		vm.stack.Push(objects.TRUE)
+	} else {
+		vm.stack.Push(objects.FALSE)
+	}
+	return nil
+}
+
 func (vm *VM) executeConstantAdd() error {
 	frame := vm.currentFrame()
 	idx1 := int(frame.Instructions()[frame.IP+1])<<8 | int(frame.Instructions()[frame.IP+2])
@@ -1796,7 +2009,7 @@ func (vm *VM) executeArray() error {
 	numElements := int(vm.readUint16())
 	vm.currentFrame().IP += 2
 
-	// Pre-allocate with capacity for better performance
+	// Pre-allocate with exact size for better performance
 	elements := make([]objects.Object, numElements)
 	for i := numElements - 1; i >= 0; i-- {
 		elements[i] = vm.stack.Pop()
@@ -1843,7 +2056,6 @@ func (vm *VM) executeMap() error {
 	vm.currentFrame().IP += 2
 
 	// Pre-allocate map with capacity hint for better performance
-	// Go maps can be initialized with a capacity hint
 	pairs := make(map[objects.HashKey]objects.MapPair, numPairs)
 
 	for i := 0; i < numPairs; i++ {

@@ -46,7 +46,42 @@ func (o *Optimizer) Optimize() *Bytecode {
 	if o.flags.TypeSpecialization {
 		o.bytecode = o.GenerateTypeSpecializations()
 	}
+
+	// Also optimize function bytecode in constants (without recursion)
+	o.optimizeFunctionsInConstantsNoRecurse()
+
 	return o.bytecode
+}
+
+// optimizeFunctionsInConstantsNoRecurse applies optimizations to CompiledFunction objects in constants
+// without recursively processing nested functions (to avoid infinite recursion)
+func (o *Optimizer) optimizeFunctionsInConstantsNoRecurse() {
+	for i, c := range o.bytecode.Constants {
+		if fn, ok := c.(*CompiledFunction); ok {
+			// Create a temporary bytecode for the function
+			funcBytecode := &Bytecode{
+				Instructions: fn.Instructions,
+				Constants:    o.bytecode.Constants, // Use main constants for references
+			}
+
+			// Create an optimizer for the function bytecode
+			funcOpt := NewOptimizerWithFlags(funcBytecode, o.flags)
+
+			// Apply optimization passes directly (without calling Optimize to avoid recursion)
+			if funcOpt.flags.Superinstructions {
+				funcOpt.bytecode = funcOpt.GenerateSuperinstructions()
+			}
+			if funcOpt.flags.TypeSpecialization {
+				funcOpt.bytecode = funcOpt.GenerateTypeSpecializations()
+			}
+
+			// Update the function's instructions
+			fn.Instructions = funcOpt.bytecode.Instructions
+
+			// Store the optimized function back
+			o.bytecode.Constants[i] = fn
+		}
+	}
 }
 
 // FoldConstants evaluates constant expressions at compile time
@@ -255,10 +290,19 @@ func (o *Optimizer) GenerateSuperinstructions() *Bytecode {
 	}
 
 	newInstructions := make([]byte, 0, len(instructions))
+	constants := o.bytecode.Constants
+
+	// Track position mapping for jump target updates
+	oldToNewPos := make(map[int]int)
 
 	i := 0
+	newPos := 0
 	for i < len(instructions) {
+		oldPos := i
 		op := Opcode(instructions[i])
+
+		// Record the position mapping before processing
+		oldToNewPos[oldPos] = newPos
 
 		// Pattern: OpGetLocal + OpGetLocal + OpAdd/Sub/Mul
 		if op == OpGetLocal && i+4 < len(instructions) {
@@ -291,7 +335,47 @@ func (o *Optimizer) GenerateSuperinstructions() *Bytecode {
 					if superOp != 0 {
 						// Emit superinstruction
 						newInstructions = append(newInstructions, byte(superOp), byte(idx1), byte(idx2))
+						newPos += 3
 						i += 5 // Skip OpGetLocal(2) + OpGetLocal(2) + BinOp(1)
+						continue
+					}
+				}
+			}
+		}
+
+		// Pattern: OpGetLocal + OpConstant + OpAdd/Sub/Mul/Less/Greater/Equal
+		// This is very common in loops: i < 10, i + 1, etc.
+		if op == OpGetLocal && i+5 < len(instructions) {
+			localIdx := int(instructions[i+1])
+
+			if Opcode(instructions[i+2]) == OpConstant {
+				constIdx := int(instructions[i+3])<<8 | int(instructions[i+4])
+				binOp := Opcode(instructions[i+5])
+
+				// Check if constant is an integer (most common case)
+				if _, ok := constants[constIdx].(*objects.Int); ok && localIdx <= 255 {
+					var superOp Opcode
+					switch binOp {
+					case OpAdd:
+						superOp = OpGetLocalConstAdd
+					case OpSub:
+						superOp = OpGetLocalConstSub
+					case OpMul:
+						superOp = OpGetLocalConstMul
+					case OpLess:
+						superOp = OpGetLocalConstLess
+					case OpGreater:
+						superOp = OpGetLocalConstGreater
+					case OpEqual:
+						superOp = OpGetLocalConstEqual
+					}
+
+					if superOp != 0 {
+						// Emit superinstruction: opcode(1) + localIdx(1) + constIdx(2)
+						newInstructions = append(newInstructions, byte(superOp), byte(localIdx))
+						newInstructions = append(newInstructions, byte(constIdx>>8), byte(constIdx))
+						newPos += 4
+						i += 6 // Skip OpGetLocal(2) + OpConstant(3) + BinOp(1)
 						continue
 					}
 				}
@@ -308,7 +392,6 @@ func (o *Optimizer) GenerateSuperinstructions() *Bytecode {
 				binOp := Opcode(instructions[i+6])
 
 				// Only fold if both constants are integers (not functions, strings, etc.)
-				constants := o.bytecode.Constants
 				_, ok1 := constants[idx1].(*objects.Int)
 				_, ok2 := constants[idx2].(*objects.Int)
 
@@ -328,6 +411,7 @@ func (o *Optimizer) GenerateSuperinstructions() *Bytecode {
 						newInstructions = append(newInstructions, byte(superOp))
 						newInstructions = append(newInstructions, byte(idx1>>8), byte(idx1))
 						newInstructions = append(newInstructions, byte(idx2>>8), byte(idx2))
+						newPos += 5
 						i += 7 // Skip OpConstant(3) + OpConstant(3) + BinOp(1)
 						continue
 					}
@@ -348,8 +432,12 @@ func (o *Optimizer) GenerateSuperinstructions() *Bytecode {
 		}
 
 		newInstructions = append(newInstructions, instructions[i:i+instrLen]...)
+		newPos += instrLen
 		i += instrLen
 	}
+
+	// Update jump targets based on position mapping
+	newInstructions = o.updateJumpTargets(newInstructions, oldToNewPos)
 
 	o.bytecode.Instructions = newInstructions
 	return o.bytecode
@@ -367,9 +455,17 @@ func (o *Optimizer) GenerateTypeSpecializations() *Bytecode {
 	newInstructions := make([]byte, 0, len(instructions))
 	constants := o.bytecode.Constants
 
+	// Track position mapping for jump target updates
+	oldToNewPos := make(map[int]int)
+
 	i := 0
+	newPos := 0
 	for i < len(instructions) {
+		oldPos := i
 		op := Opcode(instructions[i])
+
+		// Record the position mapping before processing
+		oldToNewPos[oldPos] = newPos
 
 		// Pattern: OpGetLocal + OpConstant(1) + OpAdd + OpSetLocal
 		// This is "local = local + constant" pattern (like loop counters)
@@ -390,6 +486,7 @@ func (o *Optimizer) GenerateTypeSpecializations() *Bytecode {
 							// Found pattern! Use OpAddLocalConst
 							newInstructions = append(newInstructions, byte(OpAddLocalConst), byte(localIdx))
 							newInstructions = append(newInstructions, byte(constIdx>>8), byte(constIdx))
+							newPos += 4
 							i += 8 // Skip the whole sequence
 							continue
 						}
@@ -402,6 +499,7 @@ func (o *Optimizer) GenerateTypeSpecializations() *Bytecode {
 							// Found pattern! Use OpSubLocalConst
 							newInstructions = append(newInstructions, byte(OpSubLocalConst), byte(localIdx))
 							newInstructions = append(newInstructions, byte(constIdx>>8), byte(constIdx))
+							newPos += 4
 							i += 8 // Skip the whole sequence
 							continue
 						}
@@ -414,6 +512,7 @@ func (o *Optimizer) GenerateTypeSpecializations() *Bytecode {
 							// Found pattern! Use OpMulLocalConst
 							newInstructions = append(newInstructions, byte(OpMulLocalConst), byte(localIdx))
 							newInstructions = append(newInstructions, byte(constIdx>>8), byte(constIdx))
+							newPos += 4
 							i += 8 // Skip the whole sequence
 							continue
 						}
@@ -434,6 +533,7 @@ func (o *Optimizer) GenerateTypeSpecializations() *Bytecode {
 					if Opcode(instructions[i+5]) == OpAdd {
 						// OpIncLocal increments and pushes the result
 						newInstructions = append(newInstructions, byte(OpIncLocal), byte(localIdx))
+						newPos += 2
 						i += 6
 						continue
 					}
@@ -454,8 +554,12 @@ func (o *Optimizer) GenerateTypeSpecializations() *Bytecode {
 		}
 
 		newInstructions = append(newInstructions, instructions[i:i+instrLen]...)
+		newPos += instrLen
 		i += instrLen
 	}
+
+	// Update jump targets based on position mapping
+	newInstructions = o.updateJumpTargets(newInstructions, oldToNewPos)
 
 	o.bytecode.Instructions = newInstructions
 	return o.bytecode
@@ -858,6 +962,20 @@ func (o *Optimizer) transformInlineBody(body []byte, numParams int) []byte {
 		return transformed
 	}
 
+	// Pattern 6.5: Two parameters with chained constant operation
+	// Body: OpGetLocal 0, OpGetLocal 1, OpBinaryOp, OpConstant N, OpBinaryOp
+	// E.g., func f(a, b) { return (a + b) * 2 }
+	if transformed := o.transformTwoParamConstChained(body, numParams); transformed != nil {
+		return transformed
+	}
+
+	// Pattern 6.6: Parameter with constant on left side
+	// Body: OpConstant N, OpGetLocal 0, OpBinaryOp (for commutative ops like + and *)
+	// E.g., func f(a) { return 1 + a }
+	if transformed := o.transformConstParamBinary(body, numParams); transformed != nil {
+		return transformed
+	}
+
 	// Pattern 7: General transformation for simple expressions
 	// Transform OpGetLocal N to a stack-relative access
 	if transformed := o.transformGeneralBody(body, numParams); transformed != nil {
@@ -920,6 +1038,73 @@ func (o *Optimizer) transformParamConstBinary(body []byte, numParams int) []byte
 		// Arg is on stack, just emit: OpConstant idx, OpBinaryOp
 		return body[2:]
 	default:
+		return nil
+	}
+}
+
+// transformTwoParamConstChained handles patterns like: return (a + b) * 2
+// Body: OpGetLocal 0, OpGetLocal 1, OpBinaryOp1, OpConstant N, OpBinaryOp2
+func (o *Optimizer) transformTwoParamConstChained(body []byte, numParams int) []byte {
+	if numParams != 2 || len(body) != 10 {
+		return nil
+	}
+
+	// Expected pattern: OpGetLocal 0, OpGetLocal 1, OpBinaryOp1, OpConstant idx, OpBinaryOp2
+	if Opcode(body[0]) != OpGetLocal || body[1] != 0 {
+		return nil
+	}
+	if Opcode(body[2]) != OpGetLocal || body[3] != 1 {
+		return nil
+	}
+
+	binaryOp1 := Opcode(body[4])
+	if binaryOp1 != OpAdd && binaryOp1 != OpSub && binaryOp1 != OpMul {
+		return nil
+	}
+
+	if Opcode(body[5]) != OpConstant {
+		return nil
+	}
+
+	binaryOp2 := Opcode(body[9])
+	switch binaryOp2 {
+	case OpAdd, OpSub, OpMul, OpDiv, OpMod:
+		// Args are on stack: arg0, arg1
+		// We need: (arg0 binaryOp1 arg1) binaryOp2 const
+		// Stack has arg0, arg1 - emit: binaryOp1, OpConstant idx, binaryOp2
+		return []byte{byte(binaryOp1), body[5], body[6], body[7], byte(binaryOp2)}
+	default:
+		return nil
+	}
+}
+
+// transformConstParamBinary handles patterns like: return 1 + a or return 2 * a
+// Body: OpConstant N, OpGetLocal 0, OpBinaryOp (commutative ops only)
+func (o *Optimizer) transformConstParamBinary(body []byte, numParams int) []byte {
+	if numParams != 1 || len(body) != 6 {
+		return nil
+	}
+
+	// Pattern: OpConstant idx, OpGetLocal 0, OpBinaryOp
+	if Opcode(body[0]) != OpConstant {
+		return nil
+	}
+	if Opcode(body[3]) != OpGetLocal || body[4] != 0 {
+		return nil
+	}
+
+	binaryOp := Opcode(body[5])
+	switch binaryOp {
+	case OpAdd, OpMul:
+		// Commutative operations: can swap order
+		// Emit: OpConstant idx, OpBinaryOp (arg is on stack)
+		return []byte{body[0], body[1], body[2], byte(binaryOp)}
+	case OpEqual, OpNotEqual:
+		// Equality is also commutative
+		return []byte{body[0], body[1], body[2], byte(binaryOp)}
+	default:
+		// For non-commutative ops like Sub, Div, Less, Greater:
+		// Can't simply swap - would change meaning
 		return nil
 	}
 }

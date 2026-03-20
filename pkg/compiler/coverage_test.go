@@ -403,8 +403,11 @@ func TestLocalVariablesInFunction(t *testing.T) {
 		t.Error("expected OpSetLocal in function instructions")
 	}
 
-	if !containsOpcode(fn.Instructions, OpGetLocal) {
-		t.Error("expected OpGetLocal in function instructions")
+	// After optimization, OpGetLocal may be combined into OpGetLocalAdd superinstruction
+	// So check for either OpGetLocal or OpGetLocalAdd
+	hasLocalAccess := containsOpcode(fn.Instructions, OpGetLocal) || containsOpcode(fn.Instructions, OpGetLocalAdd)
+	if !hasLocalAccess {
+		t.Error("expected OpGetLocal or OpGetLocalAdd in function instructions")
 	}
 }
 
