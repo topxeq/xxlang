@@ -39,6 +39,12 @@ const (
 // Payload mask (48 bits for data storage)
 const payloadMask = 0x0000FFFFFFFFFFFF
 
+// VM constants
+const (
+	GlobalsSize = 65536 // Size of global variables array
+	MaxFrames   = 1024  // Maximum call frames
+)
+
 // Tag values in position
 const (
 	tagIntValue    = uint64(tagInt) << 48
@@ -819,4 +825,81 @@ func (v Value) LessValue(other Value) Value {
 func (v Value) GreaterValue(other Value) Value {
 	greater, _ := v.Greater(other)
 	return ValueBool(greater)
+}
+
+// ============================================
+// Exception handling support
+// ============================================
+
+// ExceptionHandler represents a try-catch-finally handler
+type ExceptionHandler struct {
+	catchAddr   int // Address to jump to for catch (0 if no catch)
+	finallyAddr int // Address to jump to for finally (0 if no finally)
+	frameIndex  int // Frame index when handler was pushed
+}
+
+// ============================================
+// Value stack for temp storage
+// ============================================
+
+// ValueStackSize is the maximum number of elements on the stack
+const ValueStackSize = 2048
+
+// errStackOverflow is returned when the stack is full
+var errStackOverflow = fmt.Errorf("stack overflow")
+
+// ValueStack represents the VM operand stack using NaN-boxed values
+type ValueStack struct {
+	data       []Value
+	sp         int   // Stack pointer (points to next free slot)
+	lastPopped Value // Last popped element
+}
+
+// NewValueStack creates a new value stack
+func NewValueStack() *ValueStack {
+	return &ValueStack{
+		data: make([]Value, ValueStackSize),
+		sp:   0,
+	}
+}
+
+// Push pushes a value onto the stack
+func (s *ValueStack) Push(v Value) error {
+	if s.sp >= ValueStackSize {
+		return errStackOverflow
+	}
+	s.data[s.sp] = v
+	s.sp++
+	return nil
+}
+
+// Pop pops a value from the stack
+func (s *ValueStack) Pop() Value {
+	if s.sp == 0 {
+		return ValueNull
+	}
+	s.sp--
+	v := s.data[s.sp]
+	s.data[s.sp] = ValueNull // Clear for GC
+	s.lastPopped = v
+	return v
+}
+
+// Top returns the top element without removing it
+func (s *ValueStack) Top() Value {
+	if s.sp == 0 {
+		return ValueNull
+	}
+	return s.data[s.sp-1]
+}
+
+// LastPopped returns the last popped element
+func (s *ValueStack) LastPopped() Value {
+	return s.lastPopped
+}
+
+// Reset clears the stack
+func (s *ValueStack) Reset() {
+	s.sp = 0
+	s.lastPopped = ValueNull
 }

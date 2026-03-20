@@ -19,10 +19,6 @@ import (
 	"github.com/topxeq/xxlang/pkg/vm"
 )
 
-// VMType controls which VM to use
-// Default is register VM for best performance (21% faster on average)
-var useStackVM = false
-
 // JITEnabled controls whether JIT compilation is enabled
 // Default is false (interpreter mode)
 var useJIT = false
@@ -98,8 +94,8 @@ func main() {
 	// Split arguments at -- separator
 	interpreterArgs, scriptArgs := splitArgs(os.Args[1:])
 
-	// Parse --vm flag
-	interpreterArgs = parseVMFlag(interpreterArgs)
+	// Parse JIT flags
+	interpreterArgs = parseFlags(interpreterArgs)
 
 	// Set script args for scripts to access via env::scriptArgs()
 	stdlib.SetScriptArgs(scriptArgs)
@@ -157,25 +153,12 @@ func main() {
 	}
 }
 
-// parseVMFlag extracts and processes --vm=register|stack flag
+// parseFlags extracts and processes JIT-related flags
 // Returns the remaining arguments
-func parseVMFlag(args []string) []string {
+func parseFlags(args []string) []string {
 	var result []string
 	for _, arg := range args {
-		if strings.HasPrefix(arg, "--vm=") {
-			vmType := strings.TrimPrefix(arg, "--vm=")
-			switch strings.ToLower(vmType) {
-			case "stack":
-				useStackVM = true
-			case "register":
-				useStackVM = false
-			default:
-				fmt.Fprintf(os.Stderr, "Unknown VM type: %s (use 'register' or 'stack')\n", vmType)
-				os.Exit(1)
-			}
-		} else if arg == "--stack-vm" {
-			useStackVM = true
-		} else if arg == "--jit" {
+		if arg == "--jit" {
 			useJIT = true
 		} else if strings.HasPrefix(arg, "--jit-threshold=") {
 			threshold := strings.TrimPrefix(arg, "--jit-threshold=")
@@ -209,10 +192,7 @@ func printUsage() {
 	fmt.Println("      --target os/arch  Cross-compile for target OS/architecture")
 	fmt.Println("      --bytecode        Output as bytecode (.xxb) instead of executable")
 	fmt.Println("  -cloud <script>       Execute script from configured cloudUrlBase")
-	fmt.Println("      --vm=register     Use register-based VM (default, faster)")
-	fmt.Println("      --vm=stack        Use stack-based VM (for compatibility)")
-	fmt.Println("      --stack-vm        Same as --vm=stack")
-	fmt.Println("      --jit             Enable JIT compilation for hot paths (experimental, limited support)")
+	fmt.Println("      --jit             Enable JIT compilation for hot paths (experimental)")
 	fmt.Println("      --jit-threshold=N Set JIT hot path threshold (default: 100)")
 	fmt.Println("      --no-jit          Disable JIT compilation (default)")
 	fmt.Println()
@@ -225,7 +205,6 @@ func printUsage() {
 	fmt.Println("  xxl script.xxl")
 	fmt.Println("  xxl script.xxl -- arg1 arg2 --help")
 	fmt.Println("  xxl run script.xxl -- --verbose -f file.txt")
-	fmt.Println("  xxl --vm=stack script.xxl    # Use stack-based VM")
 	fmt.Println("  xxl https://raw.githubusercontent.com/user/repo/main/script.xxl")
 	fmt.Println("  xxl compile -o program script.xxl")
 	fmt.Println("  xxl compile -o program.exe --target windows/amd64 script.xxl")
@@ -319,9 +298,6 @@ func (r *REPL) Execute(input string) (objects.Object, error) {
 		return nil, formatParserErrors(p.Errors())
 	}
 
-	if useStackVM {
-		return r.executeStack(program)
-	}
 	return r.executeRegister(program)
 }
 
@@ -350,31 +326,6 @@ func (r *REPL) executeRegister(program *parser.Program) (objects.Object, error) 
 	r.globals = v.GlobalsAsObjects()
 
 	return v.LastPoppedObject(), nil
-}
-
-// executeStack uses the stack-based VM for REPL execution
-func (r *REPL) executeStack(program *parser.Program) (objects.Object, error) {
-	// Compilation with persistent state
-	c := compiler.NewWithState(r.symbolTable, r.constants)
-	if err := c.Compile(program); err != nil {
-		return nil, fmt.Errorf("compiler error: %v", err)
-	}
-
-	// Update constants
-	r.constants = c.Bytecode().Constants
-
-	// Execution with persistent globals
-	bytecode := c.Bytecode()
-	v := vm.NewWithGlobalsStore(bytecode, r.globals)
-
-	if err := v.Run(); err != nil {
-		return nil, fmt.Errorf("runtime error: %v", err)
-	}
-
-	// Update globals for next execution
-	r.globals = v.Globals()
-
-	return v.LastPopped(), nil
 }
 
 // isURL checks if the given string is a URL
@@ -485,11 +436,7 @@ func executeCode(code, sourcePath string) {
 		os.Exit(1)
 	}
 
-	if useStackVM {
-		executeCodeStack(program, sourcePath, code)
-	} else {
-		executeCodeRegister(program, sourcePath, code)
-	}
+	executeCodeRegister(program, sourcePath, code)
 }
 
 // executeCodeRegister uses the register-based VM
@@ -578,58 +525,6 @@ func executeCodeRegister(program *parser.Program, sourcePath, code string) {
 	}
 }
 
-// executeCodeStack uses the stack-based VM
-func executeCodeStack(program *parser.Program, sourcePath, code string) {
-	// Compilation
-	c := compiler.New()
-	// Define preset global variables before compilation
-	argsGSymbol := c.DefineGlobal("argsG")
-	scriptPathGSymbol := c.DefineGlobal("scriptPathG")
-	c.SetSource(sourcePath, code) // Enable source mapping
-	if err := c.Compile(program); err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Create main module for exports
-	mainModule := &objects.Module{
-		Name:    sourcePath,
-		Exports: make(map[string]objects.Object),
-	}
-
-	// Prepare globals array with preset values
-	globals := make([]objects.Object, compiler.GlobalsSize)
-
-	// Set argsG - command line arguments as string array
-	argsElements := make([]objects.Object, len(os.Args))
-	for i, arg := range os.Args {
-		argsElements[i] = &objects.String{Value: arg}
-	}
-	globals[argsGSymbol.Index] = &objects.Array{Elements: argsElements}
-
-	// Set scriptPathG - script path (empty string if not available)
-	globals[scriptPathGSymbol.Index] = &objects.String{Value: sourcePath}
-
-	// Execution
-	bytecode := c.Bytecode()
-	v := vm.NewWithGlobalsStore(bytecode, globals)
-	v.SetSourcePath(sourcePath)
-	v.SetCurrentModule(mainModule)
-
-	if err := v.Run(); err != nil {
-		// Format runtime error with source location and call stack
-		fmt.Fprintf(os.Stderr, "Runtime Error: %v\n", err)
-		fmt.Fprintf(os.Stderr, "\n%s", v.GetCallStack())
-		os.Exit(1)
-	}
-
-	// Print result if it's meaningful
-	result := v.LastPopped()
-	if result != nil && result != objects.NULL {
-		fmt.Println(result.Inspect())
-	}
-}
-
 // runBytecodeFile runs a compiled bytecode file
 func runBytecodeFile(filename string) {
 	// Read the bytecode file
@@ -653,20 +548,20 @@ func runBytecodeFile(filename string) {
 	}
 
 	// Prepare globals array with preset values
-	globals := make([]objects.Object, compiler.GlobalsSize)
+	globals := make([]vm.Value, compiler.GlobalsSize)
 
 	// Set argsG - command line arguments as string array (index 0)
 	argsElements := make([]objects.Object, len(os.Args))
 	for i, arg := range os.Args {
 		argsElements[i] = &objects.String{Value: arg}
 	}
-	globals[0] = &objects.Array{Elements: argsElements}
+	globals[0] = vm.NewObject(&objects.Array{Elements: argsElements})
 
 	// Set scriptPathG - script path (index 1)
-	globals[1] = &objects.String{Value: filename}
+	globals[1] = vm.NewObject(&objects.String{Value: filename})
 
 	// Execution
-	v := vm.NewWithGlobalsStore(bytecode, globals)
+	v := vm.NewRegVMWithGlobals(bytecode, globals)
 	v.SetSourcePath(filename)
 	v.SetCurrentModule(mainModule)
 
@@ -676,7 +571,7 @@ func runBytecodeFile(filename string) {
 	}
 
 	// Print result if it's meaningful
-	result := v.LastPopped()
+	result := v.LastPoppedObject()
 	if result != nil && result != objects.NULL {
 		fmt.Println(result.Inspect())
 	}

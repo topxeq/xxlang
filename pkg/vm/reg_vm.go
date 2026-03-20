@@ -12,6 +12,7 @@ import (
 	"github.com/topxeq/xxlang/pkg/module"
 	"github.com/topxeq/xxlang/pkg/objects"
 	"github.com/topxeq/xxlang/pkg/parser"
+	"github.com/topxeq/xxlang/pkg/plugin"
 	"github.com/topxeq/xxlang/pkg/stdlib"
 )
 
@@ -1970,15 +1971,44 @@ func decodeRegConst(code []byte, ip int) (dst, src byte, constIdx int) {
 	return code[ip+1], code[ip+2], int(code[ip+3])<<8 | int(code[ip+4])
 }
 
-// loadPluginByPath loads a WASM plugin
+// loadPluginByPath loads a WASM plugin from a specific file path
 func (vm *RegVM) loadPluginByPath(wasmPath string) (objects.Object, error) {
-	// Use the existing VM's loadPluginByPath implementation
-	// Create a temporary VM to use its plugin loading
-	tempVM := &VM{
-		loader:     vm.loader,
-		sourcePath: vm.sourcePath,
+	// Check if already loaded (use absolute path as cache key)
+	absPath := wasmPath
+	if vm.sourcePath != "" && !strings.HasPrefix(wasmPath, "/") {
+		absPath = vm.sourcePath + "/" + wasmPath
 	}
-	return tempVM.loadPluginByPath(wasmPath)
+
+	cacheKey := "wasm:" + absPath
+	if vm.loader.HasModule(cacheKey) {
+		cachedMod, err := vm.loader.Get(cacheKey)
+		if err != nil {
+			return nil, err
+		}
+		return &objects.Module{
+			Name:    cachedMod.Name,
+			Exports: cachedMod.Exports,
+			Globals: cachedMod.Globals,
+		}, nil
+	}
+
+	// Create a plugin loader and load from the specified path
+	loader := plugin.NewLoader()
+	p, err := loader.LoadPath(wasmPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load WASM plugin '%s': %v", wasmPath, err)
+	}
+
+	// Convert plugin to module
+	mod := plugin.ToModule(p)
+
+	// Cache the module
+	vm.loader.Set(cacheKey, &module.Module{
+		Name:    mod.Name,
+		Exports: mod.Exports,
+	})
+
+	return mod, nil
 }
 
 // RunCodeInRegVM executes code in the register VM context
@@ -1995,8 +2025,8 @@ func RunCodeInRegVM(code string, args *objects.Map, regVM *RegVM) (objects.Objec
 		return nil, fmt.Errorf("parse error: %s", p.Errors()[0])
 	}
 
-	// Create a new compiler
-	c := compiler.New()
+	// Create a new register compiler
+	c := compiler.NewRegCompiler()
 
 	// If args are provided, define them as globals before compilation
 	if args != nil && len(args.Pairs) > 0 {
@@ -2009,14 +2039,14 @@ func RunCodeInRegVM(code string, args *objects.Map, regVM *RegVM) (objects.Objec
 		}
 	}
 
-	if err := c.Compile(program); err != nil {
+	if _, err := c.Compile(program); err != nil {
 		return nil, fmt.Errorf("compile error: %v", err)
 	}
 
 	bytecode := c.Bytecode()
 
 	// Create a new globals array for this execution
-	newGlobals := make([]Value, compiler.GlobalsSize)
+	newGlobals := make([]Value, GlobalsSize)
 
 	// Set argument values in globals
 	if args != nil {

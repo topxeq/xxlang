@@ -19,7 +19,7 @@ func TestRegVMBasicArithmetic(t *testing.T) {
 		{"1 + 2", 3},
 		{"5 - 3", 2},
 		{"4 * 3", 12},
-		{"10 / 2", 5},
+		{"10 / 2", 5.0}, // Division produces float
 		{"10 % 3", 1},
 	}
 
@@ -33,23 +33,37 @@ func TestRegVMBasicArithmetic(t *testing.T) {
 			t.Fatalf("parser errors: %v", p.Errors())
 		}
 
-		c := compiler.New()
-		if err := c.Compile(program); err != nil {
+		c := compiler.NewRegCompiler()
+		if _, err := c.Compile(program); err != nil {
 			t.Fatalf("compiler error: %v", err)
 		}
 
-		// Run with stack VM
-		stackVM := New(c.Bytecode())
-		if err := stackVM.Run(); err != nil {
-			t.Fatalf("stack VM error: %v", err)
+		// Run with register VM
+		vm := NewRegVM(c.Bytecode())
+		if err := vm.Run(); err != nil {
+			t.Fatalf("VM error: %v", err)
 		}
 
-		stackResult := stackVM.LastPopped()
+		result := vm.LastResult()
 
-		// The register VM currently requires register-based bytecode
-		// which requires the compiler to be modified to generate it
-		// For now, we just verify the stack VM works
-		t.Logf("Input: %s, Stack VM result: %v", tt.input, stackResult)
+		switch expected := tt.expected.(type) {
+		case int:
+			if !result.IsInt() {
+				t.Errorf("Input: %s, expected int, got %v", tt.input, result)
+				continue
+			}
+			if result.GetInt() != int64(expected) {
+				t.Errorf("Input: %s, expected=%d, got=%d", tt.input, expected, result.GetInt())
+			}
+		case float64:
+			if !result.IsFloat() {
+				t.Errorf("Input: %s, expected float, got %v", tt.input, result)
+				continue
+			}
+			if result.GetFloat() != expected {
+				t.Errorf("Input: %s, expected=%f, got=%f", tt.input, expected, result.GetFloat())
+			}
+		}
 	}
 }
 
@@ -74,15 +88,15 @@ func TestRegVMConstants(t *testing.T) {
 			t.Fatalf("parser errors: %v", p.Errors())
 		}
 
-		c := compiler.New()
-		if err := c.Compile(program); err != nil {
+		c := compiler.NewRegCompiler()
+		if _, err := c.Compile(program); err != nil {
 			t.Fatalf("compiler error: %v", err)
 		}
 
-		// Run with stack VM
-		stackVM := New(c.Bytecode())
-		if err := stackVM.Run(); err != nil {
-			t.Fatalf("stack VM error: %v", err)
+		// Run with register VM
+		vm := NewRegVM(c.Bytecode())
+		if err := vm.Run(); err != nil {
+			t.Fatalf("VM error: %v", err)
 		}
 
 		t.Logf("Input: %s, result verified", tt.input)
@@ -446,17 +460,6 @@ func TestRegVMMaps(t *testing.T) {
 			t.Fatalf("parser errors: %v", p.Errors())
 		}
 
-		// Stack VM
-		sc := compiler.New()
-		if err := sc.Compile(program); err != nil {
-			t.Fatalf("stack compiler error: %v", err)
-		}
-		svm := New(sc.Bytecode())
-		if err := svm.Run(); err != nil {
-			t.Fatalf("stack VM error: %v", err)
-		}
-		stackResult := svm.LastPopped().Inspect()
-
 		// Register VM
 		rc := compiler.NewRegCompiler()
 		if _, err := rc.Compile(program); err != nil {
@@ -469,9 +472,6 @@ func TestRegVMMaps(t *testing.T) {
 		regResult := rvm.LastResult().ToObject().Inspect()
 
 		// Compare with expected
-		if !strings.Contains(stackResult, tt.expected) {
-			t.Errorf("stack VM: expected to contain %q, got %q", tt.expected, stackResult)
-		}
 		if !strings.Contains(regResult, tt.expected) {
 			t.Errorf("reg VM: expected to contain %q, got %q", tt.expected, regResult)
 		}
