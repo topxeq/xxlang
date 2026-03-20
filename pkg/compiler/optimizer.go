@@ -555,6 +555,49 @@ func (o *Optimizer) GenerateTypeSpecializations() *Bytecode {
 			}
 		}
 
+		// Pattern: OpGetLocal + OpGetLocal + OpAdd + OpSetLocal
+		// This is "local1 = local1 + local2" pattern (like total += i in loops)
+		// Can be optimized to OpAddLocalByLocal
+		if op == OpGetLocal && i+6 < len(instructions) {
+			dstIdx := int(instructions[i+1])
+
+			if Opcode(instructions[i+2]) == OpGetLocal {
+				srcIdx := int(instructions[i+3])
+
+				if Opcode(instructions[i+4]) == OpAdd {
+					if Opcode(instructions[i+5]) == OpSetLocal && int(instructions[i+6]) == dstIdx {
+						// Found pattern! Use OpAddLocalByLocal
+						newInstructions = append(newInstructions, byte(OpAddLocalByLocal), byte(dstIdx), byte(srcIdx))
+						newPos += 3
+						i += 7 // Skip OpGetLocal(2) + OpGetLocal(2) + OpAdd(1) + OpSetLocal(2)
+						continue
+					}
+				}
+			}
+		}
+
+		// Pattern: OpGetLocal + OpConstant + OpLessEqual
+		// This is "local <= constant" pattern (for loop conditions)
+		// Can be optimized to OpLessEqualLocalConst
+		if op == OpGetLocal && i+5 < len(instructions) {
+			localIdx := int(instructions[i+1])
+
+			if Opcode(instructions[i+2]) == OpConstant {
+				constIdx := int(instructions[i+3])<<8 | int(instructions[i+4])
+
+				if _, ok := constants[constIdx].(*objects.Int); ok {
+					if Opcode(instructions[i+5]) == OpLessEqual {
+						// Found pattern! Use OpLessEqualLocalConst
+						newInstructions = append(newInstructions, byte(OpLessEqualLocalConst), byte(localIdx))
+						newInstructions = append(newInstructions, byte(constIdx>>8), byte(constIdx))
+						newPos += 4
+						i += 6 // Skip OpGetLocal(2) + OpConstant(3) + OpLessEqual(1)
+						continue
+					}
+				}
+			}
+		}
+
 		// Copy instruction as-is
 		def, err := Lookup(byte(op))
 		if err != nil {
@@ -1430,4 +1473,93 @@ func (o *Optimizer) DeadCodeElimination() *Bytecode {
 
 	o.bytecode.Instructions = newInstructions
 	return o.bytecode
+}
+
+// ============================================================================
+// REGISTER VM LOOP OPTIMIZATIONS
+// ============================================================================
+
+// OptimizeRegLoops optimizes common register-based loop patterns
+// This is called after register code generation
+func (o *Optimizer) OptimizeRegLoops() *Bytecode {
+	instructions := o.bytecode.Instructions
+
+	if len(instructions) < 20 {
+		return o.bytecode
+	}
+
+	newInstructions := make([]byte, 0, len(instructions))
+	oldToNewPos := make(map[int]int)
+
+	i := 0
+	newPos := 0
+	for i < len(instructions) {
+		oldPos := i
+		oldToNewPos[oldPos] = newPos
+
+		// Pattern: Simple counting loop body optimization
+		// OpRegLoadLocal R_a, local_a   (3 bytes)
+		// OpRegLoadLocal R_c, local_c   (3 bytes)
+		// OpRegAdd R_a, R_a, R_c        (4 bytes)
+		// OpRegStoreLocal local_a, R_a  (3 bytes)
+		// OpRegLoadLocal R_c, local_c   (3 bytes)
+		// OpRegAddConst R_c, R_c, 1     (5 bytes)
+		// OpRegStoreLocal local_c, R_c  (3 bytes)
+		// OpRegLoadLocal R_c, local_c   (3 bytes)
+		// OpRegLoadConst R_tmp, limit   (4 bytes)
+		// OpRegLess R_tmp, R_c, R_tmp   (4 bytes)
+		// OpRegJumpIfTrue R_tmp, offset (4 bytes)
+		// Total: 39 bytes -> OpRegLoopBodyAdd: 7 bytes (huge reduction!)
+
+		if Opcode(instructions[i]) == OpRegLoadLocal && i+35 < len(instructions) {
+			// Try to match the pattern
+			if result := o.matchRegLoopBodyAdd(instructions, i); result != nil {
+				newInstructions = append(newInstructions, result...)
+				newPos += len(result)
+				// Skip the matched instructions
+				i += 35
+				continue
+			}
+		}
+
+		// Copy instruction as-is
+		def, err := Lookup(instructions[i])
+		if err != nil {
+			i++
+			continue
+		}
+
+		instrLen := 1
+		for _, w := range def.OperandWidths {
+			instrLen += w
+		}
+
+		newInstructions = append(newInstructions, instructions[i:i+instrLen]...)
+		newPos += instrLen
+		i += instrLen
+	}
+
+	// Update jump targets
+	newInstructions = o.updateJumpTargets(newInstructions, oldToNewPos)
+
+	o.bytecode.Instructions = newInstructions
+	return o.bytecode
+}
+
+// matchRegLoopBodyAdd tries to match the register-based loop body add pattern
+// Returns the optimized instruction if matched, nil otherwise
+func (o *Optimizer) matchRegLoopBodyAdd(instructions []byte, start int) []byte {
+	// This is a complex pattern match - for now, return nil
+	// The full implementation would check:
+	// 1. Load local accumulator
+	// 2. Load local counter
+	// 3. Add counter to accumulator
+	// 4. Store accumulator
+	// 5. Increment counter
+	// 6. Check counter < limit
+	// 7. Jump back if true
+
+	// For simplicity, we'll let the register compiler directly emit OpRegLoopBodyAdd
+	// when it detects the pattern during compilation
+	return nil
 }

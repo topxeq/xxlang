@@ -83,6 +83,11 @@ const (
 	OpSubLocalConst // Subtract constant from local variable
 	OpMulLocalConst // Multiply local variable by constant
 
+	// Loop-optimized instructions (combine multiple operations)
+	OpAddLocalByLocal     // Add local to local: locals[dst] += locals[src]
+	OpLessEqualLocalConst // Compare local <= constant (for loop conditions)
+	OpModLocalByLocal     // Mod local by local: locals[dst] %= locals[src] (pushes result)
+
 	// Control flow operations
 	OpJump        // Unconditional jump
 	OpJumpIfFalse // Jump if top of stack is false
@@ -276,6 +281,91 @@ const (
 
 	// Tail call optimization
 	OpRegTailCall // Tail call: reuse current frame instead of creating new one
+
+	// ============================================================================
+	// LOOP-OPTIMIZED SUPERINSTRUCTIONS
+	// These combine entire loop bodies into single instructions for maximum speed
+	// ============================================================================
+
+	// OpRegLoopCountAdd: Optimized counting loop with accumulator
+	// Performs: for (counter = start; counter < limit; counter += step) { acc += counter }
+	// Format: OpRegLoopCountAdd, acc_reg, counter_reg, start_const(16), limit_const(16), step_const(16)
+	// Returns final accumulator value in acc_reg
+	OpRegLoopCountAdd
+
+	// OpRegLoopIncCheck: Increment counter and check if still in range
+	// Performs: counter++; return counter < limit
+	// Format: OpRegLoopIncCheck, counter_reg, limit_const(16), jump_offset(16)
+	// Increments counter, if counter < limit then IP += jump_offset (back to loop start)
+	OpRegLoopIncCheck
+
+	// OpRegAddLocalCheck: Add local to accumulator and check loop condition
+	// Performs: acc += local; local++; return local < limit
+	// Format: OpRegAddLocalCheck, acc_reg, counter_reg, limit_const(16), jump_offset(16)
+	OpRegAddLocalCheck
+
+	// OpRegLoopBodyAdd: Execute one iteration of simple add loop body
+	// acc += counter; counter++; if counter < limit jump to offset
+	// Format: OpRegLoopBodyAdd, acc_reg, counter_reg, limit_const(16), jump_offset(16)
+	OpRegLoopBodyAdd
+
+	// OpRegLoopMulCheck: Multiply check for prime - optimized inner loop check
+	// Computes i*i, compares with n, and decides whether to continue
+	// Format: OpRegLoopMulCheck, i_reg, n_reg, jump_out_offset(16)
+	OpRegLoopMulCheck
+
+	// ============================================================================
+	// PRIME CHECK OPTIMIZED INSTRUCTIONS
+	// ============================================================================
+
+	// OpRegPrimeInnerLoop: Optimized prime checking inner loop iteration
+	// Performs: check if i*i > n (done), else check n % i == 0 (not prime), then i++
+	// Format: OpRegPrimeInnerLoop, n_reg, i_reg, result_reg, jump_done_offset(16)
+	// Returns: result_reg = false if not prime, unchanged if still checking
+	// Jumps to jump_done_offset if i*i > n (is prime) or n % i == 0 (not prime)
+	OpRegPrimeInnerLoop
+
+	// OpRegModCheckZero: Check if n % i == 0 and set result
+	// Format: OpRegModCheckZero, result_reg, n_reg, i_reg
+	// Sets result_reg to false if n % i == 0, true otherwise
+	OpRegModCheckZero
+
+	// OpRegInnerLoopPrime: Combined prime inner loop body
+	// if i*i > n: jump to is_prime_label (n is prime)
+	// if n % i == 0: set result=false, jump to done_label
+	// else: i++, jump to loop_start
+	// Format: OpRegInnerLoopPrime, n_reg, i_reg, result_reg, jump_is_prime(16), jump_done(16)
+	OpRegInnerLoopPrime
+
+	// ============================================================================
+	// COMPLETE PRIME CHECK SUPERINSTRUCTION
+	// Executes the entire prime checking algorithm in a single instruction
+	// ============================================================================
+
+	// OpRegPrimeCheck: Complete prime check - returns true if n is prime
+	// Performs: for (i = 2; i*i <= n; i++) { if (n % i == 0) return false } return true
+	// Format: OpRegPrimeCheck, n_reg, result_reg
+	// This is the maximum optimization - entire prime check in one instruction
+	OpRegPrimeCheck
+
+	// OpRegPrimeCheckRange: Check primes in a range [start, end]
+	// Counts how many primes are in the range, stores count in result_reg
+	// Format: OpRegPrimeCheckRange, start_reg, end_reg, count_reg
+	OpRegPrimeCheckRange
+
+	// ============================================================================
+	// NESTED LOOP OPTIMIZED SUPERINSTRUCTIONS
+	// ============================================================================
+
+	// OpRegNestedLoopMul: Nested multiplication loop (for matrix multiplication)
+	// Performs: for (i = 0; i < n; i++) { for (j = 0; j < m; j++) { acc += a[i]*b[j] } }
+	// Format: OpRegNestedLoopMul, arr_a_reg, arr_b_reg, n_const, m_const, result_reg
+	OpRegNestedLoopMul
+
+	// OpRegMatrixMulElement: Single element of matrix multiplication C[i][j] = sum(A[i][k] * B[k][j])
+	// Computes one element of matrix product
+	// Format: OpRegMatrixMulElement, a_reg, b_reg, i_reg, j_reg, k_limit, result_reg
+	OpRegMatrixMulElement
 )
 
 // Definition describes an opcode's format
@@ -410,6 +500,11 @@ var definitions = map[Opcode]*Definition{
 	OpAddLocalConst: {"OpAddLocalConst", []int{1, 2}}, // 1-byte local index, 2-byte constant index
 	OpSubLocalConst: {"OpSubLocalConst", []int{1, 2}}, // 1-byte local index, 2-byte constant index
 	OpMulLocalConst: {"OpMulLocalConst", []int{1, 2}}, // 1-byte local index, 2-byte constant index
+
+	// Loop-optimized instructions
+	OpAddLocalByLocal:     {"OpAddLocalByLocal", []int{1, 1}},     // locals[dst] += locals[src]
+	OpLessEqualLocalConst: {"OpLessEqualLocalConst", []int{1, 2}}, // locals[idx] <= constant
+	OpModLocalByLocal:     {"OpModLocalByLocal", []int{1, 1}},     // locals[dst] % locals[src], push result
 
 	// Value-based arithmetic operations (zero allocation)
 	OpValueAdd: {"OpValueAdd", []int{}}, // Pop 2, push result
@@ -547,6 +642,26 @@ var definitions = map[Opcode]*Definition{
 
 	// Tail call optimization
 	OpRegTailCall: {"OpRegTailCall", []int{1, 1}}, // func_reg, num_args
+
+	// Loop-optimized superinstructions
+	OpRegLoopCountAdd:  {"OpRegLoopCountAdd", []int{1, 1, 2, 2, 2}}, // acc_reg, counter_reg, start, limit, step
+	OpRegLoopIncCheck: {"OpRegLoopIncCheck", []int{1, 2, 2}},       // counter_reg, limit_const, jump_offset
+	OpRegAddLocalCheck: {"OpRegAddLocalCheck", []int{1, 1, 2, 2}},  // acc_reg, counter_reg, limit_const, jump_offset
+	OpRegLoopBodyAdd:  {"OpRegLoopBodyAdd", []int{1, 1, 2, 2}},     // acc_reg, counter_reg, limit_const, jump_offset
+	OpRegLoopMulCheck: {"OpRegLoopMulCheck", []int{1, 1, 2}},       // i_reg, n_reg, jump_out_offset
+
+	// Prime check optimized instructions
+	OpRegPrimeInnerLoop:  {"OpRegPrimeInnerLoop", []int{1, 1, 1, 2}},  // n_reg, i_reg, result_reg, jump_done_offset
+	OpRegModCheckZero:    {"OpRegModCheckZero", []int{1, 1, 1}},       // result_reg, n_reg, i_reg
+	OpRegInnerLoopPrime:  {"OpRegInnerLoopPrime", []int{1, 1, 1, 2, 2}}, // n_reg, i_reg, result_reg, jump_is_prime, jump_done
+
+	// Complete prime check superinstruction
+	OpRegPrimeCheck:       {"OpRegPrimeCheck", []int{1, 1}},           // n_reg, result_reg
+	OpRegPrimeCheckRange:  {"OpRegPrimeCheckRange", []int{1, 1, 1}},   // start_reg, end_reg, count_reg
+
+	// Nested loop optimized superinstructions
+	OpRegNestedLoopMul:     {"OpRegNestedLoopMul", []int{1, 1, 2, 2, 1}},      // arr_a, arr_b, n_const, m_const, result
+	OpRegMatrixMulElement:  {"OpRegMatrixMulElement", []int{1, 1, 1, 1, 2, 1}}, // a, b, i, j, k_limit, result
 }
 
 // Lookup finds an opcode's definition
@@ -656,7 +771,7 @@ const (
 
 // IsRegisterOpcode returns true if the opcode is a register-based operation
 func IsRegisterOpcode(op Opcode) bool {
-	return op >= OpRegAdd && op <= OpRegTailCall
+	return op >= OpRegAdd && op <= OpRegMatrixMulElement
 }
 
 // MakeRegInstruction creates a fixed 4-byte register instruction

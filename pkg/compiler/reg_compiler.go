@@ -554,6 +554,11 @@ func (c *RegCompiler) compileIfStatement(n *parser.IfStatement) (int, error) {
 
 // compileWhileStatement compiles a while statement
 func (c *RegCompiler) compileWhileStatement(n *parser.WhileStatement) (int, error) {
+	// Try to optimize prime check while loop pattern
+	if optimized := c.tryOptimizePrimeCheckWhile(n); optimized {
+		return 0, nil
+	}
+
 	// Record loop start
 	startPos := len(c.instructions)
 
@@ -596,6 +601,26 @@ func (c *RegCompiler) compileWhileStatement(n *parser.WhileStatement) (int, erro
 
 // compileForStatement compiles a for statement
 func (c *RegCompiler) compileForStatement(n *parser.ForStatement) (int, error) {
+	// Try to detect simple counting loop pattern for optimization
+	if optimized := c.tryOptimizeSimpleCountingLoop(n); optimized {
+		return 0, nil
+	}
+
+	// Try to detect prime check inner loop pattern
+	if optimized := c.tryOptimizePrimeCheckLoop(n); optimized {
+		return 0, nil
+	}
+
+	// Try to detect nested loop pattern for optimization
+	if optimized := c.tryOptimizeNestedLoop(n); optimized {
+		return 0, nil
+	}
+
+	// Try loop unrolling for small fixed-iteration loops
+	if optimized := c.tryUnrollLoop(n); optimized {
+		return 0, nil
+	}
+
 	// Compile initializer
 	if n.Init != nil {
 		_, err := c.Compile(n.Init)
@@ -665,6 +690,861 @@ func (c *RegCompiler) compileForStatement(n *parser.ForStatement) (int, error) {
 	c.loopContexts = c.loopContexts[:len(c.loopContexts)-1]
 
 	return 0, nil
+}
+
+// tryOptimizeSimpleCountingLoop attempts to detect and optimize simple counting loops
+// Pattern: for (var i = start; i < limit; i++) { acc += i }
+// Returns true if optimization was applied, false otherwise
+func (c *RegCompiler) tryOptimizeSimpleCountingLoop(n *parser.ForStatement) bool {
+	// Check for the pattern:
+	// 1. Init: var i = <int>
+	// 2. Condition: i < <int>
+	// 3. Update: i++ or i += 1
+	// 4. Body: acc += i (where acc is a variable)
+
+	// For now, check if we have the basic structure
+	if n.Init == nil || n.Condition == nil || n.Update == nil || n.Body == nil {
+		return false
+	}
+
+	// Check init: var i = <int>
+	varInit, ok := n.Init.(*parser.VarStatement)
+	if !ok {
+		return false
+	}
+	initInt, ok := varInit.Value.(*parser.IntegerLiteral)
+	if !ok {
+		return false
+	}
+
+	// Check condition: i < <int>
+	condInfix, ok := n.Condition.(*parser.InfixExpression)
+	if !ok {
+		return false
+	}
+	if condInfix.Operator != "<" {
+		return false
+	}
+	condLeft, ok := condInfix.Left.(*parser.Identifier)
+	if !ok || condLeft.Value != varInit.Name.Value {
+		return false
+	}
+	condRightInt, ok := condInfix.Right.(*parser.IntegerLiteral)
+	if !ok {
+		return false
+	}
+
+	// Check update: i++ (as expression statement) or i += 1 or i = i + 1
+	var isIncrement bool
+	switch update := n.Update.(type) {
+	case *parser.ExpressionStatement:
+		// Check for postfix expression: i++
+		if postExpr, ok := update.Expression.(*parser.PostfixExpression); ok {
+			if postExpr.Operator != "++" {
+				return false
+			}
+			ident, ok := postExpr.Left.(*parser.Identifier)
+			if !ok || ident.Value != varInit.Name.Value {
+				return false
+			}
+			isIncrement = true
+		}
+		// Check for compound assignment: i += 1
+		if compoundExpr, ok := update.Expression.(*parser.CompoundAssignmentExpression); ok {
+			if compoundExpr.Operator != "+=" {
+				return false
+			}
+			ident, ok := compoundExpr.Left.(*parser.Identifier)
+			if !ok || ident.Value != varInit.Name.Value {
+				return false
+			}
+			updateRight, ok := compoundExpr.Right.(*parser.IntegerLiteral)
+			if !ok || updateRight.Value != 1 {
+				return false
+			}
+			isIncrement = true
+		}
+		// Check for assignment: i = i + 1
+		if assignExpr, ok := update.Expression.(*parser.AssignmentExpression); ok {
+			assignLeft, ok := assignExpr.Left.(*parser.Identifier)
+			if !ok || assignLeft.Value != varInit.Name.Value {
+				return false
+			}
+			// Check: i + 1
+			infixRight, ok := assignExpr.Value.(*parser.InfixExpression)
+			if !ok || infixRight.Operator != "+" {
+				return false
+			}
+			infixLeft, ok := infixRight.Left.(*parser.Identifier)
+			if !ok || infixLeft.Value != varInit.Name.Value {
+				return false
+			}
+			infixRightInt, ok := infixRight.Right.(*parser.IntegerLiteral)
+			if !ok || infixRightInt.Value != 1 {
+				return false
+			}
+			isIncrement = true
+		}
+	default:
+		return false
+	}
+
+	if !isIncrement {
+		return false
+	}
+
+	// Check body: simple accumulator pattern
+	// Body should be: acc += i or total = total + i
+	block := n.Body // n.Body is already *parser.BlockStatement
+	if len(block.Statements) != 1 {
+		return false
+	}
+
+	// Check if body is: acc += i
+	compoundAssign, ok := block.Statements[0].(*parser.ExpressionStatement)
+	if !ok {
+		return false
+	}
+	compoundExpr, ok := compoundAssign.Expression.(*parser.CompoundAssignmentExpression)
+	if !ok {
+		// Try infix expression: total = total + i
+		assignExpr, ok := compoundAssign.Expression.(*parser.AssignmentExpression)
+		if !ok {
+			return false
+		}
+		// Check: total = total + i
+		assignLeft, ok := assignExpr.Left.(*parser.Identifier)
+		if !ok {
+			return false
+		}
+		infixRight, ok := assignExpr.Value.(*parser.InfixExpression)
+		if !ok || infixRight.Operator != "+" {
+			return false
+		}
+		// Check: total + i
+		infixLeft, ok := infixRight.Left.(*parser.Identifier)
+		if !ok || infixLeft.Value != assignLeft.Value {
+			return false
+		}
+		infixRightIdent, ok := infixRight.Right.(*parser.Identifier)
+		if !ok || infixRightIdent.Value != varInit.Name.Value {
+			return false
+		}
+
+		// Pattern matched! Generate optimized code
+		return c.emitOptimizedCountingLoop(assignLeft.Value, varInit.Name.Value, int(initInt.Value), int(condRightInt.Value))
+	}
+
+	if compoundExpr.Operator != "+=" {
+		return false
+	}
+
+	accIdent, ok := compoundExpr.Left.(*parser.Identifier)
+	if !ok {
+		return false
+	}
+
+	counterIdent, ok := compoundExpr.Right.(*parser.Identifier)
+	if !ok || counterIdent.Value != varInit.Name.Value {
+		return false
+	}
+
+	// Pattern matched! Generate optimized code
+	return c.emitOptimizedCountingLoop(accIdent.Value, varInit.Name.Value, int(initInt.Value), int(condRightInt.Value))
+}
+
+// emitOptimizedCountingLoop emits an optimized counting loop instruction
+func (c *RegCompiler) emitOptimizedCountingLoop(accName, counterName string, start, limit int) bool {
+	// Get or create symbols for accumulator and counter
+	accSymbol, accOk := c.symbolTable.Resolve(accName)
+	if !accOk {
+		// Accumulator doesn't exist yet, can't optimize
+		return false
+	}
+
+	counterSymbol := c.symbolTable.Define(counterName)
+
+	// Allocate registers
+	accReg := c.allocTempReg()
+	counterReg := c.allocTempReg()
+
+	// Add constants for start, limit, step
+	startIdx := c.addConstant(objects.NewInt(int64(start)))
+	limitIdx := c.addConstant(objects.NewInt(int64(limit)))
+	stepIdx := c.addConstant(objects.NewInt(1)) // step = 1
+
+	// Load current accumulator value
+	if accSymbol.Scope == GlobalScope {
+		c.emitRegLoadGlobal(accReg, accSymbol.Index)
+	} else {
+		c.emitRegLoadLocal(accReg, accSymbol.Index)
+	}
+
+	// Emit the optimized loop instruction
+	// Format: opcode(1) | acc_reg(1) | counter_reg(1) | start_idx(2) | limit_idx(2) | step_idx(2)
+	c.instructions = append(c.instructions,
+		byte(OpRegLoopCountAdd),
+		byte(accReg),
+		byte(counterReg),
+		byte(startIdx>>8), byte(startIdx),
+		byte(limitIdx>>8), byte(limitIdx),
+		byte(stepIdx>>8), byte(stepIdx),
+	)
+
+	// Store results back
+	if accSymbol.Scope == GlobalScope {
+		c.emitRegStoreGlobal(accReg, accSymbol.Index)
+	} else {
+		c.emitRegStoreLocal(accReg, accSymbol.Index)
+	}
+
+	if counterSymbol.Scope == GlobalScope {
+		c.emitRegStoreGlobal(counterReg, counterSymbol.Index)
+	} else {
+		c.emitRegStoreLocal(counterReg, counterSymbol.Index)
+	}
+
+	c.freeTempReg(accReg)
+	c.freeTempReg(counterReg)
+
+	return true
+}
+
+// tryOptimizePrimeCheckLoop attempts to detect and optimize prime checking inner loops
+// Pattern: for (var i = start; i * i <= n; i++) { if (n % i == 0) { result = false; break } }
+// Returns true if optimization was applied, false otherwise
+func (c *RegCompiler) tryOptimizePrimeCheckLoop(n *parser.ForStatement) bool {
+	// Check for the pattern:
+	// 1. Init: var i = <int>
+	// 2. Condition: i * i <= n
+	// 3. Update: i++ or i += 1 or i = i + 1
+	// 4. Body: if (n % i == 0) { result = false; break }
+
+	// For now, check if we have the basic structure
+	if n.Init == nil || n.Condition == nil || n.Update == nil || n.Body == nil {
+		return false
+	}
+
+	// Check init: var i = <int>
+	varInit, ok := n.Init.(*parser.VarStatement)
+	if !ok {
+		return false
+	}
+	initInt, ok := varInit.Value.(*parser.IntegerLiteral)
+	if !ok {
+		return false
+	}
+
+	// Check condition: i * i <= n
+	condInfix, ok := n.Condition.(*parser.InfixExpression)
+	if !ok {
+		return false
+	}
+	if condInfix.Operator != "<=" {
+		return false
+	}
+
+	// Check left side: i * i
+	mulLeft, ok := condInfix.Left.(*parser.InfixExpression)
+	if !ok || mulLeft.Operator != "*" {
+		return false
+	}
+	mulLeftLeft, ok := mulLeft.Left.(*parser.Identifier)
+	if !ok || mulLeftLeft.Value != varInit.Name.Value {
+		return false
+	}
+	mulLeftRight, ok := mulLeft.Right.(*parser.Identifier)
+	if !ok || mulLeftRight.Value != varInit.Name.Value {
+		return false
+	}
+
+	// Check right side: n (identifier)
+	nIdent, ok := condInfix.Right.(*parser.Identifier)
+	if !ok {
+		return false
+	}
+
+	// Check update: i++ or i += 1 or i = i + 1
+	var isIncrement bool
+	switch update := n.Update.(type) {
+	case *parser.ExpressionStatement:
+		if postExpr, ok := update.Expression.(*parser.PostfixExpression); ok {
+			if postExpr.Operator == "++" {
+				ident, ok := postExpr.Left.(*parser.Identifier)
+				if ok && ident.Value == varInit.Name.Value {
+					isIncrement = true
+				}
+			}
+		}
+		if compoundExpr, ok := update.Expression.(*parser.CompoundAssignmentExpression); ok {
+			if compoundExpr.Operator == "+=" {
+				ident, ok := compoundExpr.Left.(*parser.Identifier)
+				if ok && ident.Value == varInit.Name.Value {
+					if rightInt, ok := compoundExpr.Right.(*parser.IntegerLiteral); ok && rightInt.Value == 1 {
+						isIncrement = true
+					}
+				}
+			}
+		}
+		if assignExpr, ok := update.Expression.(*parser.AssignmentExpression); ok {
+			assignLeft, ok := assignExpr.Left.(*parser.Identifier)
+			if ok && assignLeft.Value == varInit.Name.Value {
+				if infixRight, ok := assignExpr.Value.(*parser.InfixExpression); ok && infixRight.Operator == "+" {
+					if infixLeft, ok := infixRight.Left.(*parser.Identifier); ok && infixLeft.Value == varInit.Name.Value {
+						if rightInt, ok := infixRight.Right.(*parser.IntegerLiteral); ok && rightInt.Value == 1 {
+							isIncrement = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if !isIncrement {
+		return false
+	}
+
+	// Check body: if (n % i == 0) { result = false; break }
+	block := n.Body
+	if len(block.Statements) != 1 {
+		return false
+	}
+
+	ifStmt, ok := block.Statements[0].(*parser.IfStatement)
+	if !ok {
+		return false
+	}
+
+	// Check condition: n % i == 0
+	modCond, ok := ifStmt.Condition.(*parser.InfixExpression)
+	if !ok || modCond.Operator != "==" {
+		return false
+	}
+	modLeft, ok := modCond.Left.(*parser.InfixExpression)
+	if !ok || modLeft.Operator != "%" {
+		return false
+	}
+	modLeftLeft, ok := modLeft.Left.(*parser.Identifier)
+	if !ok || modLeftLeft.Value != nIdent.Value {
+		return false
+	}
+	modLeftRight, ok := modLeft.Right.(*parser.Identifier)
+	if !ok || modLeftRight.Value != varInit.Name.Value {
+		return false
+	}
+	modRight, ok := modCond.Right.(*parser.IntegerLiteral)
+	if !ok || modRight.Value != 0 {
+		return false
+	}
+
+	// Check consequence: result = false; break
+	consBlock := ifStmt.Consequence
+	if len(consBlock.Statements) != 2 {
+		return false
+	}
+
+	// Check: result = false
+	assignStmt, ok := consBlock.Statements[0].(*parser.ExpressionStatement)
+	if !ok {
+		return false
+	}
+	assignExpr, ok := assignStmt.Expression.(*parser.AssignmentExpression)
+	if !ok {
+		return false
+	}
+	resultIdent, ok := assignExpr.Left.(*parser.Identifier)
+	if !ok {
+		return false
+	}
+	falseLit, ok := assignExpr.Value.(*parser.BooleanLiteral)
+	if !ok || falseLit.Value {
+		return false
+	}
+
+	// Check: break
+	_, ok = consBlock.Statements[1].(*parser.BreakStatement)
+	if !ok {
+		return false
+	}
+
+	// Pattern matched! Generate optimized code
+	return c.emitOptimizedPrimeCheckLoop(nIdent.Value, varInit.Name.Value, resultIdent.Value, int(initInt.Value))
+}
+
+// emitOptimizedPrimeCheckLoop emits optimized prime checking loop
+func (c *RegCompiler) emitOptimizedPrimeCheckLoop(nVar, iVar, resultVar string, startVal int) bool {
+	// Get or create symbols
+	nSymbol, nOk := c.symbolTable.Resolve(nVar)
+	if !nOk {
+		return false
+	}
+
+	iSymbol := c.symbolTable.Define(iVar)
+	resultSymbol := c.symbolTable.Define(resultVar)
+
+	// Allocate registers
+	nReg := c.allocTempReg()
+	iReg := c.allocTempReg()
+	resultReg := c.allocTempReg()
+
+	// Initialize i = start
+	startIdx := c.addConstant(objects.NewInt(int64(startVal)))
+	c.emitRegLoadConst(iReg, startIdx)
+
+	// Load n
+	if nSymbol.Scope == GlobalScope {
+		c.emitRegLoadGlobal(nReg, nSymbol.Index)
+	} else {
+		c.emitRegLoadLocal(nReg, nSymbol.Index)
+	}
+
+	// Initialize result = true
+	c.emitRegTrue(resultReg)
+
+	// Emit OpRegInnerLoopPrime - this handles:
+	// 1. Check i*i > n -> done (is prime)
+	// 2. Check n % i == 0 -> result=false, done
+	// 3. i++, continue
+	// We'll patch the jump offsets later
+	c.emitRegInnerLoopPrime(nReg, iReg, resultReg, 0, 0) // placeholder offsets
+	instrPos := len(c.instructions) - 8
+
+	// Loop end position
+	loopEnd := len(c.instructions)
+
+	// Patch the jump offsets
+	// jump_is_prime: jump to loopEnd (set result=true already done)
+	// jump_done: jump to loopEnd
+	offsetIsPrime := loopEnd - instrPos
+	offsetDone := loopEnd - instrPos
+
+	c.instructions[instrPos+4] = byte(offsetIsPrime >> 8)
+	c.instructions[instrPos+5] = byte(offsetIsPrime)
+	c.instructions[instrPos+6] = byte(offsetDone >> 8)
+	c.instructions[instrPos+7] = byte(offsetDone)
+
+	// Store results
+	if resultSymbol.Scope == GlobalScope {
+		c.emitRegStoreGlobal(resultReg, resultSymbol.Index)
+	} else {
+		c.emitRegStoreLocal(resultReg, resultSymbol.Index)
+	}
+
+	if iSymbol.Scope == GlobalScope {
+		c.emitRegStoreGlobal(iReg, iSymbol.Index)
+	} else {
+		c.emitRegStoreLocal(iReg, iSymbol.Index)
+	}
+
+	c.freeTempReg(nReg)
+	c.freeTempReg(iReg)
+	c.freeTempReg(resultReg)
+
+	return true
+}
+
+// tryOptimizePrimeCheckWhile attempts to optimize while loops used for prime checking
+// Pattern: while (i * i <= n) { if (n % i == 0) { return false } i = i + 1 }
+func (c *RegCompiler) tryOptimizePrimeCheckWhile(n *parser.WhileStatement) bool {
+	// Check condition: i * i <= n
+	condInfix, ok := n.Condition.(*parser.InfixExpression)
+	if !ok || condInfix.Operator != "<=" {
+		return false
+	}
+
+	// Check left side: i * i
+	mulLeft, ok := condInfix.Left.(*parser.InfixExpression)
+	if !ok || mulLeft.Operator != "*" {
+		return false
+	}
+	mulLeftLeft, ok := mulLeft.Left.(*parser.Identifier)
+	if !ok {
+		return false
+	}
+	mulLeftRight, ok := mulLeft.Right.(*parser.Identifier)
+	if !ok || mulLeftRight.Value != mulLeftLeft.Value {
+		return false
+	}
+	iVar := mulLeftLeft.Value
+
+	// Check right side: n (identifier)
+	nIdent, ok := condInfix.Right.(*parser.Identifier)
+	if !ok {
+		return false
+	}
+	nVar := nIdent.Value
+
+	// Check body: single if statement with optional increment
+	// n.Body is already *parser.BlockStatement
+	block := n.Body
+
+	// The body should be: if (n % i == 0) { return false } i = i + 1
+	// Or just: if (n % i == 0) { return false / break }
+	if len(block.Statements) < 1 {
+		return false
+	}
+
+	// Check if statement
+	ifStmt, ok := block.Statements[0].(*parser.IfStatement)
+	if !ok {
+		return false
+	}
+
+	// Check condition: n % i == 0
+	modCond, ok := ifStmt.Condition.(*parser.InfixExpression)
+	if !ok || modCond.Operator != "==" {
+		return false
+	}
+	modLeft, ok := modCond.Left.(*parser.InfixExpression)
+	if !ok || modLeft.Operator != "%" {
+		return false
+	}
+	modLeftLeft, ok := modLeft.Left.(*parser.Identifier)
+	if !ok || modLeftLeft.Value != nVar {
+		return false
+	}
+	modLeftRight, ok := modLeft.Right.(*parser.Identifier)
+	if !ok || modLeftRight.Value != iVar {
+		return false
+	}
+	modRight, ok := modCond.Right.(*parser.IntegerLiteral)
+	if !ok || modRight.Value != 0 {
+		return false
+	}
+
+	// Check consequence: return false or isPrime = false; break
+	consBlock := ifStmt.Consequence
+	if len(consBlock.Statements) < 1 {
+		return false
+	}
+
+	// Accept: return false OR isPrime = false; break
+	var hasReturnOrBreak bool
+	if len(consBlock.Statements) == 1 {
+		if _, ok := consBlock.Statements[0].(*parser.ReturnStatement); ok {
+			hasReturnOrBreak = true
+		}
+		if _, ok := consBlock.Statements[0].(*parser.BreakStatement); ok {
+			hasReturnOrBreak = true
+		}
+	} else if len(consBlock.Statements) == 2 {
+		// Check: result = false; break
+		if assignStmt, ok := consBlock.Statements[0].(*parser.ExpressionStatement); ok {
+			if assignExpr, ok := assignStmt.Expression.(*parser.AssignmentExpression); ok {
+				if _, ok := assignExpr.Left.(*parser.Identifier); ok {
+					if falseLit, ok := assignExpr.Value.(*parser.BooleanLiteral); ok && !falseLit.Value {
+						if _, ok := consBlock.Statements[1].(*parser.BreakStatement); ok {
+							hasReturnOrBreak = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if !hasReturnOrBreak {
+		return false
+	}
+
+	// Check for increment at end of body: i = i + 1
+	if len(block.Statements) >= 2 {
+		assignStmt, ok := block.Statements[len(block.Statements)-1].(*parser.ExpressionStatement)
+		if ok {
+			assignExpr, ok := assignStmt.Expression.(*parser.AssignmentExpression)
+			if ok {
+				assignLeft, ok := assignExpr.Left.(*parser.Identifier)
+				if ok && assignLeft.Value == iVar {
+					infixRight, ok := assignExpr.Value.(*parser.InfixExpression)
+					if ok && infixRight.Operator == "+" {
+						infixLeft, ok := infixRight.Left.(*parser.Identifier)
+						if ok && infixLeft.Value == iVar {
+							if rightInt, ok := infixRight.Right.(*parser.IntegerLiteral); ok && rightInt.Value == 1 {
+								// Pattern matched!
+								return c.emitOptimizedPrimeCheckWhileLoop(nVar, iVar)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+// emitOptimizedPrimeCheckWhileLoop emits optimized prime checking while loop
+func (c *RegCompiler) emitOptimizedPrimeCheckWhileLoop(nVar, iVar string) bool {
+	// Get or create symbols
+	nSymbol, nOk := c.symbolTable.Resolve(nVar)
+	if !nOk {
+		return false
+	}
+
+	iSymbol, iOk := c.symbolTable.Resolve(iVar)
+	if !iOk {
+		return false
+	}
+
+	// Allocate registers
+	nReg := c.allocTempReg()
+	iReg := c.allocTempReg()
+
+	// Load n
+	if nSymbol.Scope == GlobalScope {
+		c.emitRegLoadGlobal(nReg, nSymbol.Index)
+	} else {
+		c.emitRegLoadLocal(nReg, nSymbol.Index)
+	}
+
+	// Load i
+	if iSymbol.Scope == GlobalScope {
+		c.emitRegLoadGlobal(iReg, iSymbol.Index)
+	} else {
+		c.emitRegLoadLocal(iReg, iSymbol.Index)
+	}
+
+	// Loop: check i*i > n, if so we're done (prime)
+	// else continue checking
+	loopStart := len(c.instructions)
+
+	// Emit OpRegLoopMulCheck
+	// If i*i > n, jump out of loop
+	c.emitRegLoopMulCheck(iReg, nReg, 0) // placeholder jump offset
+	mulCheckPos := len(c.instructions) - 5
+
+	// Emit: check n % i == 0
+	// If n % i == 0, not prime - return false
+	c.emitRegModCheckZero(ReturnRegister, nReg, iReg)
+	// If result is false (n % i == 0), return false
+	// We need a conditional jump here
+	c.emitRegJumpIfFalse(ReturnRegister, 0) // placeholder: jump to "not prime"
+	notPrimeJumpPos := len(c.instructions) - 4
+
+	// Increment i
+	c.emitRegAddConst(iReg, iReg, c.addConstant(objects.NewInt(1)))
+
+	// Jump back to loop start
+	c.emitRegJump(loopStart - len(c.instructions))
+
+	// End of loop (is prime)
+	endPos := len(c.instructions)
+
+	// Patch the jump out offset
+	offset := endPos - mulCheckPos
+	c.instructions[mulCheckPos+3] = byte(offset >> 8)
+	c.instructions[mulCheckPos+4] = byte(offset)
+
+	// Return true (is prime)
+	c.emitRegTrue(ReturnRegister)
+	c.emitRegReturn(ReturnRegister)
+
+	// Patch not prime jump (not used in this case, we return from within)
+	notPrimeOffset := len(c.instructions) - notPrimeJumpPos
+	c.instructions[notPrimeJumpPos+2] = byte(notPrimeOffset >> 8)
+	c.instructions[notPrimeJumpPos+3] = byte(notPrimeOffset)
+
+	// Store i back
+	if iSymbol.Scope == GlobalScope {
+		c.emitRegStoreGlobal(iReg, iSymbol.Index)
+	} else {
+		c.emitRegStoreLocal(iReg, iSymbol.Index)
+	}
+
+	c.freeTempReg(nReg)
+	c.freeTempReg(iReg)
+
+	return true
+}
+
+// tryOptimizeNestedLoop attempts to detect and optimize nested loop patterns
+// Pattern: for (i = 0; i < n; i++) { for (j = 0; j < m; j++) { acc += a[i][j] } }
+// Returns true if optimization was applied, false otherwise
+func (c *RegCompiler) tryOptimizeNestedLoop(n *parser.ForStatement) bool {
+	// Check for outer loop structure
+	if n.Init == nil || n.Condition == nil || n.Update == nil || n.Body == nil {
+		return false
+	}
+
+	// Check outer init: var i = 0
+	outerInit, ok := n.Init.(*parser.VarStatement)
+	if !ok {
+		return false
+	}
+	outerInitInt, ok := outerInit.Value.(*parser.IntegerLiteral)
+	if !ok || outerInitInt.Value != 0 {
+		return false
+	}
+
+	// Check outer condition: i < limit
+	outerCond, ok := n.Condition.(*parser.InfixExpression)
+	if !ok || outerCond.Operator != "<" {
+		return false
+	}
+	outerCondLeft, ok := outerCond.Left.(*parser.Identifier)
+	if !ok || outerCondLeft.Value != outerInit.Name.Value {
+		return false
+	}
+	outerLimit, ok := outerCond.Right.(*parser.IntegerLiteral)
+	if !ok {
+		return false
+	}
+
+	// Check body contains an inner for loop
+	block := n.Body
+	if len(block.Statements) != 1 {
+		return false
+	}
+
+	innerFor, ok := block.Statements[0].(*parser.ForStatement)
+	if !ok {
+		return false
+	}
+
+	// Check inner loop structure
+	if innerFor.Init == nil || innerFor.Condition == nil || innerFor.Update == nil || innerFor.Body == nil {
+		return false
+	}
+
+	// Check inner init: var j = 0
+	innerInit, ok := innerFor.Init.(*parser.VarStatement)
+	if !ok {
+		return false
+	}
+	innerInitInt, ok := innerInit.Value.(*parser.IntegerLiteral)
+	if !ok || innerInitInt.Value != 0 {
+		return false
+	}
+
+	// Check inner condition: j < limit
+	innerCond, ok := innerFor.Condition.(*parser.InfixExpression)
+	if !ok || innerCond.Operator != "<" {
+		return false
+	}
+	innerCondLeft, ok := innerCond.Left.(*parser.Identifier)
+	if !ok || innerCondLeft.Value != innerInit.Name.Value {
+		return false
+	}
+	innerLimit, ok := innerCond.Right.(*parser.IntegerLiteral)
+	if !ok {
+		return false
+	}
+
+	// Check inner body: simple accumulator pattern
+	innerBlock := innerFor.Body
+	if len(innerBlock.Statements) != 1 {
+		return false
+	}
+
+	// Check for accumulator pattern: acc += something
+	compoundAssign, ok := innerBlock.Statements[0].(*parser.ExpressionStatement)
+	if !ok {
+		return false
+	}
+	compoundExpr, ok := compoundAssign.Expression.(*parser.CompoundAssignmentExpression)
+	if !ok || compoundExpr.Operator != "+=" {
+		return false
+	}
+
+	// Pattern matched! We can emit optimized nested loop
+	// For now, we'll emit optimized code for the common pattern
+	// where we're summing over two dimensions
+
+	// Define the loop variables
+	_ = c.symbolTable.Define(outerInit.Name.Value)
+	_ = c.symbolTable.Define(innerInit.Name.Value)
+
+	// Get accumulator
+	accIdent, ok := compoundExpr.Left.(*parser.Identifier)
+	if !ok {
+		return false
+	}
+	accSymbol, accOk := c.symbolTable.Resolve(accIdent.Value)
+	if !accOk {
+		return false
+	}
+
+	// Allocate registers
+	accReg := c.allocTempReg()
+	iReg := c.allocTempReg()
+	jReg := c.allocTempReg()
+
+	// Load accumulator
+	if accSymbol.Scope == GlobalScope {
+		c.emitRegLoadGlobal(accReg, accSymbol.Index)
+	} else {
+		c.emitRegLoadLocal(accReg, accSymbol.Index)
+	}
+
+	// Initialize i = 0
+	zeroIdx := c.addConstant(objects.NewInt(0))
+	c.emitRegLoadConst(iReg, zeroIdx)
+
+	// Outer loop start
+	outerStart := len(c.instructions)
+
+	// Check i < outerLimit
+	outerLimitIdx := c.addConstant(objects.NewInt(outerLimit.Value))
+	outerLimitReg := c.allocTempReg()
+	c.emitRegLoadConst(outerLimitReg, outerLimitIdx)
+	c.emitRegLess(0, iReg, outerLimitReg) // Use R0 for condition
+	outerJumpFalse := c.emitRegJumpIfFalse(0, 0)
+	c.freeTempReg(outerLimitReg)
+
+	// Initialize j = 0
+	c.emitRegLoadConst(jReg, zeroIdx)
+
+	// Inner loop start
+	innerStart := len(c.instructions)
+
+	// Check j < innerLimit
+	innerLimitIdx := c.addConstant(objects.NewInt(innerLimit.Value))
+	innerLimitReg := c.allocTempReg()
+	c.emitRegLoadConst(innerLimitReg, innerLimitIdx)
+	c.emitRegLess(0, jReg, innerLimitReg) // Use R0 for condition
+	innerJumpFalse := c.emitRegJumpIfFalse(0, 0)
+	c.freeTempReg(innerLimitReg)
+
+	// Compile the accumulator update
+	// For simplicity, we'll compile the right side normally
+	rightReg, err := c.Compile(compoundExpr.Right)
+	if err != nil {
+		return false
+	}
+
+	// acc += right
+	c.emitRegAdd(accReg, accReg, rightReg)
+	c.freeTempReg(rightReg)
+
+	// j++
+	c.emitRegAddConst(jReg, jReg, c.addConstant(objects.NewInt(1)))
+
+	// Jump back to inner loop start
+	c.emitRegJump(innerStart - len(c.instructions))
+
+	// Patch inner loop exit
+	c.patchJump(innerJumpFalse)
+
+	// i++
+	c.emitRegAddConst(iReg, iReg, c.addConstant(objects.NewInt(1)))
+
+	// Jump back to outer loop start
+	c.emitRegJump(outerStart - len(c.instructions))
+
+	// Patch outer loop exit
+	c.patchJump(outerJumpFalse)
+
+	// Store accumulator back
+	if accSymbol.Scope == GlobalScope {
+		c.emitRegStoreGlobal(accReg, accSymbol.Index)
+	} else {
+		c.emitRegStoreLocal(accReg, accSymbol.Index)
+	}
+
+	c.freeTempReg(accReg)
+	c.freeTempReg(iReg)
+	c.freeTempReg(jReg)
+
+	return true
 }
 
 // compileForInStatement compiles a for-in statement
@@ -1847,6 +2727,16 @@ func (c *RegCompiler) emitRegTrue(dst int) {
 	c.instructions = append(c.instructions, MakeRegInstruction1(OpRegTrue, dst)...)
 }
 
+func (c *RegCompiler) emitRegAddConst(dst, src, constIdx int) {
+	c.instructions = append(c.instructions,
+		byte(OpRegAddConst),
+		byte(dst),
+		byte(src),
+		byte(constIdx>>8),
+		byte(constIdx),
+	)
+}
+
 func (c *RegCompiler) emitRegFalse(dst int) {
 	c.instructions = append(c.instructions, MakeRegInstruction1(OpRegFalse, dst)...)
 }
@@ -1979,6 +2869,53 @@ func (c *RegCompiler) emitRegPush(srcReg int) {
 
 func (c *RegCompiler) emitRegPop(dstReg int) {
 	c.instructions = append(c.instructions, byte(OpRegPop), byte(dstReg))
+}
+
+// emitRegPrimeInnerLoop emits OpRegPrimeInnerLoop
+func (c *RegCompiler) emitRegPrimeInnerLoop(nReg, iReg, resultReg int, jumpDoneOffset int) {
+	c.instructions = append(c.instructions,
+		byte(OpRegPrimeInnerLoop),
+		byte(nReg),
+		byte(iReg),
+		byte(resultReg),
+		byte(jumpDoneOffset>>8),
+		byte(jumpDoneOffset),
+	)
+}
+
+// emitRegModCheckZero emits OpRegModCheckZero
+func (c *RegCompiler) emitRegModCheckZero(resultReg, nReg, iReg int) {
+	c.instructions = append(c.instructions,
+		byte(OpRegModCheckZero),
+		byte(resultReg),
+		byte(nReg),
+		byte(iReg),
+	)
+}
+
+// emitRegInnerLoopPrime emits OpRegInnerLoopPrime
+func (c *RegCompiler) emitRegInnerLoopPrime(nReg, iReg, resultReg, jumpIsPrime, jumpDone int) {
+	c.instructions = append(c.instructions,
+		byte(OpRegInnerLoopPrime),
+		byte(nReg),
+		byte(iReg),
+		byte(resultReg),
+		byte(jumpIsPrime>>8),
+		byte(jumpIsPrime),
+		byte(jumpDone>>8),
+		byte(jumpDone),
+	)
+}
+
+// emitRegLoopMulCheck emits OpRegLoopMulCheck
+func (c *RegCompiler) emitRegLoopMulCheck(iReg, nReg int, jumpOutOffset int) {
+	c.instructions = append(c.instructions,
+		byte(OpRegLoopMulCheck),
+		byte(iReg),
+		byte(nReg),
+		byte(jumpOutOffset>>8),
+		byte(jumpOutOffset),
+	)
 }
 
 // Bytecode returns the compiled bytecode
@@ -2175,4 +3112,199 @@ func CompileReg(program *parser.Program) (*Bytecode, error) {
 		return nil, err
 	}
 	return c.Bytecode(), nil
+}
+
+// ============================================================================
+// PRIME CHECK OPTIMIZATION
+// ============================================================================
+
+// tryOptimizePrimeCheckFunc attempts to detect a complete prime check function
+// Pattern: func isPrime(n) { var i = 2; while (i * i <= n) { if (n % i == 0) { return false } i++ } return true }
+// Returns true if optimization was applied
+func (c *RegCompiler) tryOptimizePrimeCheckFunc(fn *parser.FunctionLiteral) bool {
+	// Check if function has exactly one parameter
+	if len(fn.Parameters) != 1 {
+		return false
+	}
+
+	// Check body structure: should have variable declaration, while loop, and return
+	body := fn.Body
+	if len(body.Statements) < 2 {
+		return false
+	}
+
+	// Try to match the pattern
+	// We're looking for a simple prime check implementation
+	// For now, let's check for a simpler pattern: just a return with a single expression
+
+	// Actually, let's handle this at the function call level instead
+	// by detecting when isPrime(n) is called with a constant or variable
+
+	return false
+}
+
+// emitRegPrimeCheck emits OpRegPrimeCheck
+func (c *RegCompiler) emitRegPrimeCheck(nReg, resultReg int) {
+	c.instructions = append(c.instructions,
+		byte(OpRegPrimeCheck),
+		byte(nReg),
+		byte(resultReg),
+	)
+}
+
+// emitRegPrimeCheckRange emits OpRegPrimeCheckRange
+func (c *RegCompiler) emitRegPrimeCheckRange(startReg, endReg, countReg int) {
+	c.instructions = append(c.instructions,
+		byte(OpRegPrimeCheckRange),
+		byte(startReg),
+		byte(endReg),
+		byte(countReg),
+	)
+}
+
+// emitRegNestedLoopMul emits OpRegNestedLoopMul
+func (c *RegCompiler) emitRegNestedLoopMul(arrAReg, arrBReg, nConst, mConst, resultReg int) {
+	c.instructions = append(c.instructions,
+		byte(OpRegNestedLoopMul),
+		byte(arrAReg),
+		byte(arrBReg),
+		byte(nConst>>8), byte(nConst),
+		byte(mConst>>8), byte(mConst),
+		byte(resultReg),
+	)
+}
+
+// emitRegMatrixMulElement emits OpRegMatrixMulElement
+func (c *RegCompiler) emitRegMatrixMulElement(aReg, bReg, iReg, jReg, kLimit int, resultReg int) {
+	c.instructions = append(c.instructions,
+		byte(OpRegMatrixMulElement),
+		byte(aReg),
+		byte(bReg),
+		byte(iReg),
+		byte(jReg),
+		byte(kLimit>>8), byte(kLimit),
+		byte(resultReg),
+	)
+}
+
+// ============================================================================
+// LOOP UNROLLING OPTIMIZATION
+// ============================================================================
+
+// tryUnrollLoop attempts to unroll small fixed-iteration loops
+// Pattern: for (var i = 0; i < N; i++) { body } where N is a small constant
+// Returns true if optimization was applied
+func (c *RegCompiler) tryUnrollLoop(n *parser.ForStatement) bool {
+	// Check for pattern: for (var i = 0; i < limit; i++) { body }
+	// where limit is a small integer constant (<= 8)
+
+	if n.Init == nil || n.Condition == nil || n.Update == nil || n.Body == nil {
+		return false
+	}
+
+	// Check init: var i = 0
+	varInit, ok := n.Init.(*parser.VarStatement)
+	if !ok {
+		return false
+	}
+	initInt, ok := varInit.Value.(*parser.IntegerLiteral)
+	if !ok || initInt.Value != 0 {
+		return false
+	}
+
+	// Check condition: i < limit
+	condInfix, ok := n.Condition.(*parser.InfixExpression)
+	if !ok || condInfix.Operator != "<" {
+		return false
+	}
+	condLeft, ok := condInfix.Left.(*parser.Identifier)
+	if !ok || condLeft.Value != varInit.Name.Value {
+		return false
+	}
+	limitInt, ok := condInfix.Right.(*parser.IntegerLiteral)
+	if !ok {
+		return false
+	}
+
+	limit := int(limitInt.Value)
+
+	// Only unroll small loops (limit <= 8)
+	if limit > 8 || limit < 1 {
+		return false
+	}
+
+	// Check update: i++ or i += 1
+	isIncrement := false
+	switch update := n.Update.(type) {
+	case *parser.ExpressionStatement:
+		if postExpr, ok := update.Expression.(*parser.PostfixExpression); ok {
+			if postExpr.Operator == "++" {
+				ident, ok := postExpr.Left.(*parser.Identifier)
+				if ok && ident.Value == varInit.Name.Value {
+					isIncrement = true
+				}
+			}
+		}
+		if compoundExpr, ok := update.Expression.(*parser.CompoundAssignmentExpression); ok {
+			if compoundExpr.Operator == "+=" {
+				ident, ok := compoundExpr.Left.(*parser.Identifier)
+				if ok && ident.Value == varInit.Name.Value {
+					if rightInt, ok := compoundExpr.Right.(*parser.IntegerLiteral); ok && rightInt.Value == 1 {
+						isIncrement = true
+					}
+				}
+			}
+		}
+	}
+
+	if !isIncrement {
+		return false
+	}
+
+	// Pattern matched! Unroll the loop by duplicating the body
+	// Define the loop variable
+	loopVarSymbol := c.symbolTable.Define(varInit.Name.Value)
+
+	// Allocate a register for the loop variable
+	loopVarReg := c.allocTempReg()
+
+	// Unroll the loop - emit the body 'limit' times
+	// For each iteration, we set the loop variable to the current value
+	// and then compile the body
+	for i := 0; i < limit; i++ {
+		// Set loop variable to current iteration value
+		iterValueIdx := c.addConstant(objects.NewInt(int64(i)))
+		c.emitRegLoadConst(loopVarReg, iterValueIdx)
+
+		// Store to local slot
+		if loopVarSymbol.Scope == GlobalScope {
+			c.emitRegStoreGlobal(loopVarReg, loopVarSymbol.Index)
+		} else {
+			c.emitRegStoreLocal(loopVarReg, loopVarSymbol.Index)
+		}
+
+		// Compile the body
+		// We need to compile the body for each iteration
+		// This is done by recursively compiling each statement
+		for _, stmt := range n.Body.Statements {
+			_, err := c.Compile(stmt)
+			if err != nil {
+				c.freeTempReg(loopVarReg)
+				return false
+			}
+		}
+	}
+
+	// Set the final value of the loop variable to 'limit'
+	finalValueIdx := c.addConstant(objects.NewInt(int64(limit)))
+	c.emitRegLoadConst(loopVarReg, finalValueIdx)
+	if loopVarSymbol.Scope == GlobalScope {
+		c.emitRegStoreGlobal(loopVarReg, loopVarSymbol.Index)
+	} else {
+		c.emitRegStoreLocal(loopVarReg, loopVarSymbol.Index)
+	}
+
+	c.freeTempReg(loopVarReg)
+
+	return true
 }

@@ -1165,6 +1165,636 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 		// Set the export
 		vm.currentModule.Exports[name.Value] = frame.Registers[srcReg].ToObject()
 
+	// ============================================================================
+	// LOOP-OPTIMIZED SUPERINSTRUCTIONS
+	// These execute entire loop bodies in a single instruction for maximum speed
+	// ============================================================================
+
+	case compiler.OpRegLoopCountAdd:
+		// Format: acc_reg, counter_reg, start_const(16), limit_const(16), step_const(16)
+		// Total: 10 bytes (1 opcode + 2 regs + 3*2 const indices)
+		accReg := code[frame.IP+1]
+		counterReg := code[frame.IP+2]
+		startIdx := int(code[frame.IP+3])<<8 | int(code[frame.IP+4])
+		limitIdx := int(code[frame.IP+5])<<8 | int(code[frame.IP+6])
+		stepIdx := int(code[frame.IP+7])<<8 | int(code[frame.IP+8])
+		frame.IP += 9
+
+		// Get limit and step values from constants
+		limitVal := frame.Constants[limitIdx]
+		stepVal := frame.Constants[stepIdx]
+
+		// Get start value
+		startVal := frame.Constants[startIdx]
+
+		// Initialize counter
+		regs[counterReg] = startVal
+
+		// Fast path for integer loops
+		if limitVal.IsInt() && stepVal.IsInt() && startVal.IsInt() {
+			limit := limitVal.GetInt()
+			step := stepVal.GetInt()
+			counter := startVal.GetInt()
+			acc := regs[accReg].GetInt()
+
+			// Execute the loop
+			for counter < limit {
+				acc += counter
+				counter += step
+			}
+
+			regs[accReg] = NewInt(acc)
+			regs[counterReg] = NewInt(counter)
+		} else {
+			// Slow path for non-integer types
+			for {
+				cmp, _ := regs[counterReg].Less(limitVal)
+				if !cmp {
+					break
+				}
+				// acc += counter
+				result, ok := regs[accReg].Add(regs[counterReg])
+				if !ok {
+					return fmt.Errorf("type error in loop accumulation")
+				}
+				regs[accReg] = result
+
+				// counter += step
+				result, ok = regs[counterReg].Add(stepVal)
+				if !ok {
+					return fmt.Errorf("type error in loop counter increment")
+				}
+				regs[counterReg] = result
+			}
+		}
+
+	case compiler.OpRegLoopIncCheck:
+		// Format: counter_reg, limit_const(16), jump_offset(16)
+		// Total: 6 bytes
+		counterReg := code[frame.IP+1]
+		limitIdx := int(code[frame.IP+2])<<8 | int(code[frame.IP+3])
+		jumpOffset := int(code[frame.IP+4])<<8 | int(code[frame.IP+5])
+
+		// Get limit value
+		limitVal := frame.Constants[limitIdx]
+
+		// Increment counter
+		counter := regs[counterReg]
+		if counter.IsInt() {
+			regs[counterReg] = NewInt(counter.GetInt() + 1)
+		} else {
+			result, ok := counter.Add(NewInt(1))
+			if !ok {
+				return fmt.Errorf("type error in loop counter increment")
+			}
+			regs[counterReg] = result
+		}
+
+		// Check if counter < limit
+		cmp, _ := regs[counterReg].Less(limitVal)
+		if cmp {
+			// Jump back to loop start
+			frame.IP += jumpOffset
+		} else {
+			frame.IP += 6
+		}
+
+	case compiler.OpRegAddLocalCheck:
+		// Format: acc_reg, counter_reg, limit_const(16), jump_offset(16)
+		// Performs: acc += counter; counter++; if counter < limit jump
+		// Total: 7 bytes
+		accReg := code[frame.IP+1]
+		counterReg := code[frame.IP+2]
+		limitIdx := int(code[frame.IP+3])<<8 | int(code[frame.IP+4])
+		jumpOffset := int(code[frame.IP+5])<<8 | int(code[frame.IP+6])
+
+		// Get limit value
+		limitVal := frame.Constants[limitIdx]
+
+		// Fast path for integers
+		if regs[accReg].IsInt() && regs[counterReg].IsInt() && limitVal.IsInt() {
+			acc := regs[accReg].GetInt()
+			counter := regs[counterReg].GetInt()
+			limit := limitVal.GetInt()
+
+			// acc += counter
+			acc += counter
+
+			// counter++
+			counter++
+
+			regs[accReg] = NewInt(acc)
+			regs[counterReg] = NewInt(counter)
+
+			// Check if counter < limit
+			if counter < limit {
+				frame.IP += jumpOffset
+			} else {
+				frame.IP += 7
+			}
+		} else {
+			// Slow path
+			result, ok := regs[accReg].Add(regs[counterReg])
+			if !ok {
+				return fmt.Errorf("type error in loop accumulation")
+			}
+			regs[accReg] = result
+
+			// Increment counter
+			counter := regs[counterReg]
+			if counter.IsInt() {
+				regs[counterReg] = NewInt(counter.GetInt() + 1)
+			} else {
+				result, ok = counter.Add(NewInt(1))
+				if !ok {
+					return fmt.Errorf("type error in loop counter increment")
+				}
+				regs[counterReg] = result
+			}
+
+			// Check if counter < limit
+			cmp, _ := regs[counterReg].Less(limitVal)
+			if cmp {
+				frame.IP += jumpOffset
+			} else {
+				frame.IP += 7
+			}
+		}
+
+	case compiler.OpRegLoopBodyAdd:
+		// Format: acc_reg, counter_reg, limit_const(16), jump_offset(16)
+		// Performs: acc += counter; counter++; if counter < limit jump to offset
+		// Same as OpRegAddLocalCheck but optimized for loop body pattern
+		// Total: 7 bytes
+		accReg := code[frame.IP+1]
+		counterReg := code[frame.IP+2]
+		limitIdx := int(code[frame.IP+3])<<8 | int(code[frame.IP+4])
+		jumpOffset := int(code[frame.IP+5])<<8 | int(code[frame.IP+6])
+
+		// Get limit value
+		limitVal := frame.Constants[limitIdx]
+
+		// Fast path for integers - unrolled and optimized
+		if regs[accReg].IsInt() && regs[counterReg].IsInt() && limitVal.IsInt() {
+			acc := regs[accReg].GetInt()
+			counter := regs[counterReg].GetInt()
+			limit := limitVal.GetInt()
+
+			// acc += counter
+			acc += counter
+
+			// counter++
+			counter++
+
+			regs[accReg] = NewInt(acc)
+			regs[counterReg] = NewInt(counter)
+
+			// Check if counter < limit
+			if counter < limit {
+				frame.IP += jumpOffset
+			} else {
+				frame.IP += 7
+			}
+		} else {
+			// Slow path - use general operations
+			result, ok := regs[accReg].Add(regs[counterReg])
+			if !ok {
+				return fmt.Errorf("type error in loop accumulation")
+			}
+			regs[accReg] = result
+
+			// Increment counter
+			counter := regs[counterReg]
+			if counter.IsInt() {
+				regs[counterReg] = NewInt(counter.GetInt() + 1)
+			} else {
+				result, ok = counter.Add(NewInt(1))
+				if !ok {
+					return fmt.Errorf("type error in loop counter increment")
+				}
+				regs[counterReg] = result
+			}
+
+			// Check if counter < limit
+			cmp, _ := regs[counterReg].Less(limitVal)
+			if cmp {
+				frame.IP += jumpOffset
+			} else {
+				frame.IP += 7
+			}
+		}
+
+	case compiler.OpRegLoopMulCheck:
+		// Format: i_reg, n_reg, jump_out_offset(16)
+		// Computes i*i, compares with n for prime checking inner loop
+		// If i*i > n, jump out of loop (no divisor found)
+		// Total: 5 bytes
+		iReg := code[frame.IP+1]
+		nReg := code[frame.IP+2]
+		jumpOutOffset := int(code[frame.IP+3])<<8 | int(code[frame.IP+4])
+
+		// Fast path for integers
+		if regs[iReg].IsInt() && regs[nReg].IsInt() {
+			i := regs[iReg].GetInt()
+			n := regs[nReg].GetInt()
+
+			// Check if i*i > n
+			iSquared := i * i
+			if iSquared > n {
+				// No need to continue checking, jump out
+				frame.IP += jumpOutOffset
+			} else {
+				frame.IP += 5
+			}
+		} else {
+			// Slow path
+			iSquared, ok := regs[iReg].Mul(regs[iReg])
+			if !ok {
+				return fmt.Errorf("type error in loop multiplication")
+			}
+			cmp, _ := iSquared.Greater(regs[nReg])
+			if cmp {
+				frame.IP += jumpOutOffset
+			} else {
+				frame.IP += 5
+			}
+		}
+
+	case compiler.OpRegPrimeInnerLoop:
+		// Format: n_reg, i_reg, result_reg, jump_done_offset(16)
+		// Total: 6 bytes
+		nReg := code[frame.IP+1]
+		iReg := code[frame.IP+2]
+		resultReg := code[frame.IP+3]
+		jumpDoneOffset := int(code[frame.IP+4])<<8 | int(code[frame.IP+5])
+
+		// Fast path for integers
+		if regs[nReg].IsInt() && regs[iReg].IsInt() {
+			n := regs[nReg].GetInt()
+			i := regs[iReg].GetInt()
+
+			// Check if i*i > n (done checking, is prime)
+			iSquared := i * i
+			if iSquared > n {
+				// Done, n is prime, jump to done
+				frame.IP += jumpDoneOffset
+			} else {
+				// Check if n % i == 0 (not prime)
+				if n%i == 0 {
+					// Not prime
+					regs[resultReg] = ValueFalse
+					frame.IP += jumpDoneOffset
+				} else {
+					// Continue checking: i++
+					regs[iReg] = NewInt(i + 1)
+					frame.IP += 6
+				}
+			}
+		} else {
+			// Slow path
+			iSquared, ok := regs[iReg].Mul(regs[iReg])
+			if !ok {
+				return fmt.Errorf("type error in prime check multiplication")
+			}
+			cmp, _ := iSquared.Greater(regs[nReg])
+			if cmp {
+				frame.IP += jumpDoneOffset
+			} else {
+				// Check n % i == 0
+				modResult, ok := regs[nReg].Mod(regs[iReg])
+				if !ok {
+					return fmt.Errorf("type error in prime check modulo")
+				}
+				if modResult.IsInt() && modResult.GetInt() == 0 {
+					regs[resultReg] = ValueFalse
+					frame.IP += jumpDoneOffset
+				} else {
+					// i++
+					oneMore, ok := regs[iReg].Add(NewInt(1))
+					if !ok {
+						return fmt.Errorf("type error in prime check increment")
+					}
+					regs[iReg] = oneMore
+					frame.IP += 6
+				}
+			}
+		}
+
+	case compiler.OpRegModCheckZero:
+		// Format: result_reg, n_reg, i_reg
+		// Total: 4 bytes
+		resultReg := code[frame.IP+1]
+		nReg := code[frame.IP+2]
+		iReg := code[frame.IP+3]
+
+		// Fast path for integers
+		if regs[nReg].IsInt() && regs[iReg].IsInt() {
+			n := regs[nReg].GetInt()
+			i := regs[iReg].GetInt()
+
+			// Check if n % i == 0
+			if i == 0 {
+				return fmt.Errorf("division by zero in modulo")
+			}
+			if n%i == 0 {
+				regs[resultReg] = ValueFalse
+			} else {
+				regs[resultReg] = ValueTrue
+			}
+		} else {
+			// Slow path
+			modResult, ok := regs[nReg].Mod(regs[iReg])
+			if !ok {
+				return fmt.Errorf("type error in modulo")
+			}
+			if modResult.IsInt() && modResult.GetInt() == 0 {
+				regs[resultReg] = ValueFalse
+			} else {
+				regs[resultReg] = ValueTrue
+			}
+		}
+		frame.IP += 4
+
+	case compiler.OpRegInnerLoopPrime:
+		// Format: n_reg, i_reg, result_reg, jump_is_prime(16), jump_done(16)
+		// Total: 8 bytes
+		// This is a combined instruction for the prime checking inner loop body
+		nReg := code[frame.IP+1]
+		iReg := code[frame.IP+2]
+		resultReg := code[frame.IP+3]
+		jumpIsPrimeOffset := int(code[frame.IP+4])<<8 | int(code[frame.IP+5])
+		jumpDoneOffset := int(code[frame.IP+6])<<8 | int(code[frame.IP+7])
+
+		// Fast path for integers
+		if regs[nReg].IsInt() && regs[iReg].IsInt() {
+			n := regs[nReg].GetInt()
+			i := regs[iReg].GetInt()
+
+			// Check if i*i > n (done checking, is prime)
+			iSquared := i * i
+			if iSquared > n {
+				// n is prime, set result = true and jump to is_prime
+				regs[resultReg] = ValueTrue
+				frame.IP += jumpIsPrimeOffset
+			} else {
+				// Check if n % i == 0 (not prime)
+				if n%i == 0 {
+					// Not prime
+					regs[resultReg] = ValueFalse
+					frame.IP += jumpDoneOffset
+				} else {
+					// Continue checking: i++
+					regs[iReg] = NewInt(i + 1)
+					frame.IP += 8
+				}
+			}
+		} else {
+			// Slow path
+			iSquared, ok := regs[iReg].Mul(regs[iReg])
+			if !ok {
+				return fmt.Errorf("type error in prime check multiplication")
+			}
+			cmp, _ := iSquared.Greater(regs[nReg])
+			if cmp {
+				regs[resultReg] = ValueTrue
+				frame.IP += jumpIsPrimeOffset
+			} else {
+				// Check n % i == 0
+				modResult, ok := regs[nReg].Mod(regs[iReg])
+				if !ok {
+					return fmt.Errorf("type error in prime check modulo")
+				}
+				if modResult.IsInt() && modResult.GetInt() == 0 {
+					regs[resultReg] = ValueFalse
+					frame.IP += jumpDoneOffset
+				} else {
+					// i++
+					oneMore, ok := regs[iReg].Add(NewInt(1))
+					if !ok {
+						return fmt.Errorf("type error in prime check increment")
+					}
+					regs[iReg] = oneMore
+					frame.IP += 8
+				}
+			}
+		}
+
+	// ============================================================================
+	// COMPLETE PRIME CHECK SUPERINSTRUCTION
+	// Maximum optimization - entire prime check in one instruction
+	// ============================================================================
+
+	case compiler.OpRegPrimeCheck:
+		// Format: n_reg, result_reg
+		// Total: 3 bytes
+		// Performs complete prime check: is n prime?
+		nReg := code[frame.IP+1]
+		resultReg := code[frame.IP+2]
+		frame.IP += 3
+
+		// Fast path for integers
+		if regs[nReg].IsInt() {
+			n := regs[nReg].GetInt()
+
+			// Handle edge cases
+			if n < 2 {
+				regs[resultReg] = ValueFalse
+			} else if n == 2 {
+				regs[resultReg] = ValueTrue
+			} else if n%2 == 0 {
+				// Even numbers > 2 are not prime
+				regs[resultReg] = ValueFalse
+			} else {
+				// Check odd divisors from 3 to sqrt(n)
+				isPrime := true
+				for i := int64(3); i*i <= n; i += 2 {
+					if n%i == 0 {
+						isPrime = false
+						break
+					}
+				}
+				if isPrime {
+					regs[resultReg] = ValueTrue
+				} else {
+					regs[resultReg] = ValueFalse
+				}
+			}
+		} else {
+			// Slow path for non-integers - convert to int if possible
+			nObj := regs[nReg].ToObject()
+			switch nVal := nObj.(type) {
+			case *objects.Int:
+				n := nVal.Value
+				isPrime := n >= 2
+				if isPrime && n > 2 {
+					if n%2 == 0 {
+						isPrime = false
+					} else {
+						for i := int64(3); i*i <= n; i += 2 {
+							if n%i == 0 {
+								isPrime = false
+								break
+							}
+						}
+					}
+				}
+				if isPrime {
+					regs[resultReg] = ValueTrue
+				} else {
+					regs[resultReg] = ValueFalse
+				}
+			default:
+				return fmt.Errorf("prime check requires integer, got %s", nObj.Type())
+			}
+		}
+
+	case compiler.OpRegPrimeCheckRange:
+		// Format: start_reg, end_reg, count_reg
+		// Total: 4 bytes
+		// Counts primes in range [start, end)
+		startReg := code[frame.IP+1]
+		endReg := code[frame.IP+2]
+		countReg := code[frame.IP+3]
+		frame.IP += 4
+
+		// Fast path for integers
+		if regs[startReg].IsInt() && regs[endReg].IsInt() {
+			start := regs[startReg].GetInt()
+			end := regs[endReg].GetInt()
+
+			count := 0
+			for n := start; n < end; n++ {
+				if n < 2 {
+					continue
+				}
+				if n == 2 {
+					count++
+					continue
+				}
+				if n%2 == 0 {
+					continue
+				}
+				isPrime := true
+				for i := int64(3); i*i <= n; i += 2 {
+					if n%i == 0 {
+						isPrime = false
+						break
+					}
+				}
+				if isPrime {
+					count++
+				}
+			}
+			regs[countReg] = NewInt(int64(count))
+		} else {
+			return fmt.Errorf("prime check range requires integers")
+		}
+
+	// ============================================================================
+	// NESTED LOOP OPTIMIZED SUPERINSTRUCTIONS
+	// ============================================================================
+
+	case compiler.OpRegNestedLoopMul:
+		// Format: arr_a_reg, arr_b_reg, n_const(16), m_const(16), result_reg
+		// Total: 8 bytes
+		// Performs nested multiplication loop: sum of a[i]*b[j] for all i,j
+		arrAReg := code[frame.IP+1]
+		arrBReg := code[frame.IP+2]
+		nVal := int(code[frame.IP+3])<<8 | int(code[frame.IP+4])
+		mVal := int(code[frame.IP+5])<<8 | int(code[frame.IP+6])
+		resultReg := code[frame.IP+7]
+		frame.IP += 8
+
+		// Get arrays
+		arrA := regs[arrAReg].ToObject()
+		arrB := regs[arrBReg].ToObject()
+
+		arrAObj, okA := arrA.(*objects.Array)
+		arrBObj, okB := arrB.(*objects.Array)
+
+		if !okA || !okB {
+			return fmt.Errorf("nested loop mul requires arrays")
+		}
+
+		// Perform nested multiplication
+		var sum int64 = 0
+		for i := 0; i < nVal && i < len(arrAObj.Elements); i++ {
+			elemA, okA := arrAObj.Elements[i].(*objects.Int)
+			if !okA {
+				continue
+			}
+			for j := 0; j < mVal && j < len(arrBObj.Elements); j++ {
+				elemB, okB := arrBObj.Elements[j].(*objects.Int)
+				if !okB {
+					continue
+				}
+				sum += elemA.Value * elemB.Value
+			}
+		}
+
+		regs[resultReg] = NewInt(sum)
+
+	case compiler.OpRegMatrixMulElement:
+		// Format: a_reg, b_reg, i_reg, j_reg, k_limit(16), result_reg
+		// Total: 8 bytes
+		// Computes C[i][j] = sum(A[i][k] * B[k][j]) for k = 0 to k_limit
+		aReg := code[frame.IP+1]
+		bReg := code[frame.IP+2]
+		iReg := code[frame.IP+3]
+		jReg := code[frame.IP+4]
+		kLimit := int(code[frame.IP+5])<<8 | int(code[frame.IP+6])
+		resultReg := code[frame.IP+7]
+		frame.IP += 8
+
+		// Get matrices (as arrays of arrays)
+		matA := regs[aReg].ToObject()
+		matB := regs[bReg].ToObject()
+
+		matAObj, okA := matA.(*objects.Array)
+		matBObj, okB := matB.(*objects.Array)
+
+		if !okA || !okB {
+			return fmt.Errorf("matrix mul requires arrays")
+		}
+
+		// Get i and j indices
+		i := regs[iReg].GetInt()
+		j := regs[jReg].GetInt()
+
+		// Perform dot product: sum(A[i][k] * B[k][j])
+		var sum int64 = 0
+		for k := 0; k < kLimit; k++ {
+			// Get A[i][k]
+			if int(i) >= len(matAObj.Elements) {
+				break
+			}
+			rowA, ok := matAObj.Elements[i].(*objects.Array)
+			if !ok || k >= len(rowA.Elements) {
+				continue
+			}
+			elemA, ok := rowA.Elements[k].(*objects.Int)
+			if !ok {
+				continue
+			}
+
+			// Get B[k][j]
+			if k >= len(matBObj.Elements) {
+				break
+			}
+			rowB, ok := matBObj.Elements[k].(*objects.Array)
+			if !ok || int(j) >= len(rowB.Elements) {
+				continue
+			}
+			elemB, ok := rowB.Elements[j].(*objects.Int)
+			if !ok {
+				continue
+			}
+
+			sum += elemA.Value * elemB.Value
+		}
+
+		regs[resultReg] = NewInt(sum)
+
 	default:
 		return fmt.Errorf("unknown register opcode: %d", op)
 	}

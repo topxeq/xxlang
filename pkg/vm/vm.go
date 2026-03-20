@@ -433,6 +433,22 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		// Loop-optimized instructions
+		case compiler.OpAddLocalByLocal:
+			if err := vm.executeAddLocalByLocal(); err != nil {
+				return err
+			}
+
+		case compiler.OpLessEqualLocalConst:
+			if err := vm.executeLessEqualLocalConst(); err != nil {
+				return err
+			}
+
+		case compiler.OpModLocalByLocal:
+			if err := vm.executeModLocalByLocal(); err != nil {
+				return err
+			}
+
 		// Value-based operations (NaN boxing optimized - zero allocation hot path)
 		// These opcodes use Value type for efficient numeric operations
 		case compiler.OpValueAdd:
@@ -1870,6 +1886,116 @@ func (vm *VM) executeMulLocalConst() error {
 	newVal := objects.NewInt(localVal.Value * constVal)
 	frame.Locals[idx] = newVal
 	vm.stack.Push(newVal)
+	return nil
+}
+
+// executeAddLocalByLocal adds one local to another: locals[dst] += locals[src]
+// This is optimized for loops like "total += i"
+func (vm *VM) executeAddLocalByLocal() error {
+	frame := vm.currentFrame()
+	dstIdx := int(frame.Instructions()[frame.IP+1])
+	srcIdx := int(frame.Instructions()[frame.IP+2])
+	frame.IP += 2
+
+	// Get source local value
+	var srcVal int64
+	if frame.This != nil && srcIdx == 0 {
+		srcVal = 0
+	} else {
+		idx := srcIdx
+		if frame.This != nil && srcIdx > 0 {
+			idx = srcIdx - 1
+		}
+		srcVal = frame.Locals[idx].(*objects.Int).Value
+	}
+
+	// Get destination local and add
+	var dstVal *objects.Int
+	if frame.This != nil && dstIdx > 0 {
+		dstVal = frame.Locals[dstIdx-1].(*objects.Int)
+	} else if frame.This == nil {
+		dstVal = frame.Locals[dstIdx].(*objects.Int)
+	} else {
+		return fmt.Errorf("cannot modify 'this'")
+	}
+
+	newVal := objects.NewInt(dstVal.Value + srcVal)
+	frame.Locals[dstIdx] = newVal
+	vm.stack.Push(newVal)
+	return nil
+}
+
+// executeLessEqualLocalConst compares local <= constant
+// Optimized for loop conditions like "i <= 1000"
+func (vm *VM) executeLessEqualLocalConst() error {
+	frame := vm.currentFrame()
+	localIdx := int(frame.Instructions()[frame.IP+1])
+	constIdx := int(frame.Instructions()[frame.IP+2])<<8 | int(frame.Instructions()[frame.IP+3])
+	frame.IP += 3
+
+	// Get local value
+	var localVal int64
+	if frame.This != nil && localIdx == 0 {
+		localVal = 0
+	} else {
+		idx := localIdx
+		if frame.This != nil && localIdx > 0 {
+			idx = localIdx - 1
+		}
+		localVal = frame.Locals[idx].(*objects.Int).Value
+	}
+
+	// Get constant value
+	constants := frame.Constants
+	if constants == nil {
+		constants = vm.constants
+	}
+	constVal := constants[constIdx].(*objects.Int).Value
+
+	if localVal <= constVal {
+		vm.stack.Push(objects.TRUE)
+	} else {
+		vm.stack.Push(objects.FALSE)
+	}
+	return nil
+}
+
+// executeModLocalByLocal computes locals[dst] % locals[src] and pushes result
+func (vm *VM) executeModLocalByLocal() error {
+	frame := vm.currentFrame()
+	dstIdx := int(frame.Instructions()[frame.IP+1])
+	srcIdx := int(frame.Instructions()[frame.IP+2])
+	frame.IP += 2
+
+	// Get source local value
+	var srcVal int64
+	if frame.This != nil && srcIdx == 0 {
+		srcVal = 0
+	} else {
+		idx := srcIdx
+		if frame.This != nil && srcIdx > 0 {
+			idx = srcIdx - 1
+		}
+		srcVal = frame.Locals[idx].(*objects.Int).Value
+	}
+
+	// Get destination local
+	var dstVal int64
+	if frame.This != nil && dstIdx == 0 {
+		dstVal = 0
+	} else {
+		idx := dstIdx
+		if frame.This != nil && dstIdx > 0 {
+			idx = dstIdx - 1
+		}
+		dstVal = frame.Locals[idx].(*objects.Int).Value
+	}
+
+	if srcVal == 0 {
+		return fmt.Errorf("modulo by zero")
+	}
+
+	vm.stack.Push(objects.NewInt(dstVal % srcVal))
 	return nil
 }
 
