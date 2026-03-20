@@ -27,13 +27,15 @@ func NewNativeExecutor(config JITConfig) *NativeExecutor {
 
 // CanExecuteNatively checks if a function can be executed natively
 // Functions must meet these criteria:
-// - No function calls (OpRegCall, OpRegTailCall)
+// - No function calls (OpRegCall) - but OpRegTailCall is allowed for self-recursion
 // - No builtin calls
 // - No array/map operations
 // - Only: LoadConst, Move, Add, Sub, Mul, Div, Mod, Neg
 //        Less, Greater, Equal, NotEqual, LessEqual, GreaterEqual
 //        Jump, JumpIfTrue, JumpIfFalse, Return, Null, True, False
 //        LoadGlobal, StoreGlobal (with globals pointer passed as argument)
+//        LoadLocal, StoreLocal (local variables)
+//        TailCall (for tail-recursive functions)
 func CanExecuteNatively(fn *compiler.CompiledFunction) bool {
 	code := fn.Instructions
 	ip := 0
@@ -54,11 +56,12 @@ func CanExecuteNatively(fn *compiler.CompiledFunction) bool {
 			compiler.OpRegLoopCountAdd, compiler.OpRegLoopBodyAdd, compiler.OpRegLoopIncCheck,
 			compiler.OpRegAddConst, compiler.OpRegSubConst, compiler.OpRegMulConst,
 			compiler.OpRegAddLocalCheck, compiler.OpRegLoadLocal, compiler.OpRegStoreLocal,
-			compiler.OpRegLoadGlobal, compiler.OpRegStoreGlobal:
-			// These are fine for native execution (globals will be passed as first arg)
+			compiler.OpRegLoadGlobal, compiler.OpRegStoreGlobal,
+			compiler.OpRegTailCall: // Tail call is allowed - converted to jump
+			// These are fine for native execution
 
 		// Unsupported - requires VM context
-		case compiler.OpRegCall, compiler.OpRegTailCall,
+		case compiler.OpRegCall,
 			compiler.OpRegArray, compiler.OpRegArrayEmpty, compiler.OpRegArrayAppend,
 			compiler.OpRegMap, compiler.OpRegMapEmpty, compiler.OpRegMapSet,
 			compiler.OpRegIndex, compiler.OpRegSetIndex,
@@ -148,6 +151,10 @@ func min(a, b int) int {
 // callNativeWithGlobals calls a native function with globals pointer
 // This function is implemented in assembly (bridge_amd64.s)
 func callNative(entry uintptr, globals *int64) int64
+
+// callNativeWithArgs calls a native function with globals and initial register values
+// This function is implemented in assembly (bridge_amd64.s)
+func callNativeWithArgs(entry uintptr, globals *int64, arg0, arg1, arg2 int64) int64
 
 // callNativeWithGlobals calls a native function with globals pointer
 func callNativeWithGlobals(entry uintptr, globals []int64) int64 {

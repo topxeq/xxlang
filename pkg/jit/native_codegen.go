@@ -20,6 +20,13 @@ type NativeCodeGenerator struct {
 	constants []int64
 	globals   []int64 // Pre-extracted global values for initialization
 
+	// Function info for local variable layout
+	numParams int
+	numLocals int
+
+	// Function entry point (after prologue) for tail calls
+	funcEntry int
+
 	// Register allocation
 	// We use: rax(0), rbx(1), rcx(2), rdx(3), r8(4), r9(5), r10(6), r11(7)
 	// r12-r15 are callee-saved, used for locals 8-11
@@ -43,9 +50,15 @@ func (cg *NativeCodeGenerator) Generate(fn *compiler.CompiledFunction, constants
 	cg.labels = make(map[string]int)
 	cg.fixups = cg.fixups[:0]
 	cg.constants = constants
+	cg.numParams = fn.NumParameters
+	cg.numLocals = fn.NumLocals
 
 	// Generate prologue
-	cg.emitPrologue()
+	cg.emitPrologue(fn.NumLocals)
+
+	// Store function entry point (after prologue) for tail calls
+	cg.funcEntry = len(cg.code)
+	cg.labels["__func_entry__"] = cg.funcEntry
 
 	// Compile instructions
 	code := fn.Instructions
@@ -75,22 +88,38 @@ func (cg *NativeCodeGenerator) Generate(fn *compiler.CompiledFunction, constants
 // emitPrologue generates function entry code
 // Note: callee-saved registers are already saved by the bridge function (callNative)
 // So we only need to set up the stack frame
-func (cg *NativeCodeGenerator) emitPrologue() {
+// Stack layout:
+//   [rbp] = old rbp
+//   [rbp-8..rbp-48] = spilled registers space
+//   [rbp-48..rbp-48-numLocals*8] = local variables
+func (cg *NativeCodeGenerator) emitPrologue(numLocals int) {
 	// push rbp
 	cg.emitByte(0x55)
 	// mov rbp, rsp
 	cg.emitBytes([]byte{0x48, 0x89, 0xE5})
 
-	// Allocate stack space for spilled registers (256 bytes)
-	// We don't save callee-saved registers here - the bridge does that
-	cg.emitBytes([]byte{0x48, 0x81, 0xEC, 0x00, 0x01, 0x00, 0x00})
+	// Allocate stack space for spilled registers (256 bytes) + locals
+	stackSize := 256 + numLocals*8
+	// Round up to 16 bytes for alignment
+	if stackSize%16 != 0 {
+		stackSize += 16 - (stackSize % 16)
+	}
+	// sub rsp, stackSize
+	cg.emitBytes([]byte{0x48, 0x81, 0xEC})
+	cg.emitUint32(uint32(stackSize))
 }
 
 // emitEpilogue generates function exit code
 // Note: callee-saved registers are restored by the bridge function
 func (cg *NativeCodeGenerator) emitEpilogue() {
-	// add rsp, 0x100
-	cg.emitBytes([]byte{0x48, 0x81, 0xC4, 0x00, 0x01, 0x00, 0x00})
+	// Calculate stack size (must match prologue)
+	stackSize := 256 + cg.numLocals*8
+	if stackSize%16 != 0 {
+		stackSize += 16 - (stackSize % 16)
+	}
+	// add rsp, stackSize
+	cg.emitBytes([]byte{0x48, 0x81, 0xC4})
+	cg.emitUint32(uint32(stackSize))
 	// pop rbp
 	cg.emitByte(0x5D)
 	// ret
@@ -107,7 +136,7 @@ func (cg *NativeCodeGenerator) compileInstruction(op compiler.Opcode, code []byt
 	switch op {
 	case compiler.OpRegLoadConst:
 		dst := int(code[*ip+1])
-		constIdx := int(code[*ip+2])<<8 | int(code[*ip+3])
+		constIdx := int(code[*ip+2]) | int(code[*ip+3])<<8 // little-endian
 		cg.compileLoadConst(dst, constIdx)
 		*ip += 4
 
@@ -275,6 +304,27 @@ func (cg *NativeCodeGenerator) compileInstruction(op compiler.Opcode, code []byt
 		cg.compileStoreGlobal(src, globalIdx)
 		*ip += 4
 
+	case compiler.OpRegLoadLocal:
+		// R[dst] = Locals[idx]
+		dst := int(code[*ip+1])
+		localIdx := int(code[*ip+2])
+		cg.compileLoadLocal(dst, localIdx)
+		*ip += 3
+
+	case compiler.OpRegStoreLocal:
+		// Locals[idx] = R[src]
+		src := int(code[*ip+1])
+		localIdx := int(code[*ip+2])
+		cg.compileStoreLocal(src, localIdx)
+		*ip += 3
+
+	case compiler.OpRegTailCall:
+		// Tail call: jump to function entry after moving args
+		funcReg := int(code[*ip+1])
+		numArgs := int(code[*ip+2])
+		cg.compileTailCall(funcReg, numArgs)
+		*ip += 3
+
 	default:
 		return fmt.Errorf("unsupported opcode: %s", def.Name)
 	}
@@ -437,6 +487,46 @@ func (cg *NativeCodeGenerator) compileStoreGlobal(src, globalIdx int) {
 		cg.emitBytes([]byte{0x48, 0x89, 0x87}) // mov [rdi + disp32], rax
 		cg.emitUint32(uint32(offset))
 	}
+}
+
+// compileLoadLocal loads a local variable to a register
+// Local variables are stored on stack: [rbp - 256 - (localIdx+1)*8]
+// The 256 bytes is for spilled registers
+func (cg *NativeCodeGenerator) compileLoadLocal(dst, localIdx int) {
+	// Local offset: after spilled register space (256 bytes)
+	offset := 256 + (localIdx+1)*8
+
+	// mov rax, [rbp - offset]
+	cg.emitBytes([]byte{0x48, 0x8B, 0x85}) // mov rax, [rbp - disp32]
+	cg.emitUint32(uint32(offset))
+
+	// Store to destination register
+	cg.storeRaxToReg(dst)
+}
+
+// compileStoreLocal stores a register value to a local variable
+func (cg *NativeCodeGenerator) compileStoreLocal(src, localIdx int) {
+	// Load source to rax
+	cg.loadRegToRax(src)
+
+	// Local offset: after spilled register space (256 bytes)
+	offset := 256 + (localIdx+1)*8
+
+	// mov [rbp - offset], rax
+	cg.emitBytes([]byte{0x48, 0x89, 0x85}) // mov [rbp - disp32], rax
+	cg.emitUint32(uint32(offset))
+}
+
+// compileTailCall handles tail-recursive calls
+// For self-recursive tail calls, we jump back to the function entry
+// The arguments are already in the correct registers (0, 1, 2, ...)
+func (cg *NativeCodeGenerator) compileTailCall(funcReg, numArgs int) {
+	// For self-recursion, arguments are already moved to param registers
+	// Just jump back to function entry
+	// jmp __func_entry__
+	cg.emitBytes([]byte{0xE9}) // jmp rel32
+	cg.fixups = append(cg.fixups, fixup{offset: len(cg.code), label: "__func_entry__", size: 4})
+	cg.emitUint32(0)
 }
 
 func (cg *NativeCodeGenerator) compileMove(dst, src int) {
@@ -620,37 +710,32 @@ func (cg *NativeCodeGenerator) compileNeg(dst, src int) {
 }
 
 func (cg *NativeCodeGenerator) compileCompare(dst, left, right int, op string) {
-	// Compare left and right
-	cg.loadRegToRax(left)
-
-	if right < 8 {
-		switch right {
-		case 0:
-			cg.emitBytes([]byte{0x48, 0x39, 0xC0}) // cmp rax, rax
-		case 1:
-			cg.emitBytes([]byte{0x48, 0x39, 0xD8}) // cmp rax, rbx
-		case 2:
-			cg.emitBytes([]byte{0x48, 0x39, 0xC8}) // cmp rax, rcx
-		case 3:
-			cg.emitBytes([]byte{0x48, 0x39, 0xD0}) // cmp rax, rdx
-		case 4:
-			cg.emitBytes([]byte{0x49, 0x39, 0xC0}) // cmp rax, r8
-		case 5:
-			cg.emitBytes([]byte{0x49, 0x39, 0xC8}) // cmp rax, r9
-		case 6:
-			cg.emitBytes([]byte{0x49, 0x39, 0xD0}) // cmp rax, r10
-		case 7:
-			cg.emitBytes([]byte{0x49, 0x39, 0xD8}) // cmp rax, r11
-		}
+	// Special case: if right is in RAX (VM reg 0), we need to save left first
+	// because loadRegToRax(left) will overwrite RAX
+	if right == 0 && left != 0 {
+		// Load left to RAX
+		cg.loadRegToRax(left)
+		// Move left to a temp register (R8)
+		cg.emitBytes([]byte{0x49, 0x89, 0xC0}) // mov r8, rax
+		// Load right (which is in VM reg 0 = RAX) to RAX
+		// Actually right is in RAX already since VM reg 0 = RAX
+		// Compare: left (now in R8) vs right (in RAX)
+		cg.emitBytes([]byte{0x49, 0x39, 0xC0}) // cmp r8, rax
+	} else if left == 0 && right != 0 {
+		// Left is in RAX, right is somewhere else
+		// RAX already contains left (VM reg 0)
+		cg.compareRaxWithReg(right)
+	} else if left == 0 && right == 0 {
+		// Both in RAX - always equal
+		cg.emitBytes([]byte{0x48, 0x39, 0xC0}) // cmp rax, rax
 	} else {
-		offset := (right - 8 + 1) * 8
-		cg.emitBytes([]byte{0x48, 0x3B, 0x45})
-		cg.emitByte(byte(offset))
+		// Normal case: neither is in RAX, or left/right are different
+		cg.loadRegToRax(left)
+		cg.compareRaxWithReg(right)
 	}
 
 	// Set result based on comparison
-	cg.emitBytes([]byte{0x48, 0x31, 0xC0}) // xor rax, rax
-
+	// IMPORTANT: setcc must come BEFORE xor rax,rax because xor affects flags!
 	switch op {
 	case "less":
 		cg.emitBytes([]byte{0x0F, 0x9C, 0xC0}) // setl al
@@ -666,7 +751,53 @@ func (cg *NativeCodeGenerator) compileCompare(dst, left, right int, op string) {
 		cg.emitBytes([]byte{0x0F, 0x9D, 0xC0}) // setge al
 	}
 
+	// Now zero out the upper bits of rax (al already has the result)
+	cg.emitBytes([]byte{0x48, 0x0F, 0xB6, 0xC0}) // movzx rax, al
+
 	cg.storeRaxToReg(dst)
+}
+
+// compareRaxWithReg compares RAX with a VM register
+func (cg *NativeCodeGenerator) compareRaxWithReg(r int) {
+	if r < 8 {
+		switch r {
+		case 0:
+			cg.emitBytes([]byte{0x48, 0x39, 0xC0}) // cmp rax, rax
+		case 1:
+			cg.emitBytes([]byte{0x48, 0x39, 0xD8}) // cmp rax, rbx
+		case 2:
+			cg.emitBytes([]byte{0x48, 0x39, 0xC8}) // cmp rax, rcx
+		case 3:
+			cg.emitBytes([]byte{0x48, 0x39, 0xD0}) // cmp rax, rdx
+		case 4:
+			cg.emitBytes([]byte{0x4C, 0x39, 0xC0}) // cmp rax, r8 (REX.R for r8)
+		case 5:
+			cg.emitBytes([]byte{0x4C, 0x39, 0xC8}) // cmp rax, r9
+		case 6:
+			cg.emitBytes([]byte{0x4C, 0x39, 0xD0}) // cmp rax, r10
+		case 7:
+			cg.emitBytes([]byte{0x4C, 0x39, 0xD8}) // cmp rax, r11
+		}
+	} else if r < 12 {
+		// VM regs 8-11 are in R12-R15
+		// REX.R is needed for r12-r15, REX.B is NOT needed for rax
+		// REX = 0x48 | 0x04 = 0x4C (W=1, R=1)
+		switch r {
+		case 8:
+			cg.emitBytes([]byte{0x4C, 0x39, 0xE0}) // cmp rax, r12
+		case 9:
+			cg.emitBytes([]byte{0x4C, 0x39, 0xE8}) // cmp rax, r13
+		case 10:
+			cg.emitBytes([]byte{0x4C, 0x39, 0xF0}) // cmp rax, r14
+		case 11:
+			cg.emitBytes([]byte{0x4C, 0x39, 0xF8}) // cmp rax, r15
+		}
+	} else {
+		// Spilled to stack
+		offset := 48 + (r-12)*8
+		cg.emitBytes([]byte{0x48, 0x3B, 0x85}) // cmp rax, [rbp - offset]
+		cg.emitUint32(uint32(offset))
+	}
 }
 
 func (cg *NativeCodeGenerator) compileJump(target int) {
