@@ -1,9 +1,12 @@
+// +build amd64
+
 // Package bridge provides assembly bridges for calling JIT-compiled code from Go.
 // This is a pure Go solution (no CGO required).
 //
 // Platform Support:
-//   - Linux/macOS: Uses System V AMD64 ABI (args in rdi, rsi, rdx)
-//   - Windows: Uses Microsoft x64 ABI (args in rcx, rdx, r8, r9)
+//   - Linux/macOS (AMD64): Uses System V AMD64 ABI (args in rdi, rsi, rdx)
+//   - Windows (AMD64): Uses Microsoft x64 ABI (args in rcx, rdx, r8, r9)
+//   - ARM64: Not supported (stub implementations in bridge_arm64.go)
 //
 // The JIT code generator (BuildFibCode) automatically generates
 // platform-specific code for the target platform.

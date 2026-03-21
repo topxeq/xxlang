@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/jit_bridge.go
 // JIT code execution bridge that avoids Go stack management issues
 package jit

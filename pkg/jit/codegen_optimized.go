@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/codegen_optimized.go
 // Optimized x86-64 code generator that uses hardware registers for VM registers
 package jit

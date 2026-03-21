@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/jit_vm.go
 // JIT-enabled VM that combines interpreter with JIT compilation
 package jit

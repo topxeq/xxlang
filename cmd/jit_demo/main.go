@@ -1,3 +1,5 @@
+// +build amd64
+
 // Xxlang JIT Performance Demo for Windows
 // This program demonstrates the performance difference between:
 // - Xxlang Interpreter

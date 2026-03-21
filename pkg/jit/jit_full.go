@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/jit_full.go
 // Full JIT implementation with function call support via interpreter callback
 package jit

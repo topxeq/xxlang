@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/jit.go
 // JIT Compiler for Xxlang VM - Pure Go Implementation
 // Generates x86-64 machine code at runtime
@@ -12,25 +14,6 @@ import (
 	"github.com/topxeq/xxlang/pkg/compiler"
 	"github.com/topxeq/xxlang/pkg/vm"
 )
-
-// JITConfig holds configuration for the JIT compiler
-type JITConfig struct {
-	// Minimum execution count before JIT compilation
-	HotThreshold int
-	// Maximum code size to JIT compile (in bytes)
-	MaxCodeSize int
-	// Enable debug output
-	Debug bool
-}
-
-// DefaultJITConfig returns default JIT configuration
-func DefaultJITConfig() JITConfig {
-	return JITConfig{
-		HotThreshold: 100,
-		MaxCodeSize:   4096,
-		Debug:         false,
-	}
-}
 
 // JITCompiler handles JIT compilation of VM bytecode
 type JITCompiler struct {
@@ -93,8 +76,9 @@ func (j *JITCompiler) allocCodePageLocked() (*CodePage, error) {
 	size := 64 * 1024 // 64KB pages
 
 	// Allocate executable memory
+	// Use MAP_ANON for compatibility with both Linux and Darwin
 	prot := syscall.PROT_READ | syscall.PROT_WRITE | syscall.PROT_EXEC
-	flags := syscall.MAP_ANONYMOUS | syscall.MAP_PRIVATE
+	flags := syscall.MAP_ANON | syscall.MAP_PRIVATE
 
 	data, err := syscall.Mmap(-1, 0, size, prot, flags)
 	if err != nil {

@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/cache.go
 // Function compilation cache for JIT
 package jit

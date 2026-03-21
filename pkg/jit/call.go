@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/call.go
 // Call trampoline for JIT <-> Go transitions
 package jit

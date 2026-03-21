@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/jit_true_recursive.go
 // JIT compilation that supports TRUE recursive execution (not transformation to iteration)
 // This generates native code that actually performs recursive calls via the call instruction

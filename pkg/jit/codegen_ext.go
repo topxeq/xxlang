@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/codegen_ext.go
 // Extended x86-64 Code Generator with function call support
 package jit

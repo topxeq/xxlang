@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/codegen.go
 // x86-64 Code Generator for JIT compilation
 package jit

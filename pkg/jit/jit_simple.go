@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/jit_simple.go
 // Simplified JIT implementation with correct code generation
 package jit

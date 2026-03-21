@@ -1,4 +1,4 @@
-// +build !windows
+// +build !windows,amd64
 
 package bridge
 
@@ -14,7 +14,7 @@ func AllocExecMem(size int) ([]byte, error) {
 	allocSize := (size + pageSize - 1) & ^(pageSize - 1)
 
 	prot := syscall.PROT_READ | syscall.PROT_WRITE | syscall.PROT_EXEC
-	flags := syscall.MAP_ANONYMOUS | syscall.MAP_PRIVATE
+	flags := syscall.MAP_ANON | syscall.MAP_PRIVATE
 
 	return syscall.Mmap(-1, 0, allocSize, prot, flags)
 }

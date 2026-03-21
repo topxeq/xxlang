@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/jit_recursive.go
 // JIT compilation for recursive functions with call inlining
 package jit

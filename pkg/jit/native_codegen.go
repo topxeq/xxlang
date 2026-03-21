@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/native_codegen.go
 // Pure native x86-64 code generator for JIT
 // Generates self-contained native code without VM callbacks

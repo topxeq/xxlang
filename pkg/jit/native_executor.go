@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/native_executor.go
 // Native JIT executor that runs compiled x86-64 code directly
 package jit

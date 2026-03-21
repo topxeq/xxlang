@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/jit_fib.go
 // JIT compilation support for recursive Fibonacci functions
 // Supports both tail-recursive and non-tail-recursive implementations
