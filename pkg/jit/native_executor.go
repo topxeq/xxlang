@@ -513,6 +513,11 @@ const (
 	SupportWithArrays
 	// SupportWithObjects indicates full support including object field access
 	SupportWithObjects
+	// SupportWithClosures indicates full support including closures (future)
+	// Closures are complex because they require capturing free variables and
+	// managing the closure context. Functions with closures fall back to the
+	// interpreter for correctness.
+	SupportWithClosures
 )
 
 // AnalyzeNativeSupport analyzes the bytecode to determine native support level
@@ -573,6 +578,11 @@ func AnalyzeNativeSupport(fn *compiler.CompiledFunction) NativeSupportLevel {
 			}
 
 		// Unsupported - requires full VM context
+		// Closures (OpRegClosure, OpRegLoadFree, OpRegStoreFree) are particularly complex:
+		// - OpRegClosure creates a closure with captured free variables
+		// - OpRegLoadFree/StoreFree access captured variables from enclosing scope
+		// - Closures require maintaining the closure context across calls
+		// For correctness, functions with closures fall back to interpreter
 		case compiler.OpRegClosure, compiler.OpRegLoadFree, compiler.OpRegStoreFree,
 			compiler.OpRegPush, compiler.OpRegPop,
 			compiler.OpRegClass, compiler.OpRegNew,
@@ -1110,4 +1120,26 @@ func getConstantString(idx int) string {
 // CanExecuteNativelyWithObjects checks if a function can be executed natively with object support
 func CanExecuteNativelyWithObjects(fn *compiler.CompiledFunction) bool {
 	return AnalyzeNativeSupport(fn) >= SupportWithObjects
+}
+
+// UsesClosures checks if a function contains closure-related opcodes
+// Functions with closures cannot be executed natively and fall back to interpreter
+func UsesClosures(fn *compiler.CompiledFunction) bool {
+	code := fn.Instructions
+	for i := 0; i < len(code); {
+		op := compiler.Opcode(code[i])
+		if op == compiler.OpRegClosure || op == compiler.OpRegLoadFree || op == compiler.OpRegStoreFree {
+			return true
+		}
+		def, err := compiler.Lookup(byte(op))
+		if err != nil {
+			return false
+		}
+		width := 1
+		for _, w := range def.OperandWidths {
+			width += w
+		}
+		i += width
+	}
+	return false
 }
