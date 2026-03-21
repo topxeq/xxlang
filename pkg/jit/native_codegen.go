@@ -28,7 +28,8 @@ type NativeCodeGenerator struct {
 	funcEntry int
 
 	// Callback pointer for builtin/function dispatch
-	builtinCallbackPtr uintptr
+	builtinCallbackPtr  uintptr
+	functionCallbackPtr uintptr
 
 	// Register allocation
 	// We use: rax(0), rbx(1), rcx(2), rdx(3), r8(4), r9(5), r10(6), r11(7)
@@ -50,6 +51,11 @@ func NewNativeCodeGenerator() *NativeCodeGenerator {
 // SetBuiltinCallback sets the callback pointer for builtin calls
 func (cg *NativeCodeGenerator) SetBuiltinCallback(ptr uintptr) {
 	cg.builtinCallbackPtr = ptr
+}
+
+// SetFunctionCallback sets the callback pointer for function calls
+func (cg *NativeCodeGenerator) SetFunctionCallback(ptr uintptr) {
+	cg.functionCallbackPtr = ptr
 }
 
 // Generate generates native x86-64 code
@@ -606,34 +612,69 @@ func (cg *NativeCodeGenerator) compileTailCall(funcReg, numArgs int) {
 
 // compileCall handles function calls by calling back to Go
 // This allows native code to call functions (including natively-compiled ones)
+// The function callback signature: callback(funcReg, numArgs, argsPtr) int64
+// Arguments are in VM registers R0-R7 (which map to RAX, RBX, RCX, RDX, R8-R11)
 func (cg *NativeCodeGenerator) compileCall(funcReg, numArgs int) {
-	// We need to call a Go dispatch function
-	// The dispatch function signature: dispatch(funcReg, numArgs, arg0, arg1, ...) -> result
-	//
-	// For simplicity, we'll use a global dispatch function
-	// The calling convention is:
-	//   - rdi = funcReg (which register holds the function)
-	//   - rsi = numArgs
-	//   - rdx, rcx, r8, r9 = arg0, arg1, arg2, arg3
-	//   - Result returned in rax
-	//
-	// But we need to be careful: rdi holds the globals pointer!
-	// So we need to pass globals pointer + funcReg/numArgs differently
-	//
-	// Alternative: Use a callback pointer stored in a known location
-	// For now, we'll use a simpler approach: call a fixed Go function
-	// that reads from a thread-local dispatch table
+	// For the callback, we use System V AMD64 ABI:
+	//   rdi = funcReg
+	//   rsi = numArgs
+	//   rdx = pointer to args array (on stack)
 
-	// Since calling Go from native is complex, we'll use a different approach:
-	// Store the call info and let the bridge handle dispatch
-	//
-	// For now, we'll emit a placeholder that will be patched later
-	// when we have access to the function dispatch table
+	// But rdi currently holds globals pointer! We need to save it.
+	// Push globals pointer (rdi) to stack
+	cg.emitBytes([]byte{0x57}) // push rdi
 
-	// Simplest approach: emit a call to a fixed address that will be set up
-	// by the executor. The executor provides a callback pointer.
+	// Store args to stack for args pointer
+	// We'll spill R0-R7 to [rbp - 320 - argNum*8] (below the existing spilled regs space)
+	// This creates a contiguous array of int64 values
+	baseOffset := int32(400) // Start after builtin callback space
 
-	// mov rdi, funcReg (argument to dispatcher)
+	// Spill R0 (RAX) to [rbp - baseOffset]
+	cg.emitBytes([]byte{0x48, 0x89, 0x85}) // mov [rbp + disp32], rax
+	cg.emitUint32(uint32(-baseOffset))
+
+	if numArgs >= 2 {
+		// Spill R1 (RBX)
+		cg.emitBytes([]byte{0x48, 0x89, 0x9D}) // mov [rbp + disp32], rbx
+		cg.emitUint32(uint32(-(baseOffset + 8)))
+	}
+	if numArgs >= 3 {
+		// Spill R2 (RCX)
+		cg.emitBytes([]byte{0x48, 0x89, 0x8D}) // mov [rbp + disp32], rcx
+		cg.emitUint32(uint32(-(baseOffset + 16)))
+	}
+	if numArgs >= 4 {
+		// Spill R3 (RDX)
+		cg.emitBytes([]byte{0x48, 0x89, 0x95}) // mov [rbp + disp32], rdx
+		cg.emitUint32(uint32(-(baseOffset + 24)))
+	}
+	if numArgs >= 5 {
+		// Spill R4 (R8)
+		cg.emitBytes([]byte{0x4C, 0x89, 0x85}) // mov [rbp + disp32], r8
+		cg.emitUint32(uint32(-(baseOffset + 32)))
+	}
+	if numArgs >= 6 {
+		// Spill R5 (R9)
+		cg.emitBytes([]byte{0x4C, 0x89, 0x8D}) // mov [rbp + disp32], r9
+		cg.emitUint32(uint32(-(baseOffset + 40)))
+	}
+	if numArgs >= 7 {
+		// Spill R6 (R10)
+		cg.emitBytes([]byte{0x4C, 0x89, 0x95}) // mov [rbp + disp32], r10
+		cg.emitUint32(uint32(-(baseOffset + 48)))
+	}
+	if numArgs >= 8 {
+		// Spill R7 (R11)
+		cg.emitBytes([]byte{0x4C, 0x89, 0x9D}) // mov [rbp + disp32], r11
+		cg.emitUint32(uint32(-(baseOffset + 56)))
+	}
+
+	// Set up callback arguments (System V AMD64 ABI):
+	//   rdi = funcReg
+	//   rsi = numArgs
+	//   rdx = args pointer (address of [rbp - baseOffset])
+
+	// mov rdi, funcReg
 	cg.emitBytes([]byte{0x48, 0xC7, 0xC7}) // mov rdi, imm32
 	cg.emitUint32(uint32(funcReg))
 
@@ -641,30 +682,30 @@ func (cg *NativeCodeGenerator) compileCall(funcReg, numArgs int) {
 	cg.emitBytes([]byte{0x48, 0xC7, 0xC6}) // mov rsi, imm32
 	cg.emitUint32(uint32(numArgs))
 
-	// Load arg0 to rdx, arg1 to rcx, arg2 to r8, arg3 to r9
-	// These are already in VM registers R0-R3, which map to RAX, RBX, RCX, RDX
-	// We need to copy them to the C calling convention argument registers
+	// lea rdx, [rbp - baseOffset] (args pointer)
+	cg.emitBytes([]byte{0x48, 0x8D, 0x95}) // lea rdx, [rbp + disp32]
+	cg.emitUint32(uint32(-baseOffset))
 
-	// arg0: R0 -> rdx (R0 is in RAX)
-	cg.emitBytes([]byte{0x48, 0x89, 0xC2}) // mov rdx, rax
+	// Call the function callback
+	if cg.functionCallbackPtr != 0 {
+		// Direct call to callback pointer
+		// mov rax, callback_ptr
+		cg.emitBytes([]byte{0x48, 0xB8}) // mov rax, imm64
+		cg.emitUint64(uint64(cg.functionCallbackPtr))
+		// call rax
+		cg.emitBytes([]byte{0xFF, 0xD0}) // call rax
+	} else {
+		// Fallback: use indirect call through global
+		// For now, emit a call with placeholder that will be patched
+		cg.emitBytes([]byte{0xFF, 0x15, 0x00, 0x00, 0x00, 0x00}) // call [rip+0]
+	}
 
-	// arg1: R1 -> rcx (R1 is in RBX)
-	cg.emitBytes([]byte{0x48, 0x89, 0xD9}) // mov rcx, rbx
-
-	// arg2: R2 -> r8 (R2 is in RCX)
-	cg.emitBytes([]byte{0x49, 0x89, 0xC8}) // mov r8, rcx
-
-	// arg3: R3 -> r9 (R3 is in RDX)
-	cg.emitBytes([]byte{0x49, 0x89, 0xD1}) // mov r9, rdx
-
-	// Now we need to call the dispatcher
-	// We'll use a fixed address that will be patched
-	// For now, emit a call with placeholder address
-	cg.emitBytes([]byte{0xFF, 0x15, 0x00, 0x00, 0x00, 0x00}) // call [rip+0] - indirect call
-
-	// The result is now in rax (which is also VM reg 0 / return register)
-	// Store result to return register (255)
+	// Result is in RAX
+	// Store to return register (R255)
 	cg.storeRaxToReg(255)
+
+	// Restore globals pointer
+	cg.emitBytes([]byte{0x5F}) // pop rdi
 }
 
 // compileBuiltin generates code to call a builtin function via callback

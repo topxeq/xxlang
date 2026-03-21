@@ -155,6 +155,14 @@ func callNative(entry uintptr, globals *int64) int64
 // This function is implemented in assembly (bridge_amd64.s)
 func callNativeWithArgs(entry uintptr, globals *int64, arg0, arg1, arg2 int64) int64
 
+// callBuiltinCallback calls a Go callback for builtin functions from native code
+// This function is implemented in assembly (bridge_amd64.s)
+func callBuiltinCallback(callback uintptr, builtinIdx, numArgs int, argsPtr *int64) int64
+
+// callFunctionCallback calls a Go callback for function dispatch from native code
+// This function is implemented in assembly (bridge_amd64.s)
+func callFunctionCallback(callback uintptr, funcReg, numArgs int, argsPtr *int64) int64
+
 // callNativeWithGlobals calls a native function with globals pointer
 func callNativeWithGlobals(entry uintptr, globals []int64) int64 {
 	if len(globals) == 0 {
@@ -597,9 +605,11 @@ func CanExecuteNativelyWithBuiltins(fn *compiler.CompiledFunction) bool {
 
 // JITCallbackContext holds context for JIT callbacks to Go
 type JITCallbackContext struct {
-	globals   []vm.Value
-	constants []vm.Value
-	builtins  []*objects.Builtin
+	globals      []vm.Value
+	constants    []vm.Value
+	builtins     []*objects.Builtin
+	nativeFuncs  map[int]*NativeCompiledFunc // constIdx -> native function
+	registers    []vm.Value                  // Current frame registers
 }
 
 // globalJITContext is the global callback context
@@ -609,6 +619,16 @@ var globalJITContext JITCallbackContext
 func InitJITCallbackContext(globals, constants []vm.Value) {
 	globalJITContext.globals = globals
 	globalJITContext.constants = constants
+}
+
+// SetNativeFunctionRegistry sets the native function registry for callbacks
+func SetNativeFunctionRegistry(funcs map[int]*NativeCompiledFunc) {
+	globalJITContext.nativeFuncs = funcs
+}
+
+// SetCurrentRegisters sets the current frame registers for callbacks
+func SetCurrentRegisters(regs []vm.Value) {
+	globalJITContext.registers = regs
 }
 
 // CallBuiltinFromNative is called from native code to execute a builtin function
@@ -668,4 +688,161 @@ func GetBuiltinCallbackPtr() uintptr {
 	// Return a marker value - actual callback will be set up differently
 	// For now, we'll use a different mechanism for callbacks
 	return 0
+}
+
+// ============================================================================
+// Function Call Callback Support (Phase 2)
+// ============================================================================
+
+// FunctionDispatchKind indicates what kind of function was found
+type FunctionDispatchKind int
+
+const (
+	DispatchInvalid FunctionDispatchKind = iota
+	DispatchNative  // Has native compiled code
+	DispatchClosure // Closure (requires interpreter)
+	DispatchFunc    // Regular compiled function (no native version)
+	DispatchBuiltin // Builtin function
+)
+
+// FunctionDispatchInfo contains information about a function to dispatch to
+type FunctionDispatchInfo struct {
+	Kind        FunctionDispatchKind
+	Entry       uintptr // For native functions
+	ConstIdx    int     // Index in constants table
+	NumParams   int     // Number of parameters
+	NumFree     int     // Number of free variables (for closures)
+}
+
+// CallFunctionFromNative is called from native code to dispatch a function call
+// funcReg: the register number containing the function value
+// numArgs: number of arguments
+// argsPtr: pointer to args array (int64 values)
+// Returns the result of the function call
+func CallFunctionFromNative(funcReg, numArgs int, argsPtr *int64) int64 {
+	// Get the function value from registers
+	if globalJITContext.registers == nil || funcReg >= len(globalJITContext.registers) {
+		return 0
+	}
+
+	fnValue := globalJITContext.registers[funcReg]
+	if fnValue.IsNull() {
+		return 0
+	}
+
+	// Check if it's a native function (check constIdx first)
+	// The function might be loaded from constants, so check if it has a native version
+	dispatchInfo := resolveFunctionDispatch(fnValue, funcReg)
+	if dispatchInfo.Kind == DispatchInvalid {
+		return 0
+	}
+
+	// Convert args from int64 array to vm.Value
+	argsSlice := unsafe.Slice(argsPtr, numArgs)
+	args := make([]vm.Value, numArgs)
+	for i := 0; i < numArgs; i++ {
+		args[i] = vm.NewInt(argsSlice[i])
+	}
+
+	switch dispatchInfo.Kind {
+	case DispatchNative:
+		// Call native function directly
+		if dispatchInfo.Entry == 0 {
+			return 0
+		}
+
+		// Get globals as int64 array
+		globals := make([]int64, len(globalJITContext.globals))
+		for i, g := range globalJITContext.globals {
+			if g.IsInt() {
+				globals[i], _ = g.ToInt()
+			}
+		}
+
+		// Call via bridge
+		nativeFunc := &NativeCompiledFunc{
+			Entry:      dispatchInfo.Entry,
+			NumParams:  dispatchInfo.NumParams,
+			UseBridgeABI: true,
+		}
+		return nativeFunc.Execute(globals, int64SliceFromValueSlice(args)...)
+
+	case DispatchBuiltin:
+		// Delegate to builtin callback
+		// Find builtin index - this is stored differently
+		return 0 // Builtins are handled by CallBuiltinFromNative
+
+	case DispatchClosure, DispatchFunc:
+		// Fall back to interpreter - for now return 0
+		// In a full implementation, we'd set up a frame and call the interpreter
+		return 0
+
+	default:
+		return 0
+	}
+}
+
+// resolveFunctionDispatch determines how to dispatch a function call
+func resolveFunctionDispatch(fnValue vm.Value, funcReg int) FunctionDispatchInfo {
+	info := FunctionDispatchInfo{Kind: DispatchInvalid}
+
+	// Check if it's a compiled function
+	if compiledFn := fnValue.GetCompiledFunction(); compiledFn != nil {
+		info.NumParams = compiledFn.NumParameters
+
+		// Check if we have a native version
+		// Look up by checking if any constant matches this function
+		for idx, c := range globalJITContext.constants {
+			cf := c.GetCompiledFunction()
+			if cf != nil && cf == compiledFn {
+				info.ConstIdx = idx
+				if nativeFn, ok := globalJITContext.nativeFuncs[idx]; ok && nativeFn != nil {
+					info.Kind = DispatchNative
+					info.Entry = nativeFn.Entry
+					return info
+				}
+				break
+			}
+		}
+
+		info.Kind = DispatchFunc
+		return info
+	}
+
+	// Check if it's a closure
+	if closure := fnValue.GetClosure(); closure != nil {
+		info.Kind = DispatchClosure
+		if closure.Fn != nil {
+			info.NumParams = closure.Fn.NumParameters
+			info.NumFree = len(closure.FreeVars)
+		}
+		return info
+	}
+
+	// Check if it's a builtin (shouldn't happen here, but handle it)
+	if fnValue.IsObject() {
+		obj := fnValue.ToObject()
+		if _, ok := obj.(*objects.Builtin); ok {
+			info.Kind = DispatchBuiltin
+			return info
+		}
+	}
+
+	return info
+}
+
+// int64SliceFromValueSlice converts vm.Value slice to int64 slice
+func int64SliceFromValueSlice(values []vm.Value) []int64 {
+	result := make([]int64, len(values))
+	for i, v := range values {
+		if v.IsInt() {
+			result[i], _ = v.ToInt()
+		}
+	}
+	return result
+}
+
+// CanExecuteNativelyWithCalls checks if a function can be executed natively with function call support
+func CanExecuteNativelyWithCalls(fn *compiler.CompiledFunction) bool {
+	return AnalyzeNativeSupport(fn) >= SupportWithCalls
 }
