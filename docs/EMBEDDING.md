@@ -149,6 +149,15 @@ interp.SetJITConfig(config)
 | fib(35) recursive | ~5 seconds | 54 ms | **93x** |
 | fib(35) iterative | 1.5 µs | 23 ns | **65x** |
 
+**JIT Platform Support:**
+
+| Platform | JIT Support |
+|----------|-------------|
+| Linux/amd64 | ✅ Full support |
+| Darwin/amd64 | ✅ Full support |
+| **Windows/amd64** | ✅ **Full support** |
+| arm64 (all) | ⚠️ Interpreter only |
+
 **When to use JIT:**
 - Compute-intensive numerical algorithms
 - Recursive functions (especially with TCO)

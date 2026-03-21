@@ -37,11 +37,49 @@ xxlang compile -o program script.xxl
 # Compile to bytecode only
 xxlang compile --bytecode script.xxl
 
+# Run with JIT enabled (for compute-intensive workloads)
+xxlang --jit script.xxl
+
+# Run with debug output
+xxlang --debug script.xxl
+xxlang --debug --jit script.xxl
+
 # Show help
 xxlang help
 
 # Show version
 xxlang version
+```
+
+### CLI Options
+
+| Option | Description |
+|--------|-------------|
+| `--jit` | Enable JIT compilation for hot paths |
+| `--jit-threshold=N` | Set JIT hot path threshold (default: 100) |
+| `--jit-debug` | Enable JIT-specific debug output |
+| `--no-jit` | Explicitly disable JIT (default) |
+| `--debug` | Show debug info (bytecode count, runtime, JIT usage) |
+| `-o, --output path` | Output path for compiled file |
+| `--target os/arch` | Cross-compile for target OS/architecture |
+| `--bytecode` | Output as bytecode (.xxb) instead of executable |
+
+### Debug Mode
+
+The `--debug` flag provides comprehensive debug output:
+
+```
+[Debug] Source: script.xxl
+[Debug] Source size: 94 bytes
+[Debug] Bytecode instructions: 31
+[Debug] Constants: 5
+[Debug] Compile time: 320.73µs
+[Debug] JIT enabled: true
+[Debug] VM mode: JIT (hybrid)
+[Debug] Execution time: 245.767µs
+[Debug] Native executions: 1
+[Debug] Interpreter executions: 1
+[Debug] Total time: 566.497µs
 ```
 
 ## REPL Commands

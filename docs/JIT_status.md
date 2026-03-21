@@ -2,7 +2,20 @@
 
 ## Current Status: Production Ready
 
-The JIT (Just-In-Time) compiler for Xxlang is now **production-ready** for compute-intensive workloads. Native x86-64 execution provides near-native performance for pure arithmetic and recursive algorithms.
+The JIT (Just-In-Time) compiler for Xxlang is now **production-ready** for compute-intensive workloads. Native x86-64 execution provides near-native performance for pure arithmetic and recursive algorithms on **Linux, macOS, and Windows**.
+
+## Platform Support
+
+| Platform | Architecture | JIT Support | Notes |
+|----------|--------------|-------------|-------|
+| Linux | amd64 | ✅ Full support | mmap with PROT_EXEC |
+| macOS | amd64 | ✅ Full support | mmap with PROT_EXEC |
+| **Windows** | **amd64** | ✅ **Full support** | VirtualAlloc with PAGE_EXECUTE_READWRITE |
+| Linux | arm64 | ⚠️ Interpreter only | Planned for future |
+| macOS | arm64 | ⚠️ Interpreter only | Planned for future |
+| Windows | arm64 | ⚠️ Interpreter only | Planned for future |
+
+**New in v0.4.24**: Windows amd64 JIT is now fully supported with native performance.
 
 ## Performance Summary (March 2026)
 
@@ -28,6 +41,49 @@ The JIT (Just-In-Time) compiler for Xxlang is now **production-ready** for compu
 
 **Note**: The 93,000,000x speedup for recursive fib(35) is because the JIT properly compiles recursive calls while the interpreter suffers from exponential call overhead.
 
+## New Features (v0.4.23 - v0.4.24)
+
+### CLI Parameters
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--jit` | Enable JIT compilation | Disabled |
+| `--jit-threshold=N` | Hot path threshold for JIT | 100 |
+| `--jit-debug` | Enable JIT debug output | Disabled |
+| `--no-jit` | Explicitly disable JIT | - |
+| `--debug` | Comprehensive debug output | Disabled |
+
+### Embedded API
+
+```go
+// Create interpreter with JIT
+interp := interpreter.New(
+    interpreter.WithStdlib(),
+    interpreter.WithJIT(),
+    interpreter.WithJITThreshold(10),
+)
+
+// Runtime control
+interp.SetJITEnabled(true)
+config := interp.GetJITConfig()
+```
+
+### Debug Mode Output
+
+```
+[Debug] Source: script.xxl
+[Debug] Source size: 94 bytes
+[Debug] Bytecode instructions: 31
+[Debug] Constants: 5
+[Debug] Compile time: 320.73µs
+[Debug] JIT enabled: true
+[Debug] VM mode: JIT (hybrid)
+[Debug] Execution time: 245.767µs
+[Debug] Native executions: 1
+[Debug] Interpreter executions: 1
+[Debug] Total time: 566.497µs
+```
+
 ## Implemented Features
 
 ### Core JIT System
@@ -36,8 +92,15 @@ The JIT (Just-In-Time) compiler for Xxlang is now **production-ready** for compu
 - ✅ Register allocation (RAX, RBX, RCX, RDX, R8-R11)
 - ✅ Stack frame management
 - ✅ Prologue/epilogue generation
+- ✅ **Windows x64 ABI support**
 
-### Callback Mechanism (NEW)
+### Platform-Specific Implementations
+- ✅ Linux/macOS: mmap with PROT_READ|PROT_WRITE|PROT_EXEC
+- ✅ **Windows: VirtualAlloc with PAGE_EXECUTE_READWRITE**
+- ✅ System V AMD64 ABI (Linux/macOS)
+- ✅ **Microsoft x64 ABI (Windows)**
+
+### Callback Mechanism
 - ✅ Builtin callback (call builtins from native code)
 - ✅ Function callback (dispatch function calls)
 - ✅ Collection callback (array/map operations)
@@ -59,7 +122,7 @@ The JIT (Just-In-Time) compiler for Xxlang is now **production-ready** for compu
 - ✅ Thread-safe context with sync.RWMutex
 - ✅ Handle reuse for released objects
 
-### Function Argument Support (NEW)
+### Function Argument Support
 - ✅ 0-3 arguments (optimized path)
 - ✅ 4-8 arguments (extended path)
 - ⏳ 9+ arguments (stack-based, planned)
@@ -68,35 +131,17 @@ The JIT (Just-In-Time) compiler for Xxlang is now **production-ready** for compu
 
 | File | Purpose |
 |------|---------|
-| `/pkg/jit/jit.go` | Core JIT compiler |
-| `/pkg/jit/native_codegen.go` | Pure native x86-64 code generator |
-| `/pkg/jit/native_executor.go` | Native execution engine, callbacks, handle pooling |
-| `/pkg/jit/bridge_amd64.s` | Assembly bridge (System V ABI ↔ Go) |
-| `/pkg/jit/jit_vm.go` | JIT-enabled VM wrapper |
-| `/pkg/jit/jit_recursive.go` | Recursive function JIT compiler |
-| `/pkg/jit/jit_fib.go` | Specialized Fibonacci JIT compiler |
-
-## Native Support Levels
-
-```go
-// Check support level for a function
-level := jit.AnalyzeNativeSupport(fn)
-
-switch level {
-case jit.SupportNone:
-    // Contains closures/classes - falls back to interpreter
-case jit.SupportPureArithmetic:
-    // Pure arithmetic/control flow - fastest, no callbacks
-case jit.SupportWithBuiltins:
-    // Uses builtin callback for built-in functions
-case jit.SupportWithCalls:
-    // Uses function callback for inter-function calls
-case jit.SupportWithArrays:
-    // Uses collection callback for arrays/maps
-case jit.SupportWithObjects:
-    // Uses object callback for field access/methods
-}
-```
+| `pkg/jit/jit.go` | Core JIT compiler (Unix) |
+| `pkg/jit/jit_windows_amd64.go` | Core JIT compiler (Windows) |
+| `pkg/jit/jit_vm.go` | JIT-enabled VM wrapper |
+| `pkg/jit/jit_vm_stub.go` | Stub for non-amd64 platforms |
+| `pkg/jit/native_codegen.go` | Pure native x86-64 code generator |
+| `pkg/jit/native_executor.go` | Native execution engine, callbacks |
+| `pkg/jit/bridge/bridge_amd64.s` | Assembly bridge (System V ABI) |
+| `pkg/jit/bridge/bridge_windows_amd64.s` | Assembly bridge (Microsoft x64 ABI) |
+| `pkg/jit/bridge/mem_unix.go` | Memory allocation (mmap) |
+| `pkg/jit/bridge/mem_windows.go` | Memory allocation (VirtualAlloc) |
+| `pkg/jit/config.go` | JITConfig definition (all platforms) |
 
 ## CLI Usage
 
@@ -104,8 +149,16 @@ case jit.SupportWithObjects:
 # Run with JIT enabled
 xxl --jit script.xxl
 
+# JIT with custom threshold
+xxl --jit --jit-threshold=10 script.xxl
+
+# JIT with debug output
+xxl --jit --jit-debug script.xxl
+
+# Comprehensive debug mode
+xxl --debug --jit script.xxl
+
 # For best performance with recursive algorithms, use TCO
-# No special flags needed - TCO is automatic
 xxl fib_tco.xxl
 ```
 
@@ -171,15 +224,16 @@ func counter() {
 | Closures | Falls back to interpreter | Use globals or parameters |
 | Classes | Falls back to interpreter | Use functions and maps |
 | Exceptions | Falls back to interpreter | Use error codes |
-| ARM64 | Not supported | Use x86-64 |
+| ARM64 | Interpreter only (stub) | Use x86-64 |
 | >8 arguments | Falls back to globals | Pack args in array/map |
 
 ## Future Roadmap
 
 ### Short Term
+- [x] Windows amd64 JIT support
+- [x] CLI debug mode
+- [x] Embedded API for JIT control
 - [ ] ARM64 code generation
-- [ ] Inline caching for method calls
-- [ ] Better debug output
 
 ### Medium Term
 - [ ] SIMD (AVX/SSE) for array operations
@@ -212,12 +266,14 @@ The Xxlang JIT compiler is now **production-ready** for compute-intensive worklo
 - **50x faster than Python** for the same workloads
 - **93x faster than Xxlang interpreter** for recursive calls
 - **No CGO dependencies** - pure Go implementation
+- **Cross-platform** - Linux, macOS, and Windows amd64
 
 For best performance:
 1. Use TCO for recursive algorithms
 2. Prefer iterative patterns over naive recursion
 3. Avoid closures in hot code paths
+4. Enable JIT with `--jit` flag for compute-intensive workloads
 
 ---
 
-*Status as of 2026-03-21*
+*Status as of 2026-03-21 (v0.4.24)*

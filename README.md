@@ -12,6 +12,7 @@ Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language impleme
 ## Features
 
 - **Bytecode VM** - Efficient execution with register-based virtual machine (21% faster than stack-based)
+- **JIT Compilation** - Near-native performance with x86-64 JIT compiler (93x faster for recursive algorithms)
 - **Closures** - First-class functions with proper closure support
 - **Classes & OOP** - Object-oriented programming with inheritance
 - **Module System** - Import/export with standard library
@@ -20,6 +21,7 @@ Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language impleme
 - **REPL** - Interactive REPL with multi-line support and persistent state
 - **Embeddable** - Can be used as a library in other Go projects
 - **Compilable** - Compile to standalone executable or bytecode
+- **Cross-Platform** - Linux, macOS, Windows support for both amd64 and arm64
 
 ## Documentation
 
@@ -29,6 +31,7 @@ Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language impleme
 - [Code Examples](docs/EXAMPLES.md) - Common scenarios code examples
 - [Variable Scope](docs/SCOPE.md) - Variable scope and closure behavior
 - [Embedding Guide](docs/EMBEDDING.md) - Using Xxlang in Go applications
+- [JIT Compilation](docs/JIT.md) - JIT compiler documentation
 - [Plugin System](docs/PLUGIN.md) - Writing native Go plugins for high performance
 - [Performance Benchmarks](benchmarks/RESULTS.md) - Performance analysis
 
