@@ -12,15 +12,17 @@ Xxlang 是一个基于字节码虚拟机的脚本语言，使用 Go 语言实现
 ## 特性
 
 - **字节码虚拟机** - 基于寄存器的虚拟机，比栈式快 21%
-- **JIT 编译** - x86-64 JIT 编译器，接近原生性能（递归算法快 93 倍）
+- **JIT 编译** - x86-64 JIT 编译器，支持 Linux、macOS 和 Windows（递归算法快 93 倍）
+- **方法尾调用优化** - 函数和方法的尾调用优化，支持高效递归
 - **闭包支持** - 一等函数，完整的闭包支持
-- **类与面向对象** - 支持类和继承
+- **类与面向对象** - 支持类、继承和多级 super 调用
+- **异常处理** - 完整的 try/catch/finally/throw 支持
 - **模块系统** - 导入导出机制，丰富的标准库
-- **插件系统** - 编写原生 Go 插件实现高性能操作
-- **丰富的内置函数** - 41+ 个内置函数，支持字符串、数学、数组和映射操作
+- **插件系统** - WASM 插件实现高性能操作（兼容 Windows，无需 CGO）
+- **丰富的内置函数** - 60+ 个内置函数，支持字符串、数学、数组和映射操作
 - **交互式 REPL** - 支持多行输入和状态持久化
 - **可嵌入** - 可作为库在其他 Go 项目中使用
-- **可编译** - 编译为独立可执行文件或字节码
+- **可编译** - 编译为独立可执行文件或跨平台字节码
 - **跨平台** - 支持 Linux、macOS、Windows 的 amd64 和 arm64 架构
 
 ## 文档
@@ -613,17 +615,19 @@ pln(fib.matrix(92))    // int64 范围内最大的斐波那契数
 
 ## 内置函数列表
 
-Xxlang 提供 40+ 个内置函数：
+Xxlang 提供 60+ 个内置函数：
 
 | 类别 | 函数 |
 |------|------|
 | 输出 | `pln`, `pr`, `pl`, `prf` |
-| 通用 | `len`, `typeOf` |
-| 字符串 | `substr`, `split`, `join`, `trim`, `upper`, `lower`, `containsStr`, `replace`, `startsWith`, `endsWith` |
-| 数学 | `abs`, `floor`, `ceil`, `sqrt`, `pow`, `min`, `max` |
+| 通用 | `len`, `typeOf`, `toStr` |
+| 字符串 | `substr`, `split`, `join`, `trim`, `upper`, `lower`, `containsStr`, `replace`, `startsWith`, `endsWith`, `repeat`, `charAt`, `padLeft`, `padRight`, `trimLeft`, `trimRight` |
+| 数学 | `abs`, `floor`, `ceil`, `sqrt`, `pow`, `min`, `max`, `round`, `clamp`, `sign` |
 | 类型转换 | `int`, `float`, `string` |
-| 数组 | `push`, `pop`, `first`, `last`, `rest`, `concat`, `indexOf`, `containsArr`, `sort`, `sum`, `avg`, `reverse` |
-| 映射 | `keys`, `values`, `hasKey`, `delete` |
+| 数组 | `push`, `pop`, `first`, `last`, `rest`, `concat`, `indexOf`, `containsArr`, `sort`, `sum`, `avg`, `reverse`, `unique`, `flatten`, `without`, `take`, `drop` |
+| 映射 | `keys`, `values`, `hasKey`, `delete`, `merge`, `entries` |
+| 类型检查 | `isEmpty`, `isString`, `isNumber`, `isInt`, `isFloat`, `isArray`, `isMap`, `isBool`, `isFunction`, `isNull` |
+| 工具 | `range`, `runCode`, `loadPlugin`, `format`, `checkErr`, `checkEmpty`, `genOtpCode` |
 
 ## 许可证
 

@@ -735,6 +735,29 @@ func fib(n) { return fibTail(n, 0, 1) }
 
 **Performance impact**: TCO makes recursion ~420,000x faster for fib(35)!
 
+#### Method Tail Call Optimization
+
+TCO also works for recursive method calls:
+
+```xxl
+class Counter {
+    func countDown(n) {
+        if (n <= 0) {
+            return "done"
+        }
+        return this.countDown(n - 1)  // TCO applies!
+    }
+}
+
+var c = new Counter()
+pln(c.countDown(10000))  // Works without stack overflow!
+```
+
+**Supported method TCO patterns:**
+- `return this.method(args)` - ✅ TCO applies
+- `return self.method(args)` - ✅ TCO applies (when `self` is bound to `this`)
+- `return obj.method(args)` - ❌ No TCO (different object)
+
 ## Arrays
 
 ### Creation

@@ -21,6 +21,10 @@ io.println("Hello, World!")
 - [regex](#regex) - Regular expressions
 - [crypto](#crypto) - Cryptographic functions
 - [time](#time) - Time and date functions
+- [fmt](#fmt) - Formatting utilities
+- [encoding](#encoding) - Base64 and hex encoding/decoding
+- [uuid](#uuid) - UUID generation
+- [debug](#debug) - Debugging utilities
 
 ---
 
@@ -1497,3 +1501,115 @@ Formats string with Go-style format specifiers.
 format("Hello %s, you are %d", "Alice", 30)  // "Hello Alice, you are 30"
 format("Pi is %.2f", 3.14159)                 // "Pi is 3.14"
 ```
+
+---
+
+## fmt
+
+Formatting utilities.
+
+#### sprintf(format, args...)
+Returns formatted string using Go-style format specifiers.
+
+```xxl
+import "fmt"
+var msg = fmt.sprintf("Name: %s, Age: %d", "Alice", 30)
+pln(msg)  // Name: Alice, Age: 30
+```
+
+#### printf(format, args...)
+Prints formatted string to stdout.
+
+```xxl
+fmt.printf("Value: %d\n", 42)
+```
+
+---
+
+## encoding
+
+Encoding/decoding utilities (Base64, Hex).
+
+#### base64Encode(s)
+Encodes string to base64.
+
+```xxl
+import "encoding"
+encoding.base64Encode("hello")  // "aGVsbG8="
+```
+
+#### base64Decode(s)
+Decodes base64 string.
+
+```xxl
+encoding.base64Decode("aGVsbG8=")  // "hello"
+```
+
+#### hexEncode(s)
+Encodes string to hexadecimal.
+
+```xxl
+encoding.hexEncode("hello")  // "68656c6c6f"
+```
+
+#### hexDecode(s)
+Decodes hexadecimal string.
+
+```xxl
+encoding.hexDecode("68656c6c6f")  // "hello"
+```
+
+---
+
+## uuid
+
+UUID generation.
+
+#### uuid()
+Generates a random UUID (v4) string.
+
+```xxl
+import "uuid"
+var id = uuid.uuid()  // "550e8400-e29b-41d4-a716-446655440000"
+```
+
+---
+
+## debug
+
+Debugging utilities.
+
+#### stacktrace()
+Returns current call stack as string.
+
+```xxl
+import "debug"
+pln(debug.stacktrace())
+```
+
+#### gc()
+Triggers garbage collection.
+
+```xxl
+debug.gc()
+```
+
+---
+
+## Other Modules
+
+Additional standard library modules available:
+
+| Module | Description |
+|--------|-------------|
+| `bytes` | Byte array operations |
+| `collections` | Collection utilities (sets, stacks, queues) |
+| `csv` | CSV file parsing and writing |
+| `env` | Environment variable utilities |
+| `fp` | Functional programming utilities (map, filter, reduce) |
+| `log` | Logging utilities |
+| `net` | Network utilities (HTTP client) |
+| `sort` | Advanced sorting utilities |
+| `strconv` | String conversion utilities |
+| `text` | Text processing utilities |
+| `validate` | Input validation utilities |

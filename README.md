@@ -1,5 +1,5 @@
 # Xxlang
-![Coverage](https://img.shields.io/badge/Coverage-44.3%25-yellow)
+![Coverage](https://img.shields.io/badge/Coverage-81.8%25-brightgreen)
 
 [中文文档](README_zh.md)
 
@@ -12,15 +12,17 @@ Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language impleme
 ## Features
 
 - **Bytecode VM** - Efficient execution with register-based virtual machine (21% faster than stack-based)
-- **JIT Compilation** - Near-native performance with x86-64 JIT compiler (93x faster for recursive algorithms)
+- **JIT Compilation** - Near-native performance with x86-64 JIT compiler supporting Linux, macOS, and Windows (93x faster for recursive algorithms)
+- **Method TCO** - Tail call optimization for both functions and methods, enabling efficient recursion
 - **Closures** - First-class functions with proper closure support
-- **Classes & OOP** - Object-oriented programming with inheritance
+- **Classes & OOP** - Object-oriented programming with inheritance and multi-level super calls
+- **Exception Handling** - Full try/catch/finally/throw support
 - **Module System** - Import/export with standard library
-- **Plugin System** - Write native Go plugins for high-performance operations
-- **Rich Built-ins** - 41+ built-in functions for string, math, array, and map operations
+- **Plugin System** - WASM plugins for high-performance operations (Windows compatible, no CGO required)
+- **Rich Built-ins** - 60+ built-in functions for string, math, array, and map operations
 - **REPL** - Interactive REPL with multi-line support and persistent state
 - **Embeddable** - Can be used as a library in other Go projects
-- **Compilable** - Compile to standalone executable or bytecode
+- **Compilable** - Compile to standalone executable or cross-platform bytecode
 - **Cross-Platform** - Linux, macOS, Windows support for both amd64 and arm64
 
 ## Documentation
@@ -554,17 +556,19 @@ See [docs/EMBEDDING.md](docs/EMBEDDING.md) for complete examples.
 
 ## Built-in Functions List
 
-Xxlang provides 40+ built-in functions:
+Xxlang provides 60+ built-in functions:
 
 | Category | Functions |
 |----------|-----------|
 | Output | `pln`, `pr`, `pl`, `prf` |
-| General | `len`, `typeOf` |
-| String | `substr`, `split`, `join`, `trim`, `upper`, `lower`, `containsStr`, `replace`, `startsWith`, `endsWith` |
-| Math | `abs`, `floor`, `ceil`, `sqrt`, `pow`, `min`, `max` |
+| General | `len`, `typeOf`, `toStr` |
+| String | `substr`, `split`, `join`, `trim`, `upper`, `lower`, `containsStr`, `replace`, `startsWith`, `endsWith`, `repeat`, `charAt`, `padLeft`, `padRight`, `trimLeft`, `trimRight` |
+| Math | `abs`, `floor`, `ceil`, `sqrt`, `pow`, `min`, `max`, `round`, `clamp`, `sign` |
 | Type Conversion | `int`, `float`, `string` |
-| Array | `push`, `pop`, `first`, `last`, `rest`, `concat`, `indexOf`, `containsArr`, `sort`, `sum`, `avg`, `reverse` |
-| Map | `keys`, `values`, `hasKey`, `delete` |
+| Array | `push`, `pop`, `first`, `last`, `rest`, `concat`, `indexOf`, `containsArr`, `sort`, `sum`, `avg`, `reverse`, `unique`, `flatten`, `without`, `take`, `drop` |
+| Map | `keys`, `values`, `hasKey`, `delete`, `merge`, `entries` |
+| Type Checking | `isEmpty`, `isString`, `isNumber`, `isInt`, `isFloat`, `isArray`, `isMap`, `isBool`, `isFunction`, `isNull` |
+| Utility | `range`, `runCode`, `loadPlugin`, `format`, `checkErr`, `checkEmpty`, `genOtpCode` |
 
 ## License
 

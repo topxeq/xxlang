@@ -21,6 +21,10 @@ io.println("你好，世界！")
 - [regex](#regex) - 正则表达式
 - [crypto](#crypto) - 加密函数
 - [time](#time) - 时间日期函数
+- [fmt](#fmt) - 格式化工具
+- [encoding](#encoding) - Base64 和十六进制编解码
+- [uuid](#uuid) - UUID 生成
+- [debug](#debug) - 调试工具
 
 ---
 

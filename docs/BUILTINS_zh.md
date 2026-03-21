@@ -283,6 +283,26 @@ startsWith("hello", "he")  // true
 endsWith("hello", "lo")  // true
 ```
 
+### padLeft(str, width, padChar?)
+
+在字符串左侧填充到指定宽度。
+
+```xxl
+padLeft("5", 4)         // "   5"（用空格填充）
+padLeft("5", 4, "0")    // "0005"
+padLeft("hello", 3)     // "hello"（已超过宽度）
+```
+
+### padRight(str, width, padChar?)
+
+在字符串右侧填充到指定宽度。
+
+```xxl
+padRight("5", 4)        // "5   "（用空格填充）
+padRight("5", 4, "0")   // "5000"
+padRight("hello", 3)    // "hello"（已超过宽度）
+```
+
 ---
 
 ## 数学函数
@@ -587,15 +607,24 @@ var hasDebugEq = switchExists(argsG, "-debug=true") // true（精确匹配）
 
 ## 工具函数
 
-### range(end) 或 range(start, end)
+### range(end) 或 range(start, end) 或 range(start, end, step)
 
 生成从 start 到 end（包含）的整数数组。
 
 ```xxl
-range(5)       // [0, 1, 2, 3, 4, 5]
-range(2, 5)    // [2, 3, 4, 5]
-range(5, 2)    // [5, 4, 3, 2]
+range(5)           // [0, 1, 2, 3, 4, 5]
+range(2, 5)        // [2, 3, 4, 5]
+range(5, 2)        // [5, 4, 3, 2]
+range(0, 10, 2)    // [0, 2, 4, 6, 8]（指定步长）
+range(10, 0, -2)   // [10, 8, 6, 4, 2]（负步长）
 ```
+
+**参数：**
+- `end` - 结束值（包含），起始值默认为 0
+- `start` - 起始值（可选）
+- `step` - 步长值（可选，默认为 1）。不能为零。
+
+**返回：** 整数数组
 
 ### runCode(code, args?)
 

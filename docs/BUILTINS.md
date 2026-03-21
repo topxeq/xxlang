@@ -13,6 +13,8 @@ This document provides a comprehensive reference for all built-in functions in X
 - [Map Functions](#map-functions)
 - [Command Line Argument Functions](#command-line-argument-functions)
 - [Utility Functions](#utility-functions)
+- [Type Checking Functions](#type-checking-functions)
+- [Formatting Functions](#formatting-functions)
 - [Dynamic Code Execution](#dynamic-code-execution)
 - [Type Methods](#type-methods)
 - [Standard Library Modules](#standard-library-modules)
@@ -283,6 +285,26 @@ Checks if a string ends with a suffix.
 endsWith("hello", "lo")  // true
 ```
 
+### padLeft(str, width, padChar?)
+
+Pads a string on the left to the specified width.
+
+```xxl
+padLeft("5", 4)         // "   5" (padded with spaces)
+padLeft("5", 4, "0")    // "0005"
+padLeft("hello", 3)     // "hello" (already wider than width)
+```
+
+### padRight(str, width, padChar?)
+
+Pads a string on the right to the specified width.
+
+```xxl
+padRight("5", 4)        // "5   " (padded with spaces)
+padRight("5", 4, "0")   // "5000"
+padRight("hello", 3)    // "hello" (already wider than width)
+```
+
 ---
 
 ## Math Functions
@@ -348,6 +370,52 @@ Returns the larger of two values.
 ```xxl
 max(5, 3)    // 5
 max(1.5, 2)  // 2
+```
+
+### round(value, precision?)
+
+Rounds a number to the nearest integer or to specified decimal places.
+
+```xxl
+round(3.7)           // 4
+round(3.14159, 2)    // 3.14
+round(3.14159, 4)    // 3.1416
+```
+
+### clamp(value, min, max)
+
+Clamps a value to the range [min, max].
+
+```xxl
+clamp(15, 0, 10)     // 10
+clamp(-5, 0, 10)     // 0
+clamp(5, 0, 10)      // 5
+```
+
+### sign(value)
+
+Returns the sign of a number (-1, 0, or 1).
+
+```xxl
+sign(-42)    // -1
+sign(0)      // 0
+sign(42)     // 1
+```
+
+### random()
+
+Returns a random float between 0 and 1.
+
+```xxl
+var r = random()  // 0.0 <= r < 1.0
+```
+
+### randomInt(min, max)
+
+Returns a random integer in the range [min, max] (inclusive).
+
+```xxl
+var die = randomInt(1, 6)   // 1, 2, 3, 4, 5, or 6
 ```
 
 ---
@@ -491,6 +559,48 @@ Returns a reversed copy of the array.
 reverse([1, 2, 3])  // [3, 2, 1]
 ```
 
+### unique(array)
+
+Returns an array with duplicate values removed.
+
+```xxl
+unique([1, 2, 2, 3, 3, 3])  // [1, 2, 3]
+```
+
+### flatten(array, depth?)
+
+Flattens nested arrays to the specified depth.
+
+```xxl
+flatten([[1, 2], [3, 4]])           // [1, 2, 3, 4]
+flatten([[[1]], [2]], 1)            // [[1], 2] (depth 1)
+flatten([[[1]], [2]])               // [1, 2] (full flatten)
+```
+
+### without(array, values...)
+
+Returns an array with the specified values removed.
+
+```xxl
+without([1, 2, 3, 4], 2, 4)  // [1, 3]
+```
+
+### take(array, n)
+
+Returns the first n elements of an array.
+
+```xxl
+take([1, 2, 3, 4, 5], 3)  // [1, 2, 3]
+```
+
+### drop(array, n)
+
+Returns an array without the first n elements.
+
+```xxl
+drop([1, 2, 3, 4, 5], 2)  // [3, 4, 5]
+```
+
 ---
 
 ## Map Functions
@@ -526,6 +636,23 @@ Returns a new map with the specified key removed.
 
 ```xxl
 delete({"a": 1, "b": 2}, "a")  // {"b": 2}
+```
+
+### merge(map1, map2, ...)
+
+Merges multiple maps. Later maps override earlier ones for duplicate keys.
+
+```xxl
+merge({"a": 1}, {"b": 2})           // {"a": 1, "b": 2}
+merge({"a": 1}, {"a": 2, "b": 3})    // {"a": 2, "b": 3}
+```
+
+### entries(map)
+
+Returns an array of [key, value] pairs.
+
+```xxl
+entries({"x": 10, "y": 20})  // [["x", 10], ["y", 20]]
 ```
 
 ---
@@ -583,19 +710,39 @@ var hasDebugEq = switchExists(argsG, "-debug=true") // true (exact match)
 - `true` if the switch exists with exact match
 - `false` if the switch is not found
 
+### toStr(obj)
+
+Converts any value to its string representation.
+
+```xxl
+toStr(42)       // "42"
+toStr(3.14)     // "3.14"
+toStr(true)     // "true"
+toStr([1, 2])   // "[1, 2]"
+```
+
 ---
 
 ## Utility Functions
 
-### range(end) or range(start, end)
+### range(end) or range(start, end) or range(start, end, step)
 
 Generates an array of integers from start to end (inclusive).
 
 ```xxl
-range(5)       // [0, 1, 2, 3, 4, 5]
-range(2, 5)    // [2, 3, 4, 5]
-range(5, 2)    // [5, 4, 3, 2]
+range(5)           // [0, 1, 2, 3, 4, 5]
+range(2, 5)        // [2, 3, 4, 5]
+range(5, 2)        // [5, 4, 3, 2]
+range(0, 10, 2)    // [0, 2, 4, 6, 8] (with step)
+range(10, 0, -2)   // [10, 8, 6, 4, 2] (negative step)
 ```
+
+**Parameters:**
+- `end` - End value (inclusive), start defaults to 0
+- `start` - Start value (optional)
+- `step` - Step value (optional, default 1). Cannot be zero.
+
+**Returns:** Array of integers
 
 ### runCode(code, args?)
 
@@ -842,6 +989,117 @@ Splits array into chunks of specified size.
 ```xxl
 chunk([1, 2, 3, 4, 5, 6], 2)  // [[1, 2], [3, 4], [5, 6]]
 chunk([1, 2, 3, 4, 5], 2)     // [[1, 2], [3, 4], [5]]
+```
+
+---
+
+## Type Checking Functions
+
+### isEmpty(value)
+
+Returns true if value is empty string, empty array, empty map, or null.
+
+```xxl
+isEmpty("")          // true
+isEmpty([])          // true
+isEmpty({})          // true
+isEmpty(null)        // true
+isEmpty([1, 2])      // false
+```
+
+### isString(value)
+
+Returns true if value is a string.
+
+```xxl
+isString("hello")    // true
+isString(42)         // false
+```
+
+### isNumber(value)
+
+Returns true if value is an integer or float.
+
+```xxl
+isNumber(42)         // true
+isNumber(3.14)       // true
+isNumber("42")       // false
+```
+
+### isInt(value)
+
+Returns true if value is an integer.
+
+```xxl
+isInt(42)            // true
+isInt(3.14)          // false
+```
+
+### isFloat(value)
+
+Returns true if value is a float.
+
+```xxl
+isFloat(3.14)        // true
+isFloat(42)          // false
+```
+
+### isArray(value)
+
+Returns true if value is an array.
+
+```xxl
+isArray([1, 2, 3])   // true
+isArray("hello")     // false
+```
+
+### isMap(value)
+
+Returns true if value is a map.
+
+```xxl
+isMap({"a": 1})      // true
+isMap([1, 2])        // false
+```
+
+### isBool(value)
+
+Returns true if value is a boolean.
+
+```xxl
+isBool(true)         // true
+isBool(1)            // false
+```
+
+### isFunction(value)
+
+Returns true if value is a function.
+
+```xxl
+isFunction(len)      // true
+isFunction(42)       // false
+```
+
+### isNull(value)
+
+Returns true if value is null.
+
+```xxl
+isNull(null)         // true
+isNull(0)            // false
+```
+
+---
+
+## Formatting Functions
+
+### format(template, args...)
+
+Formats a string using Go-style format specifiers.
+
+```xxl
+format("Hello %s, you are %d", "Alice", 30)  // "Hello Alice, you are 30"
+format("Pi is %.2f", 3.14159)                 // "Pi is 3.14"
 ```
 
 ---
