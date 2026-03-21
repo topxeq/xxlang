@@ -918,9 +918,11 @@ func (p *Parser) parseClassStatement() *ClassStatement {
 	}
 	stmt.Name = &Identifier{Token: p.curToken, Value: p.curToken.Literal}
 
-	// Check for extends
-	if p.peekTokenIs(lexer.TokenExtends) {
-		p.nextToken()
+	// Check for inheritance: supports both "extends" and ":" syntax
+	// class Dog extends Animal { ... }
+	// class Dog : Animal { ... }
+	if p.peekTokenIs(lexer.TokenExtends) || p.peekTokenIs(lexer.TokenColon) {
+		p.nextToken() // Move to 'extends' or ':'
 		if !p.expectPeek(lexer.TokenIdent) {
 			return nil
 		}

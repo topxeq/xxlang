@@ -3322,20 +3322,234 @@ func (c *RegCompiler) tryUnrollLoop(n *parser.ForStatement) bool {
 }
 
 // compileClassStatement compiles a class declaration
-// Note: Classes are complex and the register VM has limited support.
-// This implementation creates a class object using the available opcodes.
 func (c *RegCompiler) compileClassStatement(node *parser.ClassStatement) (int, error) {
-	// For now, create an empty class object
-	// The register VM doesn't fully support classes yet
+	// Remember the superclass symbol (if any) to load later
+	var superSymbol *Symbol
+	if node.SuperClass != nil {
+		symbol, ok := c.symbolTable.Resolve(node.SuperClass.Value)
+		if !ok {
+			return 0, fmt.Errorf("undefined superclass: %s", node.SuperClass.Value)
+		}
+		superSymbol = &symbol
+	}
+
+	// Compile default fields as a map
+	// Format: key1, val1, key2, val2, ... -> map
+	fieldsStartReg := c.nextTempReg
+	for _, field := range node.Fields {
+		// Key (field name)
+		keyReg := c.allocTempReg()
+		nameIdx := c.addConstant(objects.NewString(field.Name.Value))
+		c.emitRegLoadConst(keyReg, nameIdx)
+
+		// Value (field default value)
+		valReg, err := c.Compile(field.Value)
+		if err != nil {
+			return 0, err
+		}
+		// Ensure valReg is in temp position
+		if valReg != keyReg+1 {
+			// Move value to next register
+			targetReg := c.allocTempReg()
+			c.emitRegMove(targetReg, valReg)
+		}
+	}
+	numFields := len(node.Fields)
+
+	// Create fields map
+	fieldsReg := c.allocTempReg()
+	if numFields == 0 {
+		c.emitRegMapEmpty(fieldsReg)
+	} else {
+		c.instructions = append(c.instructions,
+			byte(OpRegMap),
+			byte(fieldsReg),
+			byte(fieldsStartReg),
+			byte(numFields*2),
+		)
+		// Free field key/value registers
+		for i := 0; i < numFields*2; i++ {
+			c.freeTempReg(fieldsStartReg + i)
+		}
+	}
+
+	// Compile methods as a map
+	// Each method needs 'this' at local slot 0
+	// First, compile all methods and store them (to avoid scope issues)
+	type methodInfo struct {
+		name     string
+		fn       *CompiledFunction
+		fnIndex  int
+		freeVars []Symbol
+	}
+	methodInfos := make([]methodInfo, 0, len(node.Methods))
+
+	for _, method := range node.Methods {
+		// Compile method as function with 'this' at local 0
+		methodFn, err := c.compileMethod(method)
+		if err != nil {
+			return 0, err
+		}
+		fnIndex := c.addConstant(methodFn)
+		methodInfos = append(methodInfos, methodInfo{
+			name:     method.Name,
+			fn:       methodFn,
+			fnIndex:  fnIndex,
+			freeVars: methodFn.FreeVariables,
+		})
+	}
+
+	// Now build the methods map in contiguous registers
+	// We need to ensure contiguous allocation, so clear the freeRegs first
+	// and allocate all registers sequentially
+	numMethodRegs := len(methodInfos) * 2 // Each method needs key and value registers
+	methodsStartReg := c.nextTempReg
+
+	// Ensure we allocate contiguous registers by not using the free list
+	for i := 0; i < numMethodRegs; i++ {
+		c.nextTempReg++
+		if c.nextTempReg > c.maxReg {
+			c.maxReg = c.nextTempReg
+		}
+	}
+
+	// Now emit the load instructions for each method
+	for i, mi := range methodInfos {
+		keyReg := methodsStartReg + i*2
+		valReg := methodsStartReg + i*2 + 1
+
+		// Key (method name)
+		nameIdx := c.addConstant(objects.NewString(mi.name))
+		c.emitRegLoadConst(keyReg, nameIdx)
+
+		// Load the method function
+		if len(mi.freeVars) == 0 {
+			c.emitRegLoadConst(valReg, mi.fnIndex)
+		} else {
+			// Handle closures - load free variables
+			// Allocate registers for free vars (these don't need to be contiguous with the map)
+			freeStartReg := c.nextTempReg
+			for j, freeVar := range mi.freeVars {
+				c.nextTempReg++
+				if c.nextTempReg > c.maxReg {
+					c.maxReg = c.nextTempReg
+				}
+				freeReg := freeStartReg + j
+				switch freeVar.Scope {
+				case GlobalScope:
+					c.emitRegLoadGlobal(freeReg, freeVar.Index)
+				case LocalScope:
+					c.emitRegLoadLocal(freeReg, freeVar.Index)
+				case FreeScope:
+					c.emitRegLoadFree(freeReg, freeVar.Index)
+				}
+			}
+			c.instructions = append(c.instructions,
+				byte(OpRegClosure),
+				byte(valReg),
+				byte(mi.fnIndex>>8),
+				byte(mi.fnIndex),
+				byte(len(mi.freeVars)),
+				byte(freeStartReg),
+			)
+		}
+	}
+	numMethods := len(node.Methods)
+
+	// Create methods map
+	methodsReg := c.allocTempReg()
+	if numMethods == 0 {
+		c.emitRegMapEmpty(methodsReg)
+	} else {
+		c.instructions = append(c.instructions,
+			byte(OpRegMap),
+			byte(methodsReg),
+			byte(methodsStartReg),
+			byte(numMethods*2),
+		)
+		// Free method key/value registers
+		for i := 0; i < numMethods*2; i++ {
+			c.freeTempReg(methodsStartReg + i)
+		}
+	}
+
+	// Load superclass NOW (just before creating the class) to avoid register conflicts
+	superclassReg := 255 // 255 means no superclass
+	if superSymbol != nil {
+		superclassReg = c.allocTempReg()
+		c.emitRegLoadGlobal(superclassReg, superSymbol.Index)
+	}
+
+	// Create class
 	nameIdx := c.addConstant(objects.NewString(node.Name.Value))
 	dst := c.allocTempReg()
-	c.instructions = append(c.instructions, byte(OpRegClass), byte(dst), byte(nameIdx>>8), byte(nameIdx))
+	c.instructions = append(c.instructions,
+		byte(OpRegClass),
+		byte(dst),
+		byte(nameIdx>>8),
+		byte(nameIdx),
+		byte(superclassReg),
+		byte(fieldsReg),
+		byte(methodsReg),
+	)
+
+	// Free temporary registers
+	if superclassReg != 255 {
+		c.freeTempReg(superclassReg)
+	}
+	c.freeTempReg(fieldsReg)
+	c.freeTempReg(methodsReg)
 
 	// Store class in global
 	symbol := c.symbolTable.Define(node.Name.Value)
 	c.emitRegStoreGlobal(dst, symbol.Index)
 
 	return dst, nil
+}
+
+// compileMethod compiles a method (function with 'this' at local 0)
+func (c *RegCompiler) compileMethod(n *parser.FunctionLiteral) (*CompiledFunction, error) {
+	// Enter function scope
+	c.enterScope()
+
+	// Reserve local slot 0 for 'this' (set by VM when calling method)
+	thisSymbol := c.symbolTable.Define("this")
+
+	// Verify that 'this' is at index 0 (it should be the first defined variable)
+	if thisSymbol.Index != 0 {
+		return nil, fmt.Errorf("internal error: 'this' symbol not at index 0")
+	}
+
+	// Copy 'this' from R0 to local slot 0
+	// This is critical - R0 contains 'this' when the method is called
+	c.emitRegStoreLocal(0, thisSymbol.Index)
+
+	// Define parameters as local variables (starting at index 1)
+	// Parameters are passed in R1-R7 (R0 is 'this'), copy them to local slots
+	for i, p := range n.Parameters {
+		symbol := c.symbolTable.Define(p.Value)
+		// Copy from argument register to local slot
+		// R1-R7 -> Locals[1..n] (slot 0 is 'this')
+		c.emitRegStoreLocal(i+1, symbol.Index)
+	}
+
+	// Compile body
+	_, err := c.Compile(n.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// Ensure function ends with return
+	if len(c.instructions) == 0 || Opcode(c.instructions[len(c.instructions)-1]) != OpRegReturn {
+		// Emit implicit return null
+		c.emitRegReturn(0)
+	}
+
+	// Leave scope and get compiled function
+	fn := c.leaveScope()
+	fn.NumParameters = len(n.Parameters) + 1 // +1 for 'this'
+
+	return fn, nil
 }
 
 // compileNewExpression compiles a new expression
@@ -3355,7 +3569,9 @@ func (c *RegCompiler) compileNewExpression(node *parser.NewExpression) (int, err
 		return 0, fmt.Errorf("too many arguments for new expression (max 8)")
 	}
 
-	// Compile arguments
+	// Compile arguments and move them to R0, R1, R2, ...
+	// This is required because OpRegNew expects args in R0-R7
+	// and will shift them to R1-R8 when adding 'this' to R0
 	argRegs := make([]int, len(node.Arguments))
 	for i, arg := range node.Arguments {
 		reg, err := c.Compile(arg)
@@ -3364,17 +3580,22 @@ func (c *RegCompiler) compileNewExpression(node *parser.NewExpression) (int, err
 			return 0, err
 		}
 		argRegs[i] = reg
+
+		// Move argument to R0, R1, R2, ...
+		// Use argument registers (0-7) for passing args to constructor
+		if reg != i {
+			c.emitRegMove(i, reg)
+			c.freeTempReg(reg)
+		}
 	}
 
 	// Create instance - OpRegNew format: dst, class_reg, num_args
+	// Args are now in R0, R1, R2, ...
 	dst := c.allocTempReg()
 	c.instructions = append(c.instructions, byte(OpRegNew), byte(dst), byte(classReg), byte(len(node.Arguments)))
 
 	// Free temporary registers
 	c.freeTempReg(classReg)
-	for _, r := range argRegs {
-		c.freeTempReg(r)
-	}
 
 	return dst, nil
 }
@@ -3388,10 +3609,53 @@ func (c *RegCompiler) compileThisExpression(node *parser.ThisExpression) (int, e
 }
 
 // compileSuperCallExpression compiles a super.method() call
-// Note: Super calls are partially supported in the register VM.
 func (c *RegCompiler) compileSuperCallExpression(node *parser.SuperCallExpression) (int, error) {
-	// For now, return an error - super calls need more work in register VM
-	return 0, fmt.Errorf("super calls are not fully supported in register VM; use stack VM")
+	// Get method name
+	methodIdx := c.addConstant(objects.NewString(node.Method))
+
+	// Compile arguments
+	// The VM will:
+	// 1. Get 'this' from local 0
+	// 2. Shift args: R0->R1, R1->R2, etc.
+	// 3. Put 'this' in R0
+	// So we need to put args in R0, R1, R2, ... (they will become R1, R2, R3 after shift)
+	if len(node.Args) > 7 {
+		return 0, fmt.Errorf("too many arguments for super call (max 7)")
+	}
+
+	// Compile arguments to temp registers first
+	argRegs := make([]int, len(node.Args))
+	for i, arg := range node.Args {
+		argReg, err := c.Compile(arg)
+		if err != nil {
+			return 0, err
+		}
+		argRegs[i] = argReg
+	}
+
+	// Move arguments to R0, R1, R2, ...
+	for i, argReg := range argRegs {
+		if argReg != i {
+			c.emitRegMove(i, argReg)
+		}
+	}
+
+	// Free temp registers
+	for _, reg := range argRegs {
+		c.freeTempReg(reg)
+	}
+
+	// Emit super call instruction
+	// Format: OpRegSuper, method_idx(2), num_args
+	c.instructions = append(c.instructions,
+		byte(OpRegSuper),
+		byte(methodIdx>>8),
+		byte(methodIdx),
+		byte(len(node.Args)),
+	)
+
+	// Result is in ReturnRegister
+	return ReturnRegister, nil
 }
 
 // compileTryStatement compiles a try-catch-finally statement
@@ -3492,38 +3756,5 @@ func (c *RegCompiler) compileThrowStatement(node *parser.ThrowStatement) (int, e
 	// Return null (unreachable, but needed for type consistency)
 	dst := c.allocTempReg()
 	c.emitRegNull(dst)
-	return dst, nil
-}
-
-// compileMethod compiles a method (function with 'this' as first parameter)
-func (c *RegCompiler) compileMethod(method *parser.FunctionLiteral) (int, error) {
-	// Enter new scope for the method
-	c.enterScope()
-
-	// Define 'this' as the first parameter (at local 0)
-	c.symbolTable.Define("this")
-
-	// Define parameters
-	for _, param := range method.Parameters {
-		c.symbolTable.Define(param.Value)
-	}
-
-	// Compile the body
-	_, err := c.Compile(method.Body)
-	if err != nil {
-		c.leaveScope()
-		return 0, err
-	}
-
-	// Leave scope and get compiled function
-	fn := c.leaveScope()
-
-	// Add function to constants
-	fnIdx := c.addConstant(fn)
-
-	// Load function constant into register
-	dst := c.allocTempReg()
-	c.emitRegLoadConst(dst, fnIdx)
-
 	return dst, nil
 }

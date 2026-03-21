@@ -820,15 +820,15 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 					// We could cache field indices, but that requires tracking field positions
 				} else {
 					// Check for method
-					method := vm.findMethod(class, name.Value)
+					method, definingClass := vm.findMethod(class, name.Value)
 					if method != nil {
 						result = method
 						// Cache the method lookup
-						vm.inlineCache.Set(objects.TagInstance, class, nameHash, CacheResultMethod, method, -1)
+						vm.inlineCache.Set(objects.TagInstance, class, nameHash, CacheResultMethod, method, -1, definingClass)
 					} else {
 						result = objects.NULL
 						// Cache the miss (negative caching)
-						vm.inlineCache.Set(objects.TagInstance, class, nameHash, CacheResultNull, nil, -1)
+						vm.inlineCache.Set(objects.TagInstance, class, nameHash, CacheResultNull, nil, -1, nil)
 					}
 				}
 			}
@@ -852,7 +852,7 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 					if method, ok := objects.GetMethod(objects.MapType, name.Value); ok {
 						result = method
 						// Cache the method lookup
-						vm.inlineCache.Set(typeTag, nil, nameHash, CacheResultMapMethod, method, -1)
+						vm.inlineCache.Set(typeTag, nil, nameHash, CacheResultMapMethod, method, -1, nil)
 					} else {
 						result = objects.NULL
 					}
@@ -872,7 +872,7 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 				if method, ok := objects.GetMethod(obj.Type(), name.Value); ok {
 					result = method
 					// Cache the method lookup
-					vm.inlineCache.Set(typeTag, nil, nameHash, CacheResultPrimitiveMethod, method, -1)
+					vm.inlineCache.Set(typeTag, nil, nameHash, CacheResultPrimitiveMethod, method, -1, nil)
 				} else {
 					return fmt.Errorf("cannot access property '%s' on type %s", name.Value, obj.Type())
 				}
@@ -937,6 +937,7 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 		}
 
 		var method objects.Object
+		var definingClass *objects.Class // Track where method was found (for super resolution)
 
 		// Handle Instance objects with inline caching
 		// Track if this is a map function value (not a built-in method)
@@ -950,14 +951,15 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 			cached := vm.inlineCache.Get(objects.TagInstance, class, nameHash)
 			if cached != nil && cached.ResultType == CacheResultMethod {
 				method = cached.Method
+				definingClass = cached.DefiningClass
 			} else {
 				// Cache miss - find method
-				method = vm.findMethod(class, name.Value)
+				method, definingClass = vm.findMethod(class, name.Value)
 				if method == nil {
 					return fmt.Errorf("method '%s' not found in class", name.Value)
 				}
 				// Cache the result
-				vm.inlineCache.Set(objects.TagInstance, class, nameHash, CacheResultMethod, method, -1)
+				vm.inlineCache.Set(objects.TagInstance, class, nameHash, CacheResultMethod, method, -1, definingClass)
 			}
 		} else if mapObj, ok := obj.(*objects.Map); ok {
 			// First check if the map has a key with this name (for callable map values)
@@ -981,7 +983,7 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 						return fmt.Errorf("method '%s' not found on Map", name.Value)
 					}
 					// Cache the result
-					vm.inlineCache.Set(typeTag, nil, nameHash, CacheResultMapMethod, method, -1)
+					vm.inlineCache.Set(typeTag, nil, nameHash, CacheResultMapMethod, method, -1, nil)
 				}
 			}
 			_ = mapObj // avoid unused variable error
@@ -1002,7 +1004,7 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 					return fmt.Errorf("cannot call method '%s' on type %s", name.Value, obj.Type())
 				}
 				// Cache the result
-				vm.inlineCache.Set(typeTag, nil, nameHash, CacheResultPrimitiveMethod, method, -1)
+				vm.inlineCache.Set(typeTag, nil, nameHash, CacheResultPrimitiveMethod, method, -1, nil)
 			}
 		} else {
 			return fmt.Errorf("cannot call method '%s' on type %s", name.Value, obj.Type())
@@ -1053,10 +1055,18 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 				if err := vm.callCompiledFunction(fn, numArgs+1, frame); err != nil {
 					return err
 				}
+				// Set CurrentClass for super resolution in instance methods
+				if definingClass != nil {
+					vm.currentFrame().CurrentClass = definingClass
+				}
 			case *Closure:
 				// Call with numArgs+1 (including receiver)
 				if err := vm.callClosure(fn, numArgs+1, frame); err != nil {
 					return err
+				}
+				// Set CurrentClass for super resolution in instance methods
+				if definingClass != nil {
+					vm.currentFrame().CurrentClass = definingClass
 				}
 			default:
 				return fmt.Errorf("method '%s' is not callable", name.Value)
@@ -1921,29 +1931,68 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 
 	case compiler.OpRegClass:
 		// Create a class object
-		dst := DecodeReg1(code, frame.IP)
-		nameIdx := uint16(code[frame.IP+2])<<8 | uint16(code[frame.IP+3])
-		frame.IP += 4
+		// Format: dst, name_idx(2), superclass_reg, fields_reg, methods_reg
+		dst := int(code[frame.IP+1])
+		nameIdx := int(code[frame.IP+2])<<8 | int(code[frame.IP+3])
+		superclassReg := int(code[frame.IP+4])
+		fieldsReg := int(code[frame.IP+5])
+		methodsReg := int(code[frame.IP+6])
+		frame.IP += 7
 
 		name := ""
-		if nameIdx < uint16(len(vm.objConstants)) {
+		if nameIdx < len(vm.objConstants) {
 			if str, ok := vm.objConstants[nameIdx].(*objects.String); ok {
 				name = str.Value
 			}
 		}
 
-		// Create a simple class object
+		// Get superclass (if any)
+		var superclass *objects.Class
+		if superclassReg != 255 {
+			if sc, ok := regs[superclassReg].ToObject().(*objects.Class); ok {
+				superclass = sc
+			}
+		}
+
+		// Get fields map
+		fields := make(map[string]objects.Object)
+		if fieldsMap, ok := regs[fieldsReg].ToObject().(*objects.Map); ok {
+			for _, pair := range fieldsMap.Pairs {
+				if key, ok := pair.Key.(*objects.String); ok {
+					fields[key.Value] = pair.Value
+				}
+			}
+		}
+
+		// Get methods map
+		methods := make(map[string]objects.Object)
+		var initMethod objects.Object
+		if methodsMap, ok := regs[methodsReg].ToObject().(*objects.Map); ok {
+			for _, pair := range methodsMap.Pairs {
+				if key, ok := pair.Key.(*objects.String); ok {
+					methods[key.Value] = pair.Value
+					// Store init method separately for faster access
+					if key.Value == "init" {
+						initMethod = pair.Value
+					}
+				}
+			}
+		}
+
+		// Create class object
 		class := &objects.Class{
-			Name:    name,
-			Methods: make(map[string]objects.Object),
-			Fields:  make(map[string]objects.Object),
+			Name:       name,
+			SuperClass: superclass,
+			Methods:    methods,
+			InitMethod: initMethod,
+			Fields:     fields,
 		}
 		regs[dst] = NewObject(class)
 
 	case compiler.OpRegNew:
 		// Create a new instance
-		dst := DecodeReg1(code, frame.IP)
-		classReg := code[frame.IP+2]
+		dst := int(code[frame.IP+1])
+		classReg := int(code[frame.IP+2])
 		numArgs := int(code[frame.IP+3])
 		frame.IP += 4
 
@@ -1964,15 +2013,130 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 			instance.Fields[k] = v
 		}
 
+		// Store instance in result register
+		regs[dst] = NewObject(instance)
+
 		// Call constructor if exists
-		if init, ok := class.Methods["init"]; ok {
-			// For now, just create the instance without calling init
-			// Full implementation would call init with arguments
-			_ = init
-			_ = numArgs
+		if initMethod := class.InitMethod; initMethod != nil {
+			// Put 'this' in R0, shift args to R1-R8
+			thisVal := NewObject(instance)
+			// Shift arguments: R0->R1, R1->R2, etc.
+			for i := numArgs; i > 0; i-- {
+				regs[i] = regs[i-1]
+			}
+			regs[0] = thisVal
+
+			switch fn := initMethod.(type) {
+			case *objects.Builtin:
+				args := make([]objects.Object, numArgs+1)
+				for i := 0; i <= numArgs; i++ {
+					args[i] = regs[i].ToObject()
+				}
+				result := fn.Fn(args...)
+				regs[compiler.ReturnRegister] = NewObject(result)
+			case *compiler.CompiledFunction:
+				if err := vm.callCompiledFunction(fn, numArgs+1, frame); err != nil {
+					return err
+				}
+				// Set CurrentClass for super resolution in init method
+				vm.currentFrame().CurrentClass = class
+				// Restore frame reference after call
+				frame = vm.currentFrame()
+				regs = &frame.Registers
+				code = frame.Fn.Instructions
+			case *Closure:
+				if err := vm.callClosure(fn, numArgs+1, frame); err != nil {
+					return err
+				}
+				// Set CurrentClass for super resolution in init method
+				vm.currentFrame().CurrentClass = class
+				frame = vm.currentFrame()
+				regs = &frame.Registers
+				code = frame.Fn.Instructions
+			}
 		}
 
-		regs[dst] = NewObject(instance)
+		// Instance is already in dst register
+		// If init returned something, we still keep the instance
+
+	case compiler.OpRegSuper:
+		// Super method call: call method on superclass
+		methodIdx := int(code[frame.IP+1])<<8 | int(code[frame.IP+2])
+		numArgs := int(code[frame.IP+3])
+		frame.IP += 4
+
+		// Get method name
+		var methodName string
+		if methodIdx < len(vm.objConstants) {
+			if str, ok := vm.objConstants[methodIdx].(*objects.String); ok {
+				methodName = str.Value
+			}
+		}
+
+		// Get 'this' from local 0
+		thisVal := frame.Locals[0]
+		if thisVal.IsNull() {
+			thisVal = regs[0] // Fallback to R0
+		}
+
+		instance, ok := thisVal.ToObject().(*objects.Instance)
+		if !ok {
+			return fmt.Errorf("super can only be used in method context")
+		}
+
+		// Get the class context for super resolution
+		// Use CurrentClass if set (for proper multi-level inheritance)
+		// Otherwise fall back to instance.Class
+		var currentClass *objects.Class
+		if frame.CurrentClass != nil {
+			currentClass = frame.CurrentClass
+		} else {
+			currentClass = instance.Class
+		}
+
+		// Get superclass
+		if currentClass == nil || currentClass.SuperClass == nil {
+			return fmt.Errorf("no superclass to call")
+		}
+
+		superclass := currentClass.SuperClass
+		method, definingClass := vm.findMethod(superclass, methodName)
+		if method == nil {
+			return fmt.Errorf("method '%s' not found in superclass", methodName)
+		}
+
+		// Put 'this' in R0, shift args to R1-R8
+		// The compiler has already put args in R0-R7, we need to shift them
+		for i := numArgs; i > 0; i-- {
+			regs[i] = regs[i-1]
+		}
+		regs[0] = thisVal
+
+		switch fn := method.(type) {
+		case *objects.Builtin:
+			args := make([]objects.Object, numArgs+1)
+			for i := 0; i <= numArgs; i++ {
+				args[i] = regs[i].ToObject()
+			}
+			result := fn.Fn(args...)
+			regs[compiler.ReturnRegister] = NewObject(result)
+		case *compiler.CompiledFunction:
+			if err := vm.callCompiledFunction(fn, numArgs+1, frame); err != nil {
+				return err
+			}
+			// Set CurrentClass for proper chain super calls
+			if definingClass != nil {
+				vm.currentFrame().CurrentClass = definingClass
+			}
+		case *Closure:
+			if err := vm.callClosure(fn, numArgs+1, frame); err != nil {
+				return err
+			}
+			// Set CurrentClass for proper chain super calls
+			if definingClass != nil {
+				vm.currentFrame().CurrentClass = definingClass
+			}
+		}
 
 	default:
 		return fmt.Errorf("unknown register opcode: %d", op)
@@ -2138,13 +2302,14 @@ func (vm *RegVM) handleRegBuiltin(builtinIdx, numArgs int, frame *RegFrame) erro
 }
 
 // findMethod finds a method in class hierarchy
-func (vm *RegVM) findMethod(class *objects.Class, name string) objects.Object {
+// Returns the method and the class where it was found
+func (vm *RegVM) findMethod(class *objects.Class, name string) (objects.Object, *objects.Class) {
 	for c := class; c != nil; c = c.SuperClass {
 		if method, ok := c.Methods[name]; ok {
-			return method
+			return method, c
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // handleRegReturn handles return statements

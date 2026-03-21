@@ -239,8 +239,9 @@ const (
 	OpRegSetField   // R[obj].field(name_idx) = R[src]
 
 	// Register class operations
-	OpRegClass // Create class
+	OpRegClass // Create class: dst, name_idx, superclass_reg, fields_reg, methods_reg
 	OpRegNew   // Create instance, args in R0-R7, result in RRet
+	OpRegSuper // Super method call: method_idx, num_args
 
 	// Register built-in call
 	OpRegBuiltin // Call builtin, args in R0-R7, result in RRet
@@ -603,8 +604,9 @@ var definitions = map[Opcode]*Definition{
 	OpRegSetField:   {"OpRegSetField", []int{1, 1, 2}},   // obj, val, name_idx
 
 	// Register class operations
-	OpRegClass: {"OpRegClass", []int{1, 2}},     // dst, name_idx
-	OpRegNew:   {"OpRegNew", []int{1, 1, 1}},    // dst, class_reg, num_args
+	OpRegClass: {"OpRegClass", []int{1, 2, 1, 1, 1}}, // dst, name_idx, superclass_reg, fields_reg, methods_reg
+	OpRegNew:   {"OpRegNew", []int{1, 1, 1}},          // dst, class_reg, num_args
+	OpRegSuper: {"OpRegSuper", []int{2, 1}},           // method_idx, num_args
 
 	// Register built-in call
 	OpRegBuiltin: {"OpRegBuiltin", []int{1, 1}}, // builtin_idx, num_args

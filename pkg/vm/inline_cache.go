@@ -28,9 +28,10 @@ type InlineCache struct {
 	NameHash    uint32          // Hash of property/method name
 
 	// Result
-	ResultType CacheResultType // Type of cached result
-	Method     objects.Object  // Cached method (if ResultType is Method or PrimitiveMethod)
-	FieldIdx   int             // Cached field index (for instances)
+	ResultType    CacheResultType // Type of cached result
+	Method        objects.Object  // Cached method (if ResultType is Method or PrimitiveMethod)
+	FieldIdx      int             // Cached field index (for instances)
+	DefiningClass *objects.Class  // The class where the method was found (for super resolution)
 }
 
 // InlineCacheTable is a fixed-size inline cache
@@ -94,7 +95,7 @@ func (c *InlineCacheTable) Get(typeTag objects.TypeTag, class *objects.Class, na
 }
 
 // Set stores a cache entry
-func (c *InlineCacheTable) Set(typeTag objects.TypeTag, class *objects.Class, nameHash uint32, resultType CacheResultType, method objects.Object, fieldIdx int) {
+func (c *InlineCacheTable) Set(typeTag objects.TypeTag, class *objects.Class, nameHash uint32, resultType CacheResultType, method objects.Object, fieldIdx int, definingClass *objects.Class) {
 	idx := ComputeCacheIndex(typeTag, class, nameHash)
 	entry := &c.entries[idx]
 
@@ -104,6 +105,7 @@ func (c *InlineCacheTable) Set(typeTag objects.TypeTag, class *objects.Class, na
 	entry.ResultType = resultType
 	entry.Method = method
 	entry.FieldIdx = fieldIdx
+	entry.DefiningClass = definingClass
 }
 
 // Stats returns cache hit/miss statistics

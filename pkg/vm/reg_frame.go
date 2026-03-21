@@ -5,19 +5,21 @@ import (
 	"sync"
 
 	"github.com/topxeq/xxlang/pkg/compiler"
+	"github.com/topxeq/xxlang/pkg/objects"
 )
 
 // RegFrame represents a call frame for the register-based VM
 // Each frame has 256 fixed registers (R0-R255)
 type RegFrame struct {
-	Fn        *compiler.CompiledFunction
-	IP        int            // Instruction pointer
-	Registers [compiler.NumRegisters]Value // Fixed-size register array
-	FreeVars  []Value // Closure free variables
-	Constants []Value // Constants for this frame
-	Globals   []Value // Global variables reference
-	This      Value   // 'this' for method calls
-	Locals    []Value // Local variables (for spilled values)
+	Fn           *compiler.CompiledFunction
+	IP           int            // Instruction pointer
+	Registers    [compiler.NumRegisters]Value // Fixed-size register array
+	FreeVars     []Value // Closure free variables
+	Constants    []Value // Constants for this frame
+	Globals      []Value // Global variables reference
+	This         Value   // 'this' for method calls
+	Locals       []Value // Local variables (for spilled values)
+	CurrentClass *objects.Class // The class whose method is executing (for super resolution)
 }
 
 // Register frame pool for reducing allocations
@@ -82,6 +84,7 @@ func (f *RegFrame) Release() {
 	f.Globals = nil
 	f.This = ValueNull
 	f.Locals = f.Locals[:0]
+	f.CurrentClass = nil
 
 	regFramePool.Put(f)
 }
