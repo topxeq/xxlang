@@ -70,3 +70,8 @@ func getBuiltin(index int) *objects.Builtin {
 	}
 	return builtins[index]
 }
+
+// GetBuiltinByIndex returns a builtin function by index (exported for JIT)
+func GetBuiltinByIndex(index int) *objects.Builtin {
+	return getBuiltin(index)
+}

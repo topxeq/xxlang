@@ -476,3 +476,196 @@ func (r *NativeFunctionRegistry) Cleanup() {
 	r.compiler.Cleanup()
 	r.functions = make(map[int]*NativeCompiledFunc)
 }
+
+// ============================================================================
+// Native Support Level Analysis
+// ============================================================================
+
+// NativeSupportLevel indicates what level of native support a function has
+type NativeSupportLevel int
+
+const (
+	// SupportNone indicates the function cannot be executed natively
+	SupportNone NativeSupportLevel = iota
+	// SupportPureArithmetic indicates pure arithmetic/control flow (no callbacks)
+	SupportPureArithmetic
+	// SupportWithBuiltins indicates arithmetic + builtin calls (requires callback)
+	SupportWithBuiltins
+	// SupportWithCalls indicates arithmetic + builtin + function calls
+	SupportWithCalls
+	// SupportWithArrays indicates arithmetic + builtin + calls + array operations
+	SupportWithArrays
+	// SupportWithObjects indicates full support including object field access
+	SupportWithObjects
+)
+
+// AnalyzeNativeSupport analyzes the bytecode to determine native support level
+func AnalyzeNativeSupport(fn *compiler.CompiledFunction) NativeSupportLevel {
+	code := fn.Instructions
+	ip := 0
+	level := SupportPureArithmetic
+
+	for ip < len(code) {
+		op := compiler.Opcode(code[ip])
+
+		switch op {
+		// Supported operations - pure arithmetic and control flow
+		case compiler.OpRegLoadConst, compiler.OpRegMove,
+			compiler.OpRegAdd, compiler.OpRegSub, compiler.OpRegMul, compiler.OpRegDiv, compiler.OpRegMod,
+			compiler.OpRegNeg, compiler.OpRegAnd, compiler.OpRegOr, compiler.OpRegNot,
+			compiler.OpRegLess, compiler.OpRegGreater, compiler.OpRegEqual,
+			compiler.OpRegNotEqual, compiler.OpRegLessEqual, compiler.OpRegGreaterEqual,
+			compiler.OpRegJump, compiler.OpRegJumpIfTrue, compiler.OpRegJumpIfFalse,
+			compiler.OpRegReturn, compiler.OpRegNull, compiler.OpRegTrue, compiler.OpRegFalse,
+			compiler.OpRegIncLocal, compiler.OpRegDecLocal,
+			compiler.OpRegLoopCountAdd, compiler.OpRegLoopBodyAdd, compiler.OpRegLoopIncCheck,
+			compiler.OpRegAddConst, compiler.OpRegSubConst, compiler.OpRegMulConst,
+			compiler.OpRegAddLocalCheck, compiler.OpRegLoadLocal, compiler.OpRegStoreLocal,
+			compiler.OpRegLoadGlobal, compiler.OpRegStoreGlobal:
+			// These are fine for native execution
+
+		// Builtin calls - supported with callback
+		case compiler.OpRegBuiltin:
+			if level < SupportWithBuiltins {
+				level = SupportWithBuiltins
+			}
+
+		// Function calls - supported with dispatch
+		case compiler.OpRegCall, compiler.OpRegTailCall:
+			if level < SupportWithCalls {
+				level = SupportWithCalls
+			}
+
+		// Array operations - supported with callback
+		case compiler.OpRegArray, compiler.OpRegArrayEmpty, compiler.OpRegArrayAppend,
+			compiler.OpRegIndex, compiler.OpRegSetIndex:
+			if level < SupportWithArrays {
+				level = SupportWithArrays
+			}
+
+		// Map operations - supported with callback
+		case compiler.OpRegMap, compiler.OpRegMapEmpty, compiler.OpRegMapSet:
+			if level < SupportWithArrays {
+				level = SupportWithArrays
+			}
+
+		// Object operations - supported with inline caching
+		case compiler.OpRegGetField, compiler.OpRegSetField,
+			compiler.OpRegGetMethod, compiler.OpRegCallMethod:
+			if level < SupportWithObjects {
+				level = SupportWithObjects
+			}
+
+		// Unsupported - requires full VM context
+		case compiler.OpRegClosure, compiler.OpRegLoadFree, compiler.OpRegStoreFree,
+			compiler.OpRegPush, compiler.OpRegPop,
+			compiler.OpRegClass, compiler.OpRegNew,
+			compiler.OpRegThrow, compiler.OpRegPushHandler, compiler.OpRegPopHandler,
+			compiler.OpRegLoadModule, compiler.OpRegGetExport, compiler.OpRegSetExport,
+			compiler.OpRegIterKey, compiler.OpRegIterValue,
+			compiler.OpRegLoadFunc:
+			return SupportNone
+
+		default:
+			// Unknown opcode - be conservative
+			return SupportNone
+		}
+
+		// Skip operands
+		def, err := compiler.Lookup(byte(op))
+		if err != nil {
+			return SupportNone
+		}
+		operandWidth := 0
+		for _, w := range def.OperandWidths {
+			operandWidth += w
+		}
+		ip += operandWidth + 1
+	}
+
+	return level
+}
+
+// CanExecuteNativelyWithBuiltins checks if a function can be executed natively with builtin callback support
+func CanExecuteNativelyWithBuiltins(fn *compiler.CompiledFunction) bool {
+	return AnalyzeNativeSupport(fn) >= SupportWithBuiltins
+}
+
+// ============================================================================
+// Builtin Callback Support
+// ============================================================================
+
+// JITCallbackContext holds context for JIT callbacks to Go
+type JITCallbackContext struct {
+	globals   []vm.Value
+	constants []vm.Value
+	builtins  []*objects.Builtin
+}
+
+// globalJITContext is the global callback context
+var globalJITContext JITCallbackContext
+
+// InitJITCallbackContext initializes the global JIT callback context
+func InitJITCallbackContext(globals, constants []vm.Value) {
+	globalJITContext.globals = globals
+	globalJITContext.constants = constants
+}
+
+// CallBuiltinFromNative is called from native code to execute a builtin function
+// This is exported for use by the JIT callback mechanism
+func CallBuiltinFromNative(builtinIdx, numArgs int, argsPtr *int64) int64 {
+	if builtinIdx < 0 || builtinIdx >= len(globalJITContext.builtins) {
+		// Lazy initialize builtins array
+		if builtinIdx < 256 {
+			if globalJITContext.builtins == nil {
+				globalJITContext.builtins = make([]*objects.Builtin, 256)
+			}
+		}
+	}
+
+	builtin := globalJITContext.builtins[builtinIdx]
+	if builtin == nil {
+		// Lazy load builtin
+		builtin = getBuiltin(builtinIdx)
+		if builtin == nil {
+			return 0
+		}
+		globalJITContext.builtins[builtinIdx] = builtin
+	}
+
+	// Convert args from int64 array to objects
+	args := make([]objects.Object, numArgs)
+	argsSlice := unsafe.Slice(argsPtr, numArgs)
+	for i := 0; i < numArgs; i++ {
+		args[i] = &objects.Int{Value: argsSlice[i]}
+	}
+
+	// Call the builtin
+	result := builtin.Fn(args...)
+
+	// Convert result back to int64
+	switch r := result.(type) {
+	case *objects.Int:
+		return r.Value
+	case *objects.Bool:
+		if r.Value {
+			return 1
+		}
+		return 0
+	default:
+		return 0
+	}
+}
+
+// getBuiltin returns a builtin by index (implemented in vm/builtins.go)
+func getBuiltin(idx int) *objects.Builtin {
+	return vm.GetBuiltinByIndex(idx)
+}
+
+// GetBuiltinCallbackPtr returns the function pointer for builtin callbacks
+// Note: This requires unsafe.Pointer to get the function address
+func GetBuiltinCallbackPtr() uintptr {
+	// Return a marker value - actual callback will be set up differently
+	// For now, we'll use a different mechanism for callbacks
+	return 0
+}
