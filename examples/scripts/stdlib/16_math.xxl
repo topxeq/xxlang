@@ -235,8 +235,8 @@ var data = [10, 12, 23, 23, 16, 23, 21, 16]
 pln("Data: ", data)
 pln("Sum: ", sum(data))
 pln("Mean: ", mean(data))
-pln("Min: ", min(data[0], min(data[1], min(data[2], min(data[3], min(data[4], min(data[5], min(data[6], data[7])))))))
-pln("Max: ", max(data[0], max(data[1], max(data[2], max(data[3], max(data[4], max(data[5], max(data[6], data[7])))))))
+pln("Min: ", min(data))
+pln("Max: ", max(data))
 
 // === Bitwise-like Operations ===
 pln("\n=== Bitwise-like Operations ===")

@@ -33,7 +33,7 @@ var text = "Hello"
 pln("String: ", text)
 
 for (var i = 0; i < len(text); i++) {
-    pln("  "[i, "] = ", text[i])
+    pln("  text[", i, "] = ", text[i])
 }
 
 // === Substring ===
@@ -41,8 +41,8 @@ pln("\n=== Substring ===")
 
 var long = "Hello, World!"
 pln("Original: ", long)
-pln("subStr(0, 5) = ", longsubstr(0, 5))
-pln("subStr(7, 12) = ", longsubstr(7, 12))
+pln("substr(long, 0, 5) = ", substr(long, 0, 5))
+pln("substr(long, 7, 12) = ", substr(long, 7, 12))
 
 // === String Searching ===
 pln("\n=== String Searching ===")

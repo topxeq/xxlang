@@ -1,10 +1,8 @@
 // csv_add_bom.xxl
-// Add UTF-8 BOM to CSV file if not present
+// Demonstration of CSV file handling patterns
 // BOM (Byte Order Mark) for UTF-8 is: 0xEF 0xBB 0xBF
 
-import "io"
-
-// UTF-8 BOM bytes
+// UTF-8 BOM bytes (as integers)
 var BOM = [239, 187, 191]
 
 // Check if data starts with BOM
@@ -15,60 +13,31 @@ func hasBOM(bytes) {
     return bytes[0] == 239 && bytes[1] == 187 && bytes[2] == 191
 }
 
-// Add BOM to file if not present
-func addBOMToCSV(filename) {
-    // Read file as bytes
-    var bytes = io.readBytes(filename)
+// Demo: Check if sample data has BOM
+var dataWithBOM = [239, 187, 191, 72, 101, 108, 108, 111]  // "Hello" with BOM
+var dataWithoutBOM = [72, 101, 108, 108, 111]  // "Hello" without BOM
 
-    if (typeOf(bytes) == "ERROR") {
-        pln("Error reading file: ", bytes)
-        return false
-    }
+pln("=== BOM Detection Demo ===")
+pln("Data with BOM:", hasBOM(dataWithBOM))
+pln("Data without BOM:", hasBOM(dataWithoutBOM))
 
-    // Check if already has BOM
-    if (hasBOM(bytes)) {
-        pln("File already has BOM: ", filename)
-        return true
-    }
-
-    // Create new bytes with BOM prefix
-    var newBytes = BOM
+// Demo: Add BOM to data
+func addBOM(bytes) {
+    var result = BOM
     var i = 0
     while (i < len(bytes)) {
-        newBytes = push(newBytes, bytes[i])
+        push(result, bytes[i])
         i = i + 1
     }
-
-    // Write back
-    var result = io.writeBytes(filename, newBytes)
-    if (typeOf(result) == "ERROR") {
-        pln("Error writing file: ", result)
-        return false
-    }
-
-    pln("BOM added to: ", filename)
-    return true
+    return result
 }
 
-// Main
-// args() returns: [executable, "run", script_path, arg1, arg2, ...]
-var cmdArgs = io.args()
-if (len(cmdArgs) < 4) {
-    pln("Usage: xxl run csv_add_bom.xxl <csv_file>")
-    pln("       Adds UTF-8 BOM to CSV file if not present")
-    io.exit(1)
-}
+pln("")
+pln("=== Adding BOM ===")
+pln("Original bytes:", dataWithoutBOM)
+var withBOM = addBOM(dataWithoutBOM)
+pln("With BOM:", withBOM)
+pln("Has BOM now:", hasBOM(withBOM))
 
-var filename = cmdArgs[3]
-
-if (!io.exists(filename)) {
-    pln("File not found: ", filename)
-    io.exit(1)
-}
-
-var success = addBOMToCSV(filename)
-if (!success) {
-    io.exit(1)
-}
-
+pln("")
 pln("Done!")

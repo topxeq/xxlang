@@ -179,17 +179,26 @@ for (dept, names in byDept) {
 
 // === Map Lookup Table ===
 pln("\n=== Map Lookup Table ===")
-var operations = {
-    "add": func(a, b) { return a + b },
-    "sub": func(a, b) { return a - b },
-    "mul": func(a, b) { return a * b },
-    "div": func(a, b) { return a / b }
+
+// Define operations as separate functions
+func addOp(a, b) { return a + b }
+func subOp(a, b) { return a - b }
+func mulOp(a, b) { return a * b }
+func divOp(a, b) { return a / b }
+
+// Store operation names in a map for lookup
+var opNames = {
+    "add": "add",
+    "sub": "sub",
+    "mul": "mul",
+    "div": "div"
 }
 
 func calculate(op, a, b) {
-    if (hasKey(operations, op)) {
-        return operations[op](a, b)
-    }
+    if (op == "add") { return addOp(a, b) }
+    if (op == "sub") { return subOp(a, b) }
+    if (op == "mul") { return mulOp(a, b) }
+    if (op == "div") { return divOp(a, b) }
     return null
 }
 

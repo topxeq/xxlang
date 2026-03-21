@@ -1,58 +1,52 @@
 // args_basic.xxl
 // Basic command line argument handling patterns in Xxlang
-
-// Load modules
-let env = load("env")
-let array = load("array")
-let string = load("string")
-let fmt = load("fmt")
+// Note: This demo uses simulated arguments since actual CLI args are limited
 
 // ============================================================
-// Pattern 1: Simple positional arguments
+// Pattern 1: Simulated command line arguments
 // ============================================================
-fmt.pln("=== Pattern 1: Simple positional arguments ===")
+pln("=== Pattern 1: Simulated arguments ===")
 
-let args = env.args()
-fmt.pln("Program:", args[0])
-fmt.pln("Argument count:", array.len(args))
+// Simulate command line arguments
+var args = ["args_basic.xxl", "--name", "Alice", "--count", "5", "file1.txt"]
+pln("Program:", args[0])
+pln("Argument count:", len(args))
 
 // Print all arguments
-let i = 0
-while i < array.len(args) {
-    fmt.pln("  args[", i, "] =", args[i])
+var i = 0
+while (i < len(args)) {
+    pln("  args[", i, "] =", args[i])
     i = i + 1
 }
-fmt.pln("")
+pln("")
 
 // ============================================================
-// Pattern 2: Get first argument with default
+// Pattern 2: Get argument with default
 // ============================================================
-fmt.pln("=== Pattern 2: First argument with default ===")
+pln("=== Pattern 2: Argument with default ===")
 
-let getArg = fn(index, default) {
-    let args = env.args()
-    if index < array.len(args) {
+func getArg(args, index, defaultVal) {
+    if (index < len(args)) {
         return args[index]
     }
-    return default
+    return defaultVal
 }
 
-let inputFile = getArg(1, "default.txt")
-let outputFile = getArg(2, "output.txt")
-fmt.pln("Input file:", inputFile)
-fmt.pln("Output file:", outputFile)
-fmt.pln("")
+var inputFile = getArg(args, 1, "default.txt")
+var outputFile = getArg(args, 2, "output.txt")
+pln("Input file:", inputFile)
+pln("Output file:", outputFile)
+pln("")
 
 // ============================================================
 // Pattern 3: Flag detection
 // ============================================================
-fmt.pln("=== Pattern 3: Flag detection ===")
+pln("=== Pattern 3: Flag detection ===")
 
-let hasFlag = fn(flagName) {
-    let args = env.args()
-    let i = 0
-    while i < array.len(args) {
-        if args[i] == flagName || args[i] == "-" + string.substr(flagName, 1, 100) {
+func hasFlag(args, flagName) {
+    var i = 0
+    while (i < len(args)) {
+        if (args[i] == flagName) {
             return true
         }
         i = i + 1
@@ -60,100 +54,70 @@ let hasFlag = fn(flagName) {
     return false
 }
 
-let hasHelp = hasFlag("--help") || hasFlag("-h")
-let hasVerbose = hasFlag("--verbose") || hasFlag("-v")
+var hasHelp = hasFlag(args, "--help") || hasFlag(args, "-h")
+var hasVerbose = hasFlag(args, "--verbose") || hasFlag(args, "-v")
 
-fmt.pln("Has --help:", hasHelp)
-fmt.pln("Has --verbose:", hasVerbose)
-fmt.pln("")
+pln("Has --help:", hasHelp)
+pln("Has --verbose:", hasVerbose)
+pln("")
 
 // ============================================================
 // Pattern 4: Get option value
 // ============================================================
-fmt.pln("=== Pattern 4: Get option value ===")
+pln("=== Pattern 4: Get option value ===")
 
-let getOption = fn(shortName, longName, default) {
-    let args = env.args()
-    let i = 0
-    while i < array.len(args) {
-        if args[i] == shortName || args[i] == longName {
-            if i + 1 < array.len(args) {
+func getOption(args, shortName, longName, defaultVal) {
+    var i = 0
+    while (i < len(args)) {
+        if (args[i] == shortName || args[i] == longName) {
+            if (i + 1 < len(args)) {
                 return args[i + 1]
             }
         }
         i = i + 1
     }
-    return default
+    return defaultVal
 }
 
-let name = getOption("-n", "--name", "World")
-let count = string.parseInt(getOption("-c", "--count", "1"))
+var name = getOption(args, "-n", "--name", "World")
+var countStr = getOption(args, "-c", "--count", "1")
+var count = int(countStr)
 
-fmt.pln("Name:", name)
-fmt.pln("Count:", count)
-fmt.pln("")
-
-// ============================================================
-// Pattern 5: Environment variables as fallback
-// ============================================================
-fmt.pln("=== Pattern 5: Environment variables as fallback ===")
-
-let getConfig = fn(argName, envName, default) {
-    let args = env.args()
-    let i = 0
-    while i < array.len(args) {
-        if args[i] == argName && i + 1 < array.len(args) {
-            return args[i + 1]
-        }
-        i = i + 1
-    }
-    // Fallback to environment variable
-    let envVal = env.get(envName)
-    if envVal != "" {
-        return envVal
-    }
-    return default
-}
-
-let host = getConfig("--host", "APP_HOST", "localhost")
-let port = getConfig("--port", "APP_PORT", "8080")
-
-fmt.pln("Host:", host)
-fmt.pln("Port:", port)
-fmt.pln("")
+pln("Name:", name)
+pln("Count:", count)
+pln("")
 
 // ============================================================
-// Pattern 6: Collect remaining positional arguments
+// Pattern 5: Collect positional arguments
 // ============================================================
-fmt.pln("=== Pattern 6: Collect positional arguments ===")
+pln("=== Pattern 5: Collect positional arguments ===")
 
-let getPositionalArgs = fn() {
-    let args = env.args()
-    let positional = []
-    let i = 1  // Skip program name
-    while i < array.len(args) {
-        let arg = args[i]
+func getPositionalArgs(args) {
+    var positional = []
+    var i = 1  // Skip program name
+    while (i < len(args)) {
+        var arg = args[i]
         // Skip options and their values
-        if string.hasPrefix(arg, "-") {
+        if (startsWith(arg, "-")) {
             // Skip option value if it's not another option
-            if i + 1 < array.len(args) && !string.hasPrefix(args[i + 1], "-") {
+            if (i + 1 < len(args) && !startsWith(args[i + 1], "-")) {
                 i = i + 1
             }
         } else {
-            positional = array.push(positional, arg)
+            push(positional, arg)
         }
         i = i + 1
     }
     return positional
 }
 
-let files = getPositionalArgs()
-fmt.pln("Files to process:", array.len(files))
-let j = 0
-while j < array.len(files) {
-    fmt.pln("  -", files[j])
+var files = getPositionalArgs(args)
+pln("Files to process:", len(files))
+var j = 0
+while (j < len(files)) {
+    pln("  -", files[j])
     j = j + 1
 }
 
-fmt.pln("")
-fmt.pln("Done!")
+pln("")
+pln("Done!")

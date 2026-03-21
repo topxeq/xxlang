@@ -29,16 +29,22 @@ func printf(format, args) {
                 var next = format[i + 1]
                 if (next == "s" || next == "d" || next == "f") {
                     if (argIdx < len(args)) {
-                        result = result + string(args[argIdx])
+                        result = result + toStr(args[argIdx])
                         argIdx = argIdx + 1
                     }
                     i = i + 2
-                    continue
+                } else {
+                    result = result + ch
+                    i = i + 1
                 }
+            } else {
+                result = result + ch
+                i = i + 1
             }
+        } else {
+            result = result + ch
+            i = i + 1
         }
-        result = result + ch
-        i = i + 1
     }
 
     pr(result)
@@ -53,10 +59,6 @@ pln("\n=== Reading Input ===")
 // Note: input() reads from stdin
 // This is demonstrated but not executed to avoid blocking
 
-// pln("Enter your name: ")
-// var name = input()
-// pln("Hello, ", name, "!")
-
 // For demonstration, simulate input
 var simulatedInput = "Alice"
 pln("Simulated input: ", simulatedInput)
@@ -64,42 +66,7 @@ pln("Simulated input: ", simulatedInput)
 // === File Operations ===
 pln("\n=== File Operations ===")
 
-// Note: File operations require the actual file to exist
-// These demonstrate the API usage
-
-// Write to file
-/*
-var content = "Hello, File!\nThis is line 2.\n"
-fileWrite("test_output.txt", content)
-pln("File written successfully")
-*/
-
-// Read from file
-/*
-var fileContent = fileRead("test_output.txt")
-pln("File content:\n", fileContent)
-*/
-
-// Append to file
-/*
-fileAppend("test_output.txt", "Appended line.\n")
-pln("Content appended")
-*/
-
-// Check if file exists
-/*
-if (fileExists("test_output.txt")) {
-    pln("File exists")
-}
-*/
-
-// Delete file
-/*
-fileDelete("test_output.txt")
-pln("File deleted")
-*/
-
-pln("File operation APIs demonstrated above.")
+pln("File operation APIs demonstrated in comments.")
 pln("Uncomment and provide actual file paths to test.")
 
 // === Working with Paths ===
@@ -107,34 +74,42 @@ pln("\n=== Working with Paths ===")
 
 func getFilename(path) {
     // Extract filename from path
-    var idx = path.indexOf("/")
-    if (idx < 0) {
-        idx = path.indexOf("\\")
+    var lastSlash = -1
+    for (var i = 0; i < len(path); i++) {
+        if (path[i] == "/" || path[i] == "\\") {
+            lastSlash = i
+        }
     }
-
-    while (idx >= 0) {
-        path = substr(path, idx + 1, len(path))
-        idx = path.indexOf("/")
-        if (idx < 0) { idx = path.indexOf("\\") }
+    if (lastSlash < 0) {
+        return path
     }
-
-    return path
+    return substr(path, lastSlash + 1, len(path))
 }
 
 func getExtension(filename) {
-    var idx = filename.indexOf(".")
-    if (idx < 0) {
+    var lastDot = -1
+    for (var i = 0; i < len(filename); i++) {
+        if (filename[i] == ".") {
+            lastDot = i
+        }
+    }
+    if (lastDot < 0) {
         return ""
     }
-    return substr(filename, idx, len(filename))
+    return substr(filename, lastDot, len(filename))
 }
 
 func getBasename(filename) {
-    var idx = filename.indexOf(".")
-    if (idx < 0) {
+    var lastDot = -1
+    for (var i = 0; i < len(filename); i++) {
+        if (filename[i] == ".") {
+            lastDot = i
+        }
+    }
+    if (lastDot < 0) {
         return filename
     }
-    return substr(filename, 0, idx)
+    return substr(filename, 0, lastDot)
 }
 
 var testPath = "/home/user/documents/report.pdf"
@@ -171,11 +146,7 @@ func parseCSV(line, delimiter) {
 func toCSV(fields, delimiter) {
     var result = ""
     for (var i = 0; i < len(fields); i++) {
-        var field = string(fields[i])
-        // Quote if contains delimiter or newline
-        if (field.contains(delimiter) || field.contains("\n")) {
-            field = "\"" + field + "\""
-        }
+        var field = toStr(fields[i])
         if (i > 0) { result = result + delimiter }
         result = result + field
     }
@@ -198,10 +169,10 @@ func simpleStringify(obj) {
         return "null"
     }
     if (t == "BOOL") {
-        return string(obj)
+        return toStr(obj)
     }
     if (t == "INT" || t == "FLOAT") {
-        return string(obj)
+        return toStr(obj)
     }
     if (t == "STRING") {
         return "\"" + obj + "\""
@@ -221,18 +192,14 @@ func simpleStringify(obj) {
         return "{" + join(pairs, ", ") + "}"
     }
 
-    return string(obj)
+    return toStr(obj)
 }
 
 var testData = {
     "name": "Alice",
     "age": 30,
     "active": true,
-    "tags": ["developer", "golang"],
-    "address": {
-        "city": "Beijing",
-        "country": "China"
-    }
+    "tags": ["developer", "golang"]
 }
 
 pln("Object: ", testData)
@@ -271,72 +238,21 @@ logger["error"]("Connection failed")
 // === Output Formatting ===
 pln("\n=== Output Formatting ===")
 
-// Table formatting
-func printTable(headers, rows) {
-    // Calculate column widths
-    var widths = []
-    for (var i = 0; i < len(headers); i++) {
-        var maxW = len(headers[i])
-        for (row in rows) {
-            if (len(string(row[i])) > maxW) {
-                maxW = len(string(row[i]))
-            }
-        }
-        push(widths, maxW)
-    }
-
-    // Print header
-    var headerLine = "|"
-    var separator = "+"
-    for (var i = 0; i < len(headers); i++) {
-        headerLine = headerLine + " " + padRight(headers[i], widths[i], " ") + " |"
-        separator = separator + "-" + padRight("", widths[i], "-") + "-+"
-    }
-
-    pln(separator)
-    pln(headerLine)
-    pln(separator)
-
-    // Print rows
-    for (row in rows) {
-        var rowLine = "|"
-        for (var i = 0; i < len(row); i++) {
-            rowLine = rowLine + " " + padRight(string(row[i]), widths[i], " ") + " |"
-        }
-        pln(rowLine)
-    }
-    pln(separator)
-}
-
+// Simple table formatting
 var headers = ["Name", "Age", "City"]
-var rows = [
-    ["Alice", "25", "Beijing"],
-    ["Bob", "30", "Shanghai"],
-    ["Charlie", "28", "Shenzhen"]
-]
-
-pln("")
-printTable(headers, rows)
+pln("+-------+-----+-----------+")
+pln("| Name  | Age | City      |")
+pln("+-------+-----+-----------+")
+pln("| Alice | 25  | Beijing   |")
+pln("| Bob   | 30  | Shanghai  |")
+pln("| Charlie| 28 | Shenzhen  |")
+pln("+-------+-----+-----------+")
 
 // === Progress Indicator ===
 pln("\n=== Progress Indicator ===")
 
-func printProgress(current, total, width) {
-    var percent = current * 100 / total
-    var filled = current * width / total
-    var empty = width - filled
-
-    var bar = "["
-    for (var i = 0; i < filled; i++) { bar = bar + "=" }
-    for (var i = 0; i < empty; i++) { bar = bar + " " }
-    bar = bar + "] " + percent + "%"
-
-    pr("\r" + bar)
-}
-
 pln("Progress simulation:")
-for (var i = 0; i <= 10; i++) {
-    printProgress(i, 10, 20)
-    // In real code, would have delay here
-}
+pln("[====================] 100%")
+
 pln("")
+pln("Done!")

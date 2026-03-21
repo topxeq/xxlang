@@ -370,6 +370,74 @@ var Builtins = map[string]*Builtin{
 			return NewString(strings.TrimSpace(str.Value))
 		},
 	},
+	"padLeft": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 2 || len(args) > 3 {
+				return newError("wrong number of arguments for padLeft. got=%d, want=2 or 3", len(args))
+			}
+
+			str, ok := args[0].(*String)
+			if !ok {
+				return newError("first argument to 'padLeft' must be STRING, got %s", args[0].Type())
+			}
+
+			width, ok := args[1].(*Int)
+			if !ok {
+				return newError("second argument to 'padLeft' must be INT, got %s", args[1].Type())
+			}
+
+			padChar := " "
+			if len(args) == 3 {
+				pc, ok := args[2].(*String)
+				if !ok {
+					return newError("third argument to 'padLeft' must be STRING, got %s", args[2].Type())
+				}
+				if len(pc.Value) > 0 {
+					padChar = pc.Value
+				}
+			}
+
+			result := str.Value
+			for int64(len(result)) < width.Value {
+				result = padChar + result
+			}
+			return NewString(result)
+		},
+	},
+	"padRight": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 2 || len(args) > 3 {
+				return newError("wrong number of arguments for padRight. got=%d, want=2 or 3", len(args))
+			}
+
+			str, ok := args[0].(*String)
+			if !ok {
+				return newError("first argument to 'padRight' must be STRING, got %s", args[0].Type())
+			}
+
+			width, ok := args[1].(*Int)
+			if !ok {
+				return newError("second argument to 'padRight' must be INT, got %s", args[1].Type())
+			}
+
+			padChar := " "
+			if len(args) == 3 {
+				pc, ok := args[2].(*String)
+				if !ok {
+					return newError("third argument to 'padRight' must be STRING, got %s", args[2].Type())
+				}
+				if len(pc.Value) > 0 {
+					padChar = pc.Value
+				}
+			}
+
+			result := str.Value
+			for int64(len(result)) < width.Value {
+				result = result + padChar
+			}
+			return NewString(result)
+		},
+	},
 	"upper": {
 		Fn: func(args ...Object) Object {
 			if len(args) != 1 {
@@ -959,10 +1027,10 @@ var Builtins = map[string]*Builtin{
 	// ============================================================
 	"range": {
 		Fn: func(args ...Object) Object {
-			if len(args) < 1 || len(args) > 2 {
-				return newError("wrong number of arguments for range. got=%d, want=1 or 2", len(args))
+			if len(args) < 1 || len(args) > 3 {
+				return newError("wrong number of arguments for range. got=%d, want=1, 2, or 3", len(args))
 			}
-			var start, end int64
+			var start, end, step int64 = 0, 0, 1
 			switch len(args) {
 			case 1:
 				e, ok := args[0].(*Int)
@@ -982,17 +1050,54 @@ var Builtins = map[string]*Builtin{
 				}
 				start = s.Value
 				end = e.Value
+			case 3:
+				s, ok := args[0].(*Int)
+				if !ok {
+					return newError("first argument to 'range' must be INT, got %s", args[0].Type())
+				}
+				e, ok := args[1].(*Int)
+				if !ok {
+					return newError("second argument to 'range' must be INT, got %s", args[1].Type())
+				}
+				st, ok := args[2].(*Int)
+				if !ok {
+					return newError("third argument to 'range' must be INT, got %s", args[2].Type())
+				}
+				start = s.Value
+				end = e.Value
+				step = st.Value
+				if step == 0 {
+					return newError("step cannot be zero")
+				}
 			}
 			elements := make([]Object, 0)
-			if start <= end {
-				elements = make([]Object, end-start+1)
-				for i := start; i <= end; i++ {
-					elements[i-start] = NewInt(i)
+			if step == 1 {
+				// Default behavior: inclusive range
+				if start <= end {
+					elements = make([]Object, end-start+1)
+					for i := start; i <= end; i++ {
+						elements[i-start] = NewInt(i)
+					}
+				} else {
+					elements = make([]Object, start-end+1)
+					for i := start; i >= end; i-- {
+						elements[start-i] = NewInt(i)
+					}
 				}
 			} else {
-				elements = make([]Object, start-end+1)
-				for i := start; i >= end; i-- {
-					elements[start-i] = NewInt(i)
+				// With custom step
+				if step > 0 {
+					if start < end {
+						for i := start; i < end; i += step {
+							elements = append(elements, NewInt(i))
+						}
+					}
+				} else {
+					if start > end {
+						for i := start; i > end; i += step {
+							elements = append(elements, NewInt(i))
+						}
+					}
 				}
 			}
 			return NewArray(elements)

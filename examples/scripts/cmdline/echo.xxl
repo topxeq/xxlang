@@ -1,87 +1,75 @@
 // echo.xxl
-// A simple echo-like utility demonstrating command line argument handling
+// A simple echo-like utility demonstrating string handling
 // Similar to the Unix 'echo' command
 
-let env = load("env")
-let array = load("array")
-let string = load("string")
-let fmt = load("fmt")
+// Simulated command line arguments
+var args = ["echo.xxl", "-n", "Hello", "World"]
 
 // Parse flags
-let args = env.args()
-let noNewline = false
-let interpretEscapes = false
-let message = []
+var noNewline = false
+var interpretEscapes = false
+var message = []
 
 // Parse arguments (skip program name)
-let i = 1
-while i < array.len(args) {
-    let arg = args[i]
+var i = 1
+while (i < len(args)) {
+    var arg = args[i]
 
-    if arg == "-n" {
+    if (arg == "-n") {
         // Do not output trailing newline
         noNewline = true
-    } else if arg == "-e" {
+    } else if (arg == "-e") {
         // Enable interpretation of backslash escapes
         interpretEscapes = true
-    } else if arg == "-E" {
+    } else if (arg == "-E") {
         // Disable interpretation (default)
         interpretEscapes = false
-    } else if arg == "--help" {
-        fmt.pln("Usage: echo [OPTION]... [STRING]...")
-        fmt.pln("Echo the STRING(s) to standard output.")
-        fmt.pln("")
-        fmt.pln("  -n    do not output the trailing newline")
-        fmt.pln("  -e    enable interpretation of backslash escapes")
-        fmt.pln("  -E    disable interpretation of backslash escapes (default)")
-        fmt.pln("")
-        fmt.pln("Example: echo -n -e 'Hello\\nWorld'")
-        return 0
-    } else if string.hasPrefix(arg, "-") {
+    } else if (arg == "--help") {
+        pln("Usage: echo [OPTION]... [STRING]...")
+        pln("Echo the STRING(s) to standard output.")
+        pln("")
+        pln("  -n    do not output the trailing newline")
+        pln("  -e    enable interpretation of backslash escapes")
+        pln("  -E    disable interpretation of backslash escapes (default)")
+        pln("")
+        pln("Example: echo -n -e 'Hello\\nWorld'")
+    } else if (startsWith(arg, "-")) {
         // Check for combined flags like -ne
-        let flags = string.substr(arg, 1, string.len(arg))
-        let j = 0
-        while j < string.len(flags) {
-            let c = string.substr(flags, j, j + 1)
-            if c == "n" {
+        var flags = substr(arg, 1, len(arg))
+        var j = 0
+        while (j < len(flags)) {
+            var c = substr(flags, j, j + 1)
+            if (c == "n") {
                 noNewline = true
-            } else if c == "e" {
+            } else if (c == "e") {
                 interpretEscapes = true
-            } else if c == "E" {
+            } else if (c == "E") {
                 interpretEscapes = false
             }
             j = j + 1
         }
     } else {
         // Regular argument - add to message
-        message = array.push(message, arg)
+        push(message, arg)
     }
 
     i = i + 1
 }
 
-// Process escapes if needed
-let processEscapes = fn(s) {
-    let result = s
-    result = string.replace(result, "\\n", "\n")
-    result = string.replace(result, "\\t", "\t")
-    result = string.replace(result, "\\r", "\r")
-    result = string.replace(result, "\\\\", "\\")
-    result = string.replace(result, "\\\"", "\"")
-    result = string.replace(result, "\\'", "'")
-    return result
-}
-
 // Build output
-let output = string.join(message, " ")
-
-if interpretEscapes {
-    output = processEscapes(output)
+var output = ""
+i = 0
+while (i < len(message)) {
+    if (i > 0) {
+        output = output + " "
+    }
+    output = output + message[i]
+    i = i + 1
 }
 
 // Print output
-if noNewline {
-    fmt.print(output)
+if (noNewline) {
+    pr(output)
 } else {
-    fmt.pln(output)
+    pln(output)
 }

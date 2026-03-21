@@ -32,6 +32,12 @@ type RegCompiler struct {
 
 	// Loop context for break/continue
 	loopContexts []regLoopContext
+
+	// Counter for unique loop variable names
+	forInLoopCounter int
+
+	// Track depth of try blocks (to disable tail call inside try)
+	tryBlockDepth int
 }
 
 type regScopeState struct {
@@ -1563,6 +1569,12 @@ func (c *RegCompiler) tryOptimizeNestedLoop(n *parser.ForStatement) bool {
 // for (value in iterable) { body }
 // for (key, value in iterable) { body }
 func (c *RegCompiler) compileForInStatement(n *parser.ForInStatement) (int, error) {
+	// Generate unique names for this loop's internal variables
+	loopID := c.forInLoopCounter
+	c.forInLoopCounter++
+	iterVarName := fmt.Sprintf("__for_in_iter_%d__", loopID)
+	indexVarName := fmt.Sprintf("__for_in_index_%d__", loopID)
+
 	// Compile iterable expression
 	iterReg, err := c.Compile(n.Iterable)
 	if err != nil {
@@ -1580,7 +1592,7 @@ func (c *RegCompiler) compileForInStatement(n *parser.ForInStatement) (int, erro
 	// Save iterable to a local slot to preserve it across iterations
 	// This prevents the iterable from being corrupted when the loop body
 	// allocates temporary registers
-	iterSymbol := c.symbolTable.Define("__for_in_iter__")
+	iterSymbol := c.symbolTable.Define(iterVarName)
 	if iterSymbol.Scope == GlobalScope {
 		c.emitRegStoreGlobal(iterReg, iterSymbol.Index)
 	} else {
@@ -1589,7 +1601,7 @@ func (c *RegCompiler) compileForInStatement(n *parser.ForInStatement) (int, erro
 	c.freeTempReg(iterReg)
 
 	// Define index variable (hidden, used for iteration)
-	indexSymbol := c.symbolTable.Define("__for_in_index__")
+	indexSymbol := c.symbolTable.Define(indexVarName)
 
 	// Initialize index to 0
 	zeroIdx := c.addConstant(objects.NewInt(0))
@@ -1643,12 +1655,14 @@ func (c *RegCompiler) compileForInStatement(n *parser.ForInStatement) (int, erro
 	}
 
 	// Compare index < length
-	condReg := c.allocTempReg()
-	c.emitRegLess(condReg, indexReg, lenReg)
+	// Use a dedicated fixed register for condition to avoid conflicts with indexReg
+	// This ensures the comparison result doesn't overwrite the index
+	// We use register 250 which is below ReturnRegister (255) but above normal temp registers
+	const forInCondReg = 250
+	c.emitRegLess(forInCondReg, indexReg, lenReg)
 
 	// Jump to end if condition is false
-	jumpIfFalsePos := c.emitRegJumpIfFalse(condReg, 0)
-	c.freeTempReg(condReg)
+	jumpIfFalsePos := c.emitRegJumpIfFalse(forInCondReg, 0)
 	c.freeTempReg(lenReg)
 
 	// Enter loop context
@@ -1761,6 +1775,18 @@ func (c *RegCompiler) compileReturnStatement(n *parser.ReturnStatement) (int, er
 // compileTailCall compiles a tail call (return func(args))
 // This emits OpRegTailCall which reuses the current frame
 func (c *RegCompiler) compileTailCall(n *parser.CallExpression) (int, error) {
+	// Disable tail call optimization inside try blocks
+	// because the exception handler needs to remain active
+	if c.tryBlockDepth > 0 {
+		valReg, err := c.compileCallExpression(n)
+		if err != nil {
+			return 0, err
+		}
+		c.emitRegReturn(valReg)
+		c.freeTempReg(valReg)
+		return 0, nil
+	}
+
 	// Check if this is a direct builtin call - builtins don't benefit from TCO
 	// and OpRegTailCall doesn't work with builtins
 	if ident, ok := n.Function.(*parser.Identifier); ok {
@@ -2086,16 +2112,28 @@ func (c *RegCompiler) compileArrayLiteral(n *parser.ArrayLiteral) (int, error) {
 	available := NumRegisters - 1 - c.nextTempReg
 	if available >= numElements {
 		// Enough space - use existing OpRegArray (more efficient)
+		// IMPORTANT: To avoid overwriting source registers during moves,
+		// we first push all elements to the temp stack, then pop them into
+		// contiguous target registers.
+
+		// Push all elements to temp stack
+		for _, elemReg := range elementRegs {
+			c.emitRegPush(elemReg)
+			c.freeTempReg(elemReg)
+		}
+
+		// Allocate contiguous target registers and pop from stack
 		dst := c.allocTempReg()
 		startReg := c.nextTempReg
 
-		for i, elemReg := range elementRegs {
-			targetReg := startReg + i
+		for i := 0; i < numElements; i++ {
 			c.allocTempReg() // allocate the register slot
-			if targetReg != elemReg {
-				c.emitRegMove(targetReg, elemReg)
-				c.freeTempReg(elemReg)
-			}
+		}
+
+		// Pop elements from stack in reverse order (stack is LIFO)
+		for i := numElements - 1; i >= 0; i-- {
+			targetReg := startReg + i
+			c.emitRegPop(targetReg)
 		}
 
 		c.emitRegArray(dst, startReg, numElements)
@@ -3660,6 +3698,9 @@ func (c *RegCompiler) compileSuperCallExpression(node *parser.SuperCallExpressio
 
 // compileTryStatement compiles a try-catch-finally statement
 func (c *RegCompiler) compileTryStatement(node *parser.TryStatement) (int, error) {
+	// Increment try block depth to disable tail call optimization
+	c.tryBlockDepth++
+
 	// Push exception handler with placeholder addresses (2 bytes each)
 	pushHandlerPos := len(c.instructions)
 	c.instructions = append(c.instructions, byte(OpRegPushHandler), 0, 0, 0, 0) // catchAddr (2 bytes), finallyAddr (2 bytes)
@@ -3667,6 +3708,7 @@ func (c *RegCompiler) compileTryStatement(node *parser.TryStatement) (int, error
 	// Compile try block
 	_, err := c.Compile(node.Block)
 	if err != nil {
+		c.tryBlockDepth--
 		return 0, err
 	}
 
@@ -3697,6 +3739,7 @@ func (c *RegCompiler) compileTryStatement(node *parser.TryStatement) (int, error
 		// Compile catch body
 		_, err = c.Compile(node.Catch.Block)
 		if err != nil {
+			c.tryBlockDepth--
 			return 0, err
 		}
 	}
@@ -3709,6 +3752,7 @@ func (c *RegCompiler) compileTryStatement(node *parser.TryStatement) (int, error
 		// Compile finally block
 		_, err = c.Compile(node.Finally.Block)
 		if err != nil {
+			c.tryBlockDepth--
 			return 0, err
 		}
 
@@ -3727,6 +3771,9 @@ func (c *RegCompiler) compileTryStatement(node *parser.TryStatement) (int, error
 	if jumpPastCatchPos >= 0 {
 		c.patchJump(jumpPastCatchPos)
 	}
+
+	// Decrement try block depth
+	c.tryBlockDepth--
 
 	// Return null for try statement
 	dst := c.allocTempReg()
