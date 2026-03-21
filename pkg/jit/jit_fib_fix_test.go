@@ -67,15 +67,18 @@ func TestIterativeFibJITFixed(t *testing.T) {
 	jgeOffset := len(code)                   // Record jge position
 	emit(0x7D, 0x00)                         // jge (placeholder)
 
-	// Done - return b
-	doneOffset := len(code)                  // Record done position
+	// Done - return b (for n > 1)
 	emit(0x48, 0x89, 0xD0)                   // mov rax, rdx
 	emit(0xC3)                               // ret
 
+	// Base case - return n (already in rax) for n <= 1
+	baseCaseOffset := len(code)
+	emit(0xC3)                               // ret
+
 	// Fix up jumps using actual calculated positions
-	// jle: jump to done (skip the loop)
-	jleRel := int8(doneOffset - (jleOffset + 2))
-	t.Logf("jle at %d: target=%d, from=%d, rel=%d", jleOffset, doneOffset, jleOffset+2, jleRel)
+	// jle: jump to base case (n <= 1)
+	jleRel := int8(baseCaseOffset - (jleOffset + 2))
+	t.Logf("jle at %d: target=%d, from=%d, rel=%d", jleOffset, baseCaseOffset, jleOffset+2, jleRel)
 	code[jleOffset+1] = byte(jleRel)
 
 	// jge: jump back to loop start (continue loop)

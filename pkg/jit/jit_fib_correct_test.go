@@ -19,7 +19,7 @@ func TestIterativeFibCorrect(t *testing.T) {
 
 	// Build code with correct offset tracking
 	var code []byte
-	
+
 	emit := func(b ...byte) int {
 		start := len(code)
 		code = append(code, b...)
@@ -29,7 +29,7 @@ func TestIterativeFibCorrect(t *testing.T) {
 	// Check base case: if n <= 1, return n
 	_ = emit(0x48, 0x89, 0xF8)                   // mov rax, rdi
 	_ = emit(0x48, 0x83, 0xF8, 0x01)             // cmp rax, 1
-	jlePos := emit(0x7E, 0x00)                   // jle (placeholder)
+	jlePos := emit(0x7E, 0x00)                   // jle base_case (placeholder)
 
 	// Initialize: a=0, b=1, i=2
 	_ = emit(0x48, 0x31, 0xC9)                   // xor rcx, rcx (a = 0)
@@ -43,17 +43,20 @@ func TestIterativeFibCorrect(t *testing.T) {
 	_ = emit(0x48, 0x89, 0xC2)                   // mov rdx, rax (b = temp)
 	_ = emit(0x49, 0xFF, 0xC0)                   // inc r8 (i++)
 	_ = emit(0x4C, 0x39, 0xC7)                   // cmp rdi, r8 (n - i)
-	jgePos := emit(0x7D, 0x00)                   // jge (placeholder)
+	jgePos := emit(0x7D, 0x00)                   // jge loop (placeholder)
 
-	// Done: return b
-	donePos := emit(0x48, 0x89, 0xD0)            // mov rax, rdx
+	// Done (n > 1): return b
+	_ = emit(0x48, 0x89, 0xD0)                   // mov rax, rdx
 	_ = emit(0xC3)                               // ret
 
+	// Base case (n <= 1): return n (already in rax)
+	baseCasePos := emit(0xC3)                    // ret
+
 	// Now fix up jumps with correct calculations
-	// jle: jumps from jlePos to donePos
-	// jle is 2 bytes, so relative offset = donePos - (jlePos + 2)
-	jleRel := donePos - (jlePos + 2)
-	t.Logf("jle: pos=%d, target=%d, rel=%d", jlePos, donePos, jleRel)
+	// jle: jumps from jlePos to baseCasePos
+	// jle is 2 bytes, so relative offset = baseCasePos - (jlePos + 2)
+	jleRel := baseCasePos - (jlePos + 2)
+	t.Logf("jle: pos=%d, target=%d, rel=%d", jlePos, baseCasePos, jleRel)
 	code[jlePos+1] = byte(jleRel)
 
 	// jge: jumps from jgePos back to loopStart
@@ -189,23 +192,24 @@ func TestFibJITPerformance_Native(t *testing.T) {
 		return start
 	}
 
-	_ = emit(0x48, 0x89, 0xF8)
-	_ = emit(0x48, 0x83, 0xF8, 0x01)
-	jlePos := emit(0x7E, 0x00)
-	_ = emit(0x48, 0x31, 0xC9)
-	_ = emit(0x48, 0xC7, 0xC2, 0x01, 0x00, 0x00, 0x00)
-	_ = emit(0x49, 0xC7, 0xC0, 0x02, 0x00, 0x00, 0x00)
-	loopStart := emit(0x48, 0x89, 0xC8)
-	_ = emit(0x48, 0x01, 0xD0)
-	_ = emit(0x48, 0x89, 0xD1)
-	_ = emit(0x48, 0x89, 0xC2)
-	_ = emit(0x49, 0xFF, 0xC0)
-	_ = emit(0x4C, 0x39, 0xC7)
-	jgePos := emit(0x7D, 0x00)
-	donePos := emit(0x48, 0x89, 0xD0)
-	_ = emit(0xC3)
+	_ = emit(0x48, 0x89, 0xF8)                   // mov rax, rdi
+	_ = emit(0x48, 0x83, 0xF8, 0x01)             // cmp rax, 1
+	jlePos := emit(0x7E, 0x00)                   // jle base_case
+	_ = emit(0x48, 0x31, 0xC9)                   // xor rcx, rcx
+	_ = emit(0x48, 0xC7, 0xC2, 0x01, 0x00, 0x00, 0x00) // mov rdx, 1
+	_ = emit(0x49, 0xC7, 0xC0, 0x02, 0x00, 0x00, 0x00) // mov r8, 2
+	loopStart := emit(0x48, 0x89, 0xC8)          // mov rax, rcx
+	_ = emit(0x48, 0x01, 0xD0)                   // add rax, rdx
+	_ = emit(0x48, 0x89, 0xD1)                   // mov rcx, rdx
+	_ = emit(0x48, 0x89, 0xC2)                   // mov rdx, rax
+	_ = emit(0x49, 0xFF, 0xC0)                   // inc r8
+	_ = emit(0x4C, 0x39, 0xC7)                   // cmp rdi, r8
+	jgePos := emit(0x7D, 0x00)                   // jge loop
+	_ = emit(0x48, 0x89, 0xD0)                   // mov rax, rdx
+	_ = emit(0xC3)                               // ret (n > 1 case)
+	baseCasePos := emit(0xC3)                    // ret (n <= 1 case, rax already has n)
 
-	code[jlePos+1] = byte(donePos - (jlePos + 2))
+	code[jlePos+1] = byte(baseCasePos - (jlePos + 2))
 	code[jgePos+1] = byte(loopStart - (jgePos + 2))
 
 	jit := NewJITCompiler(config)
@@ -228,6 +232,6 @@ func TestFibJITPerformance_Native(t *testing.T) {
 	}
 	jitTime := time.Since(start)
 
-	t.Logf("JIT fib(35) x %d: %v (%.0f ops/sec)", 
+	t.Logf("JIT fib(35) x %d: %v (%.0f ops/sec)",
 		iterations, jitTime, float64(iterations)/jitTime.Seconds())
 }

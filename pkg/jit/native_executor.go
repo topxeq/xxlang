@@ -4,6 +4,8 @@ package jit
 
 import (
 	"fmt"
+	"reflect"
+	"sync"
 	"unsafe"
 
 	"github.com/topxeq/xxlang/pkg/compiler"
@@ -155,6 +157,10 @@ func callNative(entry uintptr, globals *int64) int64
 // This function is implemented in assembly (bridge_amd64.s)
 func callNativeWithArgs(entry uintptr, globals *int64, arg0, arg1, arg2 int64) int64
 
+// callNativeWithArgs8 calls a native function with up to 8 arguments
+// This function is implemented in assembly (bridge_amd64.s)
+func callNativeWithArgs8(entry uintptr, globals *int64, args *int64) int64
+
 // callBuiltinCallback calls a Go callback for builtin functions from native code
 // This function is implemented in assembly (bridge_amd64.s)
 func callBuiltinCallback(callback uintptr, builtinIdx, numArgs int, argsPtr *int64) int64
@@ -170,6 +176,27 @@ func callCollectionCallback(callback uintptr, opKind, numArgs int, argsPtr *int6
 // callObjectCallback calls a Go callback for object operations from native code
 // This function is implemented in assembly (bridge_amd64.s)
 func callObjectCallback(callback uintptr, opKind, numArgs int, argsPtr *int64, nameIdx int) int64
+
+// ============================================================================
+// Callback Wrappers (called from native code via System V ABI)
+// These are implemented in assembly (bridge_amd64.s) and call the Go functions
+// ============================================================================
+
+// builtinCallbackWrapper is called from native code with System V ABI
+// Implemented in assembly
+func builtinCallbackWrapper(builtinIdx, numArgs int64, argsPtr *int64) int64
+
+// functionCallbackWrapper is called from native code with System V ABI
+// Implemented in assembly
+func functionCallbackWrapper(funcReg, numArgs int64, argsPtr *int64) int64
+
+// collectionCallbackWrapper is called from native code with System V ABI
+// Implemented in assembly
+func collectionCallbackWrapper(opKind, numArgs int64, argsPtr *int64) int64
+
+// objectCallbackWrapper is called from native code with System V ABI
+// Implemented in assembly
+func objectCallbackWrapper(opKind, numArgs int64, argsPtr *int64, nameIdx int64) int64
 
 // callNativeWithGlobals calls a native function with globals pointer
 func callNativeWithGlobals(entry uintptr, globals []int64) int64 {
@@ -482,8 +509,22 @@ func (f *NativeCompiledFunc) Execute(globals []int64, args ...int64) int64 {
 		return callNativeWithArgs(f.Entry, globalsPtr, arg0, arg1, arg2)
 	}
 
-	// For functions with more args, we'd need a different bridge
-	// For now, just pass what we can
+	// For functions with 4-8 args, use the 8-argument bridge
+	if len(args) <= 8 {
+		// Pad args to 8 elements
+		args8 := make([]int64, 8)
+		copy(args8, args)
+
+		var globalsPtr *int64
+		if len(globals) > 0 {
+			globalsPtr = &globals[0]
+		}
+
+		return callNativeWithArgs8(f.Entry, globalsPtr, &args8[0])
+	}
+
+	// For functions with more than 8 args, fall back to globals-only
+	// This is rare and would require stack-based argument passing
 	return callNativeWithGlobals(f.Entry, globals)
 }
 
@@ -623,12 +664,14 @@ func CanExecuteNativelyWithBuiltins(fn *compiler.CompiledFunction) bool {
 
 // JITCallbackContext holds context for JIT callbacks to Go
 type JITCallbackContext struct {
+	mu           sync.RWMutex
 	globals      []vm.Value
 	constants    []vm.Value
 	builtins     []*objects.Builtin
 	nativeFuncs  map[int]*NativeCompiledFunc // constIdx -> native function
 	registers    []vm.Value                  // Current frame registers
 	objects      []objects.Object            // Objects created by callbacks (for GC visibility)
+	freeHandles  []int                       // Free handle indices for reuse
 }
 
 // globalJITContext is the global callback context
@@ -636,30 +679,87 @@ var globalJITContext JITCallbackContext
 
 // InitJITCallbackContext initializes the global JIT callback context
 func InitJITCallbackContext(globals, constants []vm.Value) {
+	globalJITContext.mu.Lock()
+	defer globalJITContext.mu.Unlock()
 	globalJITContext.globals = globals
 	globalJITContext.constants = constants
+	// Reset objects for new execution
+	globalJITContext.objects = nil
+	globalJITContext.freeHandles = nil
+}
+
+// ResetJITCallbackContext clears all cached data in the JIT context
+// This should be called between different program executions to prevent memory leaks
+func ResetJITCallbackContext() {
+	globalJITContext.mu.Lock()
+	defer globalJITContext.mu.Unlock()
+	globalJITContext.objects = nil
+	globalJITContext.freeHandles = nil
+	globalJITContext.builtins = nil
+	globalJITContext.registers = nil
+}
+
+// allocateObjectHandle allocates a handle for a new object, reusing free handles if available
+// Must be called with globalJITContext.mu held
+func allocateObjectHandle(obj objects.Object) int {
+	// Try to reuse a free handle
+	if len(globalJITContext.freeHandles) > 0 {
+		idx := len(globalJITContext.freeHandles) - 1
+		handle := globalJITContext.freeHandles[idx]
+		globalJITContext.freeHandles = globalJITContext.freeHandles[:idx]
+		globalJITContext.objects[handle] = obj
+		return handle
+	}
+
+	// Allocate new handle
+	handle := len(globalJITContext.objects)
+	globalJITContext.objects = append(globalJITContext.objects, obj)
+	return handle
+}
+
+// releaseObjectHandle releases an object handle for reuse
+// Must be called with globalJITContext.mu held
+func releaseObjectHandle(handle int) {
+	if handle >= 0 && handle < len(globalJITContext.objects) {
+		globalJITContext.objects[handle] = nil
+		globalJITContext.freeHandles = append(globalJITContext.freeHandles, handle)
+	}
 }
 
 // SetNativeFunctionRegistry sets the native function registry for callbacks
 func SetNativeFunctionRegistry(funcs map[int]*NativeCompiledFunc) {
+	globalJITContext.mu.Lock()
+	defer globalJITContext.mu.Unlock()
 	globalJITContext.nativeFuncs = funcs
 }
 
 // SetCurrentRegisters sets the current frame registers for callbacks
 func SetCurrentRegisters(regs []vm.Value) {
+	globalJITContext.mu.Lock()
+	defer globalJITContext.mu.Unlock()
 	globalJITContext.registers = regs
 }
 
 // CallBuiltinFromNative is called from native code to execute a builtin function
 // This is exported for use by the JIT callback mechanism
 func CallBuiltinFromNative(builtinIdx, numArgs int, argsPtr *int64) int64 {
-	if builtinIdx < 0 || builtinIdx >= len(globalJITContext.builtins) {
-		// Lazy initialize builtins array
-		if builtinIdx < 256 {
-			if globalJITContext.builtins == nil {
-				globalJITContext.builtins = make([]*objects.Builtin, 256)
-			}
-		}
+	// Validate builtin index
+	const maxBuiltins = 256
+	if builtinIdx < 0 || builtinIdx >= maxBuiltins {
+		return 0
+	}
+
+	globalJITContext.mu.Lock()
+
+	// Lazy initialize builtins array
+	if globalJITContext.builtins == nil {
+		globalJITContext.builtins = make([]*objects.Builtin, maxBuiltins)
+	}
+
+	// Ensure array is large enough
+	if builtinIdx >= len(globalJITContext.builtins) {
+		globalJITContext.mu.Unlock()
+		return 0
 	}
 
 	builtin := globalJITContext.builtins[builtinIdx]
@@ -667,10 +767,13 @@ func CallBuiltinFromNative(builtinIdx, numArgs int, argsPtr *int64) int64 {
 		// Lazy load builtin
 		builtin = getBuiltin(builtinIdx)
 		if builtin == nil {
+			globalJITContext.mu.Unlock()
 			return 0
 		}
 		globalJITContext.builtins[builtinIdx] = builtin
 	}
+
+	globalJITContext.mu.Unlock()
 
 	// Convert args from int64 array to objects
 	args := make([]objects.Object, numArgs)
@@ -702,11 +805,24 @@ func getBuiltin(idx int) *objects.Builtin {
 }
 
 // GetBuiltinCallbackPtr returns the function pointer for builtin callbacks
-// Note: This requires unsafe.Pointer to get the function address
+// This returns the address of the assembly wrapper that can be called from native code
 func GetBuiltinCallbackPtr() uintptr {
-	// Return a marker value - actual callback will be set up differently
-	// For now, we'll use a different mechanism for callbacks
-	return 0
+	return reflect.ValueOf(builtinCallbackWrapper).Pointer()
+}
+
+// GetFunctionCallbackPtr returns the function pointer for function call dispatch
+func GetFunctionCallbackPtr() uintptr {
+	return reflect.ValueOf(functionCallbackWrapper).Pointer()
+}
+
+// GetCollectionCallbackPtr returns the function pointer for collection operations
+func GetCollectionCallbackPtr() uintptr {
+	return reflect.ValueOf(collectionCallbackWrapper).Pointer()
+}
+
+// GetObjectCallbackPtr returns the function pointer for object operations
+func GetObjectCallbackPtr() uintptr {
+	return reflect.ValueOf(objectCallbackWrapper).Pointer()
 }
 
 // ============================================================================
@@ -740,21 +856,34 @@ type FunctionDispatchInfo struct {
 // Returns the result of the function call
 func CallFunctionFromNative(funcReg, numArgs int, argsPtr *int64) int64 {
 	// Get the function value from registers
+	globalJITContext.mu.RLock()
 	if globalJITContext.registers == nil || funcReg >= len(globalJITContext.registers) {
+		globalJITContext.mu.RUnlock()
 		return 0
 	}
 
 	fnValue := globalJITContext.registers[funcReg]
 	if fnValue.IsNull() {
+		globalJITContext.mu.RUnlock()
 		return 0
 	}
 
 	// Check if it's a native function (check constIdx first)
 	// The function might be loaded from constants, so check if it has a native version
-	dispatchInfo := resolveFunctionDispatch(fnValue, funcReg)
+	dispatchInfo := resolveFunctionDispatchLocked(fnValue, funcReg)
 	if dispatchInfo.Kind == DispatchInvalid {
+		globalJITContext.mu.RUnlock()
 		return 0
 	}
+
+	// Get globals as int64 array (copy while holding lock)
+	globals := make([]int64, len(globalJITContext.globals))
+	for i, g := range globalJITContext.globals {
+		if g.IsInt() {
+			globals[i], _ = g.ToInt()
+		}
+	}
+	globalJITContext.mu.RUnlock()
 
 	// Convert args from int64 array to vm.Value
 	argsSlice := unsafe.Slice(argsPtr, numArgs)
@@ -770,18 +899,10 @@ func CallFunctionFromNative(funcReg, numArgs int, argsPtr *int64) int64 {
 			return 0
 		}
 
-		// Get globals as int64 array
-		globals := make([]int64, len(globalJITContext.globals))
-		for i, g := range globalJITContext.globals {
-			if g.IsInt() {
-				globals[i], _ = g.ToInt()
-			}
-		}
-
 		// Call via bridge
 		nativeFunc := &NativeCompiledFunc{
-			Entry:      dispatchInfo.Entry,
-			NumParams:  dispatchInfo.NumParams,
+			Entry:        dispatchInfo.Entry,
+			NumParams:    dispatchInfo.NumParams,
 			UseBridgeABI: true,
 		}
 		return nativeFunc.Execute(globals, int64SliceFromValueSlice(args)...)
@@ -801,8 +922,9 @@ func CallFunctionFromNative(funcReg, numArgs int, argsPtr *int64) int64 {
 	}
 }
 
-// resolveFunctionDispatch determines how to dispatch a function call
-func resolveFunctionDispatch(fnValue vm.Value, funcReg int) FunctionDispatchInfo {
+// resolveFunctionDispatchLocked determines how to dispatch a function call
+// Must be called with globalJITContext.mu held (RLock or Lock)
+func resolveFunctionDispatchLocked(fnValue vm.Value, funcReg int) FunctionDispatchInfo {
 	info := FunctionDispatchInfo{Kind: DispatchInvalid}
 
 	// Check if it's a compiled function
@@ -882,6 +1004,9 @@ func CanExecuteNativelyWithArrays(fn *compiler.CompiledFunction) bool {
 func CallCollectionFromNative(opKind, numArgs int, argsPtr *int64) int64 {
 	argsSlice := unsafe.Slice(argsPtr, numArgs)
 
+	globalJITContext.mu.Lock()
+	defer globalJITContext.mu.Unlock()
+
 	switch CollectionOpKind(opKind) {
 	case OpArrayCreate:
 		// Create array from elements
@@ -891,16 +1016,13 @@ func CallCollectionFromNative(opKind, numArgs int, argsPtr *int64) int64 {
 			elements[i] = &objects.Int{Value: argsSlice[i]}
 		}
 		arr := &objects.Array{Elements: elements}
-		// Store in context for GC visibility
-		globalJITContext.objects = append(globalJITContext.objects, arr)
-		// Return a handle/index to the object
-		return int64(len(globalJITContext.objects) - 1)
+		// Allocate handle using the pool
+		return int64(allocateObjectHandle(arr))
 
 	case OpArrayEmpty:
 		// Create empty array
 		arr := &objects.Array{Elements: []objects.Object{}}
-		globalJITContext.objects = append(globalJITContext.objects, arr)
-		return int64(len(globalJITContext.objects) - 1)
+		return int64(allocateObjectHandle(arr))
 
 	case OpArrayAppend:
 		// Append element to array
@@ -931,7 +1053,11 @@ func CallCollectionFromNative(opKind, numArgs int, argsPtr *int64) int64 {
 		if handle < 0 || handle >= len(globalJITContext.objects) {
 			return 0
 		}
-		arr, ok := globalJITContext.objects[handle].(*objects.Array)
+		obj := globalJITContext.objects[handle]
+		if obj == nil {
+			return 0
+		}
+		arr, ok := obj.(*objects.Array)
 		if !ok || index < 0 || index >= len(arr.Elements) {
 			return 0
 		}
@@ -968,14 +1094,12 @@ func CallCollectionFromNative(opKind, numArgs int, argsPtr *int64) int64 {
 			pairs[key.HashKey()] = objects.MapPair{Key: key, Value: val}
 		}
 		m := &objects.Map{Pairs: pairs}
-		globalJITContext.objects = append(globalJITContext.objects, m)
-		return int64(len(globalJITContext.objects) - 1)
+		return int64(allocateObjectHandle(m))
 
 	case OpMapEmpty:
 		// Create empty map
 		m := &objects.Map{Pairs: make(map[objects.HashKey]objects.MapPair)}
-		globalJITContext.objects = append(globalJITContext.objects, m)
-		return int64(len(globalJITContext.objects) - 1)
+		return int64(allocateObjectHandle(m))
 
 	case OpMapSet:
 		// Set key-value in map
@@ -987,7 +1111,11 @@ func CallCollectionFromNative(opKind, numArgs int, argsPtr *int64) int64 {
 		if handle < 0 || handle >= len(globalJITContext.objects) {
 			return 0
 		}
-		m, ok := globalJITContext.objects[handle].(*objects.Map)
+		obj := globalJITContext.objects[handle]
+		if obj == nil {
+			return 0
+		}
+		m, ok := obj.(*objects.Map)
 		if !ok {
 			return 0
 		}
@@ -1006,7 +1134,11 @@ func CallCollectionFromNative(opKind, numArgs int, argsPtr *int64) int64 {
 		if handle < 0 || handle >= len(globalJITContext.objects) {
 			return 0
 		}
-		m, ok := globalJITContext.objects[handle].(*objects.Map)
+		obj := globalJITContext.objects[handle]
+		if obj == nil {
+			return 0
+		}
+		m, ok := obj.(*objects.Map)
 		if !ok {
 			return 0
 		}
@@ -1037,7 +1169,10 @@ func CallObjectFromNative(opKind, numArgs int, argsPtr *int64, nameIdx int) int6
 
 	switch ObjectOpKind(opKind) {
 	case OpGetField:
-		// Get field from object
+		// Get field from object - read-only operation
+		globalJITContext.mu.RLock()
+		defer globalJITContext.mu.RUnlock()
+
 		// args[0] = object handle, nameIdx = field name
 		if numArgs < 1 {
 			return 0
@@ -1047,9 +1182,12 @@ func CallObjectFromNative(opKind, numArgs int, argsPtr *int64, nameIdx int) int6
 			return 0
 		}
 		obj := globalJITContext.objects[handle]
+		if obj == nil {
+			return 0
+		}
 
 		// Get field name from constants
-		name := getConstantString(nameIdx)
+		name := getConstantStringLocked(nameIdx)
 		if name == "" {
 			return 0
 		}
@@ -1070,7 +1208,10 @@ func CallObjectFromNative(opKind, numArgs int, argsPtr *int64, nameIdx int) int6
 		return 0
 
 	case OpSetField:
-		// Set field on object
+		// Set field on object - read-only for now (no actual field setting)
+		globalJITContext.mu.RLock()
+		defer globalJITContext.mu.RUnlock()
+
 		// args[0] = object handle, args[1] = value, nameIdx = field name
 		if numArgs < 2 {
 			return 0
@@ -1080,30 +1221,60 @@ func CallObjectFromNative(opKind, numArgs int, argsPtr *int64, nameIdx int) int6
 			return 0
 		}
 		obj := globalJITContext.objects[handle]
-
-		// Get field name
-		name := getConstantString(nameIdx)
-		if name == "" {
+		if obj == nil {
 			return 0
 		}
 
 		// For now, most objects don't support dynamic field setting
 		// This would be expanded for custom objects/classes
-		_ = obj
 		return argsSlice[0]
 
 	case OpGetMethod:
-		// Get method from object (returns a callable handle)
-		// For now, just return 0 - methods require full VM context
-		return 0
+		// Get method from object - needs write lock to allocate handle
+		globalJITContext.mu.Lock()
+		defer globalJITContext.mu.Unlock()
+
+		// args[0] = object handle, nameIdx = method name
+		if numArgs < 1 {
+			return 0
+		}
+		handle := int(argsSlice[0])
+		if handle < 0 || handle >= len(globalJITContext.objects) {
+			return 0
+		}
+		obj := globalJITContext.objects[handle]
+		if obj == nil {
+			return 0
+		}
+
+		// Get method name from constants
+		name := getConstantStringLocked(nameIdx)
+		if name == "" {
+			return 0
+		}
+
+		// Look up the method
+		method, ok := objects.GetMethod(obj.Type(), name)
+		if !ok {
+			return 0
+		}
+
+		// Store the method as a wrapper object
+		// The wrapper contains both the method and the receiver
+		wrapper := &MethodWrapper{
+			Receiver: obj,
+			Method:   method,
+		}
+		return int64(allocateObjectHandle(wrapper))
 
 	default:
 		return 0
 	}
 }
 
-// getConstantString retrieves a string from constants by index
-func getConstantString(idx int) string {
+// getConstantStringLocked retrieves a string from constants by index
+// Must be called with globalJITContext.mu held (RLock or Lock)
+func getConstantStringLocked(idx int) string {
 	if idx < 0 || idx >= len(globalJITContext.constants) {
 		return ""
 	}
@@ -1115,6 +1286,76 @@ func getConstantString(idx int) string {
 		}
 	}
 	return ""
+}
+
+// MethodWrapper wraps a method with its receiver for JIT callbacks
+type MethodWrapper struct {
+	Receiver objects.Object
+	Method   *objects.Builtin
+}
+
+// Type implements objects.Object
+func (m *MethodWrapper) Type() objects.ObjectType { return objects.BuiltinType }
+
+// TypeTag implements objects.Object
+func (m *MethodWrapper) TypeTag() objects.TypeTag { return objects.TagBuiltin }
+
+// Inspect implements objects.Object
+func (m *MethodWrapper) Inspect() string { return "<method>" }
+
+// ToBool implements objects.Object
+func (m *MethodWrapper) ToBool() *objects.Bool { return objects.TRUE }
+
+// HashKey implements objects.Object
+func (m *MethodWrapper) HashKey() objects.HashKey {
+	return objects.HashKey{Type: objects.BuiltinType, Value: uint64(uintptr(unsafe.Pointer(m)))}
+}
+
+// CallMethodFromNative is called from native code to invoke a method
+// methodHandle: handle to the MethodWrapper
+// argsPtr: pointer to additional arguments (excluding receiver)
+// Returns the method result
+func CallMethodFromNative(methodHandle, numArgs int, argsPtr *int64) int64 {
+	argsSlice := unsafe.Slice(argsPtr, numArgs)
+
+	globalJITContext.mu.Lock()
+	defer globalJITContext.mu.Unlock()
+
+	if methodHandle < 0 || methodHandle >= len(globalJITContext.objects) {
+		return 0
+	}
+	obj := globalJITContext.objects[methodHandle]
+	if obj == nil {
+		return 0
+	}
+
+	wrapper, ok := obj.(*MethodWrapper)
+	if !ok {
+		return 0
+	}
+
+	// Build arguments: receiver + additional args
+	args := make([]objects.Object, numArgs+1)
+	args[0] = wrapper.Receiver
+	for i := 0; i < numArgs; i++ {
+		args[i+1] = &objects.Int{Value: argsSlice[i]}
+	}
+
+	// Call the method
+	result := wrapper.Method.Fn(args...)
+
+	// Convert result to int64
+	switch r := result.(type) {
+	case *objects.Int:
+		return r.Value
+	case *objects.Bool:
+		if r.Value {
+			return 1
+		}
+		return 0
+	default:
+		return 0
+	}
 }
 
 // CanExecuteNativelyWithObjects checks if a function can be executed natively with object support

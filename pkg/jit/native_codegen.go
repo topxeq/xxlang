@@ -50,6 +50,16 @@ func NewNativeCodeGenerator() *NativeCodeGenerator {
 	}
 }
 
+// NewNativeCodeGeneratorWithCallbacks creates a code generator with callback pointers set up
+func NewNativeCodeGeneratorWithCallbacks() *NativeCodeGenerator {
+	cg := NewNativeCodeGenerator()
+	cg.builtinCallbackPtr = GetBuiltinCallbackPtr()
+	cg.functionCallbackPtr = GetFunctionCallbackPtr()
+	cg.collectionCallbackPtr = GetCollectionCallbackPtr()
+	cg.objectCallbackPtr = GetObjectCallbackPtr()
+	return cg
+}
+
 // SetBuiltinCallback sets the callback pointer for builtin calls
 func (cg *NativeCodeGenerator) SetBuiltinCallback(ptr uintptr) {
 	cg.builtinCallbackPtr = ptr
@@ -649,62 +659,106 @@ func (cg *NativeCodeGenerator) compileStoreLocal(src, localIdx int) {
 }
 
 // compileTailCall handles tail calls
-// For self-recursive tail calls, we could jump back to function entry
-// But for cross-function tail calls, we need to call the other function
-// Since we can't distinguish at compile time, we return the call info
-// and let the native executor dispatch to the correct function
+// For self-recursive tail calls, we jump back to function entry
+// For cross-function tail calls, we use the callback mechanism
 func (cg *NativeCodeGenerator) compileTailCall(funcReg, numArgs int) {
-	// For now, treat tail call same as regular call
-	// The function result is already in RAX (return register)
-	// Arguments are in R0-R7
+	// Tail call optimization: instead of calling and returning,
+	// we jump directly to the target function's entry point.
+	// This saves stack space and enables efficient recursion.
 
-	// We need to:
-	// 1. Load arguments to R0-R7 (they should already be there)
-	// 2. Call the function in funcReg (via bridge callback)
-	// 3. Return the result
+	// For self-recursive tail calls (funcReg typically < 8 and points to self):
+	// Jump back to function entry point after moving arguments.
 
-	// For tail call, after the call returns, we return immediately
-	// So we can emit: call the function, then return
+	// For cross-function tail calls:
+	// We need to dispatch via callback since we don't know the target at compile time.
 
-	// Since we don't have a proper callback mechanism yet,
-	// use the same approach as compileCall
-	// This will need to be enhanced with proper callback support
+	// Check if we have a function callback pointer
+	if cg.functionCallbackPtr != 0 {
+		// Use callback for tail call dispatch
+		// This is safer and handles both self-recursive and cross-function calls
 
-	// For self-recursive tail calls, we can optimize by jumping back
-	// But for simplicity, let's use the call approach for now
+		// Push globals pointer (rdi) to stack
+		cg.emitBytes([]byte{0x57}) // push rdi
 
-	// Store current RAX (which might be the function to call) to a temp
-	// Then call via the bridge
+		// Spill args to stack for callback
+		baseOffset := int32(640) // Use different offset than compileCall
 
-	// Actually, for tail calls the function pointer is in a register
-	// We can't easily call it from native code without a callback
+		// Spill R0 (RAX) to [rbp - baseOffset]
+		cg.emitBytes([]byte{0x48, 0x89, 0x85}) // mov [rbp + disp32], rax
+		cg.emitUint32(uint32(-baseOffset))
 
-	// For now, just emit epilogue and return
-	// The VM will handle the call
+		if numArgs >= 2 {
+			cg.emitBytes([]byte{0x48, 0x89, 0x9D}) // mov [rbp + disp32], rbx
+			cg.emitUint32(uint32(-(baseOffset + 8)))
+		}
+		if numArgs >= 3 {
+			cg.emitBytes([]byte{0x48, 0x89, 0x8D}) // mov [rbp + disp32], rcx
+			cg.emitUint32(uint32(-(baseOffset + 16)))
+		}
+		if numArgs >= 4 {
+			cg.emitBytes([]byte{0x48, 0x89, 0x95}) // mov [rbp + disp32], rdx
+			cg.emitUint32(uint32(-(baseOffset + 24)))
+		}
+		if numArgs >= 5 {
+			cg.emitBytes([]byte{0x4C, 0x89, 0x85}) // mov [rbp + disp32], r8
+			cg.emitUint32(uint32(-(baseOffset + 32)))
+		}
+		if numArgs >= 6 {
+			cg.emitBytes([]byte{0x4C, 0x89, 0x8D}) // mov [rbp + disp32], r9
+			cg.emitUint32(uint32(-(baseOffset + 40)))
+		}
+		if numArgs >= 7 {
+			cg.emitBytes([]byte{0x4C, 0x89, 0x95}) // mov [rbp + disp32], r10
+			cg.emitUint32(uint32(-(baseOffset + 48)))
+		}
+		if numArgs >= 8 {
+			cg.emitBytes([]byte{0x4C, 0x89, 0x9D}) // mov [rbp + disp32], r11
+			cg.emitUint32(uint32(-(baseOffset + 56)))
+		}
 
-	// Simplest approach: emit a jump back to function entry
-	// This works ONLY for self-recursive tail calls
-	// For cross-function tail calls, this will loop infinitely
-	// We need to detect cross-function calls and handle them differently
+		// Set up callback arguments (System V AMD64 ABI):
+		//   rdi = funcReg
+		//   rsi = numArgs
+		//   rdx = args pointer
+		cg.emitBytes([]byte{0x48, 0xC7, 0xC7}) // mov rdi, imm32
+		cg.emitUint32(uint32(funcReg))
 
-	// Let's check if this is likely a self-recursive call
-	// If funcReg is in the first few registers (0-7), it might be a closure
-	// If funcReg >= 8, it's likely loaded from somewhere
+		cg.emitBytes([]byte{0x48, 0xC7, 0xC6}) // mov rsi, imm32
+		cg.emitUint32(uint32(numArgs))
 
-	// For safety, let's just emit a proper tail call that works for both:
-	// Move arguments to R0-R7, then call the function in funcReg
+		cg.emitBytes([]byte{0x48, 0x8D, 0x95}) // lea rdx, [rbp + disp32]
+		cg.emitUint32(uint32(-baseOffset))
 
-	// Since native-to-native calls require a callback mechanism,
-	// let's use the epilogue + return approach
-	// The result is already in the return register
+		// Call the function callback
+		cg.emitBytes([]byte{0x48, 0xB8}) // mov rax, imm64
+		cg.emitUint64(uint64(cg.functionCallbackPtr))
+		cg.emitBytes([]byte{0xFF, 0xD0}) // call rax
 
-	// Actually, for tail calls the caller expects us to NOT return to them
-	// So we should just return the result after the call
+		// Result is in RAX - this is our return value
+		// Restore globals pointer and return
+		cg.emitBytes([]byte{0x5F}) // pop rdi
 
-	// For now, emit epilogue and return
-	// The caller (VM) will see the return and continue
+		// Emit epilogue and return
+		cg.emitEpilogue()
+	} else {
+		// Fallback: for self-recursive calls, jump to function entry
+		// This assumes the function is self-recursive, which is common for tail calls
+		// WARNING: This will infinite loop for cross-function tail calls!
 
-	cg.emitEpilogue()
+		// Move arguments to proper registers (they should already be in place)
+		// Then jump to function entry
+
+		// Calculate relative offset to function entry
+		if cg.funcEntry > 0 {
+			// jmp to function entry
+			offset := int32(cg.funcEntry - (len(cg.code) + 5))
+			cg.emitBytes([]byte{0xE9}) // jmp rel32
+			cg.emitUint32(uint32(offset))
+		} else {
+			// No entry point saved, just return
+			cg.emitEpilogue()
+		}
+	}
 }
 
 // compileCall handles function calls by calling back to Go

@@ -91,6 +91,62 @@ TEXT ·callNativeWithArgs(SB), 4, $0-48
     POPQ BP
     RET
 
+// func callNativeWithArgs8(entry uintptr, globals *int64, args *int64) int64
+// Calls native code with 8 arguments passed via args pointer
+// Stack layout:
+//   entry at +0(FP), globals at +8(FP), args at +16(FP), result at +24(FP)
+// Arguments are loaded from args array into VM registers:
+//   args[0] -> RAX (VM reg 0)
+//   args[1] -> RBX (VM reg 1)
+//   args[2] -> RCX (VM reg 2)
+//   args[3] -> RDX (VM reg 3)
+//   args[4] -> R8  (VM reg 4)
+//   args[5] -> R9  (VM reg 5)
+//   args[6] -> R10 (VM reg 6)
+//   args[7] -> R11 (VM reg 7)
+TEXT ·callNativeWithArgs8(SB), 4, $0-32
+    // Save callee-saved registers
+    PUSHQ BP
+    MOVQ SP, BP
+    // We need to save all registers we'll use
+    PUSHQ BX
+    PUSHQ R12
+    PUSHQ R13
+    PUSHQ R14
+    PUSHQ R15
+
+    // Read entry point and globals
+    MOVQ entry+0(FP), R15   // Entry point (save in R15)
+    MOVQ globals+8(FP), DI  // Globals pointer
+
+    // Load args pointer
+    MOVQ args+16(FP), R14   // args pointer
+
+    // Load all 8 arguments into VM registers
+    MOVQ 0(R14), AX         // args[0] -> RAX (VM reg 0)
+    MOVQ 8(R14), BX         // args[1] -> RBX (VM reg 1)
+    MOVQ 16(R14), CX        // args[2] -> RCX (VM reg 2)
+    MOVQ 24(R14), DX        // args[3] -> RDX (VM reg 3)
+    MOVQ 32(R14), R8        // args[4] -> R8  (VM reg 4)
+    MOVQ 40(R14), R9        // args[5] -> R9  (VM reg 5)
+    MOVQ 48(R14), R10       // args[6] -> R10 (VM reg 6)
+    MOVQ 56(R14), R11       // args[7] -> R11 (VM reg 7)
+
+    // Call the native code (entry in R15)
+    CALL R15
+
+    // Result is now in AX
+    MOVQ AX, ret+24(FP)
+
+    // Restore callee-saved registers
+    POPQ R15
+    POPQ R14
+    POPQ R13
+    POPQ R12
+    POPQ BX
+    POPQ BP
+    RET
+
 // func callBuiltinCallback(callback uintptr, builtinIdx, numArgs int, argsPtr *int64) int64
 // Calls a Go callback for builtin functions from native code
 // Stack layout:
@@ -214,12 +270,12 @@ TEXT ·callCollectionCallback(SB), 4, $0-40
     POPQ BP
     RET
 
-// func callObjectCallback(callback uintptr, opKind, numArgs int, argsPtr *int64, nameIdx int) int64
-// Calls a Go callback for object operations from native code
-// Stack layout:
-//   callback at +0(FP), opKind at +8(FP), numArgs at +16(FP)
-//   argsPtr at +24(FP), nameIdx at +32(FP), result at +40(FP)
-TEXT ·callObjectCallback(SB), 4, $0-48
+// Callback wrappers that convert from System V ABI to Go calling convention
+// These are the actual callbacks that native code calls
+
+// func builtinCallbackWrapper(builtinIdx int64, numArgs int64, argsPtr *int64) int64
+// Called from native code with System V ABI args: DI=builtinIdx, SI=numArgs, DX=argsPtr
+TEXT ·builtinCallbackWrapper(SB), 4, $0-32
     // Save callee-saved registers
     PUSHQ BP
     MOVQ SP, BP
@@ -229,26 +285,131 @@ TEXT ·callObjectCallback(SB), 4, $0-48
     PUSHQ R14
     PUSHQ R15
 
-    // Read callback pointer
-    MOVQ callback+0(FP), R15  // Callback function pointer
+    // Arguments are already in DI, SI, DX (System V ABI)
+    // We need to convert to Go ABI (stack-based for Go 1.17+, but let's use the Go function)
 
-    // Set up arguments for Go callback (System V ABI):
-    //   RDI = opKind
-    //   RSI = numArgs
-    //   RDX = argsPtr
-    //   RCX = nameIdx
-    MOVQ opKind+8(FP), DI
-    MOVQ numArgs+16(FP), SI
-    MOVQ argsPtr+24(FP), DX
-    MOVQ nameIdx+32(FP), CX
+    // Call the Go function CallBuiltinFromNative
+    // Move args to appropriate locations for Go call
+    MOVQ DI, AX        // builtinIdx
+    MOVQ SI, BX        // numArgs
+    MOVQ DX, CX        // argsPtr
 
-    // Call the Go callback
-    CALL R15
+    // Allocate stack space for Go call (Go passes args on stack in some cases)
+    SUBQ $32, SP
+    MOVQ AX, 0(SP)     // builtinIdx
+    MOVQ BX, 8(SP)     // numArgs
+    MOVQ CX, 16(SP)    // argsPtr
 
-    // Result is now in AX
-    MOVQ AX, ret+40(FP)
+    CALL ·CallBuiltinFromNative(SB)
+
+    // Result is in AX
+    ADDQ $32, SP
+    MOVQ AX, ret+24(FP)
 
     // Restore callee-saved registers
+    POPQ R15
+    POPQ R14
+    POPQ R13
+    POPQ R12
+    POPQ BX
+    POPQ BP
+    RET
+
+// func functionCallbackWrapper(funcReg int64, numArgs int64, argsPtr *int64) int64
+// Called from native code with System V ABI args: DI=funcReg, SI=numArgs, DX=argsPtr
+TEXT ·functionCallbackWrapper(SB), 4, $0-32
+    PUSHQ BP
+    MOVQ SP, BP
+    PUSHQ BX
+    PUSHQ R12
+    PUSHQ R13
+    PUSHQ R14
+    PUSHQ R15
+
+    MOVQ DI, AX
+    MOVQ SI, BX
+    MOVQ DX, CX
+
+    SUBQ $32, SP
+    MOVQ AX, 0(SP)
+    MOVQ BX, 8(SP)
+    MOVQ CX, 16(SP)
+
+    CALL ·CallFunctionFromNative(SB)
+
+    ADDQ $32, SP
+    MOVQ AX, ret+24(FP)
+
+    POPQ R15
+    POPQ R14
+    POPQ R13
+    POPQ R12
+    POPQ BX
+    POPQ BP
+    RET
+
+// func collectionCallbackWrapper(opKind int64, numArgs int64, argsPtr *int64) int64
+// Called from native code with System V ABI args: DI=opKind, SI=numArgs, DX=argsPtr
+TEXT ·collectionCallbackWrapper(SB), 4, $0-32
+    PUSHQ BP
+    MOVQ SP, BP
+    PUSHQ BX
+    PUSHQ R12
+    PUSHQ R13
+    PUSHQ R14
+    PUSHQ R15
+
+    MOVQ DI, AX
+    MOVQ SI, BX
+    MOVQ DX, CX
+
+    SUBQ $32, SP
+    MOVQ AX, 0(SP)
+    MOVQ BX, 8(SP)
+    MOVQ CX, 16(SP)
+
+    CALL ·CallCollectionFromNative(SB)
+
+    ADDQ $32, SP
+    MOVQ AX, ret+24(FP)
+
+    POPQ R15
+    POPQ R14
+    POPQ R13
+    POPQ R12
+    POPQ BX
+    POPQ BP
+    RET
+
+// func objectCallbackWrapper(opKind int64, numArgs int64, argsPtr *int64, nameIdx int64) int64
+// Called from native code with System V ABI args: DI=opKind, SI=numArgs, DX=argsPtr, CX=nameIdx
+TEXT ·objectCallbackWrapper(SB), 4, $0-40
+    PUSHQ BP
+    MOVQ SP, BP
+    PUSHQ BX
+    PUSHQ R12
+    PUSHQ R13
+    PUSHQ R14
+    PUSHQ R15
+
+    // Save nameIdx (in CX) before we use it
+    MOVQ CX, R12        // nameIdx
+
+    MOVQ DI, AX         // opKind
+    MOVQ SI, BX         // numArgs
+    // DX already has argsPtr
+
+    SUBQ $40, SP
+    MOVQ AX, 0(SP)
+    MOVQ BX, 8(SP)
+    MOVQ DX, 16(SP)
+    MOVQ R12, 24(SP)    // nameIdx
+
+    CALL ·CallObjectFromNative(SB)
+
+    ADDQ $40, SP
+    MOVQ AX, ret+32(FP)
+
     POPQ R15
     POPQ R14
     POPQ R13

@@ -55,34 +55,38 @@ func TestIterativeFibNoStack(t *testing.T) {
 	emit := func(b ...byte) { code = append(code, b...) }
 
 	// Check base case: n <= 1
+	// For n <= 1, fib(n) = n, so we return rdi directly
 	emit(0x48, 0x89, 0xF8)             // mov rax, rdi
 	emit(0x48, 0x83, 0xF8, 0x01)       // cmp rax, 1
 	jleOffset := len(code)
-	emit(0x7E, 0x00)                   // jle (placeholder)
+	emit(0x7E, 0x00)                   // jle base_case (placeholder)
 
 	// Initialize: a=0, b=1, i=2
-	emit(0x48, 0x31, 0xC9)             // xor rcx, rcx
-	emit(0x48, 0xC7, 0xC2, 0x01, 0x00, 0x00, 0x00) // mov rdx, 1
-	emit(0x49, 0xC7, 0xC0, 0x02, 0x00, 0x00, 0x00) // mov r8, 2
+	emit(0x48, 0x31, 0xC9)             // xor rcx, rcx (a = 0)
+	emit(0x48, 0xC7, 0xC2, 0x01, 0x00, 0x00, 0x00) // mov rdx, 1 (b = 1)
+	emit(0x49, 0xC7, 0xC0, 0x02, 0x00, 0x00, 0x00) // mov r8, 2 (i = 2)
 
 	// Loop start
 	loopStart := len(code)
-	emit(0x48, 0x89, 0xC8)             // mov rax, rcx
-	emit(0x48, 0x01, 0xD0)             // add rax, rdx
-	emit(0x48, 0x89, 0xD1)             // mov rcx, rdx
-	emit(0x48, 0x89, 0xC2)             // mov rdx, rax
-	emit(0x49, 0xFF, 0xC0)             // inc r8
-	emit(0x4C, 0x39, 0xC7)             // cmp rdi, r8
+	emit(0x48, 0x89, 0xC8)             // mov rax, rcx (temp = a)
+	emit(0x48, 0x01, 0xD0)             // add rax, rdx (temp = a + b)
+	emit(0x48, 0x89, 0xD1)             // mov rcx, rdx (a = b)
+	emit(0x48, 0x89, 0xC2)             // mov rdx, rax (b = temp)
+	emit(0x49, 0xFF, 0xC0)             // inc r8 (i++)
+	emit(0x4C, 0x39, 0xC7)             // cmp rdi, r8 (compare n with i)
 	jgeOffset := len(code)
-	emit(0x7D, 0x00)                   // jge (placeholder)
+	emit(0x7D, 0x00)                   // jge loop (placeholder)
 
-	// Done: return b
-	doneOffset := len(code)
-	emit(0x48, 0x89, 0xD0)             // mov rax, rdx
+	// Done (n > 1): return b in rdx
+	emit(0x48, 0x89, 0xD0)             // mov rax, rdx (return b)
 	emit(0xC3)                         // ret
 
+	// Base case (n <= 1): return n (already in rax)
+	baseCaseOffset := len(code)
+	emit(0xC3)                         // ret (rax already contains n)
+
 	// Fix up jumps
-	jleRel := int8(doneOffset - (jleOffset + 2))
+	jleRel := int8(baseCaseOffset - (jleOffset + 2))
 	code[jleOffset+1] = byte(jleRel)
 
 	jgeRel := int8(loopStart - (jgeOffset + 2))
@@ -90,7 +94,7 @@ func TestIterativeFibNoStack(t *testing.T) {
 
 	t.Logf("Code length: %d bytes", len(code))
 	t.Logf("Code: %x", code)
-	t.Logf("jle at %d: target=%d, rel=%d", jleOffset, doneOffset, jleRel)
+	t.Logf("jle at %d: target=%d, rel=%d", jleOffset, baseCaseOffset, jleRel)
 	t.Logf("jge at %d: target=%d, rel=%d", jgeOffset, loopStart, jgeRel)
 
 	jit := NewJITCompiler(config)
@@ -139,27 +143,31 @@ func TestIterativeFibPerformance(t *testing.T) {
 	var code []byte
 	emit := func(b ...byte) { code = append(code, b...) }
 
-	emit(0x48, 0x89, 0xF8)
-	emit(0x48, 0x83, 0xF8, 0x01)
+	// Check base case: n <= 1
+	emit(0x48, 0x89, 0xF8)             // mov rax, rdi
+	emit(0x48, 0x83, 0xF8, 0x01)       // cmp rax, 1
 	jleOffset := len(code)
-	emit(0x7E, 0x00)
-	emit(0x48, 0x31, 0xC9)
-	emit(0x48, 0xC7, 0xC2, 0x01, 0x00, 0x00, 0x00)
-	emit(0x49, 0xC7, 0xC0, 0x02, 0x00, 0x00, 0x00)
-	loopStart := len(code)
-	emit(0x48, 0x89, 0xC8)
-	emit(0x48, 0x01, 0xD0)
-	emit(0x48, 0x89, 0xD1)
-	emit(0x48, 0x89, 0xC2)
-	emit(0x49, 0xFF, 0xC0)
-	emit(0x4C, 0x39, 0xC7)
-	jgeOffset := len(code)
-	emit(0x7D, 0x00)
-	doneOffset := len(code)
-	emit(0x48, 0x89, 0xD0)
-	emit(0xC3)
+	emit(0x7E, 0x00)                   // jle base_case
 
-	code[jleOffset+1] = byte(int8(doneOffset - (jleOffset + 2)))
+	// Initialize: a=0, b=1, i=2
+	emit(0x48, 0x31, 0xC9)             // xor rcx, rcx
+	emit(0x48, 0xC7, 0xC2, 0x01, 0x00, 0x00, 0x00) // mov rdx, 1
+	emit(0x49, 0xC7, 0xC0, 0x02, 0x00, 0x00, 0x00) // mov r8, 2
+	loopStart := len(code)
+	emit(0x48, 0x89, 0xC8)             // mov rax, rcx
+	emit(0x48, 0x01, 0xD0)             // add rax, rdx
+	emit(0x48, 0x89, 0xD1)             // mov rcx, rdx
+	emit(0x48, 0x89, 0xC2)             // mov rdx, rax
+	emit(0x49, 0xFF, 0xC0)             // inc r8
+	emit(0x4C, 0x39, 0xC7)             // cmp rdi, r8
+	jgeOffset := len(code)
+	emit(0x7D, 0x00)                   // jge loop
+	emit(0x48, 0x89, 0xD0)             // mov rax, rdx
+	emit(0xC3)                         // ret
+	baseCaseOffset := len(code)
+	emit(0xC3)                         // ret (rax already contains n)
+
+	code[jleOffset+1] = byte(int8(baseCaseOffset - (jleOffset + 2)))
 	code[jgeOffset+1] = byte(int8(loopStart - (jgeOffset + 2)))
 
 	jit := NewJITCompiler(config)
