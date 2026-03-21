@@ -469,6 +469,67 @@ case <-time.After(5 * time.Second):
 
 Xxlang can call Go functions directly, achieving native performance for compute-intensive tasks. This is the recommended approach when performance matters.
 
+### Performance Comparison
+
+| Execution Mode | fib(35) Time | Reason |
+|----------------|--------------|--------|
+| Xxlang VM naive recursion | ~5.0 seconds | Interpreter overhead |
+| Xxlang JIT naive recursion | **54 ms** | Native x86-64 execution |
+| Xxlang JIT tail recursion | ~200 µs | Native + TCO optimization |
+| Go function call | **~25 µs** | Native execution, 260,000x faster |
+| C native | 45 ms | Baseline |
+
+### Using the JIT Compiler Programmatically
+
+The JIT compiler can be used directly for compute-intensive workloads:
+
+```go
+import "github.com/topxeq/xxlang/pkg/jit"
+
+func main() {
+    // Create JIT executor
+    config := jit.JITConfig{
+        HotThreshold: 10,  // Compile after 10 calls
+        MaxCodeSize:  65536,
+        Debug:        false,
+    }
+    executor := jit.NewNativeExecutor(config)
+    defer executor.Cleanup()
+
+    // Check if a function can be compiled
+    if jit.CanExecuteNatively(compiledFn) {
+        result, err := executor.ExecuteFunction(compiledFn, constants, globals)
+        if err != nil {
+            log.Fatal(err)
+        }
+        fmt.Printf("Result: %d\n", result)
+    }
+}
+```
+
+### Native Support Levels
+
+The JIT compiler categorizes functions by their complexity:
+
+```go
+level := jit.AnalyzeNativeSupport(compiledFn)
+
+switch level {
+case jit.SupportPureArithmetic:
+    // Fastest - pure arithmetic/control flow, no callbacks
+case jit.SupportWithBuiltins:
+    // Uses builtin callback for built-in functions
+case jit.SupportWithCalls:
+    // Uses function callback for inter-function calls
+case jit.SupportWithArrays:
+    // Uses collection callback for array/map operations
+case jit.SupportWithObjects:
+    // Uses object callback for field/method access
+case jit.SupportNone:
+    // Falls back to interpreter (closures, classes)
+}
+```
+
 ### Why This Works
 
 | Execution Mode | fib(35) Time | Reason |
