@@ -17,7 +17,9 @@ func getWASMPath(t *testing.T) string {
 	paths := []string{
 		"testdata/target/wasm32-unknown-unknown/release/testplugin.wasm",
 		"../plugin/testdata/target/wasm32-unknown-unknown/release/testplugin.wasm",
-		"../../examples/wasm_plugin/plugin/fib.wasm",
+		"../../examples/wasm_plugin/plugin/testplugin.wasm",
+		// fib.wasm is located in _wasm_sources directory
+		"../../examples/_wasm_sources/fib.wasm",
 	}
 
 	for _, p := range paths {
@@ -1323,9 +1325,53 @@ func TestWrapFunctionDefaultCase(t *testing.T) {
 
 // TestWrapFunctionTwoArgsNoResult tests two-arg function returning no result
 func TestWrapFunctionTwoArgsNoResult(t *testing.T) {
-	// This tests the "function returned no result" path for two-arg functions
-	// We can't easily trigger this without a special WASM module, so we skip
-	t.Skip("Cannot test without a WASM module that returns no results")
+	// Load the noresult.wasm plugin that has a function with no return
+	paths := []string{
+		"../../examples/_wasm_sources/noresult.wasm",
+	}
+
+	var wasmPath string
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			abs, _ := filepath.Abs(p)
+			wasmPath = abs
+			break
+		}
+	}
+
+	if wasmPath == "" {
+		t.Skip("noresult.wasm not found")
+	}
+
+	plugin, err := loadPluginWASM(wasmPath)
+	if err != nil {
+		t.Fatalf("Failed to load WASM plugin: %v", err)
+	}
+	defer closePlugin(plugin)
+
+	exports := plugin.Exports()
+
+	// Get the no_result function which has 2 args but no return
+	noResultFn, ok := exports["no_result"]
+	if !ok {
+		t.Fatal("Expected 'no_result' export")
+	}
+
+	builtin, ok := noResultFn.(*objects.Builtin)
+	if !ok {
+		t.Fatalf("Expected builtin function, got %T", noResultFn)
+	}
+
+	// Call the function - it should return an error because the function returns no result
+	result := builtin.Fn(&objects.Int{Value: 10}, &objects.Int{Value: 20})
+	errResult, ok := result.(*objects.Error)
+	if !ok {
+		t.Fatalf("Expected error result, got %T", result)
+	}
+
+	if errResult.Message != "function returned no result" {
+		t.Errorf("Expected 'function returned no result' error, got: %s", errResult.Message)
+	}
 }
 
 // TestReadStringFromMemory2Invalid tests readStringFromMemory2 with invalid read

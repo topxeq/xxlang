@@ -110,7 +110,7 @@ func (p *WasmPlugin) wrapFunction(fn api.Function, name string) *objects.Builtin
 
 			case "call_add", "call_sub", "call_mul", "call_div",
 				"call_gcd", "call_lcm", "call_pow", "call_max", "call_min",
-				"call_binomial":
+				"call_binomial", "call_no_result":
 				// Two int64 arguments, single int64 result
 				if len(args) != 2 {
 					return &objects.Error{Message: fmt.Sprintf("%s requires 2 arguments", name)}

@@ -250,13 +250,6 @@ func TestFibJITPerformance(t *testing.T) {
 	})
 }
 
-// TestFibonacciDirect tests direct execution of JIT-compiled Fibonacci
-// This test creates a standalone function that computes fib(n) where n is embedded in the code
-func TestFibonacciDirect(t *testing.T) {
-	// Skip this test as it requires proper argument passing
-	t.Skip("Direct JIT execution requires proper argument passing through VM")
-}
-
 // TestAnalyzeFunction tests the function analysis
 func TestAnalyzeFunction(t *testing.T) {
 	// Create a test function with recursive calls

@@ -23,6 +23,9 @@ func getWasmPluginPath(t *testing.T, name string) string {
 		filepath.Join("examples", "wasm_plugin", "plugin", name+".wasm"),
 		filepath.Join("..", "..", "examples", "wasm_plugin", "plugin", name+".wasm"),
 		filepath.Join("testdata", "target", "wasm32-unknown-unknown", "release", name+".wasm"),
+		// fib.wasm is located in _wasm_sources directory
+		filepath.Join("examples", "_wasm_sources", name+".wasm"),
+		filepath.Join("..", "..", "examples", "_wasm_sources", name+".wasm"),
 	}
 
 	for _, p := range paths {
