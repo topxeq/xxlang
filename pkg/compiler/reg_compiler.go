@@ -1804,16 +1804,57 @@ func (c *RegCompiler) compileTailCall(n *parser.CallExpression) (int, error) {
 	}
 
 	// Check if this is a method call
-	if _, ok := n.Function.(*parser.DotExpression); ok {
-		// Method calls need special handling for TCO
-		// For now, fall back to normal call + return
-		// TODO: Implement method TCO
-		valReg, err := c.compileCallExpression(n)
+	if dot, ok := n.Function.(*parser.DotExpression); ok {
+		// Method tail call optimization
+		// Compile the object
+		objReg, err := c.Compile(dot.Object)
 		if err != nil {
 			return 0, err
 		}
-		c.emitRegReturn(valReg)
-		c.freeTempReg(valReg)
+		if objReg == ReturnRegister {
+			tempReg := c.allocTempReg()
+			c.emitRegMove(tempReg, objReg)
+			objReg = tempReg
+		}
+
+		// Compile arguments to temporary registers
+		argRegs := make([]int, len(n.Arguments))
+		for i, arg := range n.Arguments {
+			argReg, err := c.Compile(arg)
+			if err != nil {
+				return 0, err
+			}
+			if argReg == ReturnRegister {
+				tempReg := c.allocTempReg()
+				c.emitRegMove(tempReg, argReg)
+				argReg = tempReg
+			}
+			argRegs[i] = argReg
+		}
+
+		// Move arguments to R0-R7
+		for i, argReg := range argRegs {
+			if argReg != i {
+				c.emitRegMove(i, argReg)
+			}
+		}
+
+		// Free temporary registers
+		for i := len(argRegs) - 1; i >= 0; i-- {
+			if argRegs[i] >= FirstLocalRegister {
+				c.freeTempReg(argRegs[i])
+			}
+		}
+
+		// Get method name constant
+		nameIdx := c.addConstant(objects.InternString(dot.Property.Value))
+
+		// Emit tail call method instruction
+		c.emitRegTailCallMethod(objReg, nameIdx, len(n.Arguments))
+		if objReg >= FirstLocalRegister {
+			c.freeTempReg(objReg)
+		}
+
 		return 0, nil
 	}
 
@@ -2885,6 +2926,17 @@ func (c *RegCompiler) emitRegCallMethod(objReg, nameIdx, numArgs int) {
 	// Format: OpRegCallMethod obj name_idx_hi name_idx_lo num_args
 	c.instructions = append(c.instructions,
 		byte(OpRegCallMethod),
+		byte(objReg),
+		byte(nameIdx>>8),
+		byte(nameIdx),
+		byte(numArgs),
+	)
+}
+
+func (c *RegCompiler) emitRegTailCallMethod(objReg, nameIdx, numArgs int) {
+	// Format: OpRegTailCallMethod obj name_idx_hi name_idx_lo num_args
+	c.instructions = append(c.instructions,
+		byte(OpRegTailCallMethod),
 		byte(objReg),
 		byte(nameIdx>>8),
 		byte(nameIdx),

@@ -496,6 +496,9 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 	case compiler.OpRegTailCall:
 		return vm.handleRegTailCall(frame, code)
 
+	case compiler.OpRegTailCallMethod:
+		return vm.handleRegTailCallMethod(frame, code)
+
 	case compiler.OpRegBuiltin:
 		builtinIdx, numArgs := DecodeReg2(code, frame.IP)
 		frame.IP += 3
@@ -2689,6 +2692,256 @@ func (vm *RegVM) handleRegTailCall(frame *RegFrame, code []byte) error {
 		}
 	} else {
 		frame.Locals = make([]Value, targetFn.NumLocals)
+	}
+
+	return nil
+}
+
+// handleRegTailCallMethod handles tail call optimization for method calls
+// Instead of creating a new frame, it reuses the current frame
+func (vm *RegVM) handleRegTailCallMethod(frame *RegFrame, code []byte) error {
+	// Format: OpRegTailCallMethod obj name_idx_hi name_idx_lo num_args
+	regs := &frame.Registers
+
+	objReg := int(code[frame.IP+1])
+	nameIdx := int(code[frame.IP+2])<<8 | int(code[frame.IP+3])
+	numArgs := int(code[frame.IP+4])
+
+	obj := regs[objReg].ToObject()
+
+	// Get the method name from object constants
+	nameObj := vm.objConstants[nameIdx]
+	name, ok := nameObj.(*objects.String)
+	if !ok {
+		return fmt.Errorf("method name is not a string")
+	}
+
+	var method objects.Object
+	var definingClass *objects.Class
+	var isMapFunctionValue bool
+
+	// Find the method (same logic as OpRegCallMethod)
+	if instance, ok := obj.(*objects.Instance); ok {
+		class := instance.Class
+		nameHash := hashName(name.Value)
+
+		// Check cache first
+		cached := vm.inlineCache.Get(objects.TagInstance, class, nameHash)
+		if cached != nil && cached.ResultType == CacheResultMethod {
+			method = cached.Method
+			definingClass = cached.DefiningClass
+		} else {
+			// Cache miss - find method
+			method, definingClass = vm.findMethod(class, name.Value)
+			if method == nil {
+				return fmt.Errorf("method '%s' not found in class", name.Value)
+			}
+			vm.inlineCache.Set(objects.TagInstance, class, nameHash, CacheResultMethod, method, -1, definingClass)
+		}
+	} else if mapObj, ok := obj.(*objects.Map); ok {
+		key := objects.NewString(name.Value)
+		if pair, found := mapObj.Pairs[key.HashKey()]; found {
+			method = pair.Value
+			isMapFunctionValue = true
+		} else {
+			typeTag := objects.TagMap
+			nameHash := hashName(name.Value)
+
+			cached := vm.inlineCache.Get(typeTag, nil, nameHash)
+			if cached != nil && cached.ResultType == CacheResultMapMethod {
+				method = cached.Method
+			} else {
+				var methodFound bool
+				method, methodFound = objects.GetMethod(objects.MapType, name.Value)
+				if !methodFound {
+					return fmt.Errorf("method '%s' not found on Map", name.Value)
+				}
+				vm.inlineCache.Set(typeTag, nil, nameHash, CacheResultMapMethod, method, -1, nil)
+			}
+		}
+		_ = mapObj
+	} else if obj.TypeTag() <= objects.TagStringBuilder {
+		typeTag := obj.TypeTag()
+		nameHash := hashName(name.Value)
+
+		cached := vm.inlineCache.Get(typeTag, nil, nameHash)
+		if cached != nil && cached.ResultType == CacheResultPrimitiveMethod {
+			method = cached.Method
+		} else {
+			var methodFound bool
+			method, methodFound = objects.GetMethod(obj.Type(), name.Value)
+			if !methodFound {
+				return fmt.Errorf("cannot call method '%s' on type %s", name.Value, obj.Type())
+			}
+			vm.inlineCache.Set(typeTag, nil, nameHash, CacheResultPrimitiveMethod, method, -1, nil)
+		}
+	} else {
+		return fmt.Errorf("cannot call method '%s' on type %s", name.Value, obj.Type())
+	}
+
+	// Handle the method call with TCO
+	// For map function values, don't add receiver as first argument
+	if isMapFunctionValue {
+		switch fn := method.(type) {
+		case *objects.Builtin:
+			// Builtins don't benefit from TCO, execute normally
+			args := make([]objects.Object, numArgs)
+			for i := 0; i < numArgs; i++ {
+				args[i] = regs[i].ToObject()
+			}
+			result := fn.Fn(args...)
+			regs[compiler.ReturnRegister] = NewObject(result)
+			frame.IP += 5
+			return nil
+		case *compiler.CompiledFunction:
+			return vm.tailCallMethodCompiledFunction(fn, numArgs, frame)
+		case *Closure:
+			return vm.tailCallMethodClosure(fn, numArgs, frame)
+		default:
+			return fmt.Errorf("method '%s' is not callable", name.Value)
+		}
+	}
+
+	// Shift arguments: R0->R1, R1->R2, etc. to make room for receiver in R0
+	for i := numArgs; i > 0; i-- {
+		regs[i] = regs[i-1]
+	}
+	// Put receiver in R0
+	regs[0] = NewObject(obj)
+
+	switch fn := method.(type) {
+	case *objects.Builtin:
+		// Builtins don't benefit from TCO, execute normally
+		args := make([]objects.Object, numArgs+1)
+		for i := 0; i <= numArgs; i++ {
+			args[i] = regs[i].ToObject()
+		}
+		result := fn.Fn(args...)
+		regs[compiler.ReturnRegister] = NewObject(result)
+		frame.IP += 5
+		return nil
+	case *compiler.CompiledFunction:
+		if err := vm.tailCallMethodCompiledFunction(fn, numArgs+1, frame); err != nil {
+			return err
+		}
+		// Set CurrentClass for super resolution in instance methods
+		if definingClass != nil {
+			vm.currentFrame().CurrentClass = definingClass
+		}
+		return nil
+	case *Closure:
+		if err := vm.tailCallMethodClosure(fn, numArgs+1, frame); err != nil {
+			return err
+		}
+		// Set CurrentClass for super resolution in instance methods
+		if definingClass != nil {
+			vm.currentFrame().CurrentClass = definingClass
+		}
+		return nil
+	default:
+		return fmt.Errorf("method '%s' is not callable", name.Value)
+	}
+}
+
+// tailCallMethodCompiledFunction performs TCO for a compiled function method
+func (vm *RegVM) tailCallMethodCompiledFunction(fn *compiler.CompiledFunction, numArgs int, frame *RegFrame) error {
+	regs := &frame.Registers
+
+	if numArgs != fn.NumParameters {
+		return fmt.Errorf("wrong number of arguments: want=%d, got=%d", fn.NumParameters, numArgs)
+	}
+
+	// Save arguments from R0-R7 before resetting registers
+	args := make([]Value, numArgs)
+	for i := 0; i < numArgs; i++ {
+		args[i] = regs[i]
+	}
+
+	// Reset the frame for the new function
+	numRegs := fn.NumRegs
+	if numRegs <= 0 || numRegs > compiler.NumRegisters {
+		numRegs = compiler.NumRegisters
+	}
+	for i := 0; i < numRegs; i++ {
+		frame.Registers[i] = ValueNull
+	}
+
+	// Restore arguments to R0-R7
+	for i := 0; i < numArgs; i++ {
+		frame.Registers[i] = args[i]
+	}
+
+	// Update frame to point to the new function
+	frame.Fn = fn
+	frame.IP = 0
+	frame.FreeVars = nil
+
+	// Allocate locals for the new function
+	if cap(frame.Locals) >= fn.NumLocals {
+		frame.Locals = frame.Locals[:fn.NumLocals]
+		for i := range frame.Locals {
+			frame.Locals[i] = ValueNull
+		}
+	} else {
+		frame.Locals = make([]Value, fn.NumLocals)
+	}
+
+	return nil
+}
+
+// tailCallMethodClosure performs TCO for a closure method
+func (vm *RegVM) tailCallMethodClosure(closure *Closure, numArgs int, frame *RegFrame) error {
+	regs := &frame.Registers
+	fn := closure.Fn
+
+	if numArgs != fn.NumParameters {
+		return fmt.Errorf("wrong number of arguments: want=%d, got=%d", fn.NumParameters, numArgs)
+	}
+
+	// Save arguments from R0-R7 before resetting registers
+	args := make([]Value, numArgs)
+	for i := 0; i < numArgs; i++ {
+		args[i] = regs[i]
+	}
+
+	// Reset the frame for the new function
+	numRegs := fn.NumRegs
+	if numRegs <= 0 || numRegs > compiler.NumRegisters {
+		numRegs = compiler.NumRegisters
+	}
+	for i := 0; i < numRegs; i++ {
+		frame.Registers[i] = ValueNull
+	}
+
+	// Restore arguments to R0-R7
+	for i := 0; i < numArgs; i++ {
+		frame.Registers[i] = args[i]
+	}
+
+	// Update frame to point to the new function
+	frame.Fn = fn
+	frame.IP = 0
+
+	// Set up free variables from closure
+	if closure.FreeVarsValues != nil {
+		frame.FreeVars = closure.FreeVarsValues
+	} else if len(closure.FreeVars) > 0 {
+		frame.FreeVars = make([]Value, len(closure.FreeVars))
+		for i, obj := range closure.FreeVars {
+			frame.FreeVars[i] = NewObject(obj)
+		}
+	} else {
+		frame.FreeVars = nil
+	}
+
+	// Allocate locals for the new function
+	if cap(frame.Locals) >= fn.NumLocals {
+		frame.Locals = frame.Locals[:fn.NumLocals]
+		for i := range frame.Locals {
+			frame.Locals[i] = ValueNull
+		}
+	} else {
+		frame.Locals = make([]Value, fn.NumLocals)
 	}
 
 	return nil

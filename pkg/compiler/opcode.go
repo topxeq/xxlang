@@ -282,7 +282,8 @@ const (
 	OpRegMapSet   // R[dst] = R[map] with R[key] = R[val]
 
 	// Tail call optimization
-	OpRegTailCall // Tail call: reuse current frame instead of creating new one
+	OpRegTailCall       // Tail call: reuse current frame instead of creating new one
+	OpRegTailCallMethod // Tail call method: reuse current frame for method call
 
 	// ============================================================================
 	// LOOP-OPTIMIZED SUPERINSTRUCTIONS
@@ -645,7 +646,8 @@ var definitions = map[Opcode]*Definition{
 	OpRegMapSet:      {"OpRegMapSet", []int{1, 1, 1, 1}},     // dst, map_reg, key_reg, val_reg
 
 	// Tail call optimization
-	OpRegTailCall: {"OpRegTailCall", []int{1, 1}}, // func_reg, num_args
+	OpRegTailCall:       {"OpRegTailCall", []int{1, 1}},                         // func_reg, num_args
+	OpRegTailCallMethod: {"OpRegTailCallMethod", []int{1, 2, 1}}, // obj, name_idx(16-bit), num_args
 
 	// Loop-optimized superinstructions
 	OpRegLoopCountAdd:  {"OpRegLoopCountAdd", []int{1, 1, 2, 2, 2}}, // acc_reg, counter_reg, start, limit, step
