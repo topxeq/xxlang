@@ -1805,6 +1805,81 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 
 		regs[resultReg] = NewInt(sum)
 
+	// Exception handling opcodes
+	// Note: The register VM has limited support for exception handling.
+	// For full try/catch/throw support, use the stack-based interpreter.
+	case compiler.OpRegPushHandler:
+		// Skip the handler setup for now - just advance IP
+		// OpRegPushHandler has 2x2-byte operands (catchAddr, finallyAddr)
+		frame.IP += 5
+
+	case compiler.OpRegPopHandler:
+		// No-op for now
+		frame.IP += 1
+
+	case compiler.OpRegThrow:
+		// Get the value to throw from register
+		src := DecodeReg1(code, frame.IP)
+		frame.IP += 2
+		throwVal := regs[src]
+		// For now, return an error with the thrown value
+		return fmt.Errorf("unhandled throw: %s", throwVal.String())
+
+	case compiler.OpRegClass:
+		// Create a class object
+		dst := DecodeReg1(code, frame.IP)
+		nameIdx := uint16(code[frame.IP+2])<<8 | uint16(code[frame.IP+3])
+		frame.IP += 4
+
+		name := ""
+		if nameIdx < uint16(len(vm.objConstants)) {
+			if str, ok := vm.objConstants[nameIdx].(*objects.String); ok {
+				name = str.Value
+			}
+		}
+
+		// Create a simple class object
+		class := &objects.Class{
+			Name:    name,
+			Methods: make(map[string]objects.Object),
+			Fields:  make(map[string]objects.Object),
+		}
+		regs[dst] = NewObject(class)
+
+	case compiler.OpRegNew:
+		// Create a new instance
+		dst := DecodeReg1(code, frame.IP)
+		classReg := code[frame.IP+2]
+		numArgs := int(code[frame.IP+3])
+		frame.IP += 4
+
+		classVal := regs[classReg]
+		class, ok := classVal.ToObject().(*objects.Class)
+		if !ok {
+			return fmt.Errorf("cannot create instance of non-class")
+		}
+
+		// Create a new instance
+		instance := &objects.Instance{
+			Class:  class,
+			Fields: make(map[string]objects.Object),
+		}
+
+		// Copy default fields
+		for k, v := range class.Fields {
+			instance.Fields[k] = v
+		}
+
+		// Call constructor if exists
+		if init, ok := class.Methods["init"]; ok {
+			// For now, just create the instance without calling init
+			// Full implementation would call init with arguments
+			_ = init
+			_ = numArgs
+		}
+
+		regs[dst] = NewObject(instance)
+
 	default:
 		return fmt.Errorf("unknown register opcode: %d", op)
 	}

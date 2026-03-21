@@ -184,6 +184,18 @@ func (c *RegCompiler) Compile(node parser.Node) (int, error) {
 		return c.compileImportStatement(n)
 	case *parser.ExportStatement:
 		return c.compileExportStatement(n)
+	case *parser.ClassStatement:
+		return c.compileClassStatement(n)
+	case *parser.NewExpression:
+		return c.compileNewExpression(n)
+	case *parser.ThisExpression:
+		return c.compileThisExpression(n)
+	case *parser.SuperCallExpression:
+		return c.compileSuperCallExpression(n)
+	case *parser.TryStatement:
+		return c.compileTryStatement(n)
+	case *parser.ThrowStatement:
+		return c.compileThrowStatement(n)
 	default:
 		return 0, fmt.Errorf("unknown node type: %T", node)
 	}
@@ -3307,4 +3319,212 @@ func (c *RegCompiler) tryUnrollLoop(n *parser.ForStatement) bool {
 	c.freeTempReg(loopVarReg)
 
 	return true
+}
+
+// compileClassStatement compiles a class declaration
+// Note: Classes are complex and the register VM has limited support.
+// This implementation creates a class object using the available opcodes.
+func (c *RegCompiler) compileClassStatement(node *parser.ClassStatement) (int, error) {
+	// For now, create an empty class object
+	// The register VM doesn't fully support classes yet
+	nameIdx := c.addConstant(objects.NewString(node.Name.Value))
+	dst := c.allocTempReg()
+	c.instructions = append(c.instructions, byte(OpRegClass), byte(dst), byte(nameIdx>>8), byte(nameIdx))
+
+	// Store class in global
+	symbol := c.symbolTable.Define(node.Name.Value)
+	c.emitRegStoreGlobal(dst, symbol.Index)
+
+	return dst, nil
+}
+
+// compileNewExpression compiles a new expression
+func (c *RegCompiler) compileNewExpression(node *parser.NewExpression) (int, error) {
+	// Get class
+	symbol, ok := c.symbolTable.Resolve(node.Class.String())
+	if !ok {
+		return 0, fmt.Errorf("undefined class: %s", node.Class.String())
+	}
+
+	classReg := c.allocTempReg()
+	c.emitRegLoadGlobal(classReg, symbol.Index)
+
+	// For simplicity, we limit to 8 arguments in registers
+	if len(node.Arguments) > 8 {
+		c.freeTempReg(classReg)
+		return 0, fmt.Errorf("too many arguments for new expression (max 8)")
+	}
+
+	// Compile arguments
+	argRegs := make([]int, len(node.Arguments))
+	for i, arg := range node.Arguments {
+		reg, err := c.Compile(arg)
+		if err != nil {
+			c.freeTempReg(classReg)
+			return 0, err
+		}
+		argRegs[i] = reg
+	}
+
+	// Create instance - OpRegNew format: dst, class_reg, num_args
+	dst := c.allocTempReg()
+	c.instructions = append(c.instructions, byte(OpRegNew), byte(dst), byte(classReg), byte(len(node.Arguments)))
+
+	// Free temporary registers
+	c.freeTempReg(classReg)
+	for _, r := range argRegs {
+		c.freeTempReg(r)
+	}
+
+	return dst, nil
+}
+
+// compileThisExpression compiles this expression
+func (c *RegCompiler) compileThisExpression(node *parser.ThisExpression) (int, error) {
+	// Load 'this' from local 0 (this is always first local in method context)
+	dst := c.allocTempReg()
+	c.emitRegLoadLocal(dst, 0)
+	return dst, nil
+}
+
+// compileSuperCallExpression compiles a super.method() call
+// Note: Super calls are partially supported in the register VM.
+func (c *RegCompiler) compileSuperCallExpression(node *parser.SuperCallExpression) (int, error) {
+	// For now, return an error - super calls need more work in register VM
+	return 0, fmt.Errorf("super calls are not fully supported in register VM; use stack VM")
+}
+
+// compileTryStatement compiles a try-catch-finally statement
+func (c *RegCompiler) compileTryStatement(node *parser.TryStatement) (int, error) {
+	// Push exception handler with placeholder addresses (2 bytes each)
+	pushHandlerPos := len(c.instructions)
+	c.instructions = append(c.instructions, byte(OpRegPushHandler), 0, 0, 0, 0) // catchAddr (2 bytes), finallyAddr (2 bytes)
+
+	// Compile try block
+	_, err := c.Compile(node.Block)
+	if err != nil {
+		return 0, err
+	}
+
+	// Pop handler after successful try block
+	c.instructions = append(c.instructions, byte(OpRegPopHandler))
+
+	// After try block completes normally, jump past catch
+	var jumpPastCatchPos int = -1
+	if node.Catch != nil {
+		jumpPastCatchPos = len(c.instructions)
+		c.instructions = append(c.instructions, byte(OpRegJump), 0, 0) // Will be patched
+	}
+
+	// Record catch address
+	catchAddr := 0
+	if node.Catch != nil {
+		catchAddr = len(c.instructions)
+
+		// The exception value is in a special register - bind it to the variable
+		symbol := c.symbolTable.Define(node.Catch.Exception.Value)
+		dst := c.allocTempReg()
+		// Exception value comes from VM - store it
+		if symbol.Scope == GlobalScope {
+			c.emitRegStoreGlobal(dst, symbol.Index)
+		} else {
+			c.emitRegStoreLocal(dst, symbol.Index)
+		}
+		c.freeTempReg(dst)
+
+		// Compile catch body
+		_, err = c.Compile(node.Catch.Block)
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	// Record finally address
+	finallyAddr := 0
+	if node.Finally != nil {
+		finallyAddr = len(c.instructions)
+
+		// Compile finally block
+		_, err = c.Compile(node.Finally.Block)
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	// Patch push handler with catch and finally addresses
+	// Addresses are 2 bytes each (big-endian)
+	c.instructions[pushHandlerPos+1] = byte(catchAddr >> 8)
+	c.instructions[pushHandlerPos+2] = byte(catchAddr)
+	c.instructions[pushHandlerPos+3] = byte(finallyAddr >> 8)
+	c.instructions[pushHandlerPos+4] = byte(finallyAddr)
+
+	// Patch jump past catch
+	if jumpPastCatchPos >= 0 {
+		endPos := len(c.instructions)
+		c.instructions[jumpPastCatchPos+1] = byte(endPos >> 8)
+		c.instructions[jumpPastCatchPos+2] = byte(endPos)
+	}
+
+	// Return null for try statement
+	dst := c.allocTempReg()
+	c.emitRegNull(dst)
+	return dst, nil
+}
+
+// compileThrowStatement compiles a throw statement
+func (c *RegCompiler) compileThrowStatement(node *parser.ThrowStatement) (int, error) {
+	// Compile the expression to throw (if present)
+	var errReg int
+	if node.ErrExpr != nil {
+		var err error
+		errReg, err = c.Compile(node.ErrExpr)
+		if err != nil {
+			return 0, err
+		}
+	} else {
+		// Throw null if no expression
+		errReg = c.allocTempReg()
+		c.emitRegNull(errReg)
+	}
+
+	c.instructions = append(c.instructions, byte(OpRegThrow), byte(errReg))
+	c.freeTempReg(errReg)
+
+	// Return null (unreachable, but needed for type consistency)
+	dst := c.allocTempReg()
+	c.emitRegNull(dst)
+	return dst, nil
+}
+
+// compileMethod compiles a method (function with 'this' as first parameter)
+func (c *RegCompiler) compileMethod(method *parser.FunctionLiteral) (int, error) {
+	// Enter new scope for the method
+	c.enterScope()
+
+	// Define 'this' as the first parameter (at local 0)
+	c.symbolTable.Define("this")
+
+	// Define parameters
+	for _, param := range method.Parameters {
+		c.symbolTable.Define(param.Value)
+	}
+
+	// Compile the body
+	_, err := c.Compile(method.Body)
+	if err != nil {
+		c.leaveScope()
+		return 0, err
+	}
+
+	// Leave scope and get compiled function
+	fn := c.leaveScope()
+
+	// Add function to constants
+	fnIdx := c.addConstant(fn)
+
+	// Load function constant into register
+	dst := c.allocTempReg()
+	c.emitRegLoadConst(dst, fnIdx)
+
+	return dst, nil
 }
