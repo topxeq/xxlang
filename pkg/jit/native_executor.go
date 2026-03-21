@@ -7,6 +7,7 @@ import (
 	"unsafe"
 
 	"github.com/topxeq/xxlang/pkg/compiler"
+	"github.com/topxeq/xxlang/pkg/jit/bridge"
 	"github.com/topxeq/xxlang/pkg/objects"
 	"github.com/topxeq/xxlang/pkg/vm"
 )
@@ -27,7 +28,7 @@ func NewNativeExecutor(config JITConfig) *NativeExecutor {
 
 // CanExecuteNatively checks if a function can be executed natively
 // Functions must meet these criteria:
-// - No function calls (OpRegCall) - but OpRegTailCall is allowed for self-recursion
+// - No function calls (OpRegCall or OpRegTailCall)
 // - No builtin calls
 // - No array/map operations
 // - Only: LoadConst, Move, Add, Sub, Mul, Div, Mod, Neg
@@ -35,7 +36,6 @@ func NewNativeExecutor(config JITConfig) *NativeExecutor {
 //        Jump, JumpIfTrue, JumpIfFalse, Return, Null, True, False
 //        LoadGlobal, StoreGlobal (with globals pointer passed as argument)
 //        LoadLocal, StoreLocal (local variables)
-//        TailCall (for tail-recursive functions)
 func CanExecuteNatively(fn *compiler.CompiledFunction) bool {
 	code := fn.Instructions
 	ip := 0
@@ -56,12 +56,11 @@ func CanExecuteNatively(fn *compiler.CompiledFunction) bool {
 			compiler.OpRegLoopCountAdd, compiler.OpRegLoopBodyAdd, compiler.OpRegLoopIncCheck,
 			compiler.OpRegAddConst, compiler.OpRegSubConst, compiler.OpRegMulConst,
 			compiler.OpRegAddLocalCheck, compiler.OpRegLoadLocal, compiler.OpRegStoreLocal,
-			compiler.OpRegLoadGlobal, compiler.OpRegStoreGlobal,
-			compiler.OpRegTailCall: // Tail call is allowed - converted to jump
+			compiler.OpRegLoadGlobal, compiler.OpRegStoreGlobal:
 			// These are fine for native execution
 
-		// Unsupported - requires VM context
-		case compiler.OpRegCall,
+		// Unsupported - requires VM context or cross-function calls
+		case compiler.OpRegCall, compiler.OpRegTailCall,
 			compiler.OpRegArray, compiler.OpRegArrayEmpty, compiler.OpRegArrayAppend,
 			compiler.OpRegMap, compiler.OpRegMapEmpty, compiler.OpRegMapSet,
 			compiler.OpRegIndex, compiler.OpRegSetIndex,
@@ -249,4 +248,231 @@ func (ne *NativeExecutor) CompileProgram(bytecode *compiler.Bytecode) (*NativePr
 // Run executes the native program with globals
 func (p *NativeProgram) Run(globals []int64) int64 {
 	return callNativeWithGlobals(p.entry, globals)
+}
+
+// ============================================================================
+// Native function registry for inter-function calls
+// ============================================================================
+
+// NativeCompiledFunc represents a natively-compiled function
+type NativeCompiledFunc struct {
+	Entry       uintptr    // Native code entry point
+	Code        []byte     // Native code bytes
+	Page        *CodePage  // Memory page (for cleanup)
+	NumParams   int        // Number of parameters
+	NumLocals   int        // Number of local variables
+	Constants   []int64    // Integer constants
+	IsRecursive bool       // True if function is self-recursive
+	UseBridgeABI bool      // True if function uses System V ABI (bridge.Call1/2/3)
+}
+
+// NativeFunctionRegistry manages compiled native functions
+type NativeFunctionRegistry struct {
+	functions map[int]*NativeCompiledFunc // Map from constant index to compiled function
+	compiler  *JITCompiler
+	config    JITConfig
+}
+
+// NewNativeFunctionRegistry creates a new function registry
+func NewNativeFunctionRegistry(config JITConfig) *NativeFunctionRegistry {
+	return &NativeFunctionRegistry{
+		functions: make(map[int]*NativeCompiledFunc),
+		compiler:  NewJITCompiler(config),
+		config:    config,
+	}
+}
+
+// CompileFunction compiles a function and stores it in the registry
+func (r *NativeFunctionRegistry) CompileFunction(fn *compiler.CompiledFunction, constIdx int, constants []int64) error {
+	// Check if can execute natively
+	if !CanExecuteNatively(fn) {
+		return fmt.Errorf("function cannot be executed natively")
+	}
+
+	// Generate native code
+	cg := NewNativeCodeGenerator()
+	code, err := cg.Generate(fn, constants)
+	if err != nil {
+		return fmt.Errorf("compilation failed: %w", err)
+	}
+
+	// Allocate executable memory
+	mem, page, err := r.compiler.AllocCode(len(code))
+	if err != nil {
+		return fmt.Errorf("memory allocation failed: %w", err)
+	}
+
+	copy(mem, code)
+
+	// Check if recursive (has tail calls)
+	isRecursive := containsTailCall(fn.Instructions)
+
+	r.functions[constIdx] = &NativeCompiledFunc{
+		Entry:       uintptr(unsafe.Pointer(&mem[0])),
+		Code:        code,
+		Page:        page,
+		NumParams:   fn.NumParameters,
+		NumLocals:   fn.NumLocals,
+		Constants:   constants,
+		IsRecursive: isRecursive,
+	}
+
+	if r.config.Debug {
+		fmt.Printf("[JIT] Compiled function at const[%d]: %d bytes, %d params, recursive=%v\n",
+			constIdx, len(code), fn.NumParameters, isRecursive)
+	}
+
+	return nil
+}
+
+// CompileRecursiveFunction compiles a recursive function using the FibJIT compiler.
+// This handles functions that contain OpRegCall (self-recursive) by transforming
+// recursion into iteration. The generated code uses System V AMD64 ABI
+// (args in rdi, rsi, rdx) and is called via bridge.Call1/2/3.
+func (r *NativeFunctionRegistry) CompileRecursiveFunction(fn *compiler.CompiledFunction, constIdx int, constants []vm.Value) error {
+	// Use the FibJIT compiler which can detect and transform recursive patterns
+	fibCompiler := NewFibJITCompiler(r.config)
+	code, err := fibCompiler.Compile(fn, constants, nil)
+	if err != nil {
+		return fmt.Errorf("recursive compilation failed: %w", err)
+	}
+
+	// Allocate executable memory
+	mem, page, err := r.compiler.AllocCode(len(code))
+	if err != nil {
+		return fmt.Errorf("memory allocation failed: %w", err)
+	}
+
+	copy(mem, code)
+
+	r.functions[constIdx] = &NativeCompiledFunc{
+		Entry:        uintptr(unsafe.Pointer(&mem[0])),
+		Code:         code,
+		Page:         page,
+		NumParams:    fn.NumParameters,
+		NumLocals:    fn.NumLocals,
+		IsRecursive:  true,
+		UseBridgeABI: true, // Uses System V ABI (bridge.Call1/2/3)
+	}
+
+	if r.config.Debug {
+		fmt.Printf("[JIT] Compiled recursive function at const[%d]: %d bytes, %d params (bridge ABI)\n",
+			constIdx, len(code), fn.NumParameters)
+	}
+
+	return nil
+}
+
+// containsTailCall checks if bytecode contains OpRegTailCall
+func containsTailCall(code []byte) bool {
+	for i := 0; i < len(code); {
+		op := compiler.Opcode(code[i])
+		if op == compiler.OpRegTailCall {
+			return true
+		}
+		def, err := compiler.Lookup(byte(op))
+		if err != nil {
+			return false
+		}
+		width := 1
+		for _, w := range def.OperandWidths {
+			width += w
+		}
+		i += width
+	}
+	return false
+}
+
+// containsCall checks if bytecode contains OpRegCall or OpRegTailCall
+func containsCall(code []byte) bool {
+	for i := 0; i < len(code); {
+		op := compiler.Opcode(code[i])
+		if op == compiler.OpRegCall || op == compiler.OpRegTailCall {
+			return true
+		}
+		def, err := compiler.Lookup(byte(op))
+		if err != nil {
+			return false
+		}
+		width := 1
+		for _, w := range def.OperandWidths {
+			width += w
+		}
+		i += width
+	}
+	return false
+}
+
+// Get returns a compiled function by its constant index
+func (r *NativeFunctionRegistry) Get(constIdx int) *NativeCompiledFunc {
+	return r.functions[constIdx]
+}
+
+// Has returns true if a function is compiled at the given index
+func (r *NativeFunctionRegistry) Has(constIdx int) bool {
+	_, ok := r.functions[constIdx]
+	return ok
+}
+
+// Execute calls a native function with arguments
+func (f *NativeCompiledFunc) Execute(globals []int64, args ...int64) int64 {
+	// Debug: check if entry point is valid
+	if f == nil {
+		fmt.Println("[JIT] ERROR: NativeCompiledFunc is nil")
+		return 0
+	}
+	if f.Entry == 0 {
+		fmt.Println("[JIT] ERROR: Entry point is 0")
+		return 0
+	}
+
+	// For functions compiled with System V ABI (e.g., recursive fib),
+	// use bridge.Call1/2/3 which passes args in rdi, rsi, rdx
+	if f.UseBridgeABI {
+		fnPtr := (*byte)(unsafe.Pointer(f.Entry))
+		switch len(args) {
+		case 0:
+			return bridge.Call0(fnPtr)
+		case 1:
+			return bridge.Call1(fnPtr, args[0])
+		case 2:
+			return bridge.Call2(fnPtr, args[0], args[1])
+		case 3:
+			return bridge.Call3(fnPtr, args[0], args[1], args[2])
+		default:
+			// Fall back to Call3 with first 3 args
+			return bridge.Call3(fnPtr, args[0], args[1], args[2])
+		}
+	}
+
+	// For functions with <= 3 args, use the optimized bridge
+	if len(args) <= 3 {
+		var arg0, arg1, arg2 int64
+		if len(args) > 0 {
+			arg0 = args[0]
+		}
+		if len(args) > 1 {
+			arg1 = args[1]
+		}
+		if len(args) > 2 {
+			arg2 = args[2]
+		}
+
+		var globalsPtr *int64
+		if len(globals) > 0 {
+			globalsPtr = &globals[0]
+		}
+
+		return callNativeWithArgs(f.Entry, globalsPtr, arg0, arg1, arg2)
+	}
+
+	// For functions with more args, we'd need a different bridge
+	// For now, just pass what we can
+	return callNativeWithGlobals(f.Entry, globals)
+}
+
+// Cleanup releases all compiled functions
+func (r *NativeFunctionRegistry) Cleanup() {
+	r.compiler.Cleanup()
+	r.functions = make(map[int]*NativeCompiledFunc)
 }

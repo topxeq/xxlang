@@ -38,6 +38,11 @@ type RegVM struct {
 
 	// Temp stack for complex expressions that don't fit in registers
 	tempStack *ValueStack
+
+	// Native function hook for JIT execution
+	// When set, the VM will call this hook before executing a CompiledFunction
+	// If the hook returns true, it handled the call and the VM should skip normal execution
+	nativeCallHook func(fn *compiler.CompiledFunction, args []Value, frame *RegFrame) (Value, bool)
 }
 
 // NewRegVM creates a new register-based VM
@@ -197,6 +202,13 @@ func NewRegVMWithObjectGlobals(bytecode *compiler.Bytecode, globals []objects.Ob
 // SetSourcePath sets the source file path
 func (vm *RegVM) SetSourcePath(path string) {
 	vm.sourcePath = path
+}
+
+// SetNativeCallHook sets a callback for native function execution
+// The hook is called before executing a CompiledFunction
+// If the hook returns true for handled, the VM skips normal execution
+func (vm *RegVM) SetNativeCallHook(hook func(fn *compiler.CompiledFunction, args []Value, frame *RegFrame) (Value, bool)) {
+	vm.nativeCallHook = hook
 }
 
 // SetLoader sets the module loader
@@ -1839,6 +1851,23 @@ func (vm *RegVM) callClosure(closure *Closure, numArgs int, callerFrame *RegFram
 		return fmt.Errorf("wrong number of arguments: want=%d, got=%d", fn.NumParameters, numArgs)
 	}
 
+	// Check if there's a native call hook that can handle this function
+	if vm.nativeCallHook != nil {
+		// Collect arguments from R0-R7
+		args := make([]Value, numArgs)
+		for i := 0; i < numArgs; i++ {
+			args[i] = callerFrame.Registers[i]
+		}
+
+		// Try the native hook
+		result, handled := vm.nativeCallHook(fn, args, callerFrame)
+		if handled {
+			// Store result in return register and return without creating a new frame
+			callerFrame.Registers[compiler.ReturnRegister] = result
+			return nil
+		}
+	}
+
 	// Create new frame
 	newFrame := NewRegFrame(fn)
 	newFrame.Constants = callerFrame.Constants
@@ -1868,6 +1897,23 @@ func (vm *RegVM) callClosure(closure *Closure, numArgs int, callerFrame *RegFram
 func (vm *RegVM) callCompiledFunction(fn *compiler.CompiledFunction, numArgs int, callerFrame *RegFrame) error {
 	if numArgs != fn.NumParameters {
 		return fmt.Errorf("wrong number of arguments: want=%d, got=%d", fn.NumParameters, numArgs)
+	}
+
+	// Check if there's a native call hook that can handle this function
+	if vm.nativeCallHook != nil {
+		// Collect arguments from R0-R7
+		args := make([]Value, numArgs)
+		for i := 0; i < numArgs; i++ {
+			args[i] = callerFrame.Registers[i]
+		}
+
+		// Try the native hook
+		result, handled := vm.nativeCallHook(fn, args, callerFrame)
+		if handled {
+			// Store result in return register and return without creating a new frame
+			callerFrame.Registers[compiler.ReturnRegister] = result
+			return nil
+		}
 	}
 
 	// Create new frame

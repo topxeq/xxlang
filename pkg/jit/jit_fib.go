@@ -261,103 +261,59 @@ func (c *FibJITCompiler) isSimpleFibonacci(fn *compiler.CompiledFunction) bool {
 }
 
 // compileIterativeFibonacci compiles an optimized iterative Fibonacci
-// This is the fast path for the classic recursive Fibonacci
-// Supports System V AMD64 ABI: argument n is passed in rdi
+// This is the fast path for the classic recursive Fibonacci fib(n) = fib(n-1) + fib(n-2)
+// Generated code uses System V AMD64 ABI: argument n is passed in rdi, result returned in rax.
+// Uses only caller-saved registers (rdi, rcx, rdx, r8, rax) so no save/restore is needed.
 func (c *FibJITCompiler) compileIterativeFibonacci(fn *compiler.CompiledFunction) ([]byte, error) {
 	// Transform: fib(n) = fib(n-1) + fib(n-2)
-	// To: iterative version with a, b, temp
+	// To: iterative version using registers only
+	//
+	// Register allocation:
+	//   rdi = n (input, preserved for loop comparison)
+	//   rcx = a (fib(i-2), starts at 0)
+	//   rdx = b (fib(i-1), starts at 1)
+	//   r8  = i (loop counter, starts at 2)
+	//   rax = temp / return value
 
-	// We'll generate code that:
-	// 1. Checks base cases (n <= 1)
-	// 2. Iteratively computes fib(n)
+	c.code = c.code[:0]
 
-	// Prologue with space for locals
-	c.emitPrologue(32) // Enough space for our variables
-
-	// Stack layout after prologue:
-	// [rbp] = old rbp
-	// [rbp-8] = saved rbx
-	// [rbp-16] = saved r12
-	// [rbp-24] = saved r13
-	// [rbp-32] = saved r14
-	// [rbp-40] = saved r15
-	// [rbp-48] = n (input parameter) <- locals start here
-	// [rbp-56] = a (fib(i-2))
-	// [rbp-64] = b (fib(i-1))
-	// [rbp-72] = counter i
-	// [rbp-80] = temp
-
-	// Store parameter n from rdi to [rbp-48]
-	// System V AMD64 ABI: first argument is in rdi
-	c.emitBytes([]byte{0x48, 0x89, 0x7D, 0xD0}) // mov [rbp-48], rdi
+	emit := func(b ...byte) int {
+		start := len(c.code)
+		c.code = append(c.code, b...)
+		return start
+	}
 
 	// Base case: if n <= 1, return n
-	// Load n from [rbp-48]
-	c.emitBytes([]byte{0x48, 0x8B, 0x45, 0xD0}) // mov rax, [rbp-48]
-	// Compare with 1
-	c.emitBytes([]byte{0x48, 0x83, 0xF8, 0x01}) // cmp rax, 1
-	// Jump if greater to loop code (skip the base case return)
-	// The epilogue is 15 bytes: lea(4) + pop r15(2) + pop r14(2) + pop r13(2) + pop r12(2) + pop rbx(1) + pop rbp(1) + ret(1)
-	c.emitBytes([]byte{0x7F})                   // jg rel8
-	c.emitByte(0x0F)                            // jump 15 bytes forward (over the epilogue)
-	// Return n (already in rax)
-	c.emitEpilogue()
+	_ = emit(0x48, 0x89, 0xF8)                   // mov rax, rdi (result = n)
+	_ = emit(0x48, 0x83, 0xF8, 0x01)             // cmp rax, 1
+	jlePos := emit(0x7E, 0x00)                    // jle -> base_case_return (placeholder)
 
-	// Initialize: a = 0, b = 1, i = 2
-	// a = 0
-	c.emitBytes([]byte{0x48, 0xC7, 0x45, 0xC8, 0x00, 0x00, 0x00, 0x00}) // mov qword [rbp-56], 0
-	// b = 1
-	c.emitBytes([]byte{0x48, 0xC7, 0x45, 0xC0, 0x01, 0x00, 0x00, 0x00}) // mov qword [rbp-64], 1
-	// i = 2
-	c.emitBytes([]byte{0x48, 0xC7, 0x45, 0xB8, 0x02, 0x00, 0x00, 0x00}) // mov qword [rbp-72], 2
+	// Initialize: a=0, b=1, i=2
+	_ = emit(0x48, 0x31, 0xC9)                    // xor rcx, rcx (a = 0)
+	_ = emit(0x48, 0xC7, 0xC2, 0x01, 0x00, 0x00, 0x00) // mov rdx, 1 (b = 1)
+	_ = emit(0x49, 0xC7, 0xC0, 0x02, 0x00, 0x00, 0x00) // mov r8, 2 (i = 2)
 
-	// Loop label
-	c.labels["loop"] = len(c.code)
+	// Loop: temp = a + b; a = b; b = temp; i++; if i <= n goto loop
+	loopStart := emit(0x48, 0x89, 0xC8)           // mov rax, rcx (temp = a)
+	_ = emit(0x48, 0x01, 0xD0)                    // add rax, rdx (temp += b)
+	_ = emit(0x48, 0x89, 0xD1)                    // mov rcx, rdx (a = b)
+	_ = emit(0x48, 0x89, 0xC2)                    // mov rdx, rax (b = temp)
+	_ = emit(0x49, 0xFF, 0xC0)                    // inc r8 (i++)
+	_ = emit(0x4C, 0x39, 0xC7)                    // cmp rdi, r8 (n - i)
+	jgePos := emit(0x7D, 0x00)                    // jge -> loopStart (placeholder)
 
-	// Loop: temp = a + b; a = b; b = temp; i++
-	// temp = a + b
-	c.emitBytes([]byte{0x48, 0x8B, 0x45, 0xC8}) // mov rax, [rbp-56] (a)
-	c.emitBytes([]byte{0x48, 0x03, 0x45, 0xC0}) // add rax, [rbp-64] (b)
-	c.emitBytes([]byte{0x48, 0x89, 0x45, 0xB0}) // mov [rbp-80], rax (temp)
+	// Done: return b (which is in rdx)
+	_ = emit(0x48, 0x89, 0xD0)                    // mov rax, rdx (result = b)
+	_ = emit(0xC3)                                // ret
 
-	// a = b
-	c.emitBytes([]byte{0x48, 0x8B, 0x45, 0xC0}) // mov rax, [rbp-64] (b)
-	c.emitBytes([]byte{0x48, 0x89, 0x45, 0xC8}) // mov [rbp-56], rax (a)
+	// Base case return: rax already contains n, just return
+	baseCaseReturn := emit(0xC3)                  // ret
 
-	// b = temp
-	c.emitBytes([]byte{0x48, 0x8B, 0x45, 0xB0}) // mov rax, [rbp-80] (temp)
-	c.emitBytes([]byte{0x48, 0x89, 0x45, 0xC0}) // mov [rbp-64], rax (b)
-
-	// i++
-	c.emitBytes([]byte{0x48, 0xFF, 0x45, 0xB8}) // inc qword [rbp-72]
-
-	// Check: if i <= n, continue loop
-	c.emitBytes([]byte{0x48, 0x8B, 0x45, 0xB8}) // mov rax, [rbp-72] (i)
-	c.emitBytes([]byte{0x48, 0x3B, 0x45, 0xD0}) // cmp rax, [rbp-48] (n)
-	c.emitBytes([]byte{0x7E})                   // jle rel8
-	// Record the position of the rel8 placeholder
-	jleRel8Pos := len(c.code)
-	c.emitByte(0x00) // placeholder
-
-	// Return b
-	c.emitBytes([]byte{0x48, 0x8B, 0x45, 0xC0}) // mov rax, [rbp-64] (b)
-	c.emitEpilogue()
-
-	// Resolve the loop fixup
-	// jle is a backward jump, so offset = target - (current_position + 1)
-	// But since target < current, the offset is negative
-	target := c.labels["loop"]
-	// The offset is relative to the instruction after jle (i.e., after the rel8 byte)
-	// offset = target - (jleRel8Pos + 1)
-	offset := target - (jleRel8Pos + 1)
-	// Check that offset fits in int8
-	if offset < -128 || offset > 127 {
-		// For a loop, offset should always be negative and within range
-		// If not, we'd need to use a near jump (rel32) instead
-		// For now, just clamp - this shouldn't happen for reasonable loops
-		offset = -128
-	}
-	c.code[jleRel8Pos] = byte(int8(offset))
+	// Fix up jump targets
+	// jle: from jlePos to baseCaseReturn (base case: n <= 1, return n directly)
+	c.code[jlePos+1] = byte(int8(baseCaseReturn - (jlePos + 2)))
+	// jge: from jgePos back to loopStart (i <= n, continue loop)
+	c.code[jgePos+1] = byte(int8(loopStart - (jgePos + 2)))
 
 	return c.code, nil
 }

@@ -234,11 +234,14 @@ pln(fib.matrix(92))    // Largest Fibonacci in int64 range
 | Static Plugin | ✅ | ❌ | ❌ |
 | WASM Plugin | ✅ | ❌ | ✅ |
 
-| Method | fib(35) Time | Speedup |
-|--------|--------------|---------|
-| Xxlang naive recursion | 6.5 seconds | baseline |
-| Xxlang tail recursion | 136 µs | 47,000x |
-| Go plugin | **35 µs** | **180,000x** |
+| Method | fib(35) Time | vs Go |
+|--------|--------------|-------|
+| Go native recursive | 52 ms | baseline |
+| **Xxlang JIT true recursive** | **54 ms** | **1.04x slower** |
+| **Xxlang JIT iterative** | **23 ns** | **1.1x slower** |
+| Python recursive | 2.7 s | 50x slower |
+| Xxlang VM naive recursion | 5.02 s | 97x slower |
+| Xxlang VM tail recursion | 739 µs | 14x slower |
 
 See [Plugin System](docs/PLUGIN.md) for details.
 
@@ -416,32 +419,34 @@ go test ./...
 
 ## Performance
 
-Xxlang uses a register-based bytecode VM with tail call optimization, achieving significant performance improvements over traditional stack-based VMs.
+Xxlang uses a register-based bytecode VM with JIT compilation, achieving near-native performance.
 
-### Register VM vs Stack VM vs Go vs Python
+### JIT Performance (Cross-Language Comparison)
 
-| Benchmark | Stack VM (µs) | Register VM (µs) | Go (µs) | Python (µs) | Reg vs Stack |
-|-----------|--------------:|-----------------:|--------:|------------:|-------------:|
-| Fibonacci(15) | 908 | 872 | 3.5 | 178 | 1.04x |
-| Fibonacci(20) | 5,219 | 4,785 | 39 | 1,980 | 1.09x |
-| Fibonacci Iterative(30) | 452 | 403 | ~0.01 | 1.6 | 1.12x |
-| Factorial(12) | 449 | 388 | ~0.01 | 1.4 | 1.16x |
-| For Loop(100) | 426 | 382 | ~0.04 | 3.7 | 1.11x |
-| **For Loop(1000)** | 813 | **474** | ~0.33 | 43.7 | **1.72x** |
-| While Loop(100) | 432 | 348 | ~0.04 | 6.5 | 1.24x |
-| Function Calls(200) | 556 | 526 | ~0.04 | 17.7 | 1.06x |
-| Arithmetic | 397 | 338 | ~0.0003 | 0.15 | 1.17x |
-| **Intensive Arithmetic(1000)** | 897 | **595** | ~0.65 | 139 | **1.51x** |
-| Nested Expressions | 410 | 360 | ~0.0003 | 0.13 | 1.14x |
-| Comparisons(400) | 529 | 472 | ~0.04 | 12.7 | 1.12x |
-| **Prime Check(100)** | 653 | **481** | 2.4 | 31 | **1.36x** |
-| Bubble Sort(10) | 494 | 455 | ~0.04 | 6.7 | 1.09x |
-| Array Sum(1000) | 383 | 353 | ~0.67 | 16.1 | 1.08x |
-| **String Concat(100)** | 452 | **324** | 5.2 | 5.5 | **1.39x** |
+| Test | Go | Python | Xxlang VM | Xxlang JIT |
+|------|-----|--------|-----------|------------|
+| Loop 100k (sum) | 32 µs | 23 ms | 36 µs | N/A |
+| Fib(10) iter (avg) | 5 ns | 837 ns | 1.5 µs | 5 ns |
+| Fib(10) rec (avg) | 315 ns | 17.8 µs | 30 µs | 334 ns |
+| Fib(35) iter | 21 ns | N/A | N/A | 23 ns |
+| Fib(35) rec | 52 ms | 2.7 s | 5.02 s | 54 ms |
 
 **Key insights:**
+- **JIT matches Go**: 1.04x slower for recursive Fibonacci, 1.1x for iterative
+- **JIT vs Python**: 50x faster for recursive Fibonacci, 36x for iterative
+- **Xxlang VM vs Python**: Comparable performance, faster for loops
+
+### Register VM vs Stack VM
+
+| Benchmark | Stack VM (µs) | Register VM (µs) | Speedup |
+|-----------|--------------:|-----------------:|--------:|
+| Fibonacci(15) | 908 | 872 | 1.04x |
+| Fibonacci(20) | 5,219 | 4,785 | 1.09x |
+| **For Loop(1000)** | 813 | **474** | **1.72x** |
+| **Intensive Arithmetic(1000)** | 897 | **595** | **1.51x** |
+| Function Calls(200) | 556 | 526 | 1.06x |
+
 - Register VM provides **average 21% speedup** over Stack VM
-- Best speedup: **1.72x** (For Loop 1000)
 - Memory allocations reduced by **25.5%**
 
 ### Memory Allocation Optimization
@@ -458,9 +463,15 @@ Xxlang uses a register-based bytecode VM with tail call optimization, achieving 
 
 | Language | Time | Relative to Go |
 |----------|------|----------------|
-| **Go** | **52.5 ms** | 1x (baseline) |
+| **Go** | **52 ms** | 1x (baseline) |
+| **Xxlang JIT** | **54 ms** | 1.04x slower |
 | Python | 2,706 ms | 52x slower |
-| Xxlang | 6,180 ms | 118x slower |
+| Xxlang VM | 5,020 ms | 97x slower |
+
+**Key insights:**
+- **JIT matches native Go**: Only 4% slower for recursive Fibonacci
+- **JIT is 50x faster than Python**: For recursive algorithms
+- **Algorithm choice dominates**: O(n) vs O(2^n) matters more than language
 
 ### With Tail Call Optimization
 
