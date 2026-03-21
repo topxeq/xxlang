@@ -1,5 +1,5 @@
 # Xxlang
-![Coverage](https://img.shields.io/badge/Coverage-81.8%25-brightgreen)
+![Coverage](https://img.shields.io/badge/Coverage-44.3%25-yellow)
 
 [中文文档](README_zh.md)
 
