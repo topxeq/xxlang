@@ -28,8 +28,9 @@ type NativeCodeGenerator struct {
 	funcEntry int
 
 	// Callback pointer for builtin/function dispatch
-	builtinCallbackPtr  uintptr
-	functionCallbackPtr uintptr
+	builtinCallbackPtr   uintptr
+	functionCallbackPtr  uintptr
+	collectionCallbackPtr uintptr
 
 	// Register allocation
 	// We use: rax(0), rbx(1), rcx(2), rdx(3), r8(4), r9(5), r10(6), r11(7)
@@ -56,6 +57,11 @@ func (cg *NativeCodeGenerator) SetBuiltinCallback(ptr uintptr) {
 // SetFunctionCallback sets the callback pointer for function calls
 func (cg *NativeCodeGenerator) SetFunctionCallback(ptr uintptr) {
 	cg.functionCallbackPtr = ptr
+}
+
+// SetCollectionCallback sets the callback pointer for collection operations
+func (cg *NativeCodeGenerator) SetCollectionCallback(ptr uintptr) {
+	cg.collectionCallbackPtr = ptr
 }
 
 // Generate generates native x86-64 code
@@ -358,6 +364,67 @@ func (cg *NativeCodeGenerator) compileInstruction(op compiler.Opcode, code []byt
 		numArgs := int(code[*ip+2])
 		cg.compileBuiltin(builtinIdx, numArgs)
 		*ip += 3
+
+	case compiler.OpRegArray:
+		// Create array: R[dst] = Array from R[start..start+count-1]
+		dst := int(code[*ip+1])
+		startReg := int(code[*ip+2])
+		count := int(code[*ip+3])
+		cg.compileArrayCreate(dst, startReg, count)
+		*ip += 4
+
+	case compiler.OpRegArrayEmpty:
+		// Create empty array: R[dst] = []
+		dst := int(code[*ip+1])
+		cg.compileCollectionOp(OpArrayEmpty, dst, 0, nil)
+		*ip += 2
+
+	case compiler.OpRegArrayAppend:
+		// Append to array: R[dst] = append(R[arr], R[elem])
+		dst := int(code[*ip+1])
+		arrReg := int(code[*ip+2])
+		elemReg := int(code[*ip+3])
+		cg.compileCollectionOp(OpArrayAppend, dst, 2, []int{arrReg, elemReg})
+		*ip += 4
+
+	case compiler.OpRegIndex:
+		// Get element: R[dst] = R[obj][R[key]]
+		dst := int(code[*ip+1])
+		objReg := int(code[*ip+2])
+		keyReg := int(code[*ip+3])
+		cg.compileCollectionOp(OpArrayGet, dst, 2, []int{objReg, keyReg})
+		*ip += 4
+
+	case compiler.OpRegSetIndex:
+		// Set element: R[obj][R[key]] = R[val]
+		objReg := int(code[*ip+1])
+		keyReg := int(code[*ip+2])
+		valReg := int(code[*ip+3])
+		cg.compileCollectionOp(OpArraySet, 0, 3, []int{objReg, keyReg, valReg})
+		*ip += 4
+
+	case compiler.OpRegMap:
+		// Create map: R[dst] = Map from pairs starting at R[start]
+		dst := int(code[*ip+1])
+		startReg := int(code[*ip+2])
+		count := int(code[*ip+3])
+		cg.compileMapCreate(dst, startReg, count)
+		*ip += 4
+
+	case compiler.OpRegMapEmpty:
+		// Create empty map: R[dst] = {}
+		dst := int(code[*ip+1])
+		cg.compileCollectionOp(OpMapEmpty, dst, 0, nil)
+		*ip += 2
+
+	case compiler.OpRegMapSet:
+		// Set key-value: R[dst] = R[map] with R[key] = R[val]
+		dst := int(code[*ip+1])
+		mapReg := int(code[*ip+2])
+		keyReg := int(code[*ip+3])
+		valReg := int(code[*ip+4])
+		cg.compileCollectionOp(OpMapSet, dst, 3, []int{mapReg, keyReg, valReg})
+		*ip += 5
 
 	default:
 		return fmt.Errorf("unsupported opcode: %s", def.Name)
@@ -809,6 +876,137 @@ func (cg *NativeCodeGenerator) compileBuiltin(builtinIdx, numArgs int) {
 	cg.storeRaxToReg(255)
 
 	// Restore globals pointer
+	cg.emitBytes([]byte{0x5F}) // pop rdi
+}
+
+// CollectionOpKind indicates what collection operation to perform (must match native_executor.go)
+type CollectionOpKind int
+
+const (
+	OpArrayCreate CollectionOpKind = iota
+	OpArrayEmpty
+	OpArrayAppend
+	OpArrayGet
+	OpArraySet
+	OpMapCreate
+	OpMapEmpty
+	OpMapSet
+	OpMapGet
+)
+
+// compileCollectionOp generates code to perform a collection operation via callback
+func (cg *NativeCodeGenerator) compileCollectionOp(opKind CollectionOpKind, dstReg int, numArgs int, argRegs []int) {
+	// Push globals pointer (rdi) to stack
+	cg.emitBytes([]byte{0x57}) // push rdi
+
+	// Spill args to stack
+	baseOffset := int32(480) // After function callback space
+
+	// Spill argument registers to stack
+	for i, reg := range argRegs {
+		if i >= 8 {
+			break // Max 8 args
+		}
+		cg.loadRegToRax(reg)
+		cg.emitBytes([]byte{0x48, 0x89, 0x85}) // mov [rbp + disp32], rax
+		cg.emitUint32(uint32(-(baseOffset + int32(i*8))))
+	}
+
+	// Set up callback arguments:
+	//   rdi = opKind
+	//   rsi = numArgs
+	//   rdx = args pointer
+
+	cg.emitBytes([]byte{0x48, 0xC7, 0xC7}) // mov rdi, imm32
+	cg.emitUint32(uint32(opKind))
+
+	cg.emitBytes([]byte{0x48, 0xC7, 0xC6}) // mov rsi, imm32
+	cg.emitUint32(uint32(numArgs))
+
+	cg.emitBytes([]byte{0x48, 0x8D, 0x95}) // lea rdx, [rbp + disp32]
+	cg.emitUint32(uint32(-baseOffset))
+
+	// Call the collection callback
+	if cg.collectionCallbackPtr != 0 {
+		cg.emitBytes([]byte{0x48, 0xB8}) // mov rax, imm64
+		cg.emitUint64(uint64(cg.collectionCallbackPtr))
+		cg.emitBytes([]byte{0xFF, 0xD0}) // call rax
+	} else {
+		cg.emitBytes([]byte{0xFF, 0x15, 0x00, 0x00, 0x00, 0x00})
+	}
+
+	// Store result to destination register
+	if dstReg > 0 && dstReg != 255 {
+		cg.storeRaxToReg(dstReg)
+	}
+
+	// Restore globals pointer
+	cg.emitBytes([]byte{0x5F}) // pop rdi
+}
+
+// compileArrayCreate generates code to create an array from registers
+func (cg *NativeCodeGenerator) compileArrayCreate(dst, startReg, count int) {
+	// Build argRegs slice
+	argRegs := make([]int, count)
+	for i := 0; i < count; i++ {
+		argRegs[i] = startReg + i
+	}
+
+	// Call collection op with OpArrayCreate
+	// Result (object handle) will be stored in dst
+	cg.compileCollectionOpDirect(OpArrayCreate, dst, count, argRegs)
+}
+
+// compileMapCreate generates code to create a map from key-value pairs
+func (cg *NativeCodeGenerator) compileMapCreate(dst, startReg, count int) {
+	// count is number of pairs, so total args = count * 2
+	numArgs := count * 2
+	argRegs := make([]int, numArgs)
+	for i := 0; i < numArgs; i++ {
+		argRegs[i] = startReg + i
+	}
+
+	cg.compileCollectionOpDirect(OpMapCreate, dst, numArgs, argRegs)
+}
+
+// compileCollectionOpDirect generates code for collection operations with direct arg passing
+func (cg *NativeCodeGenerator) compileCollectionOpDirect(opKind CollectionOpKind, dstReg int, numArgs int, argRegs []int) {
+	// Push globals pointer (rdi) to stack
+	cg.emitBytes([]byte{0x57}) // push rdi
+
+	// Spill args to stack
+	baseOffset := int32(480)
+
+	for i, reg := range argRegs {
+		if i >= 8 {
+			break
+		}
+		cg.loadRegToRax(reg)
+		cg.emitBytes([]byte{0x48, 0x89, 0x85})
+		cg.emitUint32(uint32(-(baseOffset + int32(i*8))))
+	}
+
+	cg.emitBytes([]byte{0x48, 0xC7, 0xC7}) // mov rdi, opKind
+	cg.emitUint32(uint32(opKind))
+
+	cg.emitBytes([]byte{0x48, 0xC7, 0xC6}) // mov rsi, numArgs
+	cg.emitUint32(uint32(numArgs))
+
+	cg.emitBytes([]byte{0x48, 0x8D, 0x95}) // lea rdx, [rbp - baseOffset]
+	cg.emitUint32(uint32(-baseOffset))
+
+	if cg.collectionCallbackPtr != 0 {
+		cg.emitBytes([]byte{0x48, 0xB8})
+		cg.emitUint64(uint64(cg.collectionCallbackPtr))
+		cg.emitBytes([]byte{0xFF, 0xD0})
+	} else {
+		cg.emitBytes([]byte{0xFF, 0x15, 0x00, 0x00, 0x00, 0x00})
+	}
+
+	if dstReg > 0 && dstReg != 255 {
+		cg.storeRaxToReg(dstReg)
+	}
+
 	cg.emitBytes([]byte{0x5F}) // pop rdi
 }
 

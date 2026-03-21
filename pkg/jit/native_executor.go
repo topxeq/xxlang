@@ -163,6 +163,10 @@ func callBuiltinCallback(callback uintptr, builtinIdx, numArgs int, argsPtr *int
 // This function is implemented in assembly (bridge_amd64.s)
 func callFunctionCallback(callback uintptr, funcReg, numArgs int, argsPtr *int64) int64
 
+// callCollectionCallback calls a Go callback for collection operations from native code
+// This function is implemented in assembly (bridge_amd64.s)
+func callCollectionCallback(callback uintptr, opKind, numArgs int, argsPtr *int64) int64
+
 // callNativeWithGlobals calls a native function with globals pointer
 func callNativeWithGlobals(entry uintptr, globals []int64) int64 {
 	if len(globals) == 0 {
@@ -610,6 +614,7 @@ type JITCallbackContext struct {
 	builtins     []*objects.Builtin
 	nativeFuncs  map[int]*NativeCompiledFunc // constIdx -> native function
 	registers    []vm.Value                  // Current frame registers
+	objects      []objects.Object            // Objects created by callbacks (for GC visibility)
 }
 
 // globalJITContext is the global callback context
@@ -845,4 +850,161 @@ func int64SliceFromValueSlice(values []vm.Value) []int64 {
 // CanExecuteNativelyWithCalls checks if a function can be executed natively with function call support
 func CanExecuteNativelyWithCalls(fn *compiler.CompiledFunction) bool {
 	return AnalyzeNativeSupport(fn) >= SupportWithCalls
+}
+
+// CanExecuteNativelyWithArrays checks if a function can be executed natively with array/map support
+func CanExecuteNativelyWithArrays(fn *compiler.CompiledFunction) bool {
+	return AnalyzeNativeSupport(fn) >= SupportWithArrays
+}
+
+// ============================================================================
+// Collection Operations Callback Support (Phase 3)
+// ============================================================================
+
+// CallCollectionFromNative is called from native code to perform collection operations
+// opKind: the operation kind (CollectionOpKind, defined in native_codegen.go)
+// argsPtr: pointer to args array (operation-specific)
+// Returns the result (for get operations) or 0
+func CallCollectionFromNative(opKind, numArgs int, argsPtr *int64) int64 {
+	argsSlice := unsafe.Slice(argsPtr, numArgs)
+
+	switch CollectionOpKind(opKind) {
+	case OpArrayCreate:
+		// Create array from elements
+		// args: element values
+		elements := make([]objects.Object, numArgs)
+		for i := 0; i < numArgs; i++ {
+			elements[i] = &objects.Int{Value: argsSlice[i]}
+		}
+		arr := &objects.Array{Elements: elements}
+		// Store in context for GC visibility
+		globalJITContext.objects = append(globalJITContext.objects, arr)
+		// Return a handle/index to the object
+		return int64(len(globalJITContext.objects) - 1)
+
+	case OpArrayEmpty:
+		// Create empty array
+		arr := &objects.Array{Elements: []objects.Object{}}
+		globalJITContext.objects = append(globalJITContext.objects, arr)
+		return int64(len(globalJITContext.objects) - 1)
+
+	case OpArrayAppend:
+		// Append element to array
+		// args[0] = array handle, args[1] = element
+		if numArgs < 2 {
+			return 0
+		}
+		handle := int(argsSlice[0])
+		if handle < 0 || handle >= len(globalJITContext.objects) {
+			return 0
+		}
+		arr, ok := globalJITContext.objects[handle].(*objects.Array)
+		if !ok {
+			return 0
+		}
+		elem := &objects.Int{Value: argsSlice[1]}
+		arr.Elements = append(arr.Elements, elem)
+		return argsSlice[0] // Return same handle
+
+	case OpArrayGet:
+		// Get element from array
+		// args[0] = array handle, args[1] = index
+		if numArgs < 2 {
+			return 0
+		}
+		handle := int(argsSlice[0])
+		index := int(argsSlice[1])
+		if handle < 0 || handle >= len(globalJITContext.objects) {
+			return 0
+		}
+		arr, ok := globalJITContext.objects[handle].(*objects.Array)
+		if !ok || index < 0 || index >= len(arr.Elements) {
+			return 0
+		}
+		if elem, ok := arr.Elements[index].(*objects.Int); ok {
+			return elem.Value
+		}
+		return 0
+
+	case OpArraySet:
+		// Set element in array
+		// args[0] = array handle, args[1] = index, args[2] = value
+		if numArgs < 3 {
+			return 0
+		}
+		handle := int(argsSlice[0])
+		index := int(argsSlice[1])
+		if handle < 0 || handle >= len(globalJITContext.objects) {
+			return 0
+		}
+		arr, ok := globalJITContext.objects[handle].(*objects.Array)
+		if !ok || index < 0 || index >= len(arr.Elements) {
+			return 0
+		}
+		arr.Elements[index] = &objects.Int{Value: argsSlice[2]}
+		return argsSlice[0]
+
+	case OpMapCreate:
+		// Create map from key-value pairs
+		// args: key0, val0, key1, val1, ...
+		pairs := make(map[objects.HashKey]objects.MapPair)
+		for i := 0; i+1 < numArgs; i += 2 {
+			key := &objects.Int{Value: argsSlice[i]}
+			val := &objects.Int{Value: argsSlice[i+1]}
+			pairs[key.HashKey()] = objects.MapPair{Key: key, Value: val}
+		}
+		m := &objects.Map{Pairs: pairs}
+		globalJITContext.objects = append(globalJITContext.objects, m)
+		return int64(len(globalJITContext.objects) - 1)
+
+	case OpMapEmpty:
+		// Create empty map
+		m := &objects.Map{Pairs: make(map[objects.HashKey]objects.MapPair)}
+		globalJITContext.objects = append(globalJITContext.objects, m)
+		return int64(len(globalJITContext.objects) - 1)
+
+	case OpMapSet:
+		// Set key-value in map
+		// args[0] = map handle, args[1] = key, args[2] = value
+		if numArgs < 3 {
+			return 0
+		}
+		handle := int(argsSlice[0])
+		if handle < 0 || handle >= len(globalJITContext.objects) {
+			return 0
+		}
+		m, ok := globalJITContext.objects[handle].(*objects.Map)
+		if !ok {
+			return 0
+		}
+		key := &objects.Int{Value: argsSlice[1]}
+		val := &objects.Int{Value: argsSlice[2]}
+		m.Pairs[key.HashKey()] = objects.MapPair{Key: key, Value: val}
+		return argsSlice[0]
+
+	case OpMapGet:
+		// Get value from map
+		// args[0] = map handle, args[1] = key
+		if numArgs < 2 {
+			return 0
+		}
+		handle := int(argsSlice[0])
+		if handle < 0 || handle >= len(globalJITContext.objects) {
+			return 0
+		}
+		m, ok := globalJITContext.objects[handle].(*objects.Map)
+		if !ok {
+			return 0
+		}
+		key := &objects.Int{Value: argsSlice[1]}
+		if pair, ok := m.Pairs[key.HashKey()]; ok {
+			if val, ok := pair.Value.(*objects.Int); ok {
+				return val.Value
+			}
+		}
+		return 0
+
+	default:
+		return 0
+	}
 }
