@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/topxeq/xxlang/pkg/compiler"
+	"github.com/topxeq/xxlang/pkg/jit"
 	"github.com/topxeq/xxlang/pkg/lexer"
 	"github.com/topxeq/xxlang/pkg/module"
 	"github.com/topxeq/xxlang/pkg/objects"
@@ -15,6 +16,24 @@ import (
 	"github.com/topxeq/xxlang/pkg/stdlib"
 	"github.com/topxeq/xxlang/pkg/vm"
 )
+
+// JITConfig holds JIT compiler settings for the interpreter.
+type JITConfig struct {
+	// Enabled controls whether JIT compilation is enabled.
+	// Default is false (interpreter mode).
+	Enabled bool
+
+	// HotThreshold is the number of calls before a function is JIT compiled.
+	// Default is 100.
+	HotThreshold int
+
+	// MaxCodeSize is the maximum bytecode size for JIT compilation.
+	// Default is 4096 bytes.
+	MaxCodeSize int
+
+	// Debug enables JIT debug output.
+	Debug bool
+}
 
 // Interpreter wraps VM and Compiler for easy embedding.
 // It provides a high-level API for evaluating xxlang code
@@ -25,10 +44,12 @@ type Interpreter struct {
 	globals     []objects.Object
 	loader      *module.Loader
 	stdlib      bool
+	jitConfig   JITConfig
 }
 
 // New creates a new interpreter with the given options.
 // Default interpreter uses RegisterVM for best performance.
+// JIT is disabled by default for stability.
 func New(opts ...Option) *Interpreter {
 	i := &Interpreter{
 		symbolTable: compiler.NewSymbolTable(),
@@ -36,6 +57,12 @@ func New(opts ...Option) *Interpreter {
 		globals:     make([]objects.Object, compiler.GlobalsSize),
 		loader:      module.NewLoader(),
 		stdlib:      false,
+		jitConfig: JITConfig{
+			Enabled:      false, // JIT disabled by default
+			HotThreshold: 100,
+			MaxCodeSize:  4096,
+			Debug:        false,
+		},
 	}
 
 	for _, opt := range opts {
@@ -78,6 +105,29 @@ func (i *Interpreter) evalRegister(program *parser.Program) (objects.Object, err
 
 	// Execution with persistent globals
 	bytecode := c.Bytecode()
+
+	// Use JIT VM if enabled
+	if i.jitConfig.Enabled {
+		jitConfig := jit.JITConfig{
+			HotThreshold: i.jitConfig.HotThreshold,
+			MaxCodeSize:  i.jitConfig.MaxCodeSize,
+			Debug:        i.jitConfig.Debug,
+		}
+		jitVM := jit.NewJITVMWithObjectGlobals(bytecode, i.globals, jitConfig)
+		jitVM.SetLoader(i.loader)
+
+		if err := jitVM.Run(); err != nil {
+			return nil, fmt.Errorf("runtime error: %v", err)
+		}
+
+		// Update globals for next execution
+		i.globals = jitVM.GlobalsAsObjects()
+		jitVM.Cleanup()
+
+		return jitVM.LastPoppedObject(), nil
+	}
+
+	// Standard register VM execution
 	v := vm.NewRegVMWithObjectGlobals(bytecode, i.globals)
 	v.SetLoader(i.loader)
 
@@ -142,6 +192,31 @@ func (i *Interpreter) evalFileRegister(program *parser.Program, absPath string) 
 
 	// Execution
 	bytecode := c.Bytecode()
+
+	// Use JIT VM if enabled
+	if i.jitConfig.Enabled {
+		jitConfig := jit.JITConfig{
+			HotThreshold: i.jitConfig.HotThreshold,
+			MaxCodeSize:  i.jitConfig.MaxCodeSize,
+			Debug:        i.jitConfig.Debug,
+		}
+		jitVM := jit.NewJITVMWithObjectGlobals(bytecode, i.globals, jitConfig)
+		jitVM.SetLoader(i.loader)
+		jitVM.SetSourcePath(absPath)
+		jitVM.SetCurrentModule(mainModule)
+
+		if err := jitVM.Run(); err != nil {
+			return nil, fmt.Errorf("runtime error: %v", err)
+		}
+
+		// Update globals for next execution
+		i.globals = jitVM.GlobalsAsObjects()
+		jitVM.Cleanup()
+
+		return jitVM.LastPoppedObject(), nil
+	}
+
+	// Standard register VM execution
 	v := vm.NewRegVMWithObjectGlobals(bytecode, i.globals)
 	v.SetLoader(i.loader)
 	v.SetSourcePath(absPath)
@@ -226,6 +301,26 @@ func (i *Interpreter) Reset() {
 	i.constants = make([]objects.Object, 0)
 	i.globals = make([]objects.Object, compiler.GlobalsSize)
 	i.loader = module.NewLoader()
+}
+
+// JITEnabled returns whether JIT compilation is enabled.
+func (i *Interpreter) JITEnabled() bool {
+	return i.jitConfig.Enabled
+}
+
+// SetJITEnabled enables or disables JIT compilation.
+func (i *Interpreter) SetJITEnabled(enabled bool) {
+	i.jitConfig.Enabled = enabled
+}
+
+// GetJITConfig returns the current JIT configuration.
+func (i *Interpreter) GetJITConfig() JITConfig {
+	return i.jitConfig
+}
+
+// SetJITConfig sets the JIT configuration.
+func (i *Interpreter) SetJITConfig(config JITConfig) {
+	i.jitConfig = config
 }
 
 // formatParserErrors formats parser errors into a single error.

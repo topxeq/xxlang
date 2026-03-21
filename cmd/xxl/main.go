@@ -28,6 +28,9 @@ var jitHotThreshold = 100
 var jitMaxCodeSize = 4096
 var jitDebug = false
 
+// DebugMode controls whether comprehensive debug output is enabled
+var debugMode = false
+
 const (
 	PROMPT          = ">> "
 	CONTINUE_PROMPT = ".. "
@@ -154,7 +157,7 @@ func main() {
 	}
 }
 
-// parseFlags extracts and processes JIT-related flags
+// parseFlags extracts and processes JIT-related and debug flags
 // Returns the remaining arguments
 func parseFlags(args []string) []string {
 	var result []string
@@ -170,6 +173,8 @@ func parseFlags(args []string) []string {
 			useJIT = true
 		} else if arg == "--no-jit" {
 			useJIT = false
+		} else if arg == "--debug" {
+			debugMode = true
 		} else {
 			result = append(result, arg)
 		}
@@ -199,6 +204,7 @@ func printUsage() {
 	fmt.Println("      --jit             Enable JIT compilation for hot paths (experimental)")
 	fmt.Println("      --jit-threshold=N Set JIT hot path threshold (default: 100)")
 	fmt.Println("      --no-jit          Disable JIT compilation (default)")
+	fmt.Println("      --debug           Show debug info (bytecode count, runtime, JIT usage)")
 	fmt.Println()
 	fmt.Println("Script Arguments:")
 	fmt.Println("  Use '--' to separate interpreter arguments from script arguments.")
@@ -451,10 +457,13 @@ func executeCodeRegister(program *parser.Program, sourcePath, code string) {
 	argsGSymbol := c.SymbolTable().Define("argsG")
 	scriptPathGSymbol := c.SymbolTable().Define("scriptPathG")
 	c.SetSourceFile(sourcePath)
+
+	compileStart := time.Now()
 	if _, err := c.Compile(program); err != nil {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
 	}
+	compileTime := time.Since(compileStart)
 
 	// Create main module for exports
 	mainModule := &objects.Module{
@@ -478,6 +487,18 @@ func executeCodeRegister(program *parser.Program, sourcePath, code string) {
 	// Execution
 	bytecode := c.Bytecode()
 
+	// Print debug info before execution
+	if debugMode {
+		fmt.Fprintf(os.Stderr, "[Debug] Source: %s\n", sourcePath)
+		fmt.Fprintf(os.Stderr, "[Debug] Source size: %d bytes\n", len(code))
+		fmt.Fprintf(os.Stderr, "[Debug] Bytecode instructions: %d\n", len(bytecode.Instructions))
+		fmt.Fprintf(os.Stderr, "[Debug] Constants: %d\n", len(bytecode.Constants))
+		fmt.Fprintf(os.Stderr, "[Debug] Compile time: %v\n", compileTime)
+		fmt.Fprintf(os.Stderr, "[Debug] JIT enabled: %v\n", useJIT)
+	}
+
+	execStart := time.Now()
+
 	// Use JIT VM if enabled
 	if useJIT {
 		jitConfig := jit.JITConfig{
@@ -494,10 +515,21 @@ func executeCodeRegister(program *parser.Program, sourcePath, code string) {
 			fmt.Fprintf(os.Stderr, "\n%s", jitVM.GetCallStack())
 			os.Exit(1)
 		}
+		execTime := time.Since(execStart)
 
 		// Print JIT stats
 		stats := jitVM.GetJITStats()
-		if stats.CompiledFunctions > 0 {
+		nativeExecs, interpExecs := jitVM.GetNativeStats()
+
+		if debugMode {
+			fmt.Fprintf(os.Stderr, "[Debug] VM mode: JIT (hybrid)\n")
+			fmt.Fprintf(os.Stderr, "[Debug] Execution time: %v\n", execTime)
+			fmt.Fprintf(os.Stderr, "[Debug] JIT compiled functions: %d\n", stats.CompiledFunctions)
+			fmt.Fprintf(os.Stderr, "[Debug] JIT total code size: %d bytes\n", stats.TotalCodeSize)
+			fmt.Fprintf(os.Stderr, "[Debug] Native executions: %d\n", nativeExecs)
+			fmt.Fprintf(os.Stderr, "[Debug] Interpreter executions: %d\n", interpExecs)
+			fmt.Fprintf(os.Stderr, "[Debug] Total time: %v\n", compileTime+execTime)
+		} else if stats.CompiledFunctions > 0 {
 			fmt.Fprintf(os.Stderr, "[JIT] Compiled %d functions, %d bytes\n", stats.CompiledFunctions, stats.TotalCodeSize)
 		}
 
@@ -520,6 +552,13 @@ func executeCodeRegister(program *parser.Program, sourcePath, code string) {
 		fmt.Fprintf(os.Stderr, "Runtime Error: %v\n", err)
 		fmt.Fprintf(os.Stderr, "\n%s", v.GetCallStack())
 		os.Exit(1)
+	}
+	execTime := time.Since(execStart)
+
+	if debugMode {
+		fmt.Fprintf(os.Stderr, "[Debug] VM mode: Interpreter\n")
+		fmt.Fprintf(os.Stderr, "[Debug] Execution time: %v\n", execTime)
+		fmt.Fprintf(os.Stderr, "[Debug] Total time: %v\n", compileTime+execTime)
 	}
 
 	// Print result if it's meaningful

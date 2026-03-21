@@ -69,5 +69,38 @@ func WithGlobalGo(name string, value interface{}) Option {
 	}
 }
 
+// WithJIT enables JIT compilation for hot paths.
+// JIT is experimental and disabled by default.
+// Use this option to enable it for compute-intensive workloads.
+func WithJIT() Option {
+	return func(i *Interpreter) {
+		i.jitConfig.Enabled = true
+	}
+}
+
+// WithJITConfig sets custom JIT configuration.
+// Use this to fine-tune JIT behavior.
+func WithJITConfig(config JITConfig) Option {
+	return func(i *Interpreter) {
+		i.jitConfig = config
+	}
+}
+
+// WithJITThreshold sets the hot path threshold for JIT compilation.
+// Functions called more than this threshold will be JIT compiled.
+// Default is 100.
+func WithJITThreshold(threshold int) Option {
+	return func(i *Interpreter) {
+		i.jitConfig.HotThreshold = threshold
+	}
+}
+
+// WithJITDebug enables debug output for JIT compilation.
+func WithJITDebug() Option {
+	return func(i *Interpreter) {
+		i.jitConfig.Debug = true
+	}
+}
+
 // Ensure stdlib is imported
 var _ = stdlib.Registry

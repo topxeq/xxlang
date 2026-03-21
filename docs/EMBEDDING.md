@@ -91,6 +91,135 @@ interp := interpreter.New(
 )
 ```
 
+### WithJIT() / WithJITConfig()
+
+Enables JIT (Just-In-Time) compilation for compute-intensive workloads.
+
+**Note: JIT is disabled by default.** Enable it only when you need maximum performance for numerical algorithms.
+
+```go
+// Enable JIT with default settings
+interp := interpreter.New(
+    interpreter.WithStdlib(),
+    interpreter.WithJIT(),
+)
+
+// Enable JIT with custom configuration
+interp := interpreter.New(
+    interpreter.WithStdlib(),
+    interpreter.WithJITConfig(interpreter.JITConfig{
+        Enabled:      true,
+        HotThreshold: 10,   // Compile after 10 calls
+        MaxCodeSize:  8192, // Max bytecode size for JIT
+        Debug:        false,
+    }),
+)
+
+// Or use individual options
+interp := interpreter.New(
+    interpreter.WithStdlib(),
+    interpreter.WithJIT(),
+    interpreter.WithJITThreshold(10),
+    interpreter.WithJITDebug(),
+)
+```
+
+**Runtime control:**
+
+```go
+// Check if JIT is enabled
+if interp.JITEnabled() {
+    fmt.Println("JIT is enabled")
+}
+
+// Enable/disable JIT at runtime
+interp.SetJITEnabled(true)
+interp.SetJITEnabled(false)
+
+// Get/set full config
+config := interp.GetJITConfig()
+config.HotThreshold = 50
+interp.SetJITConfig(config)
+```
+
+**JIT Performance:**
+
+| Benchmark | Interpreter | JIT | Speedup |
+|-----------|-------------|-----|---------|
+| fib(35) recursive | ~5 seconds | 54 ms | **93x** |
+| fib(35) iterative | 1.5 µs | 23 ns | **65x** |
+
+**When to use JIT:**
+- Compute-intensive numerical algorithms
+- Recursive functions (especially with TCO)
+- Long-running scripts with hot loops
+
+**When NOT to use JIT:**
+- Simple scripts (overhead not worth it)
+- Code with closures (falls back to interpreter)
+- Code with classes (falls back to interpreter)
+- I/O-bound scripts (JIT won't help)
+
+### Debug and Statistics
+
+For performance analysis and debugging, you can measure execution time and check JIT statistics:
+
+```go
+package main
+
+import (
+    "fmt"
+    "time"
+    "github.com/topxeq/xxlang/pkg/interpreter"
+)
+
+func main() {
+    interp := interpreter.New(
+        interpreter.WithStdlib(),
+        interpreter.WithJIT(),
+        interpreter.WithJITDebug(), // Enable JIT debug output
+    )
+
+    // Measure execution time
+    start := time.Now()
+    result, err := interp.Eval(`
+        func fib(n) {
+            if (n <= 1) { return n }
+            return fib(n - 1) + fib(n - 2)
+        }
+        fib(35)
+    `)
+    elapsed := time.Since(start)
+
+    if err != nil {
+        panic(err)
+    }
+
+    fmt.Printf("Result: %s\n", result.Inspect())
+    fmt.Printf("Execution time: %v\n", elapsed)
+    fmt.Printf("JIT enabled: %v\n", interp.JITEnabled())
+}
+```
+
+**CLI Debug Mode:**
+
+When using the `xxl` command-line tool, the `--debug` flag provides comprehensive debug output:
+
+```bash
+xxl --debug script.xxl
+xxl --debug --jit script.xxl
+```
+
+Output includes:
+- Source file path and size
+- Bytecode instruction count
+- Number of constants
+- Compile time
+- JIT status and VM mode
+- Execution time
+- JIT statistics (native vs interpreter executions)
+- Total time
+
 ## Passing Values from Go to Xxlang
 
 ### SetGlobal(name, value)

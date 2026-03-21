@@ -72,6 +72,16 @@ func NewJITVMWithGlobals(bytecode *compiler.Bytecode, globals []vm.Value, config
 	return j
 }
 
+// NewJITVMWithObjectGlobals creates a JIT VM with globals as objects.Object
+func NewJITVMWithObjectGlobals(bytecode *compiler.Bytecode, globals []objects.Object, config JITConfig) *JITVM {
+	// Convert objects.Object to vm.Value
+	valueGlobals := make([]vm.Value, len(globals))
+	for i, obj := range globals {
+		valueGlobals[i] = vm.NewObject(obj)
+	}
+	return NewJITVMWithGlobals(bytecode, valueGlobals, config)
+}
+
 // Run executes the bytecode with JIT compilation for hot paths
 func (j *JITVM) Run() error {
 	if !j.enabled {
