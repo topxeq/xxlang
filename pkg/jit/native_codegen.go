@@ -28,9 +28,10 @@ type NativeCodeGenerator struct {
 	funcEntry int
 
 	// Callback pointer for builtin/function dispatch
-	builtinCallbackPtr   uintptr
-	functionCallbackPtr  uintptr
+	builtinCallbackPtr    uintptr
+	functionCallbackPtr   uintptr
 	collectionCallbackPtr uintptr
+	objectCallbackPtr     uintptr
 
 	// Register allocation
 	// We use: rax(0), rbx(1), rcx(2), rdx(3), r8(4), r9(5), r10(6), r11(7)
@@ -62,6 +63,11 @@ func (cg *NativeCodeGenerator) SetFunctionCallback(ptr uintptr) {
 // SetCollectionCallback sets the callback pointer for collection operations
 func (cg *NativeCodeGenerator) SetCollectionCallback(ptr uintptr) {
 	cg.collectionCallbackPtr = ptr
+}
+
+// SetObjectCallback sets the callback pointer for object operations
+func (cg *NativeCodeGenerator) SetObjectCallback(ptr uintptr) {
+	cg.objectCallbackPtr = ptr
 }
 
 // Generate generates native x86-64 code
@@ -424,6 +430,30 @@ func (cg *NativeCodeGenerator) compileInstruction(op compiler.Opcode, code []byt
 		keyReg := int(code[*ip+3])
 		valReg := int(code[*ip+4])
 		cg.compileCollectionOp(OpMapSet, dst, 3, []int{mapReg, keyReg, valReg})
+		*ip += 5
+
+	case compiler.OpRegGetField:
+		// Get field: R[dst] = R[obj].field(name_idx)
+		dst := int(code[*ip+1])
+		objReg := int(code[*ip+2])
+		nameIdx := int(code[*ip+3])<<8 | int(code[*ip+4])
+		cg.compileObjectOp(OpGetField, dst, []int{objReg}, nameIdx)
+		*ip += 5
+
+	case compiler.OpRegSetField:
+		// Set field: R[obj].field(name_idx) = R[val]
+		objReg := int(code[*ip+1])
+		valReg := int(code[*ip+2])
+		nameIdx := int(code[*ip+3])<<8 | int(code[*ip+4])
+		cg.compileObjectOp(OpSetField, 0, []int{objReg, valReg}, nameIdx)
+		*ip += 5
+
+	case compiler.OpRegGetMethod:
+		// Get method: R[dst] = R[obj].method(name_idx)
+		dst := int(code[*ip+1])
+		objReg := int(code[*ip+2])
+		nameIdx := int(code[*ip+3])<<8 | int(code[*ip+4])
+		cg.compileObjectOp(OpGetMethod, dst, []int{objReg}, nameIdx)
 		*ip += 5
 
 	default:
@@ -894,6 +924,15 @@ const (
 	OpMapGet
 )
 
+// ObjectOpKind indicates what object operation to perform
+type ObjectOpKind int
+
+const (
+	OpGetField ObjectOpKind = iota
+	OpSetField
+	OpGetMethod
+)
+
 // compileCollectionOp generates code to perform a collection operation via callback
 func (cg *NativeCodeGenerator) compileCollectionOp(opKind CollectionOpKind, dstReg int, numArgs int, argRegs []int) {
 	// Push globals pointer (rdi) to stack
@@ -1003,6 +1042,58 @@ func (cg *NativeCodeGenerator) compileCollectionOpDirect(opKind CollectionOpKind
 		cg.emitBytes([]byte{0xFF, 0x15, 0x00, 0x00, 0x00, 0x00})
 	}
 
+	if dstReg > 0 && dstReg != 255 {
+		cg.storeRaxToReg(dstReg)
+	}
+
+	cg.emitBytes([]byte{0x5F}) // pop rdi
+}
+
+// compileObjectOp generates code to perform object field operations via callback
+func (cg *NativeCodeGenerator) compileObjectOp(opKind ObjectOpKind, dstReg int, argRegs []int, nameIdx int) {
+	// Push globals pointer (rdi) to stack
+	cg.emitBytes([]byte{0x57}) // push rdi
+
+	// Spill args to stack
+	baseOffset := int32(560) // After collection callback space
+
+	for i, reg := range argRegs {
+		if i >= 8 {
+			break
+		}
+		cg.loadRegToRax(reg)
+		cg.emitBytes([]byte{0x48, 0x89, 0x85})
+		cg.emitUint32(uint32(-(baseOffset + int32(i*8))))
+	}
+
+	// Set up callback arguments:
+	//   rdi = opKind
+	//   rsi = numArgs
+	//   rdx = args pointer
+	//   rcx = nameIdx
+
+	cg.emitBytes([]byte{0x48, 0xC7, 0xC7}) // mov rdi, opKind
+	cg.emitUint32(uint32(opKind))
+
+	cg.emitBytes([]byte{0x48, 0xC7, 0xC6}) // mov rsi, numArgs
+	cg.emitUint32(uint32(len(argRegs)))
+
+	cg.emitBytes([]byte{0x48, 0x8D, 0x95}) // lea rdx, [rbp - baseOffset]
+	cg.emitUint32(uint32(-baseOffset))
+
+	cg.emitBytes([]byte{0x48, 0xC7, 0xC1}) // mov rcx, nameIdx
+	cg.emitUint32(uint32(nameIdx))
+
+	// Call the object callback
+	if cg.objectCallbackPtr != 0 {
+		cg.emitBytes([]byte{0x48, 0xB8})
+		cg.emitUint64(uint64(cg.objectCallbackPtr))
+		cg.emitBytes([]byte{0xFF, 0xD0})
+	} else {
+		cg.emitBytes([]byte{0xFF, 0x15, 0x00, 0x00, 0x00, 0x00})
+	}
+
+	// Store result to destination register
 	if dstReg > 0 && dstReg != 255 {
 		cg.storeRaxToReg(dstReg)
 	}

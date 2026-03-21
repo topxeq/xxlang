@@ -213,3 +213,46 @@ TEXT ·callCollectionCallback(SB), 4, $0-40
     POPQ BX
     POPQ BP
     RET
+
+// func callObjectCallback(callback uintptr, opKind, numArgs int, argsPtr *int64, nameIdx int) int64
+// Calls a Go callback for object operations from native code
+// Stack layout:
+//   callback at +0(FP), opKind at +8(FP), numArgs at +16(FP)
+//   argsPtr at +24(FP), nameIdx at +32(FP), result at +40(FP)
+TEXT ·callObjectCallback(SB), 4, $0-48
+    // Save callee-saved registers
+    PUSHQ BP
+    MOVQ SP, BP
+    PUSHQ BX
+    PUSHQ R12
+    PUSHQ R13
+    PUSHQ R14
+    PUSHQ R15
+
+    // Read callback pointer
+    MOVQ callback+0(FP), R15  // Callback function pointer
+
+    // Set up arguments for Go callback (System V ABI):
+    //   RDI = opKind
+    //   RSI = numArgs
+    //   RDX = argsPtr
+    //   RCX = nameIdx
+    MOVQ opKind+8(FP), DI
+    MOVQ numArgs+16(FP), SI
+    MOVQ argsPtr+24(FP), DX
+    MOVQ nameIdx+32(FP), CX
+
+    // Call the Go callback
+    CALL R15
+
+    // Result is now in AX
+    MOVQ AX, ret+40(FP)
+
+    // Restore callee-saved registers
+    POPQ R15
+    POPQ R14
+    POPQ R13
+    POPQ R12
+    POPQ BX
+    POPQ BP
+    RET

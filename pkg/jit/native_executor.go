@@ -167,6 +167,10 @@ func callFunctionCallback(callback uintptr, funcReg, numArgs int, argsPtr *int64
 // This function is implemented in assembly (bridge_amd64.s)
 func callCollectionCallback(callback uintptr, opKind, numArgs int, argsPtr *int64) int64
 
+// callObjectCallback calls a Go callback for object operations from native code
+// This function is implemented in assembly (bridge_amd64.s)
+func callObjectCallback(callback uintptr, opKind, numArgs int, argsPtr *int64, nameIdx int) int64
+
 // callNativeWithGlobals calls a native function with globals pointer
 func callNativeWithGlobals(entry uintptr, globals []int64) int64 {
 	if len(globals) == 0 {
@@ -1007,4 +1011,103 @@ func CallCollectionFromNative(opKind, numArgs int, argsPtr *int64) int64 {
 	default:
 		return 0
 	}
+}
+
+// ============================================================================
+// Object Field Access Callback Support (Phase 4)
+// ============================================================================
+
+// CallObjectFromNative is called from native code to perform object field operations
+// opKind: the operation kind (ObjectOpKind, defined in native_codegen.go)
+// argsPtr: pointer to args array
+// nameIdx: index in string constants for field/method name
+// Returns the result (for get operations) or 0
+func CallObjectFromNative(opKind, numArgs int, argsPtr *int64, nameIdx int) int64 {
+	argsSlice := unsafe.Slice(argsPtr, numArgs)
+
+	switch ObjectOpKind(opKind) {
+	case OpGetField:
+		// Get field from object
+		// args[0] = object handle, nameIdx = field name
+		if numArgs < 1 {
+			return 0
+		}
+		handle := int(argsSlice[0])
+		if handle < 0 || handle >= len(globalJITContext.objects) {
+			return 0
+		}
+		obj := globalJITContext.objects[handle]
+
+		// Get field name from constants
+		name := getConstantString(nameIdx)
+		if name == "" {
+			return 0
+		}
+
+		// Try to get the field value
+		switch o := obj.(type) {
+		case *objects.Array:
+			// Array length
+			if name == "len" || name == "length" {
+				return int64(len(o.Elements))
+			}
+		case *objects.Map:
+			// Map size
+			if name == "len" || name == "length" || name == "size" {
+				return int64(len(o.Pairs))
+			}
+		}
+		return 0
+
+	case OpSetField:
+		// Set field on object
+		// args[0] = object handle, args[1] = value, nameIdx = field name
+		if numArgs < 2 {
+			return 0
+		}
+		handle := int(argsSlice[0])
+		if handle < 0 || handle >= len(globalJITContext.objects) {
+			return 0
+		}
+		obj := globalJITContext.objects[handle]
+
+		// Get field name
+		name := getConstantString(nameIdx)
+		if name == "" {
+			return 0
+		}
+
+		// For now, most objects don't support dynamic field setting
+		// This would be expanded for custom objects/classes
+		_ = obj
+		return argsSlice[0]
+
+	case OpGetMethod:
+		// Get method from object (returns a callable handle)
+		// For now, just return 0 - methods require full VM context
+		return 0
+
+	default:
+		return 0
+	}
+}
+
+// getConstantString retrieves a string from constants by index
+func getConstantString(idx int) string {
+	if idx < 0 || idx >= len(globalJITContext.constants) {
+		return ""
+	}
+	c := globalJITContext.constants[idx]
+	if c.IsObject() {
+		obj := c.ToObject()
+		if str, ok := obj.(*objects.String); ok {
+			return str.Value
+		}
+	}
+	return ""
+}
+
+// CanExecuteNativelyWithObjects checks if a function can be executed natively with object support
+func CanExecuteNativelyWithObjects(fn *compiler.CompiledFunction) bool {
+	return AnalyzeNativeSupport(fn) >= SupportWithObjects
 }
