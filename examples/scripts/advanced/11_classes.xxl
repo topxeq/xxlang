@@ -148,15 +148,15 @@ class BankAccount {
 var account = new BankAccount("Alice", 100)
 pln("Created: ", account.toString())
 
-print("Depositing $50... ")
+pr("Depositing $50... ")
 account.deposit(50)
 pln("Balance: $", account.getBalance())
 
-print("Withdrawing $30... ")
+pr("Withdrawing $30... ")
 account.withdraw(30)
 pln("Balance: $", account.getBalance())
 
-print("Withdrawing $200... ")
+pr("Withdrawing $200... ")
 account.withdraw(200)  // Should fail
 
 // === Class Composition ===

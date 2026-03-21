@@ -2,7 +2,7 @@
 import { getCounter, increment, add } from "./utils"
 
 // Test getCounter (reads global, 0 args)
-println("Counter: ", getCounter())
+pln("Counter: ", getCounter())
 
 // Test increment (writes global, 0 args)
-println("After increment: ", increment())
+pln("After increment: ", increment())

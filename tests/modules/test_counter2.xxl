@@ -1,7 +1,7 @@
 // Test module state
 import { getCounter, increment } from "./utils"
 
-println("Counter: ", getCounter())
-println("Now incrementing...")
+pln("Counter: ", getCounter())
+pln("Now incrementing...")
 increment()
-println("Counter after: ", getCounter())
+pln("Counter after: ", getCounter())

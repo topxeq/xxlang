@@ -1,14 +1,14 @@
 // Test simple module with non-exported variable
 import * as simple from "./simple"
 
-println("Testing simple module:")
-println("getX: ", simple.getX)
-println("setX: ", simple.setX)
+pln("Testing simple module:")
+pln("getX: ", simple.getX)
+pln("setX: ", simple.setX)
 
-println("Calling getX():")
+pln("Calling getX():")
 var x1 = simple.getX()
-println("Result: ", x1)
+pln("Result: ", x1)
 
-println("\nCalling setX(20):")
+pln("\nCalling setX(20):")
 var y = simple.setX(20)
-println("Result: ", y)
+pln("Result: ", y)

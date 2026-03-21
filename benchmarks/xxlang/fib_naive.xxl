@@ -7,4 +7,4 @@ func fib(n) {
 }
 
 var result = fib(35)
-println("fib(35) = " + result.toStr())
+pln("fib(35) = " + result.toStr())

@@ -2,6 +2,6 @@
 import { getCounter, increment } from "./utils"
 
 var a = getCounter()
-println(a)
+pln(a)
 var b = increment()
-println(b)
+pln(b)

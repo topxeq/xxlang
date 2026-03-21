@@ -3,94 +3,94 @@ import * as math from "math"
 import { PI, E } from "math"
 
 // Test math module
-println("=== Testing math module ===")
-println("PI: ", PI)
-println("E: ", E)
-println("abs(-5): ", math.abs(-5))
-println("sqrt(16): ", math.sqrt(16))
-println("pow(2, 3): ", math.pow(2, 3))
-println("sin(0): ", math.sin(0))
-println("cos(0): ", math.cos(0))
-println("ceil(1.5): ", math.ceil(1.5))
-println("floor(1.5): ", math.floor(1.5))
-println("max(1, 5, 3): ", math.max(1, 5, 3))
-println("min(1, 5, 3): ", math.min(1, 5, 3))
+pln("=== Testing math module ===")
+pln("PI: ", PI)
+pln("E: ", E)
+pln("abs(-5): ", math.abs(-5))
+pln("sqrt(16): ", math.sqrt(16))
+pln("pow(2, 3): ", math.pow(2, 3))
+pln("sin(0): ", math.sin(0))
+pln("cos(0): ", math.cos(0))
+pln("ceil(1.5): ", math.ceil(1.5))
+pln("floor(1.5): ", math.floor(1.5))
+pln("max(1, 5, 3): ", math.max(1, 5, 3))
+pln("min(1, 5, 3): ", math.min(1, 5, 3))
 
 // Test string module
 import * as str from "string"
 
-println("\n=== Testing string module ===")
-println("len(\"hello\"): ", str.len("hello"))
-println("toUpper(\"hello\"): ", str.toUpper("hello"))
-println("toLower(\"HELLO\"): ", str.toLower("HELLO"))
-println("trim(\"  hello  \"): ", str.trim("  hello  "))
-println("contains(\"hello world\", \"world\"): ", str.contains("hello world", "world"))
-println("indexOf(\"hello\", \"ll\"): ", str.indexOf("hello", "ll"))
-println("hasPrefix(\"hello\", \"he\"): ", str.hasPrefix("hello", "he"))
-println("hasSuffix(\"hello\", \"lo\"): ", str.hasSuffix("hello", "lo"))
+pln("\n=== Testing string module ===")
+pln("len(\"hello\"): ", str.len("hello"))
+pln("toUpper(\"hello\"): ", str.toUpper("hello"))
+pln("toLower(\"HELLO\"): ", str.toLower("HELLO"))
+pln("trim(\"  hello  \"): ", str.trim("  hello  "))
+pln("contains(\"hello world\", \"world\"): ", str.contains("hello world", "world"))
+pln("indexOf(\"hello\", \"ll\"): ", str.indexOf("hello", "ll"))
+pln("hasPrefix(\"hello\", \"he\"): ", str.hasPrefix("hello", "he"))
+pln("hasSuffix(\"hello\", \"lo\"): ", str.hasSuffix("hello", "lo"))
 
 // Test importing specific functions
 import { toUpper, toLower, split, join } from "string"
 
-println("\n=== Testing destructured imports ===")
-println("toUpper(\"test\"): ", toUpper("test"))
-println("toLower(\"TEST\"): ", toLower("TEST"))
+pln("\n=== Testing destructured imports ===")
+pln("toUpper(\"test\"): ", toUpper("test"))
+pln("toLower(\"TEST\"): ", toLower("TEST"))
 
 // Test split and join
 var parts = split("a,b,c", ",")
-println("split(\"a,b,c\", \",\"): ", parts)
-println("join(parts, \"-\"): ", join(parts, "-"))
+pln("split(\"a,b,c\", \",\"): ", parts)
+pln("join(parts, \"-\"): ", join(parts, "-"))
 
 // Test array module
 import * as arr from "array"
 
-println("\n=== Testing array module ===")
+pln("\n=== Testing array module ===")
 var nums = [1, 2, 3, 4, 5]
-println("Original array: ", nums)
-println("len: ", arr.len(nums))
-println("first: ", arr.first(nums))
-println("last: ", arr.last(nums))
-println("get(2): ", arr.get(nums, 2))
-println("contains(3): ", arr.contains(nums, 3))
-println("indexOf(4): ", arr.indexOf(nums, 4))
-println("isEmpty: ", arr.isEmpty(nums))
+pln("Original array: ", nums)
+pln("len: ", arr.len(nums))
+pln("first: ", arr.first(nums))
+pln("last: ", arr.last(nums))
+pln("get(2): ", arr.get(nums, 2))
+pln("contains(3): ", arr.contains(nums, 3))
+pln("indexOf(4): ", arr.indexOf(nums, 4))
+pln("isEmpty: ", arr.isEmpty(nums))
 
 // Test array modifications
 var testArr = [1, 2, 3]
 arr.push(testArr, 4)
-println("After push(4): ", testArr)
+pln("After push(4): ", testArr)
 arr.pop(testArr)
-println("After pop: ", testArr)
+pln("After pop: ", testArr)
 arr.unshift(testArr, 0)
-println("After unshift(0): ", testArr)
+pln("After unshift(0): ", testArr)
 arr.shift(testArr)
-println("After shift: ", testArr)
+pln("After shift: ", testArr)
 
 // Test slice and concat
-println("slice(1, 3): ", arr.slice(nums, 1, 3))
+pln("slice(1, 3): ", arr.slice(nums, 1, 3))
 var other = [6, 7, 8]
-println("concat: ", arr.concat(nums, other))
+pln("concat: ", arr.concat(nums, other))
 
 // Test reverse
 var revArr = [1, 2, 3]
 arr.reverse(revArr)
-println("reverse: ", revArr)
+pln("reverse: ", revArr)
 
 // Test unique
 var dupArr = [1, 2, 2, 3, 3, 3]
-println("unique: ", arr.unique(dupArr))
+pln("unique: ", arr.unique(dupArr))
 
 // Test flatten
 var nestedArr = [[1, 2], [3, 4], 5]
-println("flatten: ", arr.flatten(nestedArr))
+pln("flatten: ", arr.flatten(nestedArr))
 
 // Test io module
 import * as io from "io"
 
-println("\n=== Testing io module ===")
-println("cwd: ", io.cwd())
-println("args: ", io.args())
-println("exists(\".\"): ", io.exists("."))
-println("env(\"HOME\"): ", io.env("HOME"))
+pln("\n=== Testing io module ===")
+pln("cwd: ", io.cwd())
+pln("args: ", io.args())
+pln("exists(\".\"): ", io.exists("."))
+pln("env(\"HOME\"): ", io.env("HOME"))
 
-println("\n=== All stdlib tests complete ===")
+pln("\n=== All stdlib tests complete ===")

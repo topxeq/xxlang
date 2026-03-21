@@ -5,8 +5,8 @@
 pln("=== Basic Output ===")
 
 // print adds no newline
-print("Hello ")
-print("World\n")
+pr("Hello ")
+pr("World\n")
 
 // pln adds newline
 pln("This is a complete line")
@@ -41,7 +41,7 @@ func printf(format, args) {
         i = i + 1
     }
 
-    print(result)
+    pr(result)
 }
 
 printf("Name: %s, Age: %d\n", ["Alice", 30])
@@ -331,7 +331,7 @@ func printProgress(current, total, width) {
     for (var i = 0; i < empty; i++) { bar = bar + " " }
     bar = bar + "] " + percent + "%"
 
-    print("\r" + bar)
+    pr("\r" + bar)
 }
 
 pln("Progress simulation:")

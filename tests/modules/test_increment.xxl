@@ -1,18 +1,18 @@
 // Test increment specifically
 import * as utils from "./utils"
 
-println("Testing increment specifically:")
+pln("Testing increment specifically:")
 
 // Check exports
-println("greeting: ", utils.greeting)
-println("increment: ", utils.increment)
-println("getCounter: ", utils.getCounter)
+pln("greeting: ", utils.greeting)
+pln("increment: ", utils.increment)
+pln("getCounter: ", utils.getCounter)
 
 // Call getCounter first
-println("\ngetCounter(): ", utils.getCounter())
+pln("\ngetCounter(): ", utils.getCounter())
 
 // Now call increment
-println("\nCalling increment via variable:")
+pln("\nCalling increment via variable:")
 var inc = utils.increment
-println("inc: ", inc)
+pln("inc: ", inc)
 inc()

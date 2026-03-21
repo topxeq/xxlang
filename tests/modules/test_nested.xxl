@@ -3,7 +3,7 @@ import { increment } from "./utils"
 
 // Simple case - call increment then println separately
 var x = increment()
-println("X: ", x)
+pln("X: ", x)
 
 // Now try nested
-println("Y: ", increment())
+pln("Y: ", increment())

@@ -2,28 +2,28 @@
 import * as utils from "./utils"
 import { add, multiply, greet, increment, getCounter } from "./utils"
 
-println("=== Testing file-based module import ===")
+pln("=== Testing file-based module import ===")
 
 // Test namespace import
-println("utils.greeting: ", utils.greeting)
-println("utils.add(5, 3): ", utils.add(5, 3))
-println("utils.multiply(4, 7): ", utils.multiply(4, 7))
+pln("utils.greeting: ", utils.greeting)
+pln("utils.add(5, 3): ", utils.add(5, 3))
+pln("utils.multiply(4, 7): ", utils.multiply(4, 7))
 
 // Test destructured import
-println("\n=== Testing destructured imports ===")
-println("add(10, 20): ", add(10, 20))
-println("multiply(6, 7): ", multiply(6, 7))
-println("greet(\"Alice\"): ", greet("Alice"))
+pln("\n=== Testing destructured imports ===")
+pln("add(10, 20): ", add(10, 20))
+pln("multiply(6, 7): ", multiply(6, 7))
+pln("greet(\"Alice\"): ", greet("Alice"))
 
 // Test module-level state
-println("\n=== Testing module-level state ===")
-println("Initial counter: ", getCounter())
-println("increment(): ", increment())
-println("increment(): ", increment())
-println("increment(): ", increment())
-println("Final counter: ", getCounter())
+pln("\n=== Testing module-level state ===")
+pln("Initial counter: ", getCounter())
+pln("increment(): ", increment())
+pln("increment(): ", increment())
+pln("increment(): ", increment())
+pln("Final counter: ", getCounter())
 
 // Test that utils namespace also sees same state
-println("utils.getCounter(): ", utils.getCounter())
+pln("utils.getCounter(): ", utils.getCounter())
 
-println("\n=== All file-based module tests passed ===")
+pln("\n=== All file-based module tests passed ===")

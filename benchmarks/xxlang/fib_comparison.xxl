@@ -40,19 +40,19 @@ func fibIter(n) {
 }
 
 // Test correctness
-println("Verifying correctness...")
+pln("Verifying correctness...")
 var testN = 35
 var expected = 9227465
 var r1 = fibNaive(testN)
 var r2 = fibTail(testN)
 var r3 = fibIter(testN)
-println("fibNaive(" + testN.toStr() + ") = " + r1.toStr() + " (correct: " + (r1 == expected).toStr() + ")")
-println("fibTail(" + testN.toStr() + ") = " + r2.toStr() + " (correct: " + (r2 == expected).toStr() + ")")
-println("fibIter(" + testN.toStr() + ") = " + r3.toStr() + " (correct: " + (r3 == expected).toStr() + ")")
+pln("fibNaive(" + testN.toStr() + ") = " + r1.toStr() + " (correct: " + (r1 == expected).toStr() + ")")
+pln("fibTail(" + testN.toStr() + ") = " + r2.toStr() + " (correct: " + (r2 == expected).toStr() + ")")
+pln("fibIter(" + testN.toStr() + ") = " + r3.toStr() + " (correct: " + (r3 == expected).toStr() + ")")
 
 // Benchmark tail-recursive version
-println("")
-println("=== Benchmark fibTail (TCO) ===")
+pln("")
+pln("=== Benchmark fibTail (TCO) ===")
 var iterations = 10
 var start = time.unixNano()
 for (var i = 0; i < iterations; i++) {
@@ -60,24 +60,24 @@ for (var i = 0; i < iterations; i++) {
 }
 var elapsedNs = time.unixNano() - start
 var avgNs = elapsedNs / iterations
-println("fibTail(35) average: " + avgNs.toStr() + " ns (~" + (avgNs / 1000000).toStr() + " ms)")
+pln("fibTail(35) average: " + avgNs.toStr() + " ns (~" + (avgNs / 1000000).toStr() + " ms)")
 
 // Benchmark iterative version
-println("")
-println("=== Benchmark fibIter ===")
+pln("")
+pln("=== Benchmark fibIter ===")
 start = time.unixNano()
 for (var i = 0; i < iterations; i++) {
     var _ = fibIter(35)
 }
 elapsedNs = time.unixNano() - start
 avgNs = elapsedNs / iterations
-println("fibIter(35) average: " + avgNs.toStr() + " ns (~" + (avgNs / 1000000).toStr() + " ms)")
+pln("fibIter(35) average: " + avgNs.toStr() + " ns (~" + (avgNs / 1000000).toStr() + " ms)")
 
 // Benchmark naive version (only a few iterations)
-println("")
-println("=== Benchmark fibNaive (slow) ===")
+pln("")
+pln("=== Benchmark fibNaive (slow) ===")
 iterations = 1
 start = time.unixMs()
 var _ = fibNaive(35)
 elapsedNs = time.unixMs() - start
-println("fibNaive(35): " + (elapsedNs * 1000000).toStr() + " ns (~" + elapsedNs.toStr() + " ms)")
+pln("fibNaive(35): " + (elapsedNs * 1000000).toStr() + " ns (~" + elapsedNs.toStr() + " ms)")

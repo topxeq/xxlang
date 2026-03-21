@@ -3,4 +3,4 @@ import { increment } from "./utils"
 
 // Call increment without any wrapper
 var result = increment()
-println(result)
+pln(result)

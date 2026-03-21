@@ -3,7 +3,7 @@ import { add, increment } from "./utils"
 
 // This works
 var a = add(1, 2)
-println("A: ", a)
+pln("A: ", a)
 
 // Does this work?
-println("B: ", add(3, 4))
+pln("B: ", add(3, 4))

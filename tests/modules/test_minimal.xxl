@@ -1,5 +1,5 @@
 // Minimal test
 import { getCounter, increment } from "./utils"
 
-println("A: ", getCounter())
-println("B: ", increment())
+pln("A: ", getCounter())
+pln("B: ", increment())
