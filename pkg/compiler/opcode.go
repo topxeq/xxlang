@@ -254,6 +254,7 @@ const (
 	OpRegThrow       // throw R[src]
 	OpRegPushHandler // push exception handler
 	OpRegPopHandler  // pop exception handler
+	OpRegEndFinally  // end of finally block, check for pending exception
 
 	// Register superinstructions for common patterns
 	OpRegAddConst    // R[dst] = R[src1] + Constants[idx]
@@ -617,6 +618,7 @@ var definitions = map[Opcode]*Definition{
 	OpRegThrow:       {"OpRegThrow", []int{1}},           // src
 	OpRegPushHandler: {"OpRegPushHandler", []int{2, 2}},  // catch_addr, finally_addr
 	OpRegPopHandler:  {"OpRegPopHandler", []int{}},       // no operands
+	OpRegEndFinally:  {"OpRegEndFinally", []int{}},       // no operands
 
 	// Register superinstructions
 	OpRegAddConst: {"OpRegAddConst", []int{1, 1, 2}}, // dst, src, const_idx

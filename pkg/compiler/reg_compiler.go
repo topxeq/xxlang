@@ -3412,8 +3412,7 @@ func (c *RegCompiler) compileTryStatement(node *parser.TryStatement) (int, error
 	// After try block completes normally, jump past catch
 	var jumpPastCatchPos int = -1
 	if node.Catch != nil {
-		jumpPastCatchPos = len(c.instructions)
-		c.instructions = append(c.instructions, byte(OpRegJump), 0, 0) // Will be patched
+		jumpPastCatchPos = c.emitRegJump(0) // Will be patched
 	}
 
 	// Record catch address
@@ -3421,16 +3420,15 @@ func (c *RegCompiler) compileTryStatement(node *parser.TryStatement) (int, error
 	if node.Catch != nil {
 		catchAddr = len(c.instructions)
 
-		// The exception value is in a special register - bind it to the variable
+		// The exception value is in R0 - bind it to the variable
+		// VM puts the thrown value in R0 before jumping to catch
 		symbol := c.symbolTable.Define(node.Catch.Exception.Value)
-		dst := c.allocTempReg()
-		// Exception value comes from VM - store it
+		// Exception value is in R0, store it to the variable
 		if symbol.Scope == GlobalScope {
-			c.emitRegStoreGlobal(dst, symbol.Index)
+			c.emitRegStoreGlobal(0, symbol.Index) // R0 -> global
 		} else {
-			c.emitRegStoreLocal(dst, symbol.Index)
+			c.emitRegStoreLocal(0, symbol.Index) // R0 -> local
 		}
-		c.freeTempReg(dst)
 
 		// Compile catch body
 		_, err = c.Compile(node.Catch.Block)
@@ -3449,6 +3447,9 @@ func (c *RegCompiler) compileTryStatement(node *parser.TryStatement) (int, error
 		if err != nil {
 			return 0, err
 		}
+
+		// Emit OpRegEndFinally to check for pending exceptions
+		c.instructions = append(c.instructions, byte(OpRegEndFinally))
 	}
 
 	// Patch push handler with catch and finally addresses
@@ -3460,9 +3461,7 @@ func (c *RegCompiler) compileTryStatement(node *parser.TryStatement) (int, error
 
 	// Patch jump past catch
 	if jumpPastCatchPos >= 0 {
-		endPos := len(c.instructions)
-		c.instructions[jumpPastCatchPos+1] = byte(endPos >> 8)
-		c.instructions[jumpPastCatchPos+2] = byte(endPos)
+		c.patchJump(jumpPastCatchPos)
 	}
 
 	// Return null for try statement

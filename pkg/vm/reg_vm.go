@@ -31,7 +31,8 @@ type RegVM struct {
 	objConstants []objects.Object
 
 	// Exception handling
-	handlers []ExceptionHandler
+	handlers         []ExceptionHandler
+	pendingException Value // Exception pending re-throw after finally block
 
 	// Inline cache for property/method lookups
 	inlineCache InlineCacheTable
@@ -66,14 +67,15 @@ func NewRegVM(bytecode *compiler.Bytecode) *RegVM {
 	frames[0] = mainFrame
 
 	return &RegVM{
-		constants:   constants,
-		objConstants: bytecode.Constants,
-		frames:      frames,
-		frameIndex:  1,
-		globals:     make([]Value, GlobalsSize),
-		loader:      module.NewLoader(),
-		sourceMap:   bytecode.SourceMap,
-		tempStack:   NewValueStack(),
+		constants:        constants,
+		objConstants:     bytecode.Constants,
+		frames:           frames,
+		frameIndex:       1,
+		globals:          make([]Value, GlobalsSize),
+		loader:           module.NewLoader(),
+		sourceMap:        bytecode.SourceMap,
+		tempStack:        NewValueStack(),
+		pendingException: ValueNull,
 	}
 }
 
@@ -97,14 +99,15 @@ func NewRegVMWithGlobals(bytecode *compiler.Bytecode, globals []Value) *RegVM {
 	frames[0] = mainFrame
 
 	return &RegVM{
-		constants:   constants,
-		objConstants: bytecode.Constants,
-		frames:      frames,
-		frameIndex:  1,
-		globals:     globals,
-		loader:      module.NewLoader(),
-		sourceMap:   bytecode.SourceMap,
-		tempStack:   NewValueStack(),
+		constants:        constants,
+		objConstants:     bytecode.Constants,
+		frames:           frames,
+		frameIndex:       1,
+		globals:          globals,
+		loader:           module.NewLoader(),
+		sourceMap:        bytecode.SourceMap,
+		tempStack:        NewValueStack(),
+		pendingException: ValueNull,
 	}
 }
 
@@ -1806,24 +1809,115 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 		regs[resultReg] = NewInt(sum)
 
 	// Exception handling opcodes
-	// Note: The register VM has limited support for exception handling.
-	// For full try/catch/throw support, use the stack-based interpreter.
 	case compiler.OpRegPushHandler:
-		// Skip the handler setup for now - just advance IP
 		// OpRegPushHandler has 2x2-byte operands (catchAddr, finallyAddr)
+		catchAddr := int(code[frame.IP+1])<<8 | int(code[frame.IP+2])
+		finallyAddr := int(code[frame.IP+3])<<8 | int(code[frame.IP+4])
 		frame.IP += 5
 
+		vm.handlers = append(vm.handlers, ExceptionHandler{
+			catchAddr:   catchAddr,
+			finallyAddr: finallyAddr,
+			frameIndex:  vm.frameIndex,
+		})
+
 	case compiler.OpRegPopHandler:
-		// No-op for now
+		// Pop the last handler from the stack
+		if len(vm.handlers) > 0 {
+			vm.handlers = vm.handlers[:len(vm.handlers)-1]
+		}
 		frame.IP += 1
 
 	case compiler.OpRegThrow:
 		// Get the value to throw from register
 		src := DecodeReg1(code, frame.IP)
-		frame.IP += 2
 		throwVal := regs[src]
-		// For now, return an error with the thrown value
-		return fmt.Errorf("unhandled throw: %s", throwVal.String())
+		frame.IP += 2
+
+		// Find handler and unwind stack
+		for len(vm.handlers) > 0 {
+			h := vm.handlers[len(vm.handlers)-1]
+
+			// Check if we need to unwind frames
+			if h.frameIndex < vm.frameIndex {
+				// Pop frames until we reach the handler's frame
+				for vm.frameIndex > h.frameIndex {
+					vm.frameIndex--
+					frame = vm.frames[vm.frameIndex-1]
+					regs = &frame.Registers
+					code = frame.Fn.Instructions
+				}
+			}
+
+			// Pop this handler (it will handle the exception)
+			vm.handlers = vm.handlers[:len(vm.handlers)-1]
+
+			// If there's a catch block, jump to it
+			// The finally block will run after catch completes
+			if h.catchAddr > 0 {
+				// Put exception value in R0 for catch block
+				regs[0] = throwVal
+				frame.IP = h.catchAddr
+				return nil // Main loop will continue at new IP
+			}
+
+			// If there's a finally block but no catch, execute finally
+			// and save the exception for re-throw after finally
+			if h.finallyAddr > 0 {
+				vm.pendingException = throwVal
+				frame.IP = h.finallyAddr
+				return nil // Main loop will continue at new IP
+			}
+
+			// Handler with neither catch nor finally shouldn't happen
+			// Continue to next handler
+		}
+
+		// No handler found - return error
+		return fmt.Errorf("unhandled exception: %s", throwVal.String())
+
+	case compiler.OpRegEndFinally:
+		// Called at the end of a finally block
+		// Check if there's a pending exception to re-throw
+		frame.IP += 1
+
+		if vm.pendingException != ValueNull {
+			pending := vm.pendingException
+			vm.pendingException = ValueNull
+
+			// Find next handler for the pending exception
+			for len(vm.handlers) > 0 {
+				h := vm.handlers[len(vm.handlers)-1]
+
+				// Unwind frames if needed
+				if h.frameIndex < vm.frameIndex {
+					for vm.frameIndex > h.frameIndex {
+						vm.frameIndex--
+						frame = vm.frames[vm.frameIndex-1]
+						regs = &frame.Registers
+						code = frame.Fn.Instructions
+					}
+				}
+
+				vm.handlers = vm.handlers[:len(vm.handlers)-1]
+
+				if h.finallyAddr > 0 {
+					vm.pendingException = pending
+					frame.IP = h.finallyAddr
+					return nil // Main loop will continue at new IP
+				}
+
+				if h.catchAddr > 0 {
+					regs[0] = pending
+					frame.IP = h.catchAddr
+					return nil // Main loop will continue at new IP
+				}
+			}
+
+			// No handler for pending exception
+			return fmt.Errorf("unhandled exception: %s", pending.String())
+		}
+		// No pending exception, continue normally
 
 	case compiler.OpRegClass:
 		// Create a class object

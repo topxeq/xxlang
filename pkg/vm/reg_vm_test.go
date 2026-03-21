@@ -477,3 +477,174 @@ func TestRegVMMaps(t *testing.T) {
 		}
 	}
 }
+
+// TestRegVMExceptionHandling tests try/catch/finally in register VM
+func TestRegVMExceptionHandling(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		expected    interface{} // nil means expect error
+		expectError bool
+	}{
+		// Basic try-catch
+		{
+			name: "try-catch basic",
+			input: `
+				var result = 0
+				try {
+					throw 42
+				} catch (e) {
+					result = e
+				}
+				result
+			`,
+			expected: int64(42),
+		},
+		// Try without throw
+		{
+			name: "try-catch no throw",
+			input: `
+				var result = 10
+				try {
+					result = 20
+				} catch (e) {
+					result = 30
+				}
+				result
+			`,
+			expected: int64(20),
+		},
+		// Try-finally
+		{
+			name: "try-finally",
+			input: `
+				var result = 0
+				try {
+					result = 10
+				} finally {
+					result = result + 5
+				}
+				result
+			`,
+			expected: int64(15),
+		},
+		// Try-catch-finally
+		{
+			name: "try-catch-finally",
+			input: `
+				var result = 0
+				try {
+					throw 10
+				} catch (e) {
+					result = e
+				} finally {
+					result = result + 5
+				}
+				result
+			`,
+			expected: int64(15),
+		},
+		// Throw in catch
+		{
+			name: "throw in catch",
+			input: `
+				var result = 0
+				try {
+					throw 1
+				} catch (e) {
+					throw 2
+				}
+				result
+			`,
+			expectError: true,
+		},
+		// Nested try-catch
+		{
+			name: "nested try-catch",
+			input: `
+				var result = 0
+				try {
+					try {
+						throw 10
+					} catch (e1) {
+						throw e1 + 5
+					}
+				} catch (e2) {
+					result = e2
+				}
+				result
+			`,
+			expected: int64(15),
+		},
+		// Exception in finally (re-throw)
+		{
+			name: "exception in finally with outer catch",
+			input: `
+				var result = 0
+				try {
+					try {
+						throw 5
+					} finally {
+						result = 10
+					}
+				} catch (e) {
+					result = result + e
+				}
+				result
+			`,
+			expected: int64(15),
+		},
+		// Unhandled exception
+		{
+			name: "unhandled exception",
+			input: `
+				throw "error"
+			`,
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := lexer.New(tt.input)
+			p := parser.New(l)
+			program := p.ParseProgram()
+
+			if len(p.Errors()) > 0 {
+				t.Fatalf("parser errors: %v", p.Errors())
+			}
+
+			c := compiler.NewRegCompiler()
+			if _, err := c.Compile(program); err != nil {
+				t.Fatalf("compiler error: %v", err)
+			}
+
+			vm := NewRegVM(c.Bytecode())
+			err := vm.Run()
+
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("VM error: %v", err)
+			}
+
+			result := vm.LastResult()
+
+			switch expected := tt.expected.(type) {
+			case int64:
+				if !result.IsInt() {
+					t.Errorf("expected int, got %v", result)
+					return
+				}
+				if result.GetInt() != expected {
+					t.Errorf("expected=%d, got=%d", expected, result.GetInt())
+				}
+			}
+		})
+	}
+}
