@@ -279,7 +279,8 @@ var cart = [
 
 pln("Shopping Cart:")
 var total = 0
-for (item in cart) {
+for (var idx = 0; idx < len(cart); idx++) {
+    var item = cart[idx]
     pln("  ", item.getDescription())
     total = total + item.getTotal()
 }
@@ -326,7 +327,7 @@ class ReverseProcessor : DataProcessor {
     func process(data) {
         var result = ""
         for (var i = len(data) - 1; i >= 0; i--) {
-            result = result + charAt(data, i)
+            result = result + data.subStr(i, i + 1)
         }
         return result
     }
