@@ -1044,6 +1044,26 @@ isFloat(3.14)        // true
 isFloat(42)          // false
 ```
 
+### isBigInt(value)
+
+Returns true if value is a BigInt.
+
+```xxl
+isBigInt(12345678901234567890n)  // true
+isBigInt(42)                      // false
+isBigInt(3.14)                    // false
+```
+
+### isBigFloat(value)
+
+Returns true if value is a BigFloat.
+
+```xxl
+isBigFloat(3.14159265358979323846m)  // true
+isBigFloat(3.14)                      // false
+isBigFloat(42)                        // false
+```
+
 ### isArray(value)
 
 Returns true if value is an array.

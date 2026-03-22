@@ -9,6 +9,7 @@
 - [字符串函数](#字符串函数)
 - [数学函数](#数学函数)
 - [类型转换函数](#类型转换函数)
+- [类型检查函数](#类型检查函数)
 - [数组函数](#数组函数)
 - [映射函数](#映射函数)
 - [命令行参数函数](#命令行参数函数)
@@ -404,6 +405,112 @@ string(42)     // "42"
 string(3.14)   // "3.14"
 string(true)   // "true"
 string([1, 2]) // "[1, 2]"
+```
+
+---
+
+## 类型检查函数
+
+### isString(value)
+
+判断值是否为字符串。
+
+```xxl
+isString("hello")    // true
+isString(42)         // false
+```
+
+### isNumber(value)
+
+判断值是否为整数或浮点数。
+
+```xxl
+isNumber(42)         // true
+isNumber(3.14)       // true
+isNumber("42")       // false
+```
+
+### isInt(value)
+
+判断值是否为整数。
+
+```xxl
+isInt(42)            // true
+isInt(3.14)          // false
+```
+
+### isFloat(value)
+
+判断值是否为浮点数。
+
+```xxl
+isFloat(3.14)        // true
+isFloat(42)          // false
+```
+
+### isBigInt(value)
+
+判断值是否为大整数（BigInt）。
+
+```xxl
+isBigInt(12345678901234567890n)  // true
+isBigInt(42)                      // false
+isBigInt(3.14)                    // false
+```
+
+### isBigFloat(value)
+
+判断值是否为大浮点数（BigFloat）。
+
+```xxl
+isBigFloat(3.14159265358979323846m)  // true
+isBigFloat(3.14)                      // false
+isBigFloat(42)                        // false
+```
+
+### isArray(value)
+
+判断值是否为数组。
+
+```xxl
+isArray([1, 2, 3])   // true
+isArray("hello")     // false
+```
+
+### isMap(value)
+
+判断值是否为映射（Map）。
+
+```xxl
+isMap({"a": 1})      // true
+isMap([1, 2])        // false
+```
+
+### isBool(value)
+
+判断值是否为布尔值。
+
+```xxl
+isBool(true)         // true
+isBool(1)            // false
+```
+
+### isFunction(value)
+
+判断值是否为函数。
+
+```xxl
+isFunction(len)      // true
+isFunction(42)       // false
+```
+
+### isNull(value)
+
+判断值是否为 null。
+
+```xxl
+isNull(null)         // true
+isNull(0)            // false
 ```
 
 ---

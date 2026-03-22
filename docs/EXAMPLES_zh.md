@@ -48,6 +48,38 @@ var person = {
 pln(person["name"])  // "Alice"
 ```
 
+#### 大整数与大浮点数
+
+当需要处理超出普通整数范围的数值或需要高精度计算时，可使用BigInt和BigFloat：
+
+```xxl
+// BigInt - 任意精度整数（后缀 n）
+var big = 123456789012345678901234567890n
+pln(big)                    // 123456789012345678901234567890
+pln(typeOf(big))            // "BIGINT"
+
+// BigFloat - 任意精度浮点数（后缀 m）
+var pi = 3.141592653589793238462643383279m
+pln(pi)                     // 3.141592653589793238462643383279
+pln(typeOf(pi))             // "BIGFLOAT"
+
+// 精确计算（避免浮点数误差）
+var a = 0.1m
+var b = 0.2m
+pln(a + b)                  // 0.3（精确值，而非0.30000000000000004）
+
+// 大数运算
+var factorial = 1n
+for (var i = 1; i <= 50; i++) {
+    factorial = factorial * toBigInt(i)
+}
+pln(factorial)              // 50的阶乘
+```
+
+**适用场景：**
+- **BigInt**: 加密算法、阶乘计算、超过int64范围的ID
+- **BigFloat**: 金融计算、科学计算、避免浮点误差
+
 ### 类型检查
 
 ```xxl
@@ -208,6 +240,61 @@ default:
 // 输出: 和为30
 ```
 
+#### 条件Switch模式
+
+使用`switch (true)`可以优雅地处理范围判断和复杂条件：
+
+```xxl
+// 范围判断
+var score = 85
+
+switch (true) {
+case score >= 90:
+    pln("等级: A")
+case score >= 80:
+    pln("等级: B")
+case score >= 70:
+    pln("等级: C")
+case score >= 60:
+    pln("等级: D")
+default:
+    pln("等级: F")
+}
+// 输出: 等级: B
+
+// 复杂条件判断
+var age = 25
+
+switch (true) {
+case age < 13:
+    pln("儿童")
+case age < 20:
+    pln("青少年")
+case age < 60:
+    pln("成年人")
+default:
+    pln("老年人")
+}
+// 输出: 成年人
+
+// 多条件组合
+var x = 10
+var y = 20
+
+switch (true) {
+case x < 0 || y < 0:
+    pln("存在负数")
+case x > 100 && y > 100:
+    pln("都是大数")
+case x == y:
+    pln("相等")
+default:
+    pln("其他情况")
+}
+```
+
+> **注意**: case按顺序评估，将更具体的条件放在前面。
+
 #### 与if-else链的比较
 
 ```xxl
@@ -236,6 +323,76 @@ if (status == 200) {
 ```
 
 > 详细说明请参阅 [LANGUAGE.md](LANGUAGE.md#switch-statement) 中的 Switch Statement 章节。
+
+### 三元运算符
+
+三元运算符`?:`提供了一种简洁的条件表达式写法：
+
+```xxl
+// 基本语法: 条件 ? 真值 : 假值
+var age = 20
+var status = age >= 18 ? "成年" : "未成年"
+pln(status)  // "成年"
+
+// 等价于:
+var status2
+if (age >= 18) {
+    status2 = "成年"
+} else {
+    status2 = "未成年"
+}
+```
+
+#### 常用示例
+
+```xxl
+// 简单值选择
+var a = 10
+var b = 20
+var max = a > b ? a : b
+pln(max)  // 20
+
+// 字符串格式化
+var count = 1
+var msg = count == 1 ? "1个项目" : count + "个项目"
+pln(msg)  // "1个项目"
+
+// 默认值
+var name = ""
+var displayName = name != "" ? name : "匿名用户"
+pln(displayName)  // "匿名用户"
+
+// 在表达式中使用
+var found = true
+pln("结果: " + (found ? "找到" : "未找到"))
+
+// 与函数调用结合
+var isValid = true
+var result = isValid ? processData() : getDefault()
+```
+
+#### 最佳实践
+
+```xxl
+// ✅ 好：简单清晰的选择
+var discount = isMember ? 0.1 : 0
+
+// ❌ 不好：过于复杂
+var x = a > b ? c > d ? e : f : g > h ? i : j  // 难以阅读
+
+// ✅ 更好：复杂逻辑使用switch或if-else
+var x
+switch (true) {
+case a > b && c > d:
+    x = e
+case a > b:
+    x = f
+case g > h:
+    x = i
+default:
+    x = j
+}
+```
 
 ---
 
@@ -273,6 +430,107 @@ func calculate(a, b, op) {
 
 pln(calculate(10, 5, "+"))  // 15
 pln(calculate(10, 5, "*"))  // 50
+```
+
+### 可变参数函数
+
+使用`...`语法定义可变参数函数，可以接受任意数量的参数：
+
+```xxl
+// 基本可变参数函数
+func sum(...args) {
+    var total = 0
+    for (x in args) {
+        total = total + x
+    }
+    return total
+}
+
+pln(sum())            // 0
+pln(sum(1))           // 1
+pln(sum(1, 2, 3))     // 6
+pln(sum(1, 2, 3, 4, 5))  // 15
+```
+
+#### 固定参数与可变参数混合
+
+固定参数必须放在可变参数之前：
+
+```xxl
+// 前缀 + 可变参数
+func formatList(prefix, ...items) {
+    var result = prefix + ": "
+    for (i, item in items) {
+        if (i > 0) {
+            result = result + ", "
+        }
+        result = result + toStr(item)
+    }
+    return result
+}
+
+pln(formatList("水果", "苹果", "香蕉", "橙子"))
+// 输出: 水果: 苹果, 香蕉, 橙子
+```
+
+#### 可变参数是数组
+
+在函数内部，可变参数作为数组处理：
+
+```xxl
+func logAll(...messages) {
+    // messages 是数组
+    pln("参数数量:", len(messages))
+    for (msg in messages) {
+        pln("-", msg)
+    }
+}
+
+logAll("你好", "世界", 42, true)
+// 参数数量: 4
+// - 你好
+// - 世界
+// - 42
+// - true
+```
+
+#### 实用示例
+
+```xxl
+// 最大值函数
+func max(...nums) {
+    if (len(nums) == 0) {
+        return null
+    }
+    var result = nums[0]
+    for (num in nums) {
+        if (num > result) {
+            result = num
+        }
+    }
+    return result
+}
+
+pln(max(3, 1, 4, 1, 5, 9, 2, 6))  // 9
+
+// 字符串拼接
+func concat(...parts) {
+    var result = ""
+    for (part in parts) {
+        result = result + toStr(part)
+    }
+    return result
+}
+
+pln(concat("Hello", " ", "World", "!"))  // "Hello World!"
+
+// 创建数组
+func list(...items) {
+    return items
+}
+
+var arr = list(1, 2, 3, 4, 5)
+pln(arr)  // [1, 2, 3, 4, 5]
 ```
 
 ### 闭包
