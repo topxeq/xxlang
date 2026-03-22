@@ -1295,6 +1295,182 @@ func (te *TernaryExpression) String() string {
 	return sb.String()
 }
 
+// ============================================
+// Concurrency AST Nodes
+// ============================================
+
+// RunStatement represents a run statement for starting goroutines
+// Syntax: run function(args) or run { block }
+type RunStatement struct {
+	Token     lexer.Token // the 'run' token
+	Function  Expression   // function to call (nil if Block is used)
+	Arguments []Expression // arguments to pass
+	Block     *BlockStatement // anonymous block (nil if Function is used)
+}
+
+func (rs *RunStatement) statementNode() {}
+
+// TokenLiteral returns the token literal
+func (rs *RunStatement) TokenLiteral() string {
+	return rs.Token.Literal
+}
+
+// String returns a string representation of the run statement
+func (rs *RunStatement) String() string {
+	var sb strings.Builder
+	sb.WriteString("run ")
+	if rs.Block != nil {
+		sb.WriteString(rs.Block.String())
+	} else {
+		sb.WriteString(rs.Function.String())
+		sb.WriteString("(")
+		args := make([]string, len(rs.Arguments))
+		for i, arg := range rs.Arguments {
+			args[i] = arg.String()
+		}
+		sb.WriteString(strings.Join(args, ", "))
+		sb.WriteString(")")
+	}
+	return sb.String()
+}
+
+// SelectStatement represents a select statement for tube multiplexing
+type SelectStatement struct {
+	Token  lexer.Token     // the 'select' token
+	Cases  []*SelectCase   // list of select cases
+}
+
+func (ss *SelectStatement) statementNode() {}
+
+// TokenLiteral returns the token literal
+func (ss *SelectStatement) TokenLiteral() string {
+	return ss.Token.Literal
+}
+
+// String returns a string representation of the select statement
+func (ss *SelectStatement) String() string {
+	var sb strings.Builder
+	sb.WriteString("select {\n")
+	for _, c := range ss.Cases {
+		sb.WriteString("  ")
+		sb.WriteString(c.String())
+		sb.WriteString("\n")
+	}
+	sb.WriteString("}")
+	return sb.String()
+}
+
+// SelectCase represents a single case in a select statement
+type SelectCase struct {
+	Token       lexer.Token     // the 'case' or 'default' token
+	Dir         SelectDir       // direction: send, recv, or default
+	Tube        Expression      // the tube expression (for send/recv)
+	Value       Expression      // value to send (for send case)
+	Variable    *Identifier     // variable to receive into (for recv case)
+	OKVariable  *Identifier     // ok variable for two-value receive
+	Body        *BlockStatement // case body
+}
+
+// SelectDir represents the direction of a select case
+type SelectDir int
+
+const (
+	SelectSend    SelectDir = iota // send case: tube <- value
+	SelectRecv                     // receive case: val = <- tube
+	SelectDefault                  // default case
+)
+
+func (sc *SelectCase) String() string {
+	var sb strings.Builder
+	sb.WriteString("case ")
+
+	switch sc.Dir {
+	case SelectSend:
+		sb.WriteString(sc.Tube.String())
+		sb.WriteString(" <- ")
+		sb.WriteString(sc.Value.String())
+	case SelectRecv:
+		if sc.Variable != nil {
+			sb.WriteString(sc.Variable.String())
+			if sc.OKVariable != nil {
+				sb.WriteString(", ")
+				sb.WriteString(sc.OKVariable.String())
+			}
+			sb.WriteString(" = ")
+		}
+		sb.WriteString("<- ")
+		sb.WriteString(sc.Tube.String())
+	case SelectDefault:
+		sb.WriteString("default")
+	}
+
+	sb.WriteString(":\n")
+	if sc.Body != nil {
+		for _, stmt := range sc.Body.Statements {
+			sb.WriteString("    ")
+			sb.WriteString(stmt.String())
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String()
+}
+
+// TubeSendExpression represents a tube send expression: tube <- value
+type TubeSendExpression struct {
+	Token lexer.Token // the '<-' token
+	Tube  Expression  // the tube to send to
+	Value Expression  // the value to send
+}
+
+func (tse *TubeSendExpression) expressionNode() {}
+
+// TokenLiteral returns the token literal
+func (tse *TubeSendExpression) TokenLiteral() string {
+	return tse.Token.Literal
+}
+
+// String returns a string representation of the tube send expression
+func (tse *TubeSendExpression) String() string {
+	var sb strings.Builder
+	sb.WriteString("(")
+	sb.WriteString(tse.Tube.String())
+	sb.WriteString(" <- ")
+	sb.WriteString(tse.Value.String())
+	sb.WriteString(")")
+	return sb.String()
+}
+
+// TubeReceiveExpression represents a tube receive expression: <- tube or value = <- tube
+type TubeReceiveExpression struct {
+	Token      lexer.Token  // the '<-' token
+	Tube       Expression   // the tube to receive from
+	Variable   *Identifier  // optional variable to store result
+	OKVariable *Identifier  // optional ok variable
+}
+
+func (tre *TubeReceiveExpression) expressionNode() {}
+
+// TokenLiteral returns the token literal
+func (tre *TubeReceiveExpression) TokenLiteral() string {
+	return tre.Token.Literal
+}
+
+// String returns a string representation of the tube receive expression
+func (tre *TubeReceiveExpression) String() string {
+	var sb strings.Builder
+	if tre.Variable != nil {
+		sb.WriteString(tre.Variable.String())
+		if tre.OKVariable != nil {
+			sb.WriteString(", ")
+			sb.WriteString(tre.OKVariable.String())
+		}
+		sb.WriteString(" = ")
+	}
+	sb.WriteString("<- ")
+	sb.WriteString(tre.Tube.String())
+	return sb.String()
+}
+
 // Error helper function
 func formatError(format string, args ...interface{}) string {
 	return fmt.Sprintf(format, args...)

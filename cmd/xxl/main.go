@@ -15,6 +15,7 @@ import (
 	"github.com/topxeq/xxlang/pkg/lexer"
 	"github.com/topxeq/xxlang/pkg/objects"
 	"github.com/topxeq/xxlang/pkg/parser"
+	"github.com/topxeq/xxlang/pkg/server"
 	"github.com/topxeq/xxlang/pkg/stdlib"
 	"github.com/topxeq/xxlang/pkg/vm"
 )
@@ -134,6 +135,11 @@ func main() {
 			os.Exit(1)
 		}
 		runFileOrURL(interpreterArgs[1])
+	case "serve":
+		if err := serveCmd(interpreterArgs[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
 	case "update":
 		if err := updateCmd(interpreterArgs[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -190,11 +196,20 @@ func printUsage() {
 	fmt.Println("  xxl <file|url> [-- args...] Execute a .xxl file or script from URL")
 	fmt.Println("  xxl run <file|url> [-- args...]")
 	fmt.Println("                              Execute a .xxl file or script from URL")
+	fmt.Println("  xxl serve [options]         Start HTTP/HTTPS server")
 	fmt.Println("  xxl -cloud <script>         Execute script from cloud URL base")
 	fmt.Println("  xxl compile <file>          Compile file to bytecode")
 	fmt.Println("  xxl update                  Self-update to latest version from GitHub")
 	fmt.Println("  xxl version                 Print version information")
 	fmt.Println("  xxl help                    Print this help message")
+	fmt.Println()
+	fmt.Println("Serve Options:")
+	fmt.Println("  -web=<path>       Web root path (default: .)")
+	fmt.Println("  -ms=<path>        Microservice root path (default: .)")
+	fmt.Println("  -cert=<path>      Certificate path (default: .)")
+	fmt.Println("  -http=<port>      HTTP port (default: 80, 0 to disable)")
+	fmt.Println("  -https=<port>     HTTPS port (default: 443, 0 to disable)")
+	fmt.Println("  -config=<file>    Configuration file path (JSON format)")
 	fmt.Println()
 	fmt.Println("Options:")
 	fmt.Println("  -o, --output path     Output path for compiled file")
@@ -693,4 +708,79 @@ func printHistory(history []string) {
 		display = strings.ReplaceAll(display, "\n", "\\n")
 		fmt.Printf("%3d: %s\n", i+1, display)
 	}
+}
+
+// serveCmd handles the serve subcommand
+func serveCmd(args []string) error {
+	// Default configuration
+	cfg := server.Config{
+		HTTPPort:  80,
+		HTTPSPort: 443,
+	}
+
+	for i := 0; i < len(args); i++ {
+		switch {
+		case strings.HasPrefix(args[i], "-web="):
+			cfg.WebPath = strings.TrimPrefix(args[i], "-web=")
+		case strings.HasPrefix(args[i], "-ms="):
+			cfg.MSPath = strings.TrimPrefix(args[i], "-ms=")
+		case strings.HasPrefix(args[i], "-cert="):
+			cfg.CertPath = strings.TrimPrefix(args[i], "-cert=")
+		case strings.HasPrefix(args[i], "-http="):
+			fmt.Sscanf(strings.TrimPrefix(args[i], "-http="), "%d", &cfg.HTTPPort)
+		case strings.HasPrefix(args[i], "-https="):
+			fmt.Sscanf(strings.TrimPrefix(args[i], "-https="), "%d", &cfg.HTTPSPort)
+		case strings.HasPrefix(args[i], "-config="):
+			// Load from config file
+			configFile := strings.TrimPrefix(args[i], "-config=")
+			loadedCfg, err := server.LoadConfig(configFile)
+			if err != nil {
+				return fmt.Errorf("failed to load config: %v", err)
+			}
+			// Merge with any command line overrides
+			if cfg.WebPath == "" {
+				cfg.WebPath = loadedCfg.WebPath
+			}
+			if cfg.MSPath == "" {
+				cfg.MSPath = loadedCfg.MSPath
+			}
+			if cfg.CertPath == "" {
+				cfg.CertPath = loadedCfg.CertPath
+			}
+			if cfg.HTTPPort == 80 && loadedCfg.HTTPPort != 0 {
+				cfg.HTTPPort = loadedCfg.HTTPPort
+			}
+			if cfg.HTTPSPort == 443 && loadedCfg.HTTPSPort != 0 {
+				cfg.HTTPSPort = loadedCfg.HTTPSPort
+			}
+		}
+	}
+
+	// Set defaults - both web and ms paths default to current directory
+	if cfg.WebPath == "" {
+		cfg.WebPath = "."
+	}
+	if cfg.MSPath == "" {
+		cfg.MSPath = "."
+	}
+	if cfg.CertPath == "" {
+		cfg.CertPath = "."
+	}
+
+	// Validate that at least one port is enabled
+	if cfg.HTTPPort == 0 && cfg.HTTPSPort == 0 {
+		return fmt.Errorf("at least one of -http or -https port must be non-zero")
+	}
+
+	// Create and start server
+	srv := server.NewServer(cfg)
+	fmt.Printf("Xxlang Server v%s\n", Version)
+	fmt.Printf("Web path: %s\n", cfg.WebPath)
+	fmt.Printf("Microservice path: %s\n", cfg.MSPath)
+	if cfg.HTTPSPort > 0 {
+		fmt.Printf("Certificate path: %s\n", cfg.CertPath)
+	}
+	fmt.Println()
+
+	return srv.Start()
 }

@@ -10,17 +10,26 @@ import (
 
 // TypeMethods maps ObjectType -> methodName -> *Builtin
 var TypeMethods = map[ObjectType]map[string]*Builtin{
-	IntType:          intMethods,
-	FloatType:        floatMethods,
-	BigIntType:       bigIntMethods,
-	BigFloatType:     bigFloatMethods,
-	StringType:       stringMethods,
-	CharsType:        charsMethods,
-	ArrayType:        arrayMethods,
-	MapType:          mapMethods,
-	BoolType:         boolMethods,
-	NullType:         nullMethods,
+	IntType:           intMethods,
+	FloatType:         floatMethods,
+	BigIntType:        bigIntMethods,
+	BigFloatType:      bigFloatMethods,
+	StringType:        stringMethods,
+	CharsType:         charsMethods,
+	ArrayType:         arrayMethods,
+	MapType:           mapMethods,
+	BoolType:          boolMethods,
+	NullType:          nullMethods,
 	StringBuilderType: stringBuilderMethods,
+	WebSocketType:     webSocketMethods,
+	// Concurrency types
+	MutexType:      mutexMethods,
+	RWMutexType:    rwMutexMethods,
+	WaitGroupType:  waitGroupMethods,
+	AtomicIntType:  atomicIntMethods,
+	TubeType:       tubeMethods,
+	OnceType:       onceMethods,
+	CondType:       condMethods,
 }
 
 // GetMethod returns the builtin method for the given object type and method name
@@ -1257,5 +1266,511 @@ var stringBuilderMethods = map[string]*Builtin{
 			return newError("receiver for isEmpty must be STRING_BUILDER, got %s", args[0].Type())
 		}
 		return &Bool{Value: self.Len() == 0}
+	}},
+}
+
+// ============================================================
+// WebSocket Methods
+// ============================================================
+
+var webSocketMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	// readMsg reads a message from the WebSocket connection.
+	// Returns an array [messageType, data] or an error.
+	// messageType: 1=text, 2=binary, 8=close, 9=ping, 10=pong
+	"readMsg": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for readMsg. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*WebSocket)
+		if !ok {
+			return newError("receiver for readMsg must be WEBSOCKET, got %s", args[0].Type())
+		}
+		return self.ReadMessage()
+	}},
+	// sendTextMsg sends a text message over the WebSocket.
+	// Usage: conn.sendTextMsg(text)
+	"sendTextMsg": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for sendTextMsg. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*WebSocket)
+		if !ok {
+			return newError("receiver for sendTextMsg must be WEBSOCKET, got %s", args[0].Type())
+		}
+		text, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for sendTextMsg must be STRING, got %s", args[1].Type())
+		}
+		return self.SendTextMessage(text.Value)
+	}},
+	// sendBinaryMsg sends a binary message over the WebSocket.
+	// Usage: conn.sendBinaryMsg(data)
+	"sendBinaryMsg": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for sendBinaryMsg. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*WebSocket)
+		if !ok {
+			return newError("receiver for sendBinaryMsg must be WEBSOCKET, got %s", args[0].Type())
+		}
+		data, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for sendBinaryMsg must be STRING, got %s", args[1].Type())
+		}
+		return self.SendBinaryMessage(data.Value)
+	}},
+	// sendCloseMsg sends a close message over the WebSocket.
+	// Usage: conn.sendCloseMsg()
+	"sendCloseMsg": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for sendCloseMsg. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*WebSocket)
+		if !ok {
+			return newError("receiver for sendCloseMsg must be WEBSOCKET, got %s", args[0].Type())
+		}
+		return self.SendCloseMessage()
+	}},
+	// close closes the WebSocket connection.
+	// Usage: conn.close()
+	"close": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for close. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*WebSocket)
+		if !ok {
+			return newError("receiver for close must be WEBSOCKET, got %s", args[0].Type())
+		}
+		return self.Close()
+	}},
+	// isClosed returns whether the WebSocket is closed.
+	// Usage: conn.isClosed()
+	"isClosed": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for isClosed. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*WebSocket)
+		if !ok {
+			return newError("receiver for isClosed must be WEBSOCKET, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.IsClosed()}
+	}},
+}
+
+// ============================================================
+// Mutex Methods
+// ============================================================
+
+var mutexMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"lock": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for lock. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Mutex)
+		if !ok {
+			return newError("receiver for lock must be MUTEX, got %s", args[0].Type())
+		}
+		self.Lock()
+		return NULL
+	}},
+	"unlock": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for unlock. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Mutex)
+		if !ok {
+			return newError("receiver for unlock must be MUTEX, got %s", args[0].Type())
+		}
+		self.Unlock()
+		return NULL
+	}},
+	"tryLock": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for tryLock. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Mutex)
+		if !ok {
+			return newError("receiver for tryLock must be MUTEX, got %s", args[0].Type())
+		}
+		if self.TryLock() {
+			return TRUE
+		}
+		return FALSE
+	}},
+}
+
+// ============================================================
+// RWMutex Methods
+// ============================================================
+
+var rwMutexMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"lock": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for lock. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RWMutex)
+		if !ok {
+			return newError("receiver for lock must be RWMUTEX, got %s", args[0].Type())
+		}
+		self.Lock()
+		return NULL
+	}},
+	"unlock": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for unlock. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RWMutex)
+		if !ok {
+			return newError("receiver for unlock must be RWMUTEX, got %s", args[0].Type())
+		}
+		self.Unlock()
+		return NULL
+	}},
+	"rLock": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for rLock. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RWMutex)
+		if !ok {
+			return newError("receiver for rLock must be RWMUTEX, got %s", args[0].Type())
+		}
+		self.RLock()
+		return NULL
+	}},
+	"rUnlock": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for rUnlock. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RWMutex)
+		if !ok {
+			return newError("receiver for rUnlock must be RWMUTEX, got %s", args[0].Type())
+		}
+		self.RUnlock()
+		return NULL
+	}},
+}
+
+// ============================================================
+// WaitGroup Methods
+// ============================================================
+
+var waitGroupMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"add": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for add. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*WaitGroup)
+		if !ok {
+			return newError("receiver for add must be WAITGROUP, got %s", args[0].Type())
+		}
+		delta, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for add must be INT, got %s", args[1].Type())
+		}
+		self.Add(int(delta.Value))
+		return NULL
+	}},
+	"done": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for done. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*WaitGroup)
+		if !ok {
+			return newError("receiver for done must be WAITGROUP, got %s", args[0].Type())
+		}
+		self.Done()
+		return NULL
+	}},
+	"wait": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for wait. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*WaitGroup)
+		if !ok {
+			return newError("receiver for wait must be WAITGROUP, got %s", args[0].Type())
+		}
+		self.Wait()
+		return NULL
+	}},
+}
+
+// ============================================================
+// AtomicInt Methods
+// ============================================================
+
+var atomicIntMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"add": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for add. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*AtomicInt)
+		if !ok {
+			return newError("receiver for add must be ATOMICINT, got %s", args[0].Type())
+		}
+		delta, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for add must be INT, got %s", args[1].Type())
+		}
+		return NewInt(self.Add(delta.Value))
+	}},
+	"load": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for load. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*AtomicInt)
+		if !ok {
+			return newError("receiver for load must be ATOMICINT, got %s", args[0].Type())
+		}
+		return NewInt(self.Load())
+	}},
+	"store": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for store. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*AtomicInt)
+		if !ok {
+			return newError("receiver for store must be ATOMICINT, got %s", args[0].Type())
+		}
+		val, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for store must be INT, got %s", args[1].Type())
+		}
+		self.Store(val.Value)
+		return NULL
+	}},
+	"swap": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for swap. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*AtomicInt)
+		if !ok {
+			return newError("receiver for swap must be ATOMICINT, got %s", args[0].Type())
+		}
+		newVal, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for swap must be INT, got %s", args[1].Type())
+		}
+		return NewInt(self.Swap(newVal.Value))
+	}},
+	"compareAndSwap": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for compareAndSwap. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*AtomicInt)
+		if !ok {
+			return newError("receiver for compareAndSwap must be ATOMICINT, got %s", args[0].Type())
+		}
+		oldVal, ok := args[1].(*Int)
+		if !ok {
+			return newError("old value for compareAndSwap must be INT, got %s", args[1].Type())
+		}
+		newVal, ok := args[2].(*Int)
+		if !ok {
+			return newError("new value for compareAndSwap must be INT, got %s", args[2].Type())
+		}
+		if self.CompareAndSwap(oldVal.Value, newVal.Value) {
+			return TRUE
+		}
+		return FALSE
+	}},
+}
+
+// ============================================================
+// Tube Methods
+// ============================================================
+
+var tubeMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"send": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for send. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Tube)
+		if !ok {
+			return newError("receiver for send must be TUBE, got %s", args[0].Type())
+		}
+		if !self.Send(args[1]) {
+			return FALSE
+		}
+		return TRUE
+	}},
+	"receive": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for receive. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Tube)
+		if !ok {
+			return newError("receiver for receive must be TUBE, got %s", args[0].Type())
+		}
+		val, ok := self.Receive()
+		if ok {
+			return NewArray([]Object{val, TRUE})
+		}
+		return NewArray([]Object{val, FALSE})
+	}},
+	"trySend": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for trySend. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Tube)
+		if !ok {
+			return newError("receiver for trySend must be TUBE, got %s", args[0].Type())
+		}
+		sent, ok := self.TrySend(args[1])
+		var sentBool, okBool *Bool
+		if sent {
+			sentBool = TRUE
+		} else {
+			sentBool = FALSE
+		}
+		if ok {
+			okBool = TRUE
+		} else {
+			okBool = FALSE
+		}
+		return NewArray([]Object{sentBool, okBool})
+	}},
+	"tryReceive": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for tryReceive. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Tube)
+		if !ok {
+			return newError("receiver for tryReceive must be TUBE, got %s", args[0].Type())
+		}
+		val, received, open := self.TryReceive()
+		var recvBool, openBool *Bool
+		if received {
+			recvBool = TRUE
+		} else {
+			recvBool = FALSE
+		}
+		if open {
+			openBool = TRUE
+		} else {
+			openBool = FALSE
+		}
+		return NewArray([]Object{val, recvBool, openBool})
+	}},
+	"close": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for close. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Tube)
+		if !ok {
+			return newError("receiver for close must be TUBE, got %s", args[0].Type())
+		}
+		self.Close()
+		return NULL
+	}},
+	"len": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for len. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Tube)
+		if !ok {
+			return newError("receiver for len must be TUBE, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.Len()))
+	}},
+	"cap": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for cap. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Tube)
+		if !ok {
+			return newError("receiver for cap must be TUBE, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.Cap()))
+	}},
+	"isClosed": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for isClosed. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Tube)
+		if !ok {
+			return newError("receiver for isClosed must be TUBE, got %s", args[0].Type())
+		}
+		if self.IsClosed() {
+			return TRUE
+		}
+		return FALSE
+	}},
+}
+
+// ============================================================
+// Once Methods
+// ============================================================
+
+var onceMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"do": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for do. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Once)
+		if !ok {
+			return newError("receiver for do must be ONCE, got %s", args[0].Type())
+		}
+		// Note: Once.do() has limited functionality from Go
+		// The function argument needs special VM handling
+		// For now, just mark as called
+		_ = self
+		_ = args[1]
+		return NULL
+	}},
+}
+
+// ============================================================
+// Cond Methods
+// ============================================================
+
+var condMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"wait": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for wait. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Cond)
+		if !ok {
+			return newError("receiver for wait must be COND, got %s", args[0].Type())
+		}
+		self.Wait()
+		return NULL
+	}},
+	"signal": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for signal. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Cond)
+		if !ok {
+			return newError("receiver for signal must be COND, got %s", args[0].Type())
+		}
+		self.Signal()
+		return NULL
+	}},
+	"broadcast": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for broadcast. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Cond)
+		if !ok {
+			return newError("receiver for broadcast must be COND, got %s", args[0].Type())
+		}
+		self.Broadcast()
+		return NULL
 	}},
 }

@@ -20,6 +20,17 @@ type RegFrame struct {
 	This         Value   // 'this' for method calls
 	Locals       []Value // Local variables (for spilled values)
 	CurrentClass *objects.Class // The class whose method is executing (for super resolution)
+
+	// Select statement state
+	SelectCases    []VMSelectCase // Cases for current select statement
+	SelectNumCases int            // Number of cases in current select
+}
+
+// VMSelectCase represents a case in a select statement
+type VMSelectCase struct {
+	Dir   int           // 0=send, 1=recv, 2=default
+	Tube  *objects.Tube // The tube for this case
+	Value objects.Object // Value to send (for send case)
 }
 
 // Register frame pool for reducing allocations

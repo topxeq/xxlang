@@ -125,6 +125,11 @@ func (l *Lexer) NextToken() Token {
 			l.readChar()
 			literal := string(ch) + string(l.ch)
 			tok = Token{Type: TokenLTE, Literal: literal, Line: line, Column: column}
+		} else if l.peekChar() == '-' {
+			ch := l.ch
+			l.readChar()
+			literal := string(ch) + string(l.ch)
+			tok = Token{Type: TokenTubeArrow, Literal: literal, Line: line, Column: column}
 		} else {
 			tok = newToken(TokenLT, l.ch, line, column)
 		}

@@ -18,6 +18,7 @@ const (
 	CacheResultNull                                // Cached null (property not found)
 	CacheResultPrimitiveMethod                     // Cached primitive type method
 	CacheResultMapMethod                           // Cached map method
+	CacheResultWebSocketMethod                     // Cached WebSocket method
 )
 
 // InlineCache is a cache entry for property/method lookups

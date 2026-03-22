@@ -53,6 +53,7 @@ var precedence = map[lexer.TokenType]int{
 	lexer.TokenIncrement:      CALL,    // Postfix ++ has high precedence
 	lexer.TokenDecrement:      CALL,    // Postfix -- has high precedence
 	lexer.TokenQuestion:       TERNARY, // Ternary operator ?:
+	lexer.TokenTubeArrow:      CALL,    // Tube send operator <-
 }
 
 // Parser parses tokens into an AST
@@ -101,6 +102,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(lexer.TokenNew, p.parseNewExpression)
 	p.registerPrefix(lexer.TokenThis, p.parseThisExpression)
 	p.registerPrefix(lexer.TokenSuper, p.parseSuperExpression)
+	p.registerPrefix(lexer.TokenTubeArrow, p.parseTubeReceiveExpression)
 
 	// Register infix parse functions
 	p.registerInfix(lexer.TokenPlus, p.parseInfixExpression)
@@ -128,6 +130,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerInfix(lexer.TokenIncrement, p.parsePostfixExpression)
 	p.registerInfix(lexer.TokenDecrement, p.parsePostfixExpression)
 	p.registerInfix(lexer.TokenQuestion, p.parseTernaryExpression)
+	p.registerInfix(lexer.TokenTubeArrow, p.parseTubeSendExpression)
 
 	// Read two tokens, so curToken and peekToken are both set
 	p.nextToken()
@@ -253,6 +256,10 @@ func (p *Parser) parseStatement() Statement {
 		return p.parseTryStatement()
 	case lexer.TokenThrow:
 		return p.parseThrowStatement()
+	case lexer.TokenRun:
+		return p.parseRunStatement()
+	case lexer.TokenSelect:
+		return p.parseSelectStatement()
 	case lexer.TokenLBrace:
 		// Check if this is a map literal or block statement
 		// Empty {} is treated as map literal
@@ -1242,6 +1249,206 @@ func (p *Parser) parseThrowStatement() *ThrowStatement {
 	return stmt
 }
 
+// parseRunStatement parses a run statement for starting goroutines
+// Syntax: run function(args)
+func (p *Parser) parseRunStatement() *RunStatement {
+	stmt := &RunStatement{Token: p.curToken}
+
+	p.nextToken() // skip 'run'
+
+	// Check if it's an anonymous block: run { ... }
+	if p.curTokenIs(lexer.TokenLBrace) {
+		stmt.Block = p.parseBlockStatement()
+		return stmt
+	}
+
+	// Parse the function expression
+	stmt.Function = p.parseExpression(CALL)
+
+	// Check if it's a call expression - if so, extract arguments
+	if call, ok := stmt.Function.(*CallExpression); ok {
+		stmt.Function = call.Function
+		stmt.Arguments = call.Arguments
+	}
+
+	return stmt
+}
+
+// parseSelectStatement parses a select statement for tube multiplexing
+// Syntax: select { case ... default ... }
+func (p *Parser) parseSelectStatement() *SelectStatement {
+	stmt := &SelectStatement{Token: p.curToken}
+
+	// Expect '{'
+	if !p.expectPeek(lexer.TokenLBrace) {
+		return nil
+	}
+
+	p.nextToken()
+
+	// Parse cases
+	for !p.curTokenIs(lexer.TokenRBrace) && !p.curTokenIs(lexer.TokenEOF) {
+		caseStmt := p.parseSelectCase()
+		if caseStmt != nil {
+			stmt.Cases = append(stmt.Cases, caseStmt)
+		}
+		// parseSelectCase returns with curToken at the next case/default or closing brace
+		// No need to call nextToken() here
+	}
+
+	return stmt
+}
+
+// parseSelectCase parses a single case in a select statement
+func (p *Parser) parseSelectCase() *SelectCase {
+	caseStmt := &SelectCase{Token: p.curToken}
+
+	if !p.curTokenIs(lexer.TokenCase) && !p.curTokenIs(lexer.TokenDefault) {
+		p.addError(fmt.Sprintf("line %d:%d: expected 'case' or 'default', got %s",
+			p.curToken.Line, p.curToken.Column, p.curToken.Type))
+		return nil
+	}
+
+	// Check for default case
+	if p.curTokenIs(lexer.TokenDefault) {
+		caseStmt.Dir = SelectDefault
+		p.nextToken() // skip 'default'
+		if !p.curTokenIs(lexer.TokenColon) {
+			p.addError(fmt.Sprintf("line %d:%d: expected ':' after default, got %s",
+				p.curToken.Line, p.curToken.Column, p.curToken.Type))
+			return nil
+		}
+		p.nextToken() // skip ':'
+		caseStmt.Body = p.parseBlockStatementNoBrace()
+		return caseStmt
+	}
+
+	// Parse case
+	p.nextToken() // skip 'case'
+
+	// Check for default after case (default: syntax)
+	if p.curTokenIs(lexer.TokenDefault) {
+		caseStmt.Dir = SelectDefault
+		p.nextToken() // skip 'default'
+		if !p.curTokenIs(lexer.TokenColon) {
+			p.addError(fmt.Sprintf("line %d:%d: expected ':' after default, got %s",
+				p.curToken.Line, p.curToken.Column, p.curToken.Type))
+			return nil
+		}
+		p.nextToken() // skip ':'
+		caseStmt.Body = p.parseBlockStatementNoBrace()
+		return caseStmt
+	}
+
+	// Parse the expression to determine if it's send or receive
+	// Look ahead to determine the case type
+	// Receive: val = <- tube  or  val, ok = <- tube  or  <- tube
+	// Send: tube <- value
+
+	// Check for receive pattern: identifier = <- or identifier, identifier = <-
+	if p.curTokenIs(lexer.TokenIdent) && p.peekTokenIs(lexer.TokenAssign) {
+		// Simple receive: val = <- tube
+		caseStmt.Dir = SelectRecv
+		caseStmt.Variable = &Identifier{Token: p.curToken, Value: p.curToken.Literal}
+		p.nextToken() // skip variable
+		p.nextToken() // skip '='
+
+		// Expect '<-'
+		if !p.curTokenIs(lexer.TokenTubeArrow) {
+			p.addError(fmt.Sprintf("line %d:%d: expected '<-' for receive, got %s",
+				p.curToken.Line, p.curToken.Column, p.curToken.Type))
+			return nil
+		}
+		p.nextToken() // skip '<-'
+
+		// Parse tube expression
+		caseStmt.Tube = p.parseExpression(LOWEST)
+	} else if p.curTokenIs(lexer.TokenIdent) && p.peekTokenIs(lexer.TokenComma) {
+		// Two-value receive: val, ok = <- tube
+		caseStmt.Dir = SelectRecv
+		caseStmt.Variable = &Identifier{Token: p.curToken, Value: p.curToken.Literal}
+		p.nextToken() // skip first variable
+		p.nextToken() // skip ','
+		if !p.curTokenIs(lexer.TokenIdent) {
+			p.addError(fmt.Sprintf("line %d:%d: expected identifier after ',', got %s",
+				p.curToken.Line, p.curToken.Column, p.curToken.Type))
+			return nil
+		}
+		caseStmt.OKVariable = &Identifier{Token: p.curToken, Value: p.curToken.Literal}
+		p.nextToken() // skip second variable
+		if !p.curTokenIs(lexer.TokenAssign) {
+			p.addError(fmt.Sprintf("line %d:%d: expected '=' after variables, got %s",
+				p.curToken.Line, p.curToken.Column, p.curToken.Type))
+			return nil
+		}
+		p.nextToken() // skip '='
+
+		// Expect '<-'
+		if !p.curTokenIs(lexer.TokenTubeArrow) {
+			p.addError(fmt.Sprintf("line %d:%d: expected '<-' for receive, got %s",
+				p.curToken.Line, p.curToken.Column, p.curToken.Type))
+			return nil
+		}
+		p.nextToken() // skip '<-'
+
+		// Parse tube expression
+		caseStmt.Tube = p.parseExpression(LOWEST)
+	} else if p.curTokenIs(lexer.TokenTubeArrow) {
+		// Bare receive: <- tube
+		caseStmt.Dir = SelectRecv
+		p.nextToken() // skip '<-'
+		caseStmt.Tube = p.parseExpression(LOWEST)
+	} else {
+		// Must be send: tube <- value
+		// parseExpression will parse the entire "tube <- value" as a TubeSendExpression
+		// because <- is an infix operator
+		expr := p.parseExpression(LOWEST)
+
+		// Check if it's a TubeSendExpression
+		if sendExpr, ok := expr.(*TubeSendExpression); ok {
+			caseStmt.Dir = SelectSend
+			caseStmt.Tube = sendExpr.Tube
+			caseStmt.Value = sendExpr.Value
+		} else {
+			p.addError(fmt.Sprintf("line %d:%d: expected send expression 'tube <- value', got %T",
+				p.curToken.Line, p.curToken.Column, expr))
+			return nil
+		}
+	}
+
+	// Expect ':' - after parseExpression, curToken is at the last token of expression
+	// and peekToken is at the next token, so we check peekToken
+	if !p.peekTokenIs(lexer.TokenColon) {
+		p.addError(fmt.Sprintf("line %d:%d: expected ':' after case expression, got %s",
+			p.peekToken.Line, p.peekToken.Column, p.peekToken.Type))
+		return nil
+	}
+	p.nextToken() // move to ':' token
+	p.nextToken() // skip ':'
+
+	// Parse case body
+	caseStmt.Body = p.parseBlockStatementNoBrace()
+
+	return caseStmt
+}
+
+// parseBlockStatementNoBrace parses statements until the next case, default, or closing brace
+func (p *Parser) parseBlockStatementNoBrace() *BlockStatement {
+	block := &BlockStatement{Token: p.curToken}
+	block.Statements = []Statement{}
+
+	for !p.curTokenIs(lexer.TokenCase) && !p.curTokenIs(lexer.TokenDefault) &&
+		!p.curTokenIs(lexer.TokenRBrace) && !p.curTokenIs(lexer.TokenEOF) {
+		stmt := p.parseStatement()
+		if stmt != nil {
+			block.Statements = append(block.Statements, stmt)
+		}
+		p.nextToken()
+	}
+
+	return block
+}
+
 func (p *Parser) parseExpression(precedence int) Expression {
 	prefix := p.prefixParseFns[p.curToken.Type]
 	if prefix == nil {
@@ -1418,6 +1625,37 @@ func (p *Parser) parseTernaryExpression(condition Expression) Expression {
 
 	// Parse alternative (right associative, so use TERNARY-1)
 	expression.Alternative = p.parseExpression(TERNARY - 1)
+
+	return expression
+}
+
+// parseTubeSendExpression parses a tube send expression: tube <- value
+func (p *Parser) parseTubeSendExpression(tube Expression) Expression {
+	expression := &TubeSendExpression{
+		Token: p.curToken,
+		Tube:  tube,
+	}
+
+	// Skip '<-' token
+	p.nextToken()
+
+	// Parse the value to send
+	expression.Value = p.parseExpression(CALL)
+
+	return expression
+}
+
+// parseTubeReceiveExpression parses a tube receive expression: <- tube
+func (p *Parser) parseTubeReceiveExpression() Expression {
+	expression := &TubeReceiveExpression{
+		Token: p.curToken,
+	}
+
+	// Skip '<-' token
+	p.nextToken()
+
+	// Parse the tube to receive from
+	expression.Tube = p.parseExpression(CALL)
 
 	return expression
 }

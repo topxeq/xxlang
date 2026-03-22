@@ -151,6 +151,56 @@ func getBuiltin(index int) *objects.Builtin {
 		// Chars (Unicode character handling)
 		objects.Builtins["toChars"],  // 120
 		objects.Builtins["charLen"],  // 121
+		// HTTP built-in functions (for server mode)
+		objects.Builtins["writeResp"],      // 122
+		objects.Builtins["setRespHeader"],  // 123
+		objects.Builtins["addRespHeader"],  // 124
+		objects.Builtins["getReqHeader"],   // 125
+		objects.Builtins["getReqHeaders"],  // 126
+		objects.Builtins["setCookie"],      // 127
+		objects.Builtins["getCookie"],      // 128
+		objects.Builtins["getCookies"],     // 129
+		objects.Builtins["parseForm"],      // 130
+		objects.Builtins["parseJSON"],      // 131
+		objects.Builtins["getReqBody"],     // 132
+		objects.Builtins["getReqBodyBytes"], // 133
+		objects.Builtins["status"],         // 134
+		objects.Builtins["redirect"],       // 135
+		objects.Builtins["serveFile"],      // 136
+		objects.Builtins["getMimeType"],    // 137
+		objects.Builtins["setContentType"], // 138
+		objects.Builtins["queryParam"],     // 139
+		objects.Builtins["queryParams"],    // 140
+		objects.Builtins["formValue"],      // 141
+		objects.Builtins["httpStatusName"], // 142
+		objects.Builtins["isHttpReq"],      // 143
+		objects.Builtins["isHttpResp"],     // 144
+		objects.Builtins["urlEncode"],      // 145
+		objects.Builtins["urlDecode"],      // 146
+		// WebSocket built-in functions
+		objects.Builtins["webSocket"],      // 147
+		objects.Builtins["wsReadMsg"],      // 148
+		objects.Builtins["wsSendText"],     // 149
+		objects.Builtins["wsSendBinary"],   // 150
+		objects.Builtins["wsSendClose"],    // 151
+		objects.Builtins["wsClose"],        // 152
+		objects.Builtins["isWebSocket"],    // 153
+		// Concurrency built-in functions
+		objects.Builtins["makeTube"],    // 154
+		objects.Builtins["closeTube"],   // 155
+		objects.Builtins["tubeLen"],     // 156
+		objects.Builtins["tubeCap"],     // 157
+		objects.Builtins["tubeClosed"],  // 158
+		objects.Builtins["tubeSend"],    // 159
+		objects.Builtins["tubeRecv"],    // 160
+		objects.Builtins["tubeTrySend"], // 161
+		objects.Builtins["tubeTryRecv"], // 162
+		objects.Builtins["newMutex"],    // 163
+		objects.Builtins["newRWMutex"],  // 164
+		objects.Builtins["newWaitGroup"], // 165
+		objects.Builtins["newOnce"],     // 166
+		objects.Builtins["newCond"],     // 167
+		objects.Builtins["newAtomic"],   // 168
 	}
 
 	if index < 0 || index >= len(builtins) {

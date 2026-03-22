@@ -372,6 +372,37 @@ const (
 	// Computes one element of matrix product
 	// Format: OpRegMatrixMulElement, a_reg, b_reg, i_reg, j_reg, k_limit, result_reg
 	OpRegMatrixMulElement
+
+	// ============================================================================
+	// CONCURRENCY OPERATIONS
+	// ============================================================================
+
+	// Run (goroutine) operations
+	OpRegRunStart // Start a new goroutine: func_reg, num_args
+	OpRegRunWait  // Wait for goroutine: goroutine_reg
+
+	// Tube operations
+	OpRegMakeTube  // Create tube: dst, buffer_const_idx
+	OpRegTubeSend  // Send to tube: tube_reg, value_reg
+	OpRegTubeRecv  // Receive from tube: dst_reg, tube_reg
+	OpRegTubeClose // Close tube: tube_reg
+
+	// Select operations
+	OpRegSelectStart // Start select: num_cases
+	OpRegSelectCase  // Add select case: dir, tube_reg, value_reg
+	OpRegSelectEnd   // End select: jump_table...
+
+	// Sync operations
+	OpRegMutexLock   // Lock mutex: mutex_reg
+	OpRegMutexUnlock // Unlock mutex: mutex_reg
+	OpRegWGAdd       // WaitGroup add: wg_reg, delta_const
+	OpRegWGWait      // WaitGroup wait: wg_reg
+	OpRegWGDone      // WaitGroup done: wg_reg
+
+	// Atomic operations
+	OpRegAtomicAdd  // Atomic add: dst, atomic_reg, delta_const
+	OpRegAtomicLoad // Atomic load: dst, atomic_reg
+	OpRegAtomicSwap // Atomic swap: dst, atomic_reg, new_const
 )
 
 // Definition describes an opcode's format
@@ -674,6 +705,25 @@ var definitions = map[Opcode]*Definition{
 	// Nested loop optimized superinstructions
 	OpRegNestedLoopMul:     {"OpRegNestedLoopMul", []int{1, 1, 2, 2, 1}},      // arr_a, arr_b, n_const, m_const, result
 	OpRegMatrixMulElement:  {"OpRegMatrixMulElement", []int{1, 1, 1, 1, 2, 1}}, // a, b, i, j, k_limit, result
+
+	// Concurrency operations
+	OpRegRunStart:    {"OpRegRunStart", []int{1, 1}},   // func_reg, num_args
+	OpRegRunWait:     {"OpRegRunWait", []int{1}},       // goroutine_reg
+	OpRegMakeTube:    {"OpRegMakeTube", []int{1, 2}},   // dst, buffer_const_idx
+	OpRegTubeSend:    {"OpRegTubeSend", []int{1, 1}},   // tube_reg, value_reg
+	OpRegTubeRecv:    {"OpRegTubeRecv", []int{1, 1}},   // dst_reg, tube_reg
+	OpRegTubeClose:   {"OpRegTubeClose", []int{1}},     // tube_reg
+	OpRegSelectStart: {"OpRegSelectStart", []int{1}},   // num_cases
+	OpRegSelectCase:  {"OpRegSelectCase", []int{1, 1, 1}}, // dir, tube_reg, value_reg
+	OpRegSelectEnd:   {"OpRegSelectEnd", []int{}},      // jump_table...
+	OpRegMutexLock:   {"OpRegMutexLock", []int{1}},     // mutex_reg
+	OpRegMutexUnlock: {"OpRegMutexUnlock", []int{1}},   // mutex_reg
+	OpRegWGAdd:       {"OpRegWGAdd", []int{1, 2}},      // wg_reg, delta_const
+	OpRegWGWait:      {"OpRegWGWait", []int{1}},        // wg_reg
+	OpRegWGDone:      {"OpRegWGDone", []int{1}},        // wg_reg
+	OpRegAtomicAdd:   {"OpRegAtomicAdd", []int{1, 1, 2}},  // dst, atomic_reg, delta_const
+	OpRegAtomicLoad:  {"OpRegAtomicLoad", []int{1, 1}},   // dst, atomic_reg
+	OpRegAtomicSwap:  {"OpRegAtomicSwap", []int{1, 1, 2}}, // dst, atomic_reg, new_const
 }
 
 // Lookup finds an opcode's definition
@@ -783,7 +833,7 @@ const (
 
 // IsRegisterOpcode returns true if the opcode is a register-based operation
 func IsRegisterOpcode(op Opcode) bool {
-	return op >= OpRegAdd && op <= OpRegMatrixMulElement
+	return op >= OpRegAdd && op <= OpRegAtomicSwap
 }
 
 // MakeRegInstruction creates a fixed 4-byte register instruction

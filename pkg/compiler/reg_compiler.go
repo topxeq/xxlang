@@ -212,6 +212,14 @@ func (c *RegCompiler) Compile(node parser.Node) (int, error) {
 		return c.compileThrowStatement(n)
 	case *parser.SwitchStatement:
 		return c.compileSwitchStatement(n)
+	case *parser.RunStatement:
+		return c.compileRunStatement(n)
+	case *parser.SelectStatement:
+		return c.compileSelectStatement(n)
+	case *parser.TubeSendExpression:
+		return c.compileTubeSendExpression(n)
+	case *parser.TubeReceiveExpression:
+		return c.compileTubeReceiveExpression(n)
 	default:
 		return 0, fmt.Errorf("unknown node type: %T", node)
 	}
@@ -4291,4 +4299,322 @@ func (c *RegCompiler) compileSwitchStatement(node *parser.SwitchStatement) (int,
 	resultReg := c.allocTempReg()
 	c.emitRegNull(resultReg)
 	return resultReg, nil
+}
+
+// compileRunStatement compiles a run statement for starting goroutines
+// Syntax: run function(args)
+func (c *RegCompiler) compileRunStatement(node *parser.RunStatement) (int, error) {
+	// Handle anonymous block: run { ... }
+	if node.Block != nil {
+		// Create an anonymous function from the block using proper scope handling
+		c.enterScope()
+
+		// Compile the block statements
+		var lastReg int
+		var err error
+		for _, stmt := range node.Block.Statements {
+			lastReg, err = c.Compile(stmt)
+			if err != nil {
+				c.leaveScope()
+				return 0, err
+			}
+		}
+
+		// Ensure function ends with return
+		if len(c.instructions) == 0 || Opcode(c.instructions[len(c.instructions)-1]) != OpRegReturn {
+			if lastReg == 0 {
+				c.emitRegReturn(0)
+			} else {
+				c.emitRegReturn(lastReg)
+			}
+		}
+
+		// Leave scope and get compiled function
+		fn := c.leaveScope()
+		fn.NumParameters = 0
+		fn.Variadic = false
+
+		// Add function to constants
+		fnIndex := c.addConstant(fn)
+
+		// Allocate register for function
+		funcReg := c.allocTempReg()
+
+		// Handle free variables (closures)
+		numFree := len(fn.FreeVariables)
+		if numFree == 0 {
+			// No free variables - just load the function
+			c.emitRegLoadConst(funcReg, fnIndex)
+		} else {
+			// Has free variables - need to create closure
+			c.emitRegLoadConst(funcReg, fnIndex)
+			// Load free variables
+			for _, free := range fn.FreeVariables {
+				c.emitRegLoadFree(funcReg, free.Index)
+			}
+		}
+
+		// Move function to R0
+		c.emitRegMove(0, funcReg)
+		c.freeTempReg(funcReg)
+
+		// Emit OpRegRunStart with function in R0, 0 arguments
+		c.instructions = append(c.instructions,
+			byte(OpRegRunStart),
+			byte(0), // func_reg (already in R0)
+			byte(0), // num_args
+		)
+
+		return ReturnRegister, nil
+	}
+
+	// Compile the function expression
+	funcReg, err := c.Compile(node.Function)
+	if err != nil {
+		return 0, err
+	}
+
+	// Limit arguments to 7 (R0 is for function, args go in R1-R7)
+	if len(node.Arguments) > 7 {
+		c.freeTempReg(funcReg)
+		return 0, fmt.Errorf("too many arguments for run statement (max 7)")
+	}
+
+	// Compile arguments and move them to consecutive registers starting from R0
+	// We'll use argument registers 0-7, where R0 gets function and R1-R7 get args
+	argStartReg := c.allocTempReg() // Allocate a temp for moving args
+	c.freeTempReg(argStartReg)
+
+	// Move function to a temp register first if needed
+	if funcReg != 0 {
+		// We need func in R0 for the call
+		// Save funcReg content to a temp, then emit OpRegRunStart
+		// Actually, let's move args to R1-R7 and func to R0
+	}
+
+	// Compile each argument
+	for i, arg := range node.Arguments {
+		argReg, err := c.Compile(arg)
+		if err != nil {
+			c.freeTempReg(funcReg)
+			return 0, err
+		}
+		// Move arg to register i+1 (R1-R7)
+		if argReg != i+1 {
+			c.emitRegMove(i+1, argReg)
+			c.freeTempReg(argReg)
+		}
+	}
+
+	// Move function to R0
+	if funcReg != 0 {
+		c.emitRegMove(0, funcReg)
+		c.freeTempReg(funcReg)
+	}
+
+	// Emit OpRegRunStart: starts goroutine, result is a Goroutine object in ReturnRegister
+	c.instructions = append(c.instructions,
+		byte(OpRegRunStart),
+		byte(0), // func_reg (already in R0)
+		byte(len(node.Arguments)),
+	)
+
+	// Result is in ReturnRegister
+	return ReturnRegister, nil
+}
+
+// compileSelectStatement compiles a select statement for tube multiplexing
+func (c *RegCompiler) compileSelectStatement(node *parser.SelectStatement) (int, error) {
+	numCases := len(node.Cases)
+	if numCases == 0 {
+		// Empty select blocks forever - but we'll just return null
+		dst := c.allocTempReg()
+		c.emitRegNull(dst)
+		return dst, nil
+	}
+
+	// Track jump positions for each case body
+	caseJumpPositions := make([]int, numCases)
+
+	// First pass: build select cases
+	// We'll emit OpRegSelectStart, then OpRegSelectCase for each case
+	// Then OpRegSelectEnd with jump table
+
+	c.instructions = append(c.instructions,
+		byte(OpRegSelectStart),
+		byte(numCases),
+	)
+
+	// Emit each select case
+	for _, caseStmt := range node.Cases {
+		if caseStmt.Dir == parser.SelectDefault {
+			// Default case: dir=2, tube=0, value=0
+			c.instructions = append(c.instructions,
+				byte(OpRegSelectCase),
+				byte(2), // SelectDefault
+				byte(0),
+				byte(0),
+			)
+		} else if caseStmt.Dir == parser.SelectSend {
+			// Send case: tube <- value
+			tubeReg, err := c.Compile(caseStmt.Tube)
+			if err != nil {
+				return 0, err
+			}
+			valReg, err := c.Compile(caseStmt.Value)
+			if err != nil {
+				c.freeTempReg(tubeReg)
+				return 0, err
+			}
+			c.instructions = append(c.instructions,
+				byte(OpRegSelectCase),
+				byte(0), // SelectSend
+				byte(tubeReg),
+				byte(valReg),
+			)
+			c.freeTempReg(tubeReg)
+			c.freeTempReg(valReg)
+		} else if caseStmt.Dir == parser.SelectRecv {
+			// Receive case: <- tube
+			tubeReg, err := c.Compile(caseStmt.Tube)
+			if err != nil {
+				return 0, err
+			}
+			c.instructions = append(c.instructions,
+				byte(OpRegSelectCase),
+				byte(1), // SelectRecv
+				byte(tubeReg),
+				byte(0),
+			)
+			c.freeTempReg(tubeReg)
+		}
+	}
+
+	// Emit select end - this will execute the select and return chosen index
+	// Then we need jump table to jump to the appropriate case body
+	c.instructions = append(c.instructions, byte(OpRegSelectEnd))
+
+	// After select, emit jump table (2 bytes per case for jump offset)
+	jumpTableStart := len(c.instructions)
+	for i := 0; i < numCases; i++ {
+		c.instructions = append(c.instructions, 0, 0) // placeholder for jump offset
+	}
+
+	// Compile case bodies and record positions
+	caseBodyPositions := make([]int, numCases)
+	for i, caseStmt := range node.Cases {
+		caseBodyPositions[i] = len(c.instructions)
+
+		// For receive case, store received value in variable
+		if caseStmt.Dir == parser.SelectRecv && caseStmt.Variable != nil {
+			// The received value is in ReturnRegister after OpRegSelectEnd
+			// Store it in the variable
+			symbol, ok := c.symbolTable.Resolve(caseStmt.Variable.Value)
+			if !ok {
+				symbol = c.symbolTable.Define(caseStmt.Variable.Value)
+			}
+			if symbol.Scope == GlobalScope {
+				c.emitRegStoreGlobal(ReturnRegister, symbol.Index)
+			} else {
+				c.emitRegStoreLocal(ReturnRegister, symbol.Index)
+			}
+		}
+
+		// Compile case body
+		if caseStmt.Body != nil {
+			_, err := c.Compile(caseStmt.Body)
+			if err != nil {
+				return 0, err
+			}
+		}
+
+		// Jump to end after case body
+		caseJumpPositions[i] = c.emitRegJump(0)
+	}
+
+	// Patch jump table with offsets
+	// The offset should be relative to the position after the jump table
+	// because the VM advances IP past the jump table before adding the offset
+	endPos := len(c.instructions)
+	jumpTableEnd := jumpTableStart + numCases*2
+	for i := 0; i < numCases; i++ {
+		offset := caseBodyPositions[i] - jumpTableEnd
+		c.instructions[jumpTableStart+i*2] = byte(offset >> 8)
+		c.instructions[jumpTableStart+i*2+1] = byte(offset)
+	}
+
+	// Patch case body jumps to end
+	for _, pos := range caseJumpPositions {
+		c.patchJumpTo(pos, endPos)
+	}
+
+	// Return null
+	dst := c.allocTempReg()
+	c.emitRegNull(dst)
+	return dst, nil
+}
+
+// compileTubeSendExpression compiles a tube send expression: tube <- value
+func (c *RegCompiler) compileTubeSendExpression(node *parser.TubeSendExpression) (int, error) {
+	// Compile tube expression
+	tubeReg, err := c.Compile(node.Tube)
+	if err != nil {
+		return 0, err
+	}
+
+	// Compile value expression
+	valReg, err := c.Compile(node.Value)
+	if err != nil {
+		c.freeTempReg(tubeReg)
+		return 0, err
+	}
+
+	// Emit OpRegTubeSend
+	c.instructions = append(c.instructions,
+		byte(OpRegTubeSend),
+		byte(tubeReg),
+		byte(valReg),
+	)
+
+	c.freeTempReg(tubeReg)
+	c.freeTempReg(valReg)
+
+	// Return null (send doesn't return a value)
+	dst := c.allocTempReg()
+	c.emitRegNull(dst)
+	return dst, nil
+}
+
+// compileTubeReceiveExpression compiles a tube receive expression: <- tube
+func (c *RegCompiler) compileTubeReceiveExpression(node *parser.TubeReceiveExpression) (int, error) {
+	// Compile tube expression
+	tubeReg, err := c.Compile(node.Tube)
+	if err != nil {
+		return 0, err
+	}
+
+	// Emit OpRegTubeRecv: result is in ReturnRegister
+	dst := c.allocTempReg()
+	c.instructions = append(c.instructions,
+		byte(OpRegTubeRecv),
+		byte(dst),
+		byte(tubeReg),
+	)
+
+	c.freeTempReg(tubeReg)
+
+	// Handle variable assignment if present
+	if node.Variable != nil {
+		symbol, ok := c.symbolTable.Resolve(node.Variable.Value)
+		if !ok {
+			symbol = c.symbolTable.Define(node.Variable.Value)
+		}
+		if symbol.Scope == GlobalScope {
+			c.emitRegStoreGlobal(dst, symbol.Index)
+		} else {
+			c.emitRegStoreLocal(dst, symbol.Index)
+		}
+	}
+
+	return dst, nil
 }

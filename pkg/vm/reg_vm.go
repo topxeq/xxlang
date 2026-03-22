@@ -5,6 +5,7 @@ package vm
 import (
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 
 	"github.com/topxeq/xxlang/pkg/compiler"
@@ -1159,8 +1160,33 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 			} else {
 				return fmt.Errorf("export '%s' not found in module %s", name.Value, mod.Name)
 			}
+		} else if ws, ok := obj.(*objects.WebSocket); ok {
+			// Handle WebSocket objects with inline caching
+			typeTag := objects.TagWebSocket
+			nameHash := hashName(name.Value)
+
+			// Check cache
+			cached := vm.inlineCache.Get(typeTag, nil, nameHash)
+			if cached != nil && cached.ResultType == CacheResultWebSocketMethod {
+				result = cached.Method
+			} else {
+				// Cache miss - lookup method
+				if method, ok := objects.GetMethod(objects.WebSocketType, name.Value); ok {
+					result = method
+					// Cache the method lookup
+					vm.inlineCache.Set(typeTag, nil, nameHash, CacheResultWebSocketMethod, method, -1, nil)
+				} else {
+					return fmt.Errorf("cannot access property '%s' on WebSocket", name.Value)
+				}
+			}
+			_ = ws // avoid unused variable error
 		} else {
-			return fmt.Errorf("cannot access property '%s' on type %s", name.Value, obj.Type())
+			// Handle other types with method lookup (Mutex, WaitGroup, AtomicInt, Tube, etc.)
+			if method, ok := objects.GetMethod(obj.Type(), name.Value); ok {
+				result = method
+			} else {
+				return fmt.Errorf("cannot access property '%s' on type %s", name.Value, obj.Type())
+			}
 		}
 
 		regs[dst] = NewObject(result)
@@ -1281,8 +1307,33 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 				// Cache the result
 				vm.inlineCache.Set(typeTag, nil, nameHash, CacheResultPrimitiveMethod, method, -1, nil)
 			}
+		} else if ws, ok := obj.(*objects.WebSocket); ok {
+			// Handle WebSocket objects with inline caching
+			typeTag := objects.TagWebSocket
+			nameHash := hashName(name.Value)
+
+			// Check cache
+			cached := vm.inlineCache.Get(typeTag, nil, nameHash)
+			if cached != nil && cached.ResultType == CacheResultWebSocketMethod {
+				method = cached.Method
+			} else {
+				// Cache miss - lookup method
+				var methodFound bool
+				method, methodFound = objects.GetMethod(objects.WebSocketType, name.Value)
+				if !methodFound {
+					return fmt.Errorf("cannot call method '%s' on WebSocket", name.Value)
+				}
+				// Cache the result
+				vm.inlineCache.Set(typeTag, nil, nameHash, CacheResultWebSocketMethod, method, -1, nil)
+			}
+			_ = ws // avoid unused variable error
 		} else {
-			return fmt.Errorf("cannot call method '%s' on type %s", name.Value, obj.Type())
+			// Handle other types with method lookup (Mutex, WaitGroup, AtomicInt, Tube, etc.)
+			var methodFound bool
+			method, methodFound = objects.GetMethod(obj.Type(), name.Value)
+			if !methodFound {
+				return fmt.Errorf("cannot call method '%s' on type %s", name.Value, obj.Type())
+			}
 		}
 
 		// Call the method
@@ -2412,6 +2463,309 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 				vm.currentFrame().CurrentClass = definingClass
 			}
 		}
+
+	// ============================================================================
+	// CONCURRENCY OPERATIONS
+	// ============================================================================
+
+	case compiler.OpRegRunStart:
+		// Start a new goroutine
+		funcReg := code[frame.IP+1]
+		numArgs := int(code[frame.IP+2])
+		frame.IP += 3
+
+		fn := regs[funcReg].ToObject()
+		if fn == nil || fn == objects.NULL {
+			return fmt.Errorf("cannot run null")
+		}
+
+		// Get the function to run
+		var compiledFn *compiler.CompiledFunction
+		var closure *Closure
+
+		switch f := fn.(type) {
+		case *compiler.CompiledFunction:
+			compiledFn = f
+		case *Closure:
+			closure = f
+			compiledFn = f.Fn
+		case *objects.Builtin:
+			// Run builtin in goroutine
+			args := make([]objects.Object, numArgs)
+			for i := 0; i < numArgs; i++ {
+				args[i] = regs[i+1].ToObject()
+			}
+			go f.Fn(args...)
+			regs[compiler.ReturnRegister] = NewObject(objects.NULL)
+		default:
+			return fmt.Errorf("cannot run %s", fn.Type())
+		}
+
+		// Collect arguments from registers
+		args := make([]Value, numArgs)
+		for i := 0; i < numArgs; i++ {
+			args[i] = regs[i+1]
+		}
+
+		// Clone the VM for the goroutine
+		newVM := vm.cloneForGoroutine()
+
+		// Start goroutine
+		go func() {
+			if closure != nil {
+				newVM.runFunctionWithClosure(compiledFn, closure, args)
+			} else {
+				newVM.runFunction(compiledFn, args)
+			}
+		}()
+
+		// Return null (goroutine started)
+		regs[compiler.ReturnRegister] = NewObject(objects.NULL)
+
+	case compiler.OpRegRunWait:
+		// Wait for a goroutine (not fully implemented - for future use)
+		goroutineReg := code[frame.IP+1]
+		frame.IP += 2
+		// For now, just use the value
+		_ = regs[goroutineReg]
+		regs[compiler.ReturnRegister] = NewObject(objects.NULL)
+
+	case compiler.OpRegMakeTube:
+		// Create a new tube
+		dstReg := code[frame.IP+1]
+		bufferIdx := int(code[frame.IP+2])<<8 | int(code[frame.IP+3])
+		frame.IP += 4
+
+		// Get buffer size from constants
+		buffer := 0
+		if bufferIdx < len(frame.Constants) {
+			if bufVal, ok := frame.Constants[bufferIdx].ToObject().(*objects.Int); ok {
+				buffer = int(bufVal.Value)
+			}
+		}
+
+		tube := objects.NewTube("", buffer)
+		regs[dstReg] = NewObject(tube)
+
+	case compiler.OpRegTubeSend:
+		// Send to tube: tube <- value
+		tubeReg := code[frame.IP+1]
+		valReg := code[frame.IP+2]
+		frame.IP += 3
+
+		tube, ok := regs[tubeReg].ToObject().(*objects.Tube)
+		if !ok {
+			return fmt.Errorf("send to non-tube")
+		}
+
+		val := regs[valReg].ToObject()
+		if !tube.Send(val) {
+			return fmt.Errorf("send on closed tube")
+		}
+
+	case compiler.OpRegTubeRecv:
+		// Receive from tube: val <- tube
+		dstReg := code[frame.IP+1]
+		tubeReg := code[frame.IP+2]
+		frame.IP += 3
+
+		tube, ok := regs[tubeReg].ToObject().(*objects.Tube)
+		if !ok {
+			return fmt.Errorf("receive from non-tube")
+		}
+
+		val, _ := tube.Receive()
+		regs[dstReg] = NewObject(val)
+
+	case compiler.OpRegTubeClose:
+		// Close tube
+		tubeReg := code[frame.IP+1]
+		frame.IP += 2
+
+		tube, ok := regs[tubeReg].ToObject().(*objects.Tube)
+		if !ok {
+			return fmt.Errorf("close on non-tube")
+		}
+		tube.Close()
+
+	case compiler.OpRegSelectStart:
+		// Start select statement - prepare select cases
+		numCases := int(code[frame.IP+1])
+		frame.IP += 2
+
+		// Store numCases for later use
+		frame.SelectNumCases = numCases
+		frame.SelectCases = make([]VMSelectCase, 0, numCases)
+
+	case compiler.OpRegSelectCase:
+		// Add a select case
+		dir := code[frame.IP+1]
+		tubeReg := code[frame.IP+2]
+		valReg := code[frame.IP+3]
+		frame.IP += 4
+
+		selectCase := VMSelectCase{Dir: int(dir)}
+
+		if dir == 0 { // Send
+			tube, ok := regs[tubeReg].ToObject().(*objects.Tube)
+			if ok {
+				selectCase.Tube = tube
+				selectCase.Value = regs[valReg].ToObject()
+			}
+		} else if dir == 1 { // Receive
+			tube, ok := regs[tubeReg].ToObject().(*objects.Tube)
+			if ok {
+				selectCase.Tube = tube
+			}
+		}
+		// dir == 2 is default, no tube
+
+		frame.SelectCases = append(frame.SelectCases, selectCase)
+
+	case compiler.OpRegSelectEnd:
+		// Execute select and jump to selected case
+		frame.IP += 1
+
+		// Build reflect.SelectCase slice
+		cases := make([]reflect.SelectCase, len(frame.SelectCases))
+		for i, c := range frame.SelectCases {
+			switch c.Dir {
+			case 0: // Send
+				// The channel is chan objects.Object, so we need to send an objects.Object
+				// c.Value is already objects.Object, but reflect.ValueOf will give us the concrete type
+				// We need to create a reflect.Value of type objects.Object
+				objType := reflect.TypeOf((*objects.Object)(nil)).Elem()
+				sendVal := reflect.New(objType).Elem()
+				sendVal.Set(reflect.ValueOf(c.Value))
+				cases[i] = reflect.SelectCase{
+					Dir:  reflect.SelectSend,
+					Chan: c.Tube.ReflectValue(),
+					Send: sendVal,
+				}
+			case 1: // Receive
+				cases[i] = reflect.SelectCase{
+					Dir:  reflect.SelectRecv,
+					Chan: c.Tube.ReflectValue(),
+				}
+			case 2: // Default
+				cases[i] = reflect.SelectCase{
+					Dir: reflect.SelectDefault,
+				}
+			}
+		}
+
+		// Execute select
+		chosen, recv, _ := reflect.Select(cases)
+
+		// If receive case, store received value
+		if frame.SelectCases[chosen].Dir == 1 {
+			regs[compiler.ReturnRegister] = NewObject(recv.Interface().(objects.Object))
+		}
+
+		// Read jump table and jump to selected case
+		jumpOffset := int(code[frame.IP+chosen*2])<<8 | int(code[frame.IP+chosen*2+1])
+		frame.IP += len(frame.SelectCases) * 2 // Skip jump table
+		frame.IP += jumpOffset                 // Jump to case body
+
+		// Clear select state
+		frame.SelectCases = nil
+		frame.SelectNumCases = 0
+
+	case compiler.OpRegMutexLock:
+		// Lock mutex
+		mutexReg := code[frame.IP+1]
+		frame.IP += 2
+
+		mutex, ok := regs[mutexReg].ToObject().(*objects.Mutex)
+		if !ok {
+			return fmt.Errorf("lock on non-mutex")
+		}
+		mutex.Lock()
+
+	case compiler.OpRegMutexUnlock:
+		// Unlock mutex
+		mutexReg := code[frame.IP+1]
+		frame.IP += 2
+
+		mutex, ok := regs[mutexReg].ToObject().(*objects.Mutex)
+		if !ok {
+			return fmt.Errorf("unlock on non-mutex")
+		}
+		mutex.Unlock()
+
+	case compiler.OpRegWGAdd:
+		// WaitGroup add
+		wgReg := code[frame.IP+1]
+		delta := int(code[frame.IP+2])<<8 | int(code[frame.IP+3])
+		frame.IP += 4
+
+		wg, ok := regs[wgReg].ToObject().(*objects.WaitGroup)
+		if !ok {
+			return fmt.Errorf("add on non-waitgroup")
+		}
+		wg.Add(delta)
+
+	case compiler.OpRegWGWait:
+		// WaitGroup wait
+		wgReg := code[frame.IP+1]
+		frame.IP += 2
+
+		wg, ok := regs[wgReg].ToObject().(*objects.WaitGroup)
+		if !ok {
+			return fmt.Errorf("wait on non-waitgroup")
+		}
+		wg.Wait()
+
+	case compiler.OpRegWGDone:
+		// WaitGroup done
+		wgReg := code[frame.IP+1]
+		frame.IP += 2
+
+		wg, ok := regs[wgReg].ToObject().(*objects.WaitGroup)
+		if !ok {
+			return fmt.Errorf("done on non-waitgroup")
+		}
+		wg.Done()
+
+	case compiler.OpRegAtomicAdd:
+		// Atomic add
+		dstReg := code[frame.IP+1]
+		atomicReg := code[frame.IP+2]
+		delta := int64(int(code[frame.IP+3])<<8 | int(code[frame.IP+4]))
+		frame.IP += 5
+
+		atomic, ok := regs[atomicReg].ToObject().(*objects.AtomicInt)
+		if !ok {
+			return fmt.Errorf("atomic add on non-atomic")
+		}
+		result := atomic.Add(delta)
+		regs[dstReg] = NewObject(&objects.Int{Value: result})
+
+	case compiler.OpRegAtomicLoad:
+		// Atomic load
+		dstReg := code[frame.IP+1]
+		atomicReg := code[frame.IP+2]
+		frame.IP += 3
+
+		atomic, ok := regs[atomicReg].ToObject().(*objects.AtomicInt)
+		if !ok {
+			return fmt.Errorf("atomic load on non-atomic")
+		}
+		regs[dstReg] = NewObject(&objects.Int{Value: atomic.Load()})
+
+	case compiler.OpRegAtomicSwap:
+		// Atomic swap
+		dstReg := code[frame.IP+1]
+		atomicReg := code[frame.IP+2]
+		newVal := int64(int(code[frame.IP+3])<<8 | int(code[frame.IP+4]))
+		frame.IP += 5
+
+		atomic, ok := regs[atomicReg].ToObject().(*objects.AtomicInt)
+		if !ok {
+			return fmt.Errorf("atomic swap on non-atomic")
+		}
+		old := atomic.Swap(newVal)
+		regs[dstReg] = NewObject(&objects.Int{Value: old})
 
 	default:
 		return fmt.Errorf("unknown register opcode: %d", op)
@@ -3665,4 +4019,66 @@ func (vm *RegVM) tailCallMethodClosure(closure *Closure, numArgs int, frame *Reg
 	}
 
 	return nil
+}
+
+// cloneForGoroutine creates a minimal VM clone for running a goroutine
+func (vm *RegVM) cloneForGoroutine() *RegVM {
+	// Create a new VM that shares globals but has its own frame stack
+	return &RegVM{
+		constants:    vm.constants,
+		objConstants: vm.objConstants,
+		globals:      vm.globals, // Shared globals (no synchronization)
+		loader:       vm.loader,
+		sourcePath:   vm.sourcePath,
+		sourceMap:    vm.sourceMap,
+		frames:       make([]*RegFrame, MaxFrames),
+		frameIndex:   0,
+		tempStack:    NewValueStack(),
+		handlers:     nil,
+	}
+}
+
+// runFunction runs a compiled function in the current VM (for goroutines)
+func (vm *RegVM) runFunction(fn *compiler.CompiledFunction, args []Value) {
+	// Create a new frame
+	frame := NewRegFrame(fn)
+	frame.Constants = vm.constants
+	frame.Globals = vm.globals
+
+	// Copy arguments to registers
+	for i, arg := range args {
+		if i < compiler.NumArgRegisters {
+			frame.Registers[i] = arg
+		}
+	}
+
+	// Push frame
+	vm.frames[0] = frame
+	vm.frameIndex = 1
+
+	// Run the function
+	_ = vm.Run()
+}
+
+// runFunctionWithClosure runs a compiled function with closure in the current VM
+func (vm *RegVM) runFunctionWithClosure(fn *compiler.CompiledFunction, closure *Closure, args []Value) {
+	// Create a new frame
+	frame := NewRegFrame(fn)
+	frame.Constants = vm.constants
+	frame.Globals = vm.globals
+	frame.FreeVars = closure.FreeVarsValues
+
+	// Copy arguments to registers
+	for i, arg := range args {
+		if i < compiler.NumArgRegisters {
+			frame.Registers[i] = arg
+		}
+	}
+
+	// Push frame
+	vm.frames[0] = frame
+	vm.frameIndex = 1
+
+	// Run the function
+	_ = vm.Run()
 }

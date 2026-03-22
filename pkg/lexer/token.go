@@ -55,6 +55,7 @@ const (
 	TokenArrow     TokenType = "=>"
 	TokenQuestion  TokenType = "?"
 	TokenEllipsis  TokenType = "..."
+	TokenTubeArrow TokenType = "<-"  // Tube send/receive operator
 
 	// Keywords
 	TokenVar      TokenType = "VAR"
@@ -85,6 +86,8 @@ const (
 	TokenFalse    TokenType = "FALSE"
 	TokenImport   TokenType = "IMPORT"
 	TokenExport   TokenType = "EXPORT"
+	TokenRun      TokenType = "RUN"
+	TokenSelect   TokenType = "SELECT"
 
 	// Special
 	TokenEOF     TokenType = "EOF"
@@ -134,6 +137,8 @@ var Keywords = map[string]TokenType{
 	"false":    TokenFalse,
 	"import":   TokenImport,
 	"export":   TokenExport,
+	"run":      TokenRun,
+	"select":   TokenSelect,
 }
 
 // LookupIdent checks if an identifier is a keyword

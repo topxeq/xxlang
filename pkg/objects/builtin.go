@@ -2953,6 +2953,241 @@ var Builtins = map[string]*Builtin{
 			return FALSE
 		},
 	},
+
+	// ============================================================
+	// Concurrency Functions (Tube and Sync)
+	// ============================================================
+
+	// makeTube - create a new tube (channel)
+	"makeTube": {
+		Fn: func(args ...Object) Object {
+			elemType := ObjectType("")
+			buffer := 0
+
+			argIdx := 0
+			if len(args) > 0 {
+				// Check if first argument is type string or number
+				if str, ok := args[0].(*String); ok {
+					elemType = ObjectType(str.Value)
+					argIdx = 1
+				} else if num, ok := args[0].(*Int); ok {
+					buffer = int(num.Value)
+					argIdx = 1
+				}
+			}
+
+			// If there's a second argument, use as buffer
+			if len(args) > argIdx {
+				if num, ok := args[argIdx].(*Int); ok {
+					buffer = int(num.Value)
+				}
+			}
+
+			return NewTube(elemType, buffer)
+		},
+	},
+
+	// closeTube - close a tube
+	"closeTube": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("closeTube requires 1 argument")
+			}
+			t, ok := args[0].(*Tube)
+			if !ok {
+				return newError("argument must be a tube")
+			}
+			t.Close()
+			return NULL
+		},
+	},
+
+	// tubeLen - get number of elements in tube buffer
+	"tubeLen": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("tubeLen requires 1 argument")
+			}
+			t, ok := args[0].(*Tube)
+			if !ok {
+				return newError("argument must be a tube")
+			}
+			return NewInt(int64(t.Len()))
+		},
+	},
+
+	// tubeCap - get tube buffer capacity
+	"tubeCap": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("tubeCap requires 1 argument")
+			}
+			t, ok := args[0].(*Tube)
+			if !ok {
+				return newError("argument must be a tube")
+			}
+			return NewInt(int64(t.Cap()))
+		},
+	},
+
+	// tubeClosed - check if tube is closed
+	"tubeClosed": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("tubeClosed requires 1 argument")
+			}
+			t, ok := args[0].(*Tube)
+			if !ok {
+				return newError("argument must be a tube")
+			}
+			if t.IsClosed() {
+				return TRUE
+			}
+			return FALSE
+		},
+	},
+
+	// tubeSend - send value to tube (blocking)
+	"tubeSend": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 2 {
+				return newError("tubeSend requires 2 arguments (tube, value)")
+			}
+			t, ok := args[0].(*Tube)
+			if !ok {
+				return newError("first argument must be a tube")
+			}
+			if !t.Send(args[1]) {
+				return FALSE
+			}
+			return TRUE
+		},
+	},
+
+	// tubeRecv - receive value from tube (blocking), returns [value, ok]
+	"tubeRecv": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("tubeRecv requires 1 argument")
+			}
+			t, ok := args[0].(*Tube)
+			if !ok {
+				return newError("argument must be a tube")
+			}
+			val, ok := t.Receive()
+			if ok {
+				return NewArray([]Object{val, TRUE})
+			}
+			return NewArray([]Object{val, FALSE})
+		},
+	},
+
+	// tubeTrySend - try to send without blocking, returns [sent, ok]
+	"tubeTrySend": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 2 {
+				return newError("tubeTrySend requires 2 arguments (tube, value)")
+			}
+			t, ok := args[0].(*Tube)
+			if !ok {
+				return newError("first argument must be a tube")
+			}
+			sent, ok := t.TrySend(args[1])
+			var sentBool, okBool *Bool
+			if sent {
+				sentBool = TRUE
+			} else {
+				sentBool = FALSE
+			}
+			if ok {
+				okBool = TRUE
+			} else {
+				okBool = FALSE
+			}
+			return NewArray([]Object{sentBool, okBool})
+		},
+	},
+
+	// tubeTryRecv - try to receive without blocking, returns [value, received, open]
+	"tubeTryRecv": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("tubeTryRecv requires 1 argument")
+			}
+			t, ok := args[0].(*Tube)
+			if !ok {
+				return newError("argument must be a tube")
+			}
+			val, received, open := t.TryReceive()
+			var recvBool, openBool *Bool
+			if received {
+				recvBool = TRUE
+			} else {
+				recvBool = FALSE
+			}
+			if open {
+				openBool = TRUE
+			} else {
+				openBool = FALSE
+			}
+			return NewArray([]Object{val, recvBool, openBool})
+		},
+	},
+
+	// newMutex - create a new mutex
+	"newMutex": {
+		Fn: func(args ...Object) Object {
+			return NewMutex()
+		},
+	},
+
+	// newRWMutex - create a new read-write mutex
+	"newRWMutex": {
+		Fn: func(args ...Object) Object {
+			return NewRWMutex()
+		},
+	},
+
+	// newWaitGroup - create a new wait group
+	"newWaitGroup": {
+		Fn: func(args ...Object) Object {
+			return NewWaitGroup()
+		},
+	},
+
+	// newOnce - create a new once
+	"newOnce": {
+		Fn: func(args ...Object) Object {
+			return NewOnce()
+		},
+	},
+
+	// newCond - create a new condition variable
+	"newCond": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("newCond requires 1 argument (mutex)")
+			}
+			m, ok := args[0].(*Mutex)
+			if !ok {
+				return newError("argument must be a Mutex")
+			}
+			return NewCond(m)
+		},
+	},
+
+	// newAtomic - create a new atomic integer
+	"newAtomic": {
+		Fn: func(args ...Object) Object {
+			initial := int64(0)
+			if len(args) > 0 {
+				if num, ok := args[0].(*Int); ok {
+					initial = num.Value
+				}
+			}
+			return NewAtomicInt(initial)
+		},
+	},
 }
 
 // RunCodeImpl is the implementation function for runCode, set by the VM

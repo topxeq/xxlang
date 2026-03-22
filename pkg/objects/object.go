@@ -28,6 +28,18 @@ const (
 	StringBuilderType ObjectType = "STRING_BUILDER"
 	BigIntType       ObjectType = "BIGINT"
 	BigFloatType     ObjectType = "BIGFLOAT"
+	HttpReqType      ObjectType = "HTTP_REQ"
+	HttpRespType     ObjectType = "HTTP_RESP"
+	HttpMuxType      ObjectType = "HTTP_MUX"
+	WebSocketType    ObjectType = "WEBSOCKET"
+	TubeType         ObjectType = "TUBE"
+	MutexType        ObjectType = "MUTEX"
+	RWMutexType      ObjectType = "RWMUTEX"
+	WaitGroupType    ObjectType = "WAITGROUP"
+	OnceType         ObjectType = "ONCE"
+	CondType         ObjectType = "COND"
+	AtomicIntType    ObjectType = "ATOMICINT"
+	GoroutineType    ObjectType = "GOROUTINE"
 )
 
 // TypeTag is a fast integer type identifier for hot path checks
@@ -55,6 +67,18 @@ const (
 	TagStringBuilder
 	TagBigInt
 	TagBigFloat
+	TagHttpReq
+	TagHttpResp
+	TagHttpMux
+	TagWebSocket
+	TagTube
+	TagMutex
+	TagRWMutex
+	TagWaitGroup
+	TagOnce
+	TagCond
+	TagAtomicInt
+	TagGoroutine
 	TagUnknown
 )
 
