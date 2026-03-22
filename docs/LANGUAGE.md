@@ -98,10 +98,60 @@ The `--debug` flag provides comprehensive debug output:
 | Type | Description | Example |
 |------|-------------|---------|
 | `INT` | 64-bit integer | `42`, `-5`, `0` |
+| `BIGINT` | Arbitrary precision integer | `12345678901234567890n` |
 | `FLOAT` | 64-bit float | `3.14`, `-2.5`, `1.0e10` |
+| `BIGFLOAT` | Arbitrary precision float | `3.14159265358979323846m` |
 | `STRING` | UTF-8 string | `"hello"`, `` `raw string` `` |
 | `BOOL` | Boolean | `true`, `false` |
 | `NULL` | Null value | `null` |
+
+### BigInt and BigFloat
+
+Xxlang supports arbitrary precision numbers for calculations requiring high precision:
+
+**BigInt** - Use the `n` suffix for arbitrary precision integers:
+
+```xxl
+// Regular int has limits (64-bit)
+var small = 9223372036854775807  // Max int64
+
+// BigInt has no practical limit
+var big = 1234567890123456789012345678901234567890n
+var huge = 10n ^ 100n  // 10^100
+
+// BigInt arithmetic
+var a = 1000000000000000000n
+var b = 2000000000000000000n
+pln(a + b)  // 3000000000000000000
+
+// Type checking
+typeOf(big)  // "BIGINT"
+```
+
+**BigFloat** - Use the `m` suffix for arbitrary precision decimals:
+
+```xxl
+// Regular float has precision limits
+var approx = 0.1 + 0.2  // May have rounding errors
+
+// BigFloat maintains exact precision
+var precise = 0.1m + 0.2m  // Exactly 0.3
+
+// High precision calculations
+var pi = 3.141592653589793238462643383279m
+var e = 2.718281828459045235360287471352m
+
+// Financial calculations
+var price = 19.99m
+var tax = price * 0.08m
+var total = price + tax
+
+typeOf(pi)  // "BIGFLOAT"
+```
+
+**When to use:**
+- **BigInt**: Cryptography, factorial calculations, IDs larger than int64
+- **BigFloat**: Financial calculations, scientific computing, avoiding floating-point errors
 
 ### Composite Types
 
@@ -120,7 +170,9 @@ The `--debug` flag provides comprehensive debug output:
 
 ```xxl
 typeOf(42)        // "INT"
+typeOf(123n)      // "BIGINT"
 typeOf(3.14)      // "FLOAT"
+typeOf(3.14m)     // "BIGFLOAT"
 typeOf("hello")   // "STRING"
 typeOf(true)      // "BOOL"
 typeOf(null)      // "NULL"
@@ -512,6 +564,78 @@ func outer() {
 var i = 0
 i++     // i is now 1
 i--     // i is now 0
+```
+
+### Ternary Operator
+
+The ternary operator `?:` provides a concise way to write simple conditional expressions:
+
+```xxl
+var age = 20
+var status = age >= 18 ? "adult" : "minor"
+pln(status)  // "adult"
+
+// Equivalent to:
+var status2
+if (age >= 18) {
+    status2 = "adult"
+} else {
+    status2 = "minor"
+}
+```
+
+**Syntax:**
+
+```xxl
+condition ? valueIfTrue : valueIfFalse
+```
+
+**Examples:**
+
+```xxl
+// Simple value selection
+var max = a > b ? a : b
+
+// String interpolation
+var count = 1
+var msg = count == 1 ? "1 item" : count + " items"
+
+// Nested ternary (use sparingly for readability)
+var score = 85
+var grade = score >= 90 ? "A" : score >= 80 ? "B" : score >= 70 ? "C" : "F"
+
+// With function calls
+var result = isValid ? processData(data) : getDefault()
+
+// In expressions
+pln("Found " + (found ? "yes" : "no"))
+```
+
+**Best Practices:**
+
+1. **Keep it simple**: Use ternary for simple value selection, not complex logic.
+2. **Avoid deep nesting**: Nested ternaries are hard to read. Use `switch (true)` or if-else instead.
+3. **Use parentheses for clarity**: When embedding in larger expressions, parentheses improve readability.
+
+```xxl
+// Good: Simple and clear
+var discount = isMember ? 0.1 : 0
+
+// Bad: Too complex for ternary
+var result = a > b ? c > d ? e : f : g > h ? i : j  // Hard to read
+
+// Better: Use switch or if-else
+var result
+switch (true) {
+    case a > b && c > d:
+        result = e
+    case a > b:
+        result = f
+    case g > h:
+        result = i
+    default:
+        result = j
+}
 ```
 
 ### String Concatenation
@@ -923,6 +1047,107 @@ func greet(name) {
     }
     return "Hello, " + name + "!"
 }
+```
+
+### Variadic Functions
+
+Variadic functions can accept a variable number of arguments using the `...` syntax:
+
+```xxl
+// Basic variadic function
+func sum(...args) {
+    var total = 0
+    for (x in args) {
+        total = total + x
+    }
+    return total
+}
+
+pln(sum())           // 0
+pln(sum(1))          // 1
+pln(sum(1, 2, 3))    // 6
+pln(sum(1, 2, 3, 4, 5))  // 15
+```
+
+**Mixed Parameters:**
+
+Regular parameters must come before the variadic parameter:
+
+```xxl
+// Required parameters + variadic
+func formatList(prefix, ...items) {
+    var result = prefix + ": "
+    for (i, item in items) {
+        if (i > 0) {
+            result = result + ", "
+        }
+        result = result + toStr(item)
+    }
+    return result
+}
+
+pln(formatList("Fruits", "apple", "banana", "orange"))
+// Output: Fruits: apple, banana, orange
+```
+
+**Variadic Parameter is an Array:**
+
+The variadic parameter becomes an array inside the function:
+
+```xxl
+func logAll(...messages) {
+    // 'messages' is an array
+    pln("Count:", len(messages))
+    for (msg in messages) {
+        pln("-", msg)
+    }
+}
+
+logAll("Hello", "World", 42, true)
+// Count: 4
+// - Hello
+// - World
+// - 42
+// - true
+```
+
+**Common Use Cases:**
+
+```xxl
+// Flexible string formatting
+func sprintf(format, ...args) {
+    var result = format
+    for (arg in args) {
+        result = replaceFirst(result, "{}", toStr(arg))
+    }
+    return result
+}
+
+pln(sprintf("Hello {}, you have {} messages", "Alice", 5))
+// Output: Hello Alice, you have 5 messages
+
+// Math operations on variable arguments
+func max(...nums) {
+    if (len(nums) == 0) {
+        return null
+    }
+    var result = nums[0]
+    for (num in nums) {
+        if (num > result) {
+            result = num
+        }
+    }
+    return result
+}
+
+pln(max(3, 1, 4, 1, 5, 9, 2, 6))  // 9
+
+// Array-like construction
+func list(...items) {
+    return items  // Simply return the variadic array
+}
+
+var myArray = list(1, 2, 3, 4, 5)
 ```
 
 ### Closures
