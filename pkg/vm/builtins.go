@@ -201,6 +201,16 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["newOnce"],     // 166
 		objects.Builtins["newCond"],     // 167
 		objects.Builtins["newAtomic"],   // 168
+		// Context built-in functions
+		objects.Builtins["newContext"],        // 169
+		objects.Builtins["contextWithTimeout"], // 170
+		objects.Builtins["contextWithCancel"],  // 171
+		objects.Builtins["contextWithDeadline"], // 172
+		objects.Builtins["contextCancel"],     // 173
+		objects.Builtins["contextDone"],       // 174
+		objects.Builtins["contextErr"],        // 175
+		objects.Builtins["contextIsDone"],     // 176
+		objects.Builtins["contextDeadline"],   // 177
 	}
 
 	if index < 0 || index >= len(builtins) {

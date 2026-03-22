@@ -3188,6 +3188,160 @@ var Builtins = map[string]*Builtin{
 			return NewAtomicInt(initial)
 		},
 	},
+	// Context builtins for timeout and cancellation
+	"newContext": {
+		Fn: func(args ...Object) Object {
+			// Create a background context
+			return NewBackgroundContext()
+		},
+	},
+	"contextWithTimeout": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 2 {
+				return newError("wrong number of arguments for contextWithTimeout. got=%d, want>=2", len(args))
+			}
+
+			// Get parent context (optional, can be null)
+			var parent *Context
+			if ctx, ok := args[0].(*Context); ok && ctx != nil {
+				parent = ctx
+			}
+
+			// Get timeout duration in milliseconds
+			timeoutMs, ok := args[1].(*Int)
+			if !ok {
+				return newError("second argument to contextWithTimeout must be INT (milliseconds), got %s", args[1].Type())
+			}
+
+			return NewContextWithTimeout(parent, time.Duration(timeoutMs.Value)*time.Millisecond)
+		},
+	},
+	"contextWithCancel": {
+		Fn: func(args ...Object) Object {
+			// Get parent context (optional, can be null)
+			var parent *Context
+			if len(args) > 0 {
+				if ctx, ok := args[0].(*Context); ok && ctx != nil {
+					parent = ctx
+				}
+			}
+
+			return NewContextWithCancel(parent)
+		},
+	},
+	"contextWithDeadline": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 2 {
+				return newError("wrong number of arguments for contextWithDeadline. got=%d, want>=2", len(args))
+			}
+
+			// Get parent context (optional, can be null)
+			var parent *Context
+			if ctx, ok := args[0].(*Context); ok && ctx != nil {
+				parent = ctx
+			}
+
+			// Get deadline as Unix timestamp (seconds or milliseconds)
+			var deadline time.Time
+			switch d := args[1].(type) {
+			case *Int:
+				// Assume milliseconds if large number, seconds otherwise
+				if d.Value > 1e9 {
+					deadline = time.Unix(0, d.Value*1e6) // milliseconds to nanoseconds
+				} else {
+					deadline = time.Unix(d.Value, 0)
+				}
+			case *Float:
+				deadline = time.Unix(int64(d.Value), 0)
+			default:
+				return newError("second argument to contextWithDeadline must be INT or FLOAT, got %s", args[1].Type())
+			}
+
+			return NewContextWithDeadline(parent, deadline)
+		},
+	},
+	"contextCancel": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("wrong number of arguments for contextCancel. got=%d, want>=1", len(args))
+			}
+
+			ctx, ok := args[0].(*Context)
+			if !ok {
+				return newError("argument to contextCancel must be CONTEXT, got %s", args[0].Type())
+			}
+
+			ctx.Cancel()
+			return NULL
+		},
+	},
+	"contextDone": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("wrong number of arguments for contextDone. got=%d, want>=1", len(args))
+			}
+
+			ctx, ok := args[0].(*Context)
+			if !ok {
+				return newError("argument to contextDone must be CONTEXT, got %s", args[0].Type())
+			}
+
+			return ctx.Done()
+		},
+	},
+	"contextErr": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("wrong number of arguments for contextErr. got=%d, want>=1", len(args))
+			}
+
+			ctx, ok := args[0].(*Context)
+			if !ok {
+				return newError("argument to contextErr must be CONTEXT, got %s", args[0].Type())
+			}
+
+			errStr := ctx.ErrString()
+			if errStr == "" {
+				return NULL
+			}
+			return NewString(errStr)
+		},
+	},
+	"contextIsDone": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("wrong number of arguments for contextIsDone. got=%d, want>=1", len(args))
+			}
+
+			ctx, ok := args[0].(*Context)
+			if !ok {
+				return newError("argument to contextIsDone must be CONTEXT, got %s", args[0].Type())
+			}
+
+			if ctx.IsDone() {
+				return TRUE
+			}
+			return FALSE
+		},
+	},
+	"contextDeadline": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("wrong number of arguments for contextDeadline. got=%d, want>=1", len(args))
+			}
+
+			ctx, ok := args[0].(*Context)
+			if !ok {
+				return newError("argument to contextDeadline must be CONTEXT, got %s", args[0].Type())
+			}
+
+			dl, hasDeadline := ctx.Deadline()
+			if !hasDeadline {
+				return NULL
+			}
+			return NewInt(dl.UnixMilli())
+		},
+	},
 }
 
 // RunCodeImpl is the implementation function for runCode, set by the VM

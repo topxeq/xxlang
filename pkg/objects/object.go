@@ -40,6 +40,7 @@ const (
 	CondType         ObjectType = "COND"
 	AtomicIntType    ObjectType = "ATOMICINT"
 	GoroutineType    ObjectType = "GOROUTINE"
+	ContextType      ObjectType = "CONTEXT"
 )
 
 // TypeTag is a fast integer type identifier for hot path checks
@@ -79,6 +80,7 @@ const (
 	TagCond
 	TagAtomicInt
 	TagGoroutine
+	TagContext
 	TagUnknown
 )
 

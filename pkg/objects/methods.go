@@ -30,6 +30,7 @@ var TypeMethods = map[ObjectType]map[string]*Builtin{
 	TubeType:       tubeMethods,
 	OnceType:       onceMethods,
 	CondType:       condMethods,
+	ContextType:    contextMethods,
 }
 
 // GetMethod returns the builtin method for the given object type and method name
@@ -1772,5 +1773,90 @@ var condMethods = map[string]*Builtin{
 		}
 		self.Broadcast()
 		return NULL
+	}},
+}
+
+// ============================================================
+// Context Methods
+// ============================================================
+
+var contextMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"done": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for done. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Context)
+		if !ok {
+			return newError("receiver for done must be CONTEXT, got %s", args[0].Type())
+		}
+		return self.Done()
+	}},
+	"cancel": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for cancel. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Context)
+		if !ok {
+			return newError("receiver for cancel must be CONTEXT, got %s", args[0].Type())
+		}
+		self.Cancel()
+		return NULL
+	}},
+	"err": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for err. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Context)
+		if !ok {
+			return newError("receiver for err must be CONTEXT, got %s", args[0].Type())
+		}
+		errStr := self.ErrString()
+		if errStr == "" {
+			return NULL
+		}
+		return NewString(errStr)
+	}},
+	"isDone": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for isDone. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Context)
+		if !ok {
+			return newError("receiver for isDone must be CONTEXT, got %s", args[0].Type())
+		}
+		if self.IsDone() {
+			return TRUE
+		}
+		return FALSE
+	}},
+	"deadline": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for deadline. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Context)
+		if !ok {
+			return newError("receiver for deadline must be CONTEXT, got %s", args[0].Type())
+		}
+		dl, hasDeadline := self.Deadline()
+		if !hasDeadline {
+			return NULL
+		}
+		return NewInt(dl.UnixMilli())
+	}},
+	"deadlineStr": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for deadlineStr. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Context)
+		if !ok {
+			return newError("receiver for deadlineStr must be CONTEXT, got %s", args[0].Type())
+		}
+		dlStr := self.DeadlineString()
+		if dlStr == "" {
+			return NULL
+		}
+		return NewString(dlStr)
 	}},
 }

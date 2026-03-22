@@ -234,6 +234,16 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(166, "newOnce")
 	s.DefineBuiltin(167, "newCond")
 	s.DefineBuiltin(168, "newAtomic")
+	// Context built-in functions
+	s.DefineBuiltin(169, "newContext")
+	s.DefineBuiltin(170, "contextWithTimeout")
+	s.DefineBuiltin(171, "contextWithCancel")
+	s.DefineBuiltin(172, "contextWithDeadline")
+	s.DefineBuiltin(173, "contextCancel")
+	s.DefineBuiltin(174, "contextDone")
+	s.DefineBuiltin(175, "contextErr")
+	s.DefineBuiltin(176, "contextIsDone")
+	s.DefineBuiltin(177, "contextDeadline")
 	return s
 }
 

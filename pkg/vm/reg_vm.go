@@ -2655,11 +2655,21 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 		}
 
 		// Execute select
-		chosen, recv, _ := reflect.Select(cases)
+		chosen, recv, recvOK := reflect.Select(cases)
 
 		// If receive case, store received value
 		if frame.SelectCases[chosen].Dir == 1 {
-			regs[compiler.ReturnRegister] = NewObject(recv.Interface().(objects.Object))
+			// Handle closed tube (recv.Interface() may be nil)
+			if recvOK {
+				if obj, ok := recv.Interface().(objects.Object); ok {
+					regs[compiler.ReturnRegister] = NewObject(obj)
+				} else {
+					regs[compiler.ReturnRegister] = ValueNull
+				}
+			} else {
+				// Tube was closed, return null
+				regs[compiler.ReturnRegister] = ValueNull
+			}
 		}
 
 		// Read jump table and jump to selected case
