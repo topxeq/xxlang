@@ -168,6 +168,14 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(107, "fromJson")
 	// Dynamic code
 	s.DefineBuiltin(108, "delegate")
+	// Array functions (Charlang compatibility)
+	s.DefineBuiltin(109, "append")
+	s.DefineBuiltin(110, "appendArray")
+	s.DefineBuiltin(111, "arrayContains")
+	s.DefineBuiltin(112, "removeItems")
+	s.DefineBuiltin(113, "bytes")
+	s.DefineBuiltin(114, "plt")
+	s.DefineBuiltin(115, "make")
 	return s
 }
 

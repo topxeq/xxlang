@@ -258,6 +258,12 @@ func (vm *RegVM) Run() error {
 		// Check if this is a register-based opcode
 		if compiler.IsRegisterOpcode(op) {
 			if err := vm.executeRegInstruction(op, frame, code); err != nil {
+				// Check if there's an exception handler
+				if handled := vm.handleRuntimeError(err, frame); handled {
+					frame = vm.currentFrame()
+					code = frame.Instructions()
+					continue
+				}
 				return err
 			}
 			frame = vm.currentFrame()
@@ -270,6 +276,11 @@ func (vm *RegVM) Run() error {
 		switch op {
 		case compiler.OpConstant:
 			if err := vm.executeConstant(frame, code); err != nil {
+				if handled := vm.handleRuntimeError(err, frame); handled {
+					frame = vm.currentFrame()
+					code = frame.Instructions()
+					continue
+				}
 				return err
 			}
 		case compiler.OpPop:
@@ -282,6 +293,11 @@ func (vm *RegVM) Run() error {
 				}
 				return result, nil
 			}); err != nil {
+				if handled := vm.handleRuntimeError(err, frame); handled {
+					frame = vm.currentFrame()
+					code = frame.Instructions()
+					continue
+				}
 				return err
 			}
 		case compiler.OpSub:
@@ -292,6 +308,11 @@ func (vm *RegVM) Run() error {
 				}
 				return result, nil
 			}); err != nil {
+				if handled := vm.handleRuntimeError(err, frame); handled {
+					frame = vm.currentFrame()
+					code = frame.Instructions()
+					continue
+				}
 				return err
 			}
 		case compiler.OpMul:
@@ -302,6 +323,11 @@ func (vm *RegVM) Run() error {
 				}
 				return result, nil
 			}); err != nil {
+				if handled := vm.handleRuntimeError(err, frame); handled {
+					frame = vm.currentFrame()
+					code = frame.Instructions()
+					continue
+				}
 				return err
 			}
 		case compiler.OpDiv:
@@ -315,6 +341,11 @@ func (vm *RegVM) Run() error {
 				}
 				return result, nil
 			}); err != nil {
+				if handled := vm.handleRuntimeError(err, frame); handled {
+					frame = vm.currentFrame()
+					code = frame.Instructions()
+					continue
+				}
 				return err
 			}
 		case compiler.OpReturn:
@@ -2731,6 +2762,54 @@ func (vm *RegVM) executeValueBinaryOp(op func(a, b Value) (Value, error)) error 
 	}
 	vm.tempStack.Push(result)
 	return nil
+}
+
+// handleRuntimeError handles a runtime error by checking for exception handlers
+// Returns true if the error was handled (jumped to catch block), false otherwise
+func (vm *RegVM) handleRuntimeError(err error, frame *RegFrame) bool {
+	if len(vm.handlers) == 0 {
+		return false
+	}
+
+	// Convert error to an exception object
+	throwVal := NewObject(objects.NewString(err.Error()))
+
+	// Find handler and unwind stack
+	for len(vm.handlers) > 0 {
+		h := vm.handlers[len(vm.handlers)-1]
+
+		// Check if we need to unwind frames
+		if h.frameIndex < vm.frameIndex {
+			// Pop frames until we reach the handler's frame
+			for vm.frameIndex > h.frameIndex {
+				vm.frameIndex--
+				frame = vm.frames[vm.frameIndex-1]
+			}
+		}
+
+		// Pop this handler (it will handle the exception)
+		vm.handlers = vm.handlers[:len(vm.handlers)-1]
+
+		// If there's a catch block, jump to it
+		if h.catchAddr > 0 {
+			// Put exception value in R0 for catch block
+			frame.Registers[0] = throwVal
+			frame.IP = h.catchAddr
+			return true
+		}
+
+		// If there's a finally block but no catch, execute finally
+		// and save the exception for re-throw after finally
+		if h.finallyAddr > 0 {
+			vm.pendingException = throwVal
+			frame.IP = h.finallyAddr
+			return true
+		}
+
+		// Handler with neither catch nor finally - continue to next handler
+	}
+
+	return false
 }
 
 // decodeRegConst decodes dst, src, constIdx format

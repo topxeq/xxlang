@@ -135,6 +135,14 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["fromJson"], // 107
 		// Dynamic code
 		objects.Builtins["delegate"], // 108
+		// Array functions (Charlang compatibility)
+		objects.Builtins["append"],       // 109
+		objects.Builtins["appendArray"],   // 110
+		objects.Builtins["arrayContains"], // 111
+		objects.Builtins["removeItems"],   // 112
+		objects.Builtins["bytes"],         // 113
+		objects.Builtins["plt"],           // 114
+		objects.Builtins["make"],          // 115
 	}
 
 	if index < 0 || index >= len(builtins) {
