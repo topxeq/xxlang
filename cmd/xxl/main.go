@@ -533,12 +533,6 @@ func executeCodeRegister(program *parser.Program, sourcePath, code string) {
 			fmt.Fprintf(os.Stderr, "[JIT] Compiled %d functions, %d bytes\n", stats.CompiledFunctions, stats.TotalCodeSize)
 		}
 
-		// Print result if it's meaningful
-		result := jitVM.LastPoppedObject()
-		if result != nil && result != objects.NULL {
-			fmt.Println(result.Inspect())
-		}
-
 		jitVM.Cleanup()
 		return
 	}
@@ -559,12 +553,6 @@ func executeCodeRegister(program *parser.Program, sourcePath, code string) {
 		fmt.Fprintf(os.Stderr, "[Debug] VM mode: Interpreter\n")
 		fmt.Fprintf(os.Stderr, "[Debug] Execution time: %v\n", execTime)
 		fmt.Fprintf(os.Stderr, "[Debug] Total time: %v\n", compileTime+execTime)
-	}
-
-	// Print result if it's meaningful
-	result := v.LastPoppedObject()
-	if result != nil && result != objects.NULL {
-		fmt.Println(result.Inspect())
 	}
 }
 

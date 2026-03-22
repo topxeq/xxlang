@@ -1,0 +1,21 @@
+=== Part 1: runCode function ===
+Simple expression:
+3
+Variable assignment:
+20
+Function definition and call:
+7
+String manipulation:
+HELLO
+Array operations:
+3
+With arguments:
+30
+Nested runCode:
+15
+Map creation:
+{a: 1, b: 2}
+=== Part 2: genOtpCode function ===
+Generate OTP code (6 digits):
+true
+=== All dynamic code tests completed! ===

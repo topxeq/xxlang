@@ -2,6 +2,7 @@ package module
 
 import (
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -63,6 +64,11 @@ func TestResolveAbsolutePath(t *testing.T) {
 		{"/project/main.xxl", "/usr/local/lib/xxlang/math", "/usr/local/lib/xxlang/math.xxl"},
 	}
 
+	// Skip on Windows - Unix absolute paths are not valid on Windows
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping Unix-style absolute path tests on Windows")
+	}
+
 	for _, tt := range tests {
 		got, err := Resolve(tt.importer, tt.importPath)
 		if err != nil {
@@ -82,15 +88,19 @@ func TestResolveWasmPath(t *testing.T) {
 		importer   string
 		importPath string
 		want       string
+		skipWin    bool // Skip on Windows for Unix absolute paths
 	}{
 		// Absolute path to .wasm file - should NOT add extension
-		{"/project/main.xxl", "/plugins/fib.wasm", "/plugins/fib.wasm"},
+		{"/project/main.xxl", "/plugins/fib.wasm", "/plugins/fib.wasm", true},
 		// Relative path to .wasm file
-		{"/project/main.xxl", "./plugins/fib.wasm", "/project/plugins/fib.wasm"},
-		{"/project/src/main.xxl", "../plugins/math.wasm", "/project/plugins/math.wasm"},
+		{"/project/main.xxl", "./plugins/fib.wasm", "/project/plugins/fib.wasm", false},
+		{"/project/src/main.xxl", "../plugins/math.wasm", "/project/plugins/math.wasm", false},
 	}
 
 	for _, tt := range tests {
+		if tt.skipWin && runtime.GOOS == "windows" {
+			continue
+		}
 		got, err := Resolve(tt.importer, tt.importPath)
 		if err != nil {
 			t.Errorf("Resolve(%s, %s) error: %v", tt.importer, tt.importPath, err)

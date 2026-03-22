@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -18,13 +19,27 @@ import (
 func buildXxlang(t *testing.T) string {
 	t.Helper()
 
+	// Check if xxl.exe exists in project root first
+	projectRoot := getProjectRoot()
+
+	// Determine binary name based on OS
+	binName := "xxl"
+	if runtime.GOOS == "windows" {
+		binName = "xxl.exe"
+	}
+
+	prebuiltPath := filepath.Join(projectRoot, binName)
+	if _, err := os.Stat(prebuiltPath); err == nil {
+		return prebuiltPath
+	}
+
 	// Create temp directory for binary
 	binDir := t.TempDir()
-	binPath := filepath.Join(binDir, "xxl")
+	binPath := filepath.Join(binDir, binName)
 
 	// Build the binary
 	cmd := exec.Command("go", "build", "-o", binPath, "./cmd/xxl")
-	cmd.Dir = getProjectRoot()
+	cmd.Dir = projectRoot
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {

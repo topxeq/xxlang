@@ -140,6 +140,13 @@ func (vm *RegVM) LastPopped() Value {
 // LastResult returns the value in the ReturnRegister
 // This is the preferred method for getting results from the register VM
 func (vm *RegVM) LastResult() Value {
+	if vm.frameIndex == 0 {
+		// Main function has returned, get result from the first frame
+		if vm.frames[0] != nil {
+			return vm.frames[0].Registers[compiler.ReturnRegister]
+		}
+		return ValueNull
+	}
 	frame := vm.currentFrame()
 	if frame == nil {
 		return ValueNull
@@ -265,6 +272,10 @@ func (vm *RegVM) Run() error {
 					continue
 				}
 				return err
+			}
+			// Check if main function returned (frameIndex == 0 after handleRegReturn)
+			if vm.frameIndex == 0 {
+				return nil
 			}
 			frame = vm.currentFrame()
 			code = frame.Instructions()
@@ -3101,7 +3112,7 @@ func RunCodeInRegVM(code string, args *objects.Map, regVM *RegVM) (objects.Objec
 		return nil, fmt.Errorf("runtime error: %v", err)
 	}
 
-	return newVM.LastPopped().ToObject(), nil
+	return newVM.LastResult().ToObject(), nil
 }
 
 // GetCallStack returns the current call stack

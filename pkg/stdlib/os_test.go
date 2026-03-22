@@ -4,6 +4,7 @@ package stdlib
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/topxeq/xxlang/pkg/objects"
@@ -190,8 +191,11 @@ func TestOsDir(t *testing.T) {
 	if !ok {
 		t.Fatalf("dir() should return String, got %T", result)
 	}
-	if s.Value != "/path/to" {
-		t.Errorf("dir() = %s, want '/path/to'", s.Value)
+	// Normalize path separators for cross-platform testing
+	expected := filepath.ToSlash("/path/to")
+	got := filepath.ToSlash(s.Value)
+	if got != expected {
+		t.Errorf("dir() = %s, want '%s'", s.Value, expected)
 	}
 }
 
@@ -218,13 +222,19 @@ func TestOsClean(t *testing.T) {
 }
 
 func TestOsIsAbs(t *testing.T) {
-	result := callOsFunc("isAbs", String("/absolute/path"))
+	// Use platform-specific absolute path
+	absPath := "/absolute/path"
+	if runtime.GOOS == "windows" {
+		absPath = "C:\\absolute\\path"
+	}
+
+	result := callOsFunc("isAbs", String(absPath))
 	b, ok := result.(*objects.Bool)
 	if !ok {
 		t.Fatalf("isAbs() should return Bool, got %T", result)
 	}
 	if !b.Value {
-		t.Error("isAbs('/absolute/path') should return true")
+		t.Errorf("isAbs('%s') should return true", absPath)
 	}
 
 	result = callOsFunc("isAbs", String("relative/path"))

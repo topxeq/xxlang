@@ -57,7 +57,9 @@ var testFiles = [
     "test031_dot_expression",
     "test032_builtin_coverage",
     "test033_charlang_compat",
-    "tx_anonymousFunc"
+    "tx_anonymousFunc",
+    "tx_array",
+    "test034_dynamic_code"
 ]
 
 var totalTests = len(testFiles)
@@ -195,7 +197,8 @@ if (failedTests == 0) {
     pln("  - Higher-order functions")
     pln("  - Recursion")
     pln("  - Dot expressions")
-    pln("  - Command line utilities")
+    pln("  - Command line utilities
+  - Dynamic code execution")
     exit(0)
 } else {
     pln("Some tests failed. Please review the failures above.")

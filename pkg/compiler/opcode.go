@@ -103,6 +103,7 @@ const (
 	OpIndex     // Index into array/map
 	OpSetIndex  // Set index in array/map
 	OpIndexSafe // Index into array without bounds check (safe context)
+	OpSlice     // Slice array/string: left[start:end]
 
 	// Method/Field operations
 	OpGetMethod  // Get method from object
@@ -229,6 +230,7 @@ const (
 	OpRegMap       // R[dst] = Map from pairs starting at R[src1]
 	OpRegIndex     // R[dst] = R[obj][R[key]]
 	OpRegSetIndex  // R[obj][R[key]] = R[val]
+	OpRegSlice     // R[dst] = R[obj][R[start]:R[end]]
 	OpRegPush      // Push R[src] to temp stack (for complex exprs)
 	OpRegPop       // Pop to R[dst] from temp stack
 
@@ -244,7 +246,8 @@ const (
 	OpRegSuper // Super method call: method_idx, num_args
 
 	// Register built-in call
-	OpRegBuiltin // Call builtin, args in R0-R7, result in RRet
+	OpRegBuiltin      // Call builtin, args in R0-R7, result in RRet
+	OpRegLoadBuiltin  // Load builtin function object into register
 
 	// Register null/true/false literals
 	OpRegNull  // R[dst] = null
@@ -433,6 +436,7 @@ var definitions = map[Opcode]*Definition{
 	OpIndex:     {"OpIndex", []int{}},
 	OpSetIndex:  {"OpSetIndex", []int{}},
 	OpIndexSafe: {"OpIndexSafe", []int{}}, // No bounds check
+	OpSlice:     {"OpSlice", []int{}},     // Slice array/string: left[start:end]
 
 	// Method/Field operations
 	OpGetMethod:  {"OpGetMethod", []int{2}},  // 2-byte constant index for name
@@ -595,6 +599,7 @@ var definitions = map[Opcode]*Definition{
 	OpRegMap:      {"OpRegMap", []int{1, 1, 1}},      // dst, start_reg, count
 	OpRegIndex:    {"OpRegIndex", []int{1, 1, 1}},    // dst, obj, key
 	OpRegSetIndex: {"OpRegSetIndex", []int{1, 1, 1}}, // obj, key, val
+	OpRegSlice:    {"OpRegSlice", []int{1, 1, 1, 1}}, // dst, obj, start, end
 	OpRegPush:     {"OpRegPush", []int{1}},           // src
 	OpRegPop:      {"OpRegPop", []int{1}},            // dst
 
@@ -610,7 +615,8 @@ var definitions = map[Opcode]*Definition{
 	OpRegSuper: {"OpRegSuper", []int{2, 1}},           // method_idx, num_args
 
 	// Register built-in call
-	OpRegBuiltin: {"OpRegBuiltin", []int{1, 1}}, // builtin_idx, num_args
+	OpRegBuiltin:     {"OpRegBuiltin", []int{1, 1}},     // builtin_idx, num_args
+	OpRegLoadBuiltin: {"OpRegLoadBuiltin", []int{1, 1}}, // dst, builtin_idx
 
 	// Register literals
 	OpRegNull:  {"OpRegNull", []int{1}},  // dst
@@ -784,6 +790,12 @@ func IsRegisterOpcode(op Opcode) bool {
 // Format: opcode(1) | dst(1) | src1(1) | src2(1)
 func MakeRegInstruction(op Opcode, dst, src1, src2 int) []byte {
 	return []byte{byte(op), byte(dst), byte(src1), byte(src2)}
+}
+
+// MakeRegInstruction4 creates a register instruction with 4 operands
+// Format: opcode(1) | reg1(1) | reg2(1) | reg3(1) | reg4(1)
+func MakeRegInstruction4(op Opcode, reg1, reg2, reg3, reg4 int) []byte {
+	return []byte{byte(op), byte(reg1), byte(reg2), byte(reg3), byte(reg4)}
 }
 
 // MakeRegInstruction1 creates a register instruction with 1 operand
