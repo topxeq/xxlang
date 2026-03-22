@@ -304,6 +304,54 @@ padRight("5", 4, "0")   // "5000"
 padRight("hello", 3)    // "hello"（已超过宽度）
 ```
 
+### toChars(s)
+
+将字符串转换为 chars 数组，用于基于字符的操作。对于正确处理 Unicode 字符至关重要，操作基于字符（码点）而非字节。
+
+```xxl
+// 字节与字符计数
+var s = "Hello世界🎉"
+pln(len(s))          // 15（字节）
+pln(len(toChars(s))) // 8（字符）
+
+// 字符索引
+var c = toChars("中文测试")
+pln(c[0])            // "中"
+pln(c[1])            // "文"
+pln(c[-1])           // "试"（负索引）
+
+// 字符切片
+var c2 = toChars("Hello World 你好")
+pln(c2.subStr(0, 5).toStr())   // "Hello"
+pln(c2.subStr(6, 11).toStr())  // "World"
+```
+
+**chars 方法：**
+- `toStr()` - 转换回字符串
+- `upper()` - 转大写（字符感知）
+- `lower()` - 转小写（字符感知）
+- `contains(sub)` - 检查是否包含子字符串
+- `indexOf(sub)` - 查找子字符串的字符索引
+- `startsWith(prefix)` - 检查前缀
+- `endsWith(suffix)` - 检查后缀
+- `reverse()` - 反转字符
+- `repeat(n)` - 重复 n 次
+- `subStr(start, end)` - 按字符索引切片
+
+### charLen(s)
+
+返回字符串中 Unicode 字符的数量，无需创建 chars 对象。
+
+```xxl
+charLen("Hello世界🎉")   // 8
+charLen("中文测试")      // 4
+charLen("hello")         // 5
+
+// 对比 len() 返回字节数
+pln(len("中文"))    // 6（字节）
+pln(charLen("中文")) // 2（字符）
+```
+
 ---
 
 ## 数学函数
@@ -1021,6 +1069,26 @@ chunk([1, 2, 3, 4, 5], 2)     // [[1, 2], [3, 4], [5]]
 "hello".endsWith("lo")  // true
 "42".toInt()            // 42
 "3.14".toFloat()        // 3.14
+```
+
+### chars 方法
+
+```xxl
+var c = toChars("Hello世界🎉")
+
+c.len()                    // 8（字符）
+c[0]                       // "H"
+c[5]                       // "世"
+c.subStr(0, 5).toStr()     // "Hello"
+c.subStr(5, 7).toStr()     // "世界"
+c.upper().toStr()          // "HELLO世界🎉"
+c.lower().toStr()          // "hello世界🎉"
+c.contains("世界")          // true
+c.indexOf("世界")           // 5
+c.startsWith("Hello")      // true
+c.endsWith("🎉")            // true
+c.reverse().toStr()        // "🎉界世olleH"
+c.repeat(2).toStr()        // "Hello世界🎉Hello世界🎉"
 ```
 
 ### 数组方法

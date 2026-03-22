@@ -14,6 +14,7 @@ io.println("Hello, World!")
 - [io](#io) - Input/output operations
 - [os](#os) - Operating system utilities and configuration
 - [string](#string) - String utilities
+- [chars](#chars) - Unicode character handling
 - [stringbuilder](#stringbuilder) - Efficient string concatenation
 - [math](#math) - Mathematical functions
 - [array](#array) - Array utilities
@@ -618,6 +619,199 @@ for (var i = 0; i < 1000; i = i + 1) {
 }
 var result = sb.toString()
 pln("Total lines:", result.len())
+```
+
+---
+
+## chars
+
+The `chars` type provides proper Unicode character handling, where operations work on characters (code points) rather than bytes. This is essential for correctly processing text containing non-ASCII characters like Chinese, Japanese, Korean, emoji, and other Unicode characters.
+
+### Why chars?
+
+In Xxlang, the `string` type is byte-oriented (like Go), which means:
+- `len("中文")` returns 6 (bytes), not 2 (characters)
+- `"中文"[0]` returns a byte value, not a character
+- `substr` uses byte indices
+
+The `chars` type provides character-oriented operations:
+- `len(toChars("中文"))` returns 2 (characters)
+- `toChars("中文")[0]` returns "中" (full character)
+- `subStr` uses character indices
+
+### toChars(s)
+
+Converts a string to a chars array for character-based operations.
+
+```xxl
+var s = "Hello世界🎉"
+var c = toChars(s)
+
+pln(len(s))      // 15 (bytes)
+pln(len(c))      // 8 (characters)
+```
+
+### charLen(s)
+
+Returns the number of Unicode characters in a string (without creating a chars object).
+
+```xxl
+charLen("Hello世界🎉")  // 8
+charLen("中文测试")     // 4
+charLen("hello")        // 5
+```
+
+### Chars Indexing
+
+Access characters by their character index (not byte index):
+
+```xxl
+var c = toChars("Hello世界🎉")
+
+pln(c[0])   // "H"
+pln(c[5])   // "世"
+pln(c[7])   // "🎉"
+pln(c[-1])  // "🎉" (negative index from end)
+```
+
+### Chars Slicing
+
+Extract substrings using character indices:
+
+```xxl
+var c = toChars("Hello世界🎉")
+
+pln(c.subStr(0, 5).toStr())   // "Hello"
+pln(c.subStr(5, 7).toStr())   // "世界"
+```
+
+### Chars Methods
+
+#### toStr()
+
+Converts chars back to a string.
+
+```xxl
+var c = toChars("Hello")
+pln(c.toStr())  // "Hello"
+```
+
+#### upper()
+
+Returns uppercase version (character-aware).
+
+```xxl
+var c = toChars("Hello World 你好")
+pln(c.upper().toStr())  // "HELLO WORLD 你好"
+```
+
+#### lower()
+
+Returns lowercase version (character-aware).
+
+```xxl
+var c = toChars("HELLO WORLD 你好")
+pln(c.lower().toStr())  // "hello world 你好"
+```
+
+#### contains(substring)
+
+Checks if chars contains a substring (character-aware).
+
+```xxl
+var c = toChars("Hello World 你好")
+pln(c.contains("World"))  // true
+pln(c.contains("你好"))    // true
+pln(c.contains("xyz"))    // false
+```
+
+#### indexOf(substring)
+
+Returns the character index of the first occurrence, or -1 if not found.
+
+```xxl
+var c = toChars("Hello World 你好")
+pln(c.indexOf("World"))  // 6
+pln(c.indexOf("你好"))    // 12
+pln(c.indexOf("xyz"))    // -1
+```
+
+#### startsWith(prefix)
+
+Checks if chars starts with the given prefix.
+
+```xxl
+var c = toChars("Hello World")
+pln(c.startsWith("Hello"))  // true
+pln(c.startsWith("World"))  // false
+```
+
+#### endsWith(suffix)
+
+Checks if chars ends with the given suffix.
+
+```xxl
+var c = toChars("Hello World 你好")
+pln(c.endsWith("你好"))    // true
+pln(c.endsWith("World"))  // false
+```
+
+#### reverse()
+
+Returns a reversed copy of the chars.
+
+```xxl
+var c = toChars("abc世")
+pln(c.reverse().toStr())  // "世cba"
+```
+
+#### repeat(n)
+
+Returns chars repeated n times.
+
+```xxl
+var c = toChars("abc世")
+pln(c.repeat(3).toStr())  // "abc世abc世abc世"
+```
+
+### String vs Chars Comparison
+
+| Operation | `string` (bytes) | `chars` (characters) |
+|----------|------------------|---------------------|
+| `len("中文")` | 6 (bytes) | N/A |
+| `len(toChars("中文"))` | N/A | 2 (characters) |
+| `"中文"[0]` | Byte value | N/A |
+| `toChars("中文")[0]` | N/A | "中" (character) |
+| `substr(s, 0, 1)` | Byte slice | N/A |
+| `c.subStr(0, 1)` | N/A | Character slice |
+
+### When to Use chars
+
+Use `chars` when you need to:
+- Count characters in Unicode text
+- Extract or manipulate individual Unicode characters
+- Perform character-based slicing
+- Handle text containing Chinese, Japanese, Korean, emoji, etc.
+
+Use `string` when you need to:
+- Work with byte-oriented APIs
+- Optimize for ASCII-only text
+- Maintain compatibility with Go's string model
+
+### Example: Processing Multilingual Text
+
+```xxl
+var text = "日本語English中文한국어"
+var c = toChars(text)
+
+pln("Text: ", text)
+pln("Byte count: ", len(text))       // 20 bytes
+pln("Character count: ", len(c))      // 13 characters
+
+// Iterate over each character
+for (var i = 0; i < len(c); i = i + 1) {
+    pln("  [", i, "] = ", c[i])
+}
 ```
 
 ---

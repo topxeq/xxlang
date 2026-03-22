@@ -159,12 +159,48 @@ typeOf(pi)  // "BIGFLOAT"
 |------|-------------|---------|
 | `ARRAY` | Ordered collection | `[1, 2, 3]` |
 | `MAP` | Key-value pairs | `{"a": 1, "b": 2}` |
+| `CHARS` | Unicode character array | `toChars("中文")` |
 | `FUNCTION` | Function object | `func(x) { return x * 2 }` |
 | `CLOSURE` | Function with captured variables | See closures section |
 | `CLASS` | Class definition | `class Point { ... }` |
 | `INSTANCE` | Class instance | `new Point(1, 2)` |
 | `MODULE` | Imported module | `import "math"` |
 | `BUILTIN` | Built-in function | `len`, `pln`, `typeOf` |
+
+### Chars Type
+
+The `chars` type provides proper Unicode character handling. Unlike strings which are byte-oriented, chars operations work on characters (code points).
+
+```xxl
+// String is byte-oriented
+var s = "中文"
+pln(len(s))     // 6 (bytes)
+pln(s[0])       // Byte value (228)
+
+// Chars is character-oriented
+var c = toChars("中文")
+pln(len(c))     // 2 (characters)
+pln(c[0])       // "中" (full character)
+pln(c[1])       // "文" (full character)
+
+// Character slicing
+var c2 = toChars("Hello世界🎉")
+pln(c2.subStr(5, 7).toStr())  // "世界"
+pln(c2[7])                     // "🎉"
+
+// Chars methods
+pln(c2.upper().toStr())        // "HELLO世界🎉"
+pln(c2.reverse().toStr())      // "🎉界世olleH"
+pln(c2.contains("世界"))        // true
+```
+
+**When to use chars:**
+- Counting characters in Unicode text
+- Extracting individual Unicode characters
+- Character-based string manipulation
+- Processing text with Chinese, Japanese, Korean, emoji, etc.
+
+See [STDLIB.md](STDLIB.md#chars) for complete chars documentation.
 
 ### Type Checking
 

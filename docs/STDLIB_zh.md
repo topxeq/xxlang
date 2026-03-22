@@ -14,6 +14,7 @@ io.println("你好，世界！")
 - [io](#io) - 输入输出操作
 - [os](#os) - 操作系统工具和配置
 - [string](#string) - 字符串工具
+- [chars](#chars) - Unicode 字符处理
 - [stringbuilder](#stringbuilder) - 高效字符串拼接
 - [math](#math) - 数学函数
 - [array](#array) - 数组工具
@@ -494,6 +495,199 @@ endsWith("hello", "lo")  // true
 ```xxl
 indexOf("hello", "l")   // 2
 indexOf("hello", "x")   // -1
+```
+
+---
+
+## chars
+
+`chars` 类型提供正确的 Unicode 字符处理，操作基于字符（码点）而非字节。这对于正确处理包含中文、日文、韩文、emoji 等 Unicode 字符的文本至关重要。
+
+### 为什么需要 chars？
+
+在 Xxlang 中，`string` 类型是面向字节的（类似 Go），这意味着：
+- `len("中文")` 返回 6（字节），而不是 2（字符）
+- `"中文"[0]` 返回字节值，而不是字符
+- `substr` 使用字节索引
+
+`chars` 类型提供面向字符的操作：
+- `len(toChars("中文"))` 返回 2（字符）
+- `toChars("中文")[0]` 返回 "中"（完整字符）
+- `subStr` 使用字符索引
+
+### toChars(s)
+
+将字符串转换为 chars 数组，用于基于字符的操作。
+
+```xxl
+var s = "Hello世界🎉"
+var c = toChars(s)
+
+pln(len(s))      // 15（字节）
+pln(len(c))      // 8（字符）
+```
+
+### charLen(s)
+
+返回字符串中 Unicode 字符的数量（无需创建 chars 对象）。
+
+```xxl
+charLen("Hello世界🎉")  // 8
+charLen("中文测试")     // 4
+charLen("hello")        // 5
+```
+
+### chars 索引
+
+通过字符索引（而非字节索引）访问字符：
+
+```xxl
+var c = toChars("Hello世界🎉")
+
+pln(c[0])   // "H"
+pln(c[5])   // "世"
+pln(c[7])   // "🎉"
+pln(c[-1])  // "🎉"（负索引从末尾开始）
+```
+
+### chars 切片
+
+使用字符索引提取子字符串：
+
+```xxl
+var c = toChars("Hello世界🎉")
+
+pln(c.subStr(0, 5).toStr())   // "Hello"
+pln(c.subStr(5, 7).toStr())   // "世界"
+```
+
+### chars 方法
+
+#### toStr()
+
+将 chars 转换回字符串。
+
+```xxl
+var c = toChars("你好")
+pln(c.toStr())  // "你好"
+```
+
+#### upper()
+
+返回大写版本（字符感知）。
+
+```xxl
+var c = toChars("Hello World 你好")
+pln(c.upper().toStr())  // "HELLO WORLD 你好"
+```
+
+#### lower()
+
+返回小写版本（字符感知）。
+
+```xxl
+var c = toChars("HELLO WORLD 你好")
+pln(c.lower().toStr())  // "hello world 你好"
+```
+
+#### contains(substring)
+
+检查 chars 是否包含子字符串（字符感知）。
+
+```xxl
+var c = toChars("Hello World 你好")
+pln(c.contains("World"))  // true
+pln(c.contains("你好"))    // true
+pln(c.contains("xyz"))    // false
+```
+
+#### indexOf(substring)
+
+返回第一次出现的字符索引，未找到返回 -1。
+
+```xxl
+var c = toChars("Hello World 你好")
+pln(c.indexOf("World"))  // 6
+pln(c.indexOf("你好"))    // 12
+pln(c.indexOf("xyz"))    // -1
+```
+
+#### startsWith(prefix)
+
+检查 chars 是否以指定前缀开头。
+
+```xxl
+var c = toChars("Hello World")
+pln(c.startsWith("Hello"))  // true
+pln(c.startsWith("World"))  // false
+```
+
+#### endsWith(suffix)
+
+检查 chars 是否以指定后缀结尾。
+
+```xxl
+var c = toChars("Hello World 你好")
+pln(c.endsWith("你好"))    // true
+pln(c.endsWith("World"))  // false
+```
+
+#### reverse()
+
+返回 chars 的反转副本。
+
+```xxl
+var c = toChars("abc世")
+pln(c.reverse().toStr())  // "世cba"
+```
+
+#### repeat(n)
+
+返回 chars 重复 n 次的结果。
+
+```xxl
+var c = toChars("abc世")
+pln(c.repeat(3).toStr())  // "abc世abc世abc世"
+```
+
+### string 与 chars 对比
+
+| 操作 | `string`（字节） | `chars`（字符） |
+|-----|-----------------|----------------|
+| `len("中文")` | 6（字节） | N/A |
+| `len(toChars("中文"))` | N/A | 2（字符） |
+| `"中文"[0]` | 字节值 | N/A |
+| `toChars("中文")[0]` | N/A | "中"（字符） |
+| `substr(s, 0, 1)` | 字节切片 | N/A |
+| `c.subStr(0, 1)` | N/A | 字符切片 |
+
+### 何时使用 chars
+
+使用 `chars` 当你需要：
+- 统计 Unicode 文本中的字符数
+- 提取或操作单个 Unicode 字符
+- 执行基于字符的切片
+- 处理包含中文、日文、韩文、emoji 等的文本
+
+使用 `string` 当你需要：
+- 使用面向字节的 API
+- 仅处理 ASCII 文本以优化性能
+- 保持与 Go 字符串模型的兼容性
+
+### 示例：处理多语言文本
+
+```xxl
+var text = "日本語English中文한국어"
+var c = toChars(text)
+
+pln("文本: ", text)
+pln("字节数: ", len(text))       // 20 字节
+pln("字符数: ", len(c))           // 13 字符
+
+// 遍历每个字符
+for (var i = 0; i < len(c); i = i + 1) {
+    pln("  [", i, "] = ", c[i])
+}
 ```
 
 ---

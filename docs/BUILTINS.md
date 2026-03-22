@@ -721,6 +721,54 @@ toStr(true)     // "true"
 toStr([1, 2])   // "[1, 2]"
 ```
 
+### toChars(s)
+
+Converts a string to a chars array for character-based operations. Essential for proper Unicode handling where operations work on characters (code points) rather than bytes.
+
+```xxl
+// Byte vs Character counting
+var s = "Hello世界🎉"
+pln(len(s))         // 15 (bytes)
+pln(len(toChars(s))) // 8 (characters)
+
+// Character indexing
+var c = toChars("中文测试")
+pln(c[0])           // "中"
+pln(c[1])           // "文"
+pln(c[-1])          // "试" (negative index)
+
+// Character slicing
+var c2 = toChars("Hello World 你好")
+pln(c2.subStr(0, 5).toStr())   // "Hello"
+pln(c2.subStr(5, 7).toStr())   // "世界" error - correct is subStr(6, 11)
+```
+
+**Chars Methods:**
+- `toStr()` - Convert back to string
+- `upper()` - Uppercase (character-aware)
+- `lower()` - Lowercase (character-aware)
+- `contains(sub)` - Check if contains substring
+- `indexOf(sub)` - Find character index of substring
+- `startsWith(prefix)` - Check prefix
+- `endsWith(suffix)` - Check suffix
+- `reverse()` - Reverse characters
+- `repeat(n)` - Repeat n times
+- `subStr(start, end)` - Slice by character indices
+
+### charLen(s)
+
+Returns the number of Unicode characters in a string without creating a chars object.
+
+```xxl
+charLen("Hello世界🎉")   // 8
+charLen("中文测试")      // 4
+charLen("hello")         // 5
+
+// Compare with len() which returns bytes
+pln(len("中文"))    // 6 (bytes)
+pln(charLen("中文")) // 2 (characters)
+```
+
 ---
 
 ## Utility Functions
