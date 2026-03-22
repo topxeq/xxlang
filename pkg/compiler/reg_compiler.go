@@ -2635,16 +2635,16 @@ func (c *RegCompiler) compileTernaryExpression(n *parser.TernaryExpression) (int
 
 // compilePostfixExpression compiles a postfix expression (i++, i--)
 func (c *RegCompiler) compilePostfixExpression(n *parser.PostfixExpression) (int, error) {
-	// Handle identifier postfix expressions: x++ or x--
+	// Allocate a register for the result (old value for postfix)
+	resultReg := c.allocTempReg()
+
+	// Handle different left expression types
 	switch left := n.Left.(type) {
 	case *parser.Identifier:
 		symbol, ok := c.symbolTable.Resolve(left.Value)
 		if !ok {
 			return 0, fmt.Errorf("undefined variable: %s", left.Value)
 		}
-
-		// Allocate a register for the result (old value)
-		resultReg := c.allocTempReg()
 
 		// Allocate a register for the current value
 		valReg := c.allocTempReg()
@@ -2691,16 +2691,111 @@ func (c *RegCompiler) compilePostfixExpression(n *parser.PostfixExpression) (int
 		c.freeTempReg(valReg)
 		c.freeTempReg(oneReg)
 
-		return resultReg, nil
+	case *parser.IndexExpression:
+		// Handle a[i]++ or a[i]--
+		// Compile the object (array/map)
+		objReg, err := c.Compile(left.Left)
+		if err != nil {
+			return 0, err
+		}
+
+		// Compile the index
+		indexReg, err := c.Compile(left.Index)
+		if err != nil {
+			return 0, err
+		}
+
+		// Get current value from index
+		valReg := c.allocTempReg()
+		c.emitRegIndex(valReg, objReg, indexReg)
+
+		// Copy old value to result register (postfix returns old value)
+		c.emitRegMove(resultReg, valReg)
+
+		// Load constant 1
+		oneIdx := c.addConstant(objects.NewInt(1))
+		oneReg := c.allocTempReg()
+		c.emitRegLoadConst(oneReg, oneIdx)
+
+		// Perform increment or decrement
+		switch n.Operator {
+		case "++":
+			c.emitRegAdd(valReg, valReg, oneReg)
+		case "--":
+			c.emitRegSub(valReg, valReg, oneReg)
+		default:
+			return 0, fmt.Errorf("unknown postfix operator: %s", n.Operator)
+		}
+
+		// Store back to index
+		c.emitRegSetIndex(objReg, indexReg, valReg)
+
+		// Free temporary registers
+		c.freeTempReg(objReg)
+		c.freeTempReg(indexReg)
+		c.freeTempReg(valReg)
+		c.freeTempReg(oneReg)
+
+	case *parser.DotExpression:
+		// Handle obj.field++ or obj.field--
+		// Compile the object
+		objReg, err := c.Compile(left.Object)
+		if err != nil {
+			return 0, err
+		}
+
+		// Get field name
+		nameIdx := c.addConstant(objects.InternString(left.Property.Value))
+
+		// Get current value from field
+		valReg := c.allocTempReg()
+		c.emitRegGetField(valReg, objReg, nameIdx)
+
+		// Copy old value to result register (postfix returns old value)
+		c.emitRegMove(resultReg, valReg)
+
+		// Load constant 1
+		oneIdx := c.addConstant(objects.NewInt(1))
+		oneReg := c.allocTempReg()
+		c.emitRegLoadConst(oneReg, oneIdx)
+
+		// Perform increment or decrement
+		switch n.Operator {
+		case "++":
+			c.emitRegAdd(valReg, valReg, oneReg)
+		case "--":
+			c.emitRegSub(valReg, valReg, oneReg)
+		default:
+			return 0, fmt.Errorf("unknown postfix operator: %s", n.Operator)
+		}
+
+		// Store back to field
+		c.emitRegSetField(objReg, valReg, nameIdx)
+
+		// Free temporary registers
+		c.freeTempReg(objReg)
+		c.freeTempReg(valReg)
+		c.freeTempReg(oneReg)
 
 	default:
 		return 0, fmt.Errorf("postfix expression not supported for type: %T", left)
 	}
+
+	return resultReg, nil
 }
 
 // compileCompoundAssignmentExpression compiles compound assignment expressions (+=, -=, *=, /=)
 func (c *RegCompiler) compileCompoundAssignmentExpression(n *parser.CompoundAssignmentExpression) (int, error) {
-	// Handle identifier compound assignments: x += 1, x -= 2, etc.
+	// Compile right side first (common for all cases)
+	rightReg, err := c.Compile(n.Right)
+	if err != nil {
+		return 0, err
+	}
+
+	// Result register for the final value
+	resultReg := c.allocTempReg()
+
+	// Handle different left expression types
 	switch left := n.Left.(type) {
 	case *parser.Identifier:
 		symbol, ok := c.symbolTable.Resolve(left.Value)
@@ -2719,11 +2814,51 @@ func (c *RegCompiler) compileCompoundAssignmentExpression(n *parser.CompoundAssi
 			c.emitRegLoadFree(valReg, symbol.Index)
 		}
 
-		// Compile right side
-		rightReg, err := c.Compile(n.Right)
+		// Perform operation
+		switch n.Operator {
+		case "+=":
+			c.emitRegAdd(valReg, valReg, rightReg)
+		case "-=":
+			c.emitRegSub(valReg, valReg, rightReg)
+		case "*=":
+			c.emitRegMul(valReg, valReg, rightReg)
+		case "/=":
+			c.emitRegDiv(valReg, valReg, rightReg)
+		case "%=":
+			c.emitRegMod(valReg, valReg, rightReg)
+		default:
+			return 0, fmt.Errorf("unknown compound assignment operator: %s", n.Operator)
+		}
+
+		// Copy to result register
+		c.emitRegMove(resultReg, valReg)
+
+		// Store back to variable
+		switch symbol.Scope {
+		case GlobalScope:
+			c.emitRegStoreGlobal(valReg, symbol.Index)
+		case LocalScope:
+			c.emitRegStoreLocal(valReg, symbol.Index)
+		case FreeScope:
+			c.emitRegStoreFree(valReg, symbol.Index)
+		}
+
+		c.freeTempReg(valReg)
+
+	case *parser.IndexExpression:
+		// Handle a[i] += n, a[i] -= n, etc.
+		objReg, err := c.Compile(left.Left)
 		if err != nil {
 			return 0, err
 		}
+		indexReg, err := c.Compile(left.Index)
+		if err != nil {
+			return 0, err
+		}
+
+		// Get current value
+		valReg := c.allocTempReg()
+		c.emitRegIndex(valReg, objReg, indexReg)
 
 		// Perform operation
 		switch n.Operator {
@@ -2741,24 +2876,59 @@ func (c *RegCompiler) compileCompoundAssignmentExpression(n *parser.CompoundAssi
 			return 0, fmt.Errorf("unknown compound assignment operator: %s", n.Operator)
 		}
 
-		// Store back to variable
-		switch symbol.Scope {
-		case GlobalScope:
-			c.emitRegStoreGlobal(valReg, symbol.Index)
-		case LocalScope:
-			c.emitRegStoreLocal(valReg, symbol.Index)
-		case FreeScope:
-			c.emitRegStoreFree(valReg, symbol.Index)
+		// Copy to result register
+		c.emitRegMove(resultReg, valReg)
+
+		// Store back
+		c.emitRegSetIndex(objReg, indexReg, valReg)
+
+		c.freeTempReg(objReg)
+		c.freeTempReg(indexReg)
+		c.freeTempReg(valReg)
+
+	case *parser.DotExpression:
+		// Handle obj.field += n, obj.field -= n, etc.
+		objReg, err := c.Compile(left.Object)
+		if err != nil {
+			return 0, err
+		}
+		nameIdx := c.addConstant(objects.InternString(left.Property.Value))
+
+		// Get current value
+		valReg := c.allocTempReg()
+		c.emitRegGetField(valReg, objReg, nameIdx)
+
+		// Perform operation
+		switch n.Operator {
+		case "+=":
+			c.emitRegAdd(valReg, valReg, rightReg)
+		case "-=":
+			c.emitRegSub(valReg, valReg, rightReg)
+		case "*=":
+			c.emitRegMul(valReg, valReg, rightReg)
+		case "/=":
+			c.emitRegDiv(valReg, valReg, rightReg)
+		case "%=":
+			c.emitRegMod(valReg, valReg, rightReg)
+		default:
+			return 0, fmt.Errorf("unknown compound assignment operator: %s", n.Operator)
 		}
 
-		// Free temporary registers
-		c.freeTempReg(rightReg)
+		// Copy to result register
+		c.emitRegMove(resultReg, valReg)
 
-		return valReg, nil
+		// Store back
+		c.emitRegSetField(objReg, valReg, nameIdx)
+
+		c.freeTempReg(objReg)
+		c.freeTempReg(valReg)
 
 	default:
 		return 0, fmt.Errorf("compound assignment not supported for type: %T", left)
 	}
+
+	c.freeTempReg(rightReg)
+	return resultReg, nil
 }
 
 // Register allocation helpers
