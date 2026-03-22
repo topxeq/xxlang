@@ -1,0 +1,109 @@
+// Fibonacci Benchmark with BigInt
+// Compares regular int vs BigInt performance for large Fibonacci numbers
+
+// Regular recursive Fibonacci (limited by int64)
+func fibInt(n) {
+    if (n <= 1) {
+        return n
+    }
+    return fibInt(n - 1) + fibInt(n - 2)
+}
+
+// Iterative Fibonacci using regular int
+func fibIntIter(n) {
+    if (n <= 1) {
+        return n
+    }
+    var a = 0
+    var b = 1
+    var temp = 0
+    var i = 2
+    while (i <= n) {
+        temp = a + b
+        a = b
+        b = temp
+        i = i + 1
+    }
+    return b
+}
+
+// Iterative BigInt Fibonacci (unlimited precision)
+func fibBigIntIter(n) {
+    if (n <= 1) {
+        return n.toBigInt()
+    }
+    var a = 0n
+    var b = 1n
+    var temp = 0n
+    var i = 2
+    while (i <= n) {
+        temp = a + b
+        a = b
+        b = temp
+        i = i + 1
+    }
+    return b
+}
+
+pln("=== Fibonacci Benchmark ===")
+pln("")
+
+// Test regular int Fibonacci (recursive)
+pln("--- Regular Int (recursive) ---")
+var start1 = nowMs()
+var result1 = fibInt(35)
+var elapsed1 = nowMs() - start1
+pln("fib(35) =", result1, "| time:", elapsed1, "ms")
+
+// Test regular int Fibonacci (iterative)
+pln("")
+pln("--- Regular Int (iterative) ---")
+var start2 = nowMs()
+var result2 = fibIntIter(50)
+var elapsed2 = nowMs() - start2
+pln("fib(50) =", result2, "| time:", elapsed2, "ms")
+
+var start3 = nowMs()
+var result3 = fibIntIter(90)
+var elapsed3 = nowMs() - start3
+pln("fib(90) =", result3, "| time:", elapsed3, "ms")
+pln("(Note: fib(93) overflows int64)")
+
+// Test BigInt Fibonacci (iterative)
+pln("")
+pln("--- BigInt (iterative) ---")
+var start4 = nowMs()
+var result4 = fibBigIntIter(100)
+var elapsed4 = nowMs() - start4
+pln("fib(100) =", result4, "| time:", elapsed4, "ms")
+pln("fib(100) bits:", result4.bits())
+
+var start5 = nowMs()
+var result5 = fibBigIntIter(1000)
+var elapsed5 = nowMs() - start5
+pln("fib(1000) bits:", result5.bits(), "| time:", elapsed5, "ms")
+
+var start6 = nowMs()
+var result6 = fibBigIntIter(10000)
+var elapsed6 = nowMs() - start6
+pln("fib(10000) bits:", result6.bits(), "| time:", elapsed6, "ms")
+
+// Calculate very large Fibonacci
+pln("")
+pln("--- Very Large BigInt Fibonacci ---")
+var start7 = nowMs()
+var result7 = fibBigIntIter(100000)
+var elapsed7 = nowMs() - start7
+pln("fib(100000) bits:", result7.bits(), "| time:", elapsed7, "ms")
+
+// Show first and last few digits of fib(100000)
+var str7 = result7.toStr()
+var len7 = str7.len()
+pln("fib(100000) length:", len7, "digits")
+pln("fib(100000) first 50 chars:", substr(str7, 0, 50))
+if (len7 > 50) {
+    pln("fib(100000) last 50 chars:", substr(str7, len7 - 50))
+}
+
+pln("")
+pln("=== Benchmark Complete ===")

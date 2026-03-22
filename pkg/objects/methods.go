@@ -69,6 +69,16 @@ var intMethods = map[string]*Builtin{
 		}
 		return NewFloat(float64(self.Value))
 	}},
+	"toBigInt": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toBigInt. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Int)
+		if !ok {
+			return newError("receiver for toBigInt must be INT, got %s", args[0].Type())
+		}
+		return NewBigIntFromInt64(self.Value)
+	}},
 	"abs": {Fn: func(args ...Object) Object {
 		if len(args) != 1 {
 			return newError("wrong number of arguments for abs. got=%d, want=1", len(args))
