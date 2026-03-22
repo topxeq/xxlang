@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/native_executor_test.go
 // Tests for native executor functionality
 package jit

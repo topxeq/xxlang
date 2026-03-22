@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/jit_fibonacci_test.go
 // Tests for JIT compilation of recursive Fibonacci functions
 package jit

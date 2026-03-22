@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/jit_test.go
 // Tests for the JIT compiler
 package jit

@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // Diagnostic test to verify JIT execution
 package jit
 

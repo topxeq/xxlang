@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/jit_true_recursive_test.go
 // Test for TRUE recursive JIT execution (not transformation to iteration)
 package jit

@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // Fixed JIT Fibonacci test
 package jit
 

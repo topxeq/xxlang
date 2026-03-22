@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // Simple JIT test
 package jit
 

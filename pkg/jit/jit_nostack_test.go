@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // No-stack JIT test - pure register-based code
 package jit
 

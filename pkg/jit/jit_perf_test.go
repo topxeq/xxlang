@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/jit_perf_test.go
 // Performance comparison tests for JIT vs interpreter
 package jit

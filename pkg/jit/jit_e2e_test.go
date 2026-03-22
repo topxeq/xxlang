@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/jit_e2e_test.go
 // End-to-end test for JIT recursive Fibonacci execution
 package jit

@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/jit_bench_test.go
 // Performance benchmarks for JIT compiler
 package jit

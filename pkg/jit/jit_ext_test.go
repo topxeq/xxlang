@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/jit_ext_test.go
 // Extended JIT tests for loop and arithmetic benchmarks
 package jit

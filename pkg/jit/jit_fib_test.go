@@ -1,3 +1,5 @@
+// +build amd64,!windows
+
 // pkg/jit/jit_fib_test.go
 // Tests for JIT compilation of Fibonacci with tail recursion
 package jit
