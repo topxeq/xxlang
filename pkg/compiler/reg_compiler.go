@@ -174,6 +174,8 @@ func (c *RegCompiler) Compile(node parser.Node) (int, error) {
 		return c.compileMapLiteral(n)
 	case *parser.IndexExpression:
 		return c.compileIndexExpression(n)
+	case *parser.SliceExpression:
+		return c.compileSliceExpression(n)
 	case *parser.DotExpression:
 		return c.compileDotExpression(n)
 	case *parser.AssignmentExpression:
@@ -204,6 +206,8 @@ func (c *RegCompiler) Compile(node parser.Node) (int, error) {
 		return c.compileTryStatement(n)
 	case *parser.ThrowStatement:
 		return c.compileThrowStatement(n)
+	case *parser.SwitchStatement:
+		return c.compileSwitchStatement(n)
 	default:
 		return 0, fmt.Errorf("unknown node type: %T", node)
 	}
@@ -286,8 +290,8 @@ func (c *RegCompiler) compileIdentifier(n *parser.Identifier) (int, error) {
 		// Load from local slot into register
 		c.emitRegLoadLocal(dst, symbol.Index)
 	case BuiltinScope:
-		// Builtins are handled at call time
-		c.emitRegLoadConst(dst, symbol.Index) // Builtin index
+		// Load builtin function object into register
+		c.emitRegLoadBuiltin(dst, symbol.Index)
 	case FreeScope:
 		c.emitRegLoadFree(dst, symbol.Index)
 	}
@@ -647,8 +651,13 @@ func (c *RegCompiler) compileWhileStatement(n *parser.WhileStatement) (int, erro
 	// Patch jump to end
 	c.patchJump(jumpIfFalsePos)
 
-	// Patch breaks
+	// Patch continues - for while loops, continue jumps to the start (condition check)
 	ctx := c.loopContexts[len(c.loopContexts)-1]
+	for _, pos := range ctx.continuePos {
+		c.patchJumpTo(pos, startPos)
+	}
+
+	// Patch breaks
 	for _, pos := range ctx.breakPos {
 		c.patchJump(pos)
 	}
@@ -1961,21 +1970,37 @@ func (c *RegCompiler) compileFunctionLiteral(n *parser.FunctionLiteral) (int, er
 		c.emitRegStoreLocal(i, symbol.Index)
 	}
 
+	// Define variadic parameter if present
+	// The VM will store the variadic args array at this symbol's index
+	if n.VariadicParam != nil {
+		c.symbolTable.Define(n.VariadicParam.Value)
+		// No instruction needed - VM will set the local directly
+	}
+
 	// Compile body
-	_, err := c.Compile(n.Body)
+	lastReg, err := c.Compile(n.Body)
 	if err != nil {
 		return 0, err
 	}
 
 	// Ensure function ends with return
 	if len(c.instructions) == 0 || Opcode(c.instructions[len(c.instructions)-1]) != OpRegReturn {
-		// Emit implicit return null
-		c.emitRegReturn(0)
+		// Emit implicit return with the last expression's result
+		// If lastReg is 0 (empty block or void), return null
+		// Otherwise return the value in the appropriate register
+		if lastReg == 0 {
+			// Empty block or statement with no value - return null
+			c.emitRegReturn(0)
+		} else {
+			// Return the last expression's result
+			c.emitRegReturn(lastReg)
+		}
 	}
 
 	// Leave scope and get compiled function
 	fn := c.leaveScope()
 	fn.NumParameters = len(n.Parameters)
+	fn.Variadic = n.VariadicParam != nil
 
 	// Add function to constants
 	fnIndex := c.addConstant(fn)
@@ -2259,31 +2284,61 @@ func (c *RegCompiler) compileArrayLiteral(n *parser.ArrayLiteral) (int, error) {
 
 // compileMapLiteral compiles a map literal
 func (c *RegCompiler) compileMapLiteral(n *parser.MapLiteral) (int, error) {
-	// Collect all key-value pairs first to ensure deterministic order
+	// Collect all key-value pairs
 	type kvPair struct {
 		keyReg, valReg int
 	}
 	pairs := make([]kvPair, 0, len(n.Pairs))
 
-	// Compile all key-value pairs
+	// First, collect all pairs to compile (to avoid map iteration order issues)
+	type keyVal struct {
+		key parser.Expression
+		val parser.Expression
+	}
+	items := make([]keyVal, 0, len(n.Pairs))
 	for key, val := range n.Pairs {
-		keyReg, err := c.Compile(key)
+		items = append(items, keyVal{key: key, val: val})
+	}
+
+	// Reserve registers for all keys and values upfront to prevent corruption
+	numPairs := len(items)
+	startReg := c.nextTempReg
+	numRegs := numPairs * 2
+
+	// Allocate all registers at once
+	for i := 0; i < numRegs; i++ {
+		c.nextTempReg++
+		if c.nextTempReg > c.maxReg {
+			c.maxReg = c.nextTempReg
+		}
+	}
+
+	// Now compile each key-value pair into the reserved registers
+	for i, item := range items {
+		keyTargetReg := startReg + i*2
+		valTargetReg := startReg + i*2 + 1
+
+		// Compile key and move to target register
+		keyReg, err := c.Compile(item.key)
 		if err != nil {
 			return 0, err
 		}
-		// Save keyReg by moving to a safe position if needed
-		savedKeyReg := c.allocTempReg()
-		if savedKeyReg != keyReg {
-			c.emitRegMove(savedKeyReg, keyReg)
+		if keyReg != keyTargetReg {
+			c.emitRegMove(keyTargetReg, keyReg)
 			c.freeTempReg(keyReg)
 		}
 
-		valReg, err := c.Compile(val)
+		// Compile value and move to target register
+		valReg, err := c.Compile(item.val)
 		if err != nil {
 			return 0, err
 		}
+		if valReg != valTargetReg {
+			c.emitRegMove(valTargetReg, valReg)
+			c.freeTempReg(valReg)
+		}
 
-		pairs = append(pairs, kvPair{keyReg: savedKeyReg, valReg: valReg})
+		pairs = append(pairs, kvPair{keyReg: keyTargetReg, valReg: valTargetReg})
 	}
 
 	count := len(pairs)
@@ -2379,6 +2434,47 @@ func (c *RegCompiler) compileIndexExpression(n *parser.IndexExpression) (int, er
 
 	c.freeTempReg(leftReg)
 	c.freeTempReg(indexReg)
+
+	return dst, nil
+}
+
+// compileSliceExpression compiles a slice expression (a[start:end])
+func (c *RegCompiler) compileSliceExpression(n *parser.SliceExpression) (int, error) {
+	leftReg, err := c.Compile(n.Left)
+	if err != nil {
+		return 0, err
+	}
+
+	var startReg, endReg int
+
+	// Compile start index (use 0 if nil)
+	if n.Start != nil {
+		startReg, err = c.Compile(n.Start)
+		if err != nil {
+			return 0, err
+		}
+	} else {
+		startReg = c.allocTempReg()
+		c.emitRegNull(startReg)
+	}
+
+	// Compile end index (use -1 if nil, will be treated as "to end" in VM)
+	if n.End != nil {
+		endReg, err = c.Compile(n.End)
+		if err != nil {
+			return 0, err
+		}
+	} else {
+		endReg = c.allocTempReg()
+		c.emitRegNull(endReg)
+	}
+
+	dst := c.allocTempReg()
+	c.emitRegSlice(dst, leftReg, startReg, endReg)
+
+	c.freeTempReg(leftReg)
+	c.freeTempReg(startReg)
+	c.freeTempReg(endReg)
 
 	return dst, nil
 }
@@ -2884,6 +2980,10 @@ func (c *RegCompiler) emitRegBuiltin(builtinIdx, numArgs int) {
 	c.instructions = append(c.instructions, MakeRegInstruction2(OpRegBuiltin, builtinIdx, numArgs)...)
 }
 
+func (c *RegCompiler) emitRegLoadBuiltin(dst, builtinIdx int) {
+	c.instructions = append(c.instructions, MakeRegInstruction2(OpRegLoadBuiltin, dst, builtinIdx)...)
+}
+
 func (c *RegCompiler) emitRegReturn(reg int) {
 	c.instructions = append(c.instructions, MakeRegInstruction1(OpRegReturn, reg)...)
 }
@@ -2918,6 +3018,10 @@ func (c *RegCompiler) emitRegIndex(dst, objReg, indexReg int) {
 
 func (c *RegCompiler) emitRegSetIndex(objReg, indexReg, valReg int) {
 	c.instructions = append(c.instructions, MakeRegInstruction(OpRegSetIndex, objReg, indexReg, valReg)...)
+}
+
+func (c *RegCompiler) emitRegSlice(dst, objReg, startReg, endReg int) {
+	c.instructions = append(c.instructions, MakeRegInstruction4(OpRegSlice, dst, objReg, startReg, endReg)...)
 }
 
 func (c *RegCompiler) emitRegIterKey(dst, iterReg, indexReg int) {
@@ -3453,6 +3557,10 @@ func (c *RegCompiler) tryUnrollLoop(n *parser.ForStatement) bool {
 
 // compileClassStatement compiles a class declaration
 func (c *RegCompiler) compileClassStatement(node *parser.ClassStatement) (int, error) {
+	// Define the class name in the symbol table BEFORE compiling methods
+	// This allows methods to reference the class name (e.g., for constructor calls)
+	classSymbol := c.symbolTable.Define(node.Name.Value)
+
 	// Remember the superclass symbol (if any) to load later
 	var superSymbol *Symbol
 	if node.SuperClass != nil {
@@ -3465,26 +3573,38 @@ func (c *RegCompiler) compileClassStatement(node *parser.ClassStatement) (int, e
 
 	// Compile default fields as a map
 	// Format: key1, val1, key2, val2, ... -> map
+	// We need contiguous registers for OpRegMap, so allocate directly without using free list
+	numFields := len(node.Fields)
 	fieldsStartReg := c.nextTempReg
-	for _, field := range node.Fields {
+
+	// Reserve registers for all field key-value pairs
+	numFieldRegs := numFields * 2
+	for i := 0; i < numFieldRegs; i++ {
+		c.nextTempReg++
+		if c.nextTempReg > c.maxReg {
+			c.maxReg = c.nextTempReg
+		}
+	}
+
+	// Now compile each field's key and value into the reserved registers
+	for i, field := range node.Fields {
+		keyReg := fieldsStartReg + i*2
+		valReg := fieldsStartReg + i*2 + 1
+
 		// Key (field name)
-		keyReg := c.allocTempReg()
 		nameIdx := c.addConstant(objects.NewString(field.Name.Value))
 		c.emitRegLoadConst(keyReg, nameIdx)
 
 		// Value (field default value)
-		valReg, err := c.Compile(field.Value)
+		// Compile the value and move it to the target register
+		compiledValReg, err := c.Compile(field.Value)
 		if err != nil {
 			return 0, err
 		}
-		// Ensure valReg is in temp position
-		if valReg != keyReg+1 {
-			// Move value to next register
-			targetReg := c.allocTempReg()
-			c.emitRegMove(targetReg, valReg)
+		if compiledValReg != valReg {
+			c.emitRegMove(valReg, compiledValReg)
 		}
 	}
-	numFields := len(node.Fields)
 
 	// Create fields map
 	fieldsReg := c.allocTempReg()
@@ -3630,9 +3750,8 @@ func (c *RegCompiler) compileClassStatement(node *parser.ClassStatement) (int, e
 	c.freeTempReg(fieldsReg)
 	c.freeTempReg(methodsReg)
 
-	// Store class in global
-	symbol := c.symbolTable.Define(node.Name.Value)
-	c.emitRegStoreGlobal(dst, symbol.Index)
+	// Store class in global (use the symbol we defined at the start)
+	c.emitRegStoreGlobal(dst, classSymbol.Index)
 
 	return dst, nil
 }
@@ -3664,15 +3783,22 @@ func (c *RegCompiler) compileMethod(n *parser.FunctionLiteral) (*CompiledFunctio
 	}
 
 	// Compile body
-	_, err := c.Compile(n.Body)
+	lastReg, err := c.Compile(n.Body)
 	if err != nil {
 		return nil, err
 	}
 
 	// Ensure function ends with return
 	if len(c.instructions) == 0 || Opcode(c.instructions[len(c.instructions)-1]) != OpRegReturn {
-		// Emit implicit return null
-		c.emitRegReturn(0)
+		// Emit implicit return with the last expression's result
+		// For methods, the implicit return should return the last expression's value
+		if lastReg == 0 {
+			// Empty block or statement with no value - return null
+			c.emitRegReturn(0)
+		} else {
+			// Return the last expression's result
+			c.emitRegReturn(lastReg)
+		}
 	}
 
 	// Leave scope and get compiled function
@@ -3807,9 +3933,9 @@ func (c *RegCompiler) compileTryStatement(node *parser.TryStatement) (int, error
 	// Pop handler after successful try block
 	c.instructions = append(c.instructions, byte(OpRegPopHandler))
 
-	// After try block completes normally, jump past catch
+	// After try block completes normally, jump to finally (if exists) or past catch
 	var jumpPastCatchPos int = -1
-	if node.Catch != nil {
+	if node.Catch != nil || node.Finally != nil {
 		jumpPastCatchPos = c.emitRegJump(0) // Will be patched
 	}
 
@@ -3859,9 +3985,15 @@ func (c *RegCompiler) compileTryStatement(node *parser.TryStatement) (int, error
 	c.instructions[pushHandlerPos+3] = byte(finallyAddr >> 8)
 	c.instructions[pushHandlerPos+4] = byte(finallyAddr)
 
-	// Patch jump past catch
+	// Patch jump after try to land at finally (if exists) or after catch
 	if jumpPastCatchPos >= 0 {
-		c.patchJump(jumpPastCatchPos)
+		if node.Finally != nil && finallyAddr > 0 {
+			// Jump to finally block to execute it
+			c.patchJumpTo(jumpPastCatchPos, finallyAddr)
+		} else {
+			// Jump past catch
+			c.patchJump(jumpPastCatchPos)
+		}
 	}
 
 	// Decrement try block depth
@@ -3896,4 +4028,69 @@ func (c *RegCompiler) compileThrowStatement(node *parser.ThrowStatement) (int, e
 	dst := c.allocTempReg()
 	c.emitRegNull(dst)
 	return dst, nil
+}
+
+// compileSwitchStatement compiles a switch statement
+func (c *RegCompiler) compileSwitchStatement(node *parser.SwitchStatement) (int, error) {
+	// Compile switch expression
+	switchReg, err := c.Compile(node.Expression)
+	if err != nil {
+		return 0, err
+	}
+
+	// Track positions for patching jumps to end
+	var endJumpPositions []int
+
+	// Compile each case
+	for _, caseStmt := range node.Cases {
+		// Compile case expression
+		caseReg, err := c.Compile(caseStmt.Expression)
+		if err != nil {
+			return 0, err
+		}
+
+		// Compare: switchValue == caseValue
+		cmpReg := c.allocTempReg()
+		c.emitRegEqual(cmpReg, switchReg, caseReg)
+		c.freeTempReg(caseReg)
+
+		// Jump to next case/default if not matched
+		notMatchedJumpPos := c.emitRegJumpIfFalse(cmpReg, 0)
+		c.freeTempReg(cmpReg)
+
+		// Match found - compile case body
+		_, err = c.Compile(caseStmt.Consequence)
+		if err != nil {
+			return 0, err
+		}
+
+		// Jump to end of switch (if we fell through without break)
+		endJumpPos := c.emitRegJump(0)
+		endJumpPositions = append(endJumpPositions, endJumpPos)
+
+		// Patch "not matched" jump to next case
+		c.patchJump(notMatchedJumpPos)
+	}
+
+	// Compile default case if exists
+	if node.Default != nil {
+		_, err = c.Compile(node.Default.Consequence)
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	// Patch all "jump to end" positions
+	endPos := len(c.instructions)
+	for _, pos := range endJumpPositions {
+		c.patchJumpTo(pos, endPos)
+	}
+
+	// Free switch register
+	c.freeTempReg(switchReg)
+
+	// Return null for switch statement
+	resultReg := c.allocTempReg()
+	c.emitRegNull(resultReg)
+	return resultReg, nil
 }

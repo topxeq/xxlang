@@ -208,7 +208,14 @@ func (l *Lexer) NextToken() Token {
 	case ']':
 		tok = newToken(TokenRBracket, l.ch, line, column)
 	case '.':
-		tok = newToken(TokenDot, l.ch, line, column)
+		// Check for ellipsis (...)
+		if l.peekChar() == '.' && l.peekNextChar() == '.' {
+			l.readChar() // advance to second .
+			l.readChar() // advance to third .
+			tok = Token{Type: TokenEllipsis, Literal: "...", Line: line, Column: column}
+		} else {
+			tok = newToken(TokenDot, l.ch, line, column)
+		}
 	case '?':
 		tok = newToken(TokenQuestion, l.ch, line, column)
 	case '"':

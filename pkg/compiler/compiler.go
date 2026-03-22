@@ -164,6 +164,10 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(104, "genOtpCode")
 	// Type conversion
 	s.DefineBuiltin(105, "toStr")
+	s.DefineBuiltin(106, "toJson")
+	s.DefineBuiltin(107, "fromJson")
+	// Dynamic code
+	s.DefineBuiltin(108, "delegate")
 	return s
 }
 
@@ -261,8 +265,9 @@ type CompiledFunction struct {
 	Instructions  []byte
 	NumLocals     int
 	NumParameters int
-	NumRegs       int    // Maximum register used (for frame initialization)
+	NumRegs       int // Maximum register used (for frame initialization)
 	FreeVariables []Symbol // Free variables captured from outer scope
+	Variadic      bool // True if function has a variadic parameter
 
 	// Inlining support
 	IsInlineable bool   // True if function body is a single return expression
@@ -1003,6 +1008,32 @@ func (c *Compiler) Compile(node parser.Node) error {
 		} else {
 			c.emit(OpIndex)
 		}
+
+	case *parser.SliceExpression:
+		// Compile the left expression (array or string)
+		if err := c.Compile(node.Left); err != nil {
+			return err
+		}
+
+		// Compile start index (or push null if nil)
+		if node.Start != nil {
+			if err := c.Compile(node.Start); err != nil {
+				return err
+			}
+		} else {
+			c.emit(OpNull)
+		}
+
+		// Compile end index (or push null if nil)
+		if node.End != nil {
+			if err := c.Compile(node.End); err != nil {
+				return err
+			}
+		} else {
+			c.emit(OpNull)
+		}
+
+		c.emit(OpSlice)
 
 	case *parser.AssignmentExpression:
 		// Compile the value first

@@ -1415,12 +1415,55 @@ func (p *Parser) parseCallExpression(function Expression) Expression {
 	return exp
 }
 
-// parseIndexExpression parses an index expression
+// parseIndexExpression parses an index or slice expression
 func (p *Parser) parseIndexExpression(left Expression) Expression {
-	exp := &IndexExpression{Token: p.curToken, Left: left}
+	token := p.curToken // The '[' token
 
 	p.nextToken()
-	exp.Index = p.parseExpression(LOWEST)
+
+	// Check for empty start ([:end] syntax)
+	if p.curTokenIs(lexer.TokenColon) {
+		// Slice with empty start: [:end]
+		sliceExp := &SliceExpression{Token: token, Left: left, Start: nil}
+
+		p.nextToken() // Move past the colon
+
+		// Check if there's an end expression
+		if !p.curTokenIs(lexer.TokenRBracket) {
+			sliceExp.End = p.parseExpression(LOWEST)
+		}
+
+		if !p.expectPeek(lexer.TokenRBracket) {
+			return nil
+		}
+
+		return sliceExp
+	}
+
+	// Parse the first expression (could be index or slice start)
+	firstExpr := p.parseExpression(LOWEST)
+
+	// Check if this is a slice expression (has a colon)
+	if p.peekTokenIs(lexer.TokenColon) {
+		sliceExp := &SliceExpression{Token: token, Left: left, Start: firstExpr}
+
+		p.nextToken() // Move to the colon
+		p.nextToken() // Move past the colon
+
+		// Check if there's an end expression
+		if !p.curTokenIs(lexer.TokenRBracket) {
+			sliceExp.End = p.parseExpression(LOWEST)
+		}
+
+		if !p.expectPeek(lexer.TokenRBracket) {
+			return nil
+		}
+
+		return sliceExp
+	}
+
+	// Regular index expression
+	exp := &IndexExpression{Token: token, Left: left, Index: firstExpr}
 
 	if !p.expectPeek(lexer.TokenRBracket) {
 		return nil
@@ -1537,7 +1580,7 @@ func (p *Parser) parseFunctionLiteral() Expression {
 		return nil
 	}
 
-	lit.Parameters = p.parseFunctionParameters()
+	lit.Parameters, lit.VariadicParam = p.parseFunctionParameters()
 
 	if !p.expectPeek(lexer.TokenLBrace) {
 		return nil
@@ -1548,32 +1591,61 @@ func (p *Parser) parseFunctionLiteral() Expression {
 	return lit
 }
 
-// parseFunctionParameters parses function parameters
-func (p *Parser) parseFunctionParameters() []*Identifier {
+// parseFunctionParameters parses function parameters, including optional variadic parameter
+// Returns regular parameters and optional variadic parameter
+func (p *Parser) parseFunctionParameters() ([]*Identifier, *Identifier) {
 	identifiers := []*Identifier{}
+	var variadic *Identifier
 
 	if p.peekTokenIs(lexer.TokenRParen) {
 		p.nextToken()
-		return identifiers
+		return identifiers, nil
 	}
 
 	p.nextToken()
+
+	// Check for variadic parameter at the beginning: func (...args)
+	if p.curTokenIs(lexer.TokenEllipsis) {
+		if !p.expectPeek(lexer.TokenIdent) {
+			p.addError("expected identifier after '...' in variadic parameter")
+			return nil, nil
+		}
+		variadic = &Identifier{Token: p.curToken, Value: p.curToken.Literal}
+		if !p.expectPeek(lexer.TokenRParen) {
+			return nil, nil
+		}
+		return identifiers, variadic
+	}
 
 	ident := &Identifier{Token: p.curToken, Value: p.curToken.Literal}
 	identifiers = append(identifiers, ident)
 
 	for p.peekTokenIs(lexer.TokenComma) {
+		p.nextToken() // skip comma
 		p.nextToken()
-		p.nextToken()
+
+		// Check for variadic parameter: func (a, b, ...rest)
+		if p.curTokenIs(lexer.TokenEllipsis) {
+			if !p.expectPeek(lexer.TokenIdent) {
+				p.addError("expected identifier after '...' in variadic parameter")
+				return nil, nil
+			}
+			variadic = &Identifier{Token: p.curToken, Value: p.curToken.Literal}
+			if !p.expectPeek(lexer.TokenRParen) {
+				return nil, nil
+			}
+			return identifiers, variadic
+		}
+
 		ident := &Identifier{Token: p.curToken, Value: p.curToken.Literal}
 		identifiers = append(identifiers, ident)
 	}
 
 	if !p.expectPeek(lexer.TokenRParen) {
-		return nil
+		return nil, nil
 	}
 
-	return identifiers
+	return identifiers, nil
 }
 
 // parseNewExpression parses a new expression

@@ -130,7 +130,11 @@ func getBuiltin(index int) *objects.Builtin {
 		// OTP utilities
 		objects.Builtins["genOtpCode"], // 104
 		// Type conversion
-		objects.Builtins["toStr"], // 105
+		objects.Builtins["toStr"],    // 105
+		objects.Builtins["toJson"],   // 106
+		objects.Builtins["fromJson"], // 107
+		// Dynamic code
+		objects.Builtins["delegate"], // 108
 	}
 
 	if index < 0 || index >= len(builtins) {

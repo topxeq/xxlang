@@ -598,6 +598,38 @@ func (ie *IndexExpression) String() string {
 	return sb.String()
 }
 
+// SliceExpression represents a slice expression like a[start:end]
+type SliceExpression struct {
+	Token lexer.Token // The '[' token
+	Left  Expression
+	Start Expression // Can be nil for [:end]
+	End   Expression // Can be nil for [start:]
+}
+
+func (se *SliceExpression) expressionNode() {}
+
+// TokenLiteral returns the token literal
+func (se *SliceExpression) TokenLiteral() string {
+	return se.Token.Literal
+}
+
+// String returns a string representation of the slice expression
+func (se *SliceExpression) String() string {
+	var sb strings.Builder
+	sb.WriteString("(")
+	sb.WriteString(se.Left.String())
+	sb.WriteString("[")
+	if se.Start != nil {
+		sb.WriteString(se.Start.String())
+	}
+	sb.WriteString(":")
+	if se.End != nil {
+		sb.WriteString(se.End.String())
+	}
+	sb.WriteString("])")
+	return sb.String()
+}
+
 // DotExpression represents a dot expression for property access
 type DotExpression struct {
 	Token    lexer.Token // The '.' token
@@ -650,10 +682,11 @@ func (ae *AssignmentExpression) String() string {
 
 // FunctionLiteral represents a function literal expression
 type FunctionLiteral struct {
-	Token      lexer.Token // The 'func' token
-	Name       string      // Optional: named function
-	Parameters []*Identifier
-	Body       *BlockStatement
+	Token         lexer.Token // The 'func' token
+	Name          string      // Optional: named function
+	Parameters    []*Identifier
+	VariadicParam *Identifier // Optional: variadic parameter (...name)
+	Body          *BlockStatement
 }
 
 func (fl *FunctionLiteral) expressionNode() {}
@@ -677,6 +710,13 @@ func (fl *FunctionLiteral) String() string {
 	}
 	sb.WriteString("(")
 	sb.WriteString(strings.Join(params, ", "))
+	if fl.VariadicParam != nil {
+		if len(fl.Parameters) > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString("...")
+		sb.WriteString(fl.VariadicParam.String())
+	}
 	sb.WriteString(") ")
 	sb.WriteString(fl.Body.String())
 	return sb.String()

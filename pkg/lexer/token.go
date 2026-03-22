@@ -52,6 +52,7 @@ const (
 	TokenDot       TokenType = "."
 	TokenArrow     TokenType = "=>"
 	TokenQuestion  TokenType = "?"
+	TokenEllipsis  TokenType = "..."
 
 	// Keywords
 	TokenVar      TokenType = "VAR"

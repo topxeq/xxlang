@@ -1272,6 +1272,36 @@ var Builtins = map[string]*Builtin{
 	},
 
 	// ============================================================
+	// Delegate - Dynamic Function Creation
+	// ============================================================
+	"delegate": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for delegate. got=%d, want=1", len(args))
+			}
+
+			source, ok := args[0].(*String)
+			if !ok {
+				return newError("argument to 'delegate' must be STRING, got %s", args[0].Type())
+			}
+
+			// Use the registered callback if available
+			if delegateImpl != nil {
+				result, err := delegateImpl(source.Value)
+				if err != nil {
+					return newError("delegate error: %v", err)
+				}
+				if result == nil {
+					return NULL
+				}
+				return result
+			}
+
+			return newError("delegate not available in this context")
+		},
+	},
+
+	// ============================================================
 	// Plugin Loading
 	// ============================================================
 	"loadPlugin": {
@@ -2562,6 +2592,260 @@ var Builtins = map[string]*Builtin{
 			return obj
 		},
 	},
+
+	// ============================================================
+	// Charlang-compatible Array Functions
+	// ============================================================
+	// append - append value(s) to array (returns new array)
+	"append": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 2 {
+				return newError("wrong number of arguments for append. got=%d, want>=2", len(args))
+			}
+
+			arr, ok := args[0].(*Array)
+			if !ok {
+				return newError("first argument to 'append' must be ARRAY, got %s", args[0].Type())
+			}
+
+			// Create new array with appended elements
+			newElements := make([]Object, len(arr.Elements)+len(args)-1)
+			copy(newElements, arr.Elements)
+			copy(newElements[len(arr.Elements):], args[1:])
+			return NewArray(newElements)
+		},
+	},
+	// appendArray - merge two arrays (alias for concat, returns new array)
+	"appendArray": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 2 {
+				return newError("wrong number of arguments for appendArray. got=%d, want=2", len(args))
+			}
+
+			arr1, ok := args[0].(*Array)
+			if !ok {
+				return newError("first argument to 'appendArray' must be ARRAY, got %s", args[0].Type())
+			}
+			arr2, ok := args[1].(*Array)
+			if !ok {
+				return newError("second argument to 'appendArray' must be ARRAY, got %s", args[1].Type())
+			}
+
+			newElements := make([]Object, len(arr1.Elements)+len(arr2.Elements))
+			copy(newElements, arr1.Elements)
+			copy(newElements[len(arr1.Elements):], arr2.Elements)
+			return NewArray(newElements)
+		},
+	},
+	// appendList - alias for appendArray
+	"appendList": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 2 {
+				return newError("wrong number of arguments for appendList. got=%d, want=2", len(args))
+			}
+
+			arr1, ok := args[0].(*Array)
+			if !ok {
+				return newError("first argument to 'appendList' must be ARRAY, got %s", args[0].Type())
+			}
+			arr2, ok := args[1].(*Array)
+			if !ok {
+				return newError("second argument to 'appendList' must be ARRAY, got %s", args[1].Type())
+			}
+
+			newElements := make([]Object, len(arr1.Elements)+len(arr2.Elements))
+			copy(newElements, arr1.Elements)
+			copy(newElements[len(arr1.Elements):], arr2.Elements)
+			return NewArray(newElements)
+		},
+	},
+	// appendSlice - alias for appendArray
+	"appendSlice": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 2 {
+				return newError("wrong number of arguments for appendSlice. got=%d, want=2", len(args))
+			}
+
+			arr1, ok := args[0].(*Array)
+			if !ok {
+				return newError("first argument to 'appendSlice' must be ARRAY, got %s", args[0].Type())
+			}
+			arr2, ok := args[1].(*Array)
+			if !ok {
+				return newError("second argument to 'appendSlice' must be ARRAY, got %s", args[1].Type())
+			}
+
+			newElements := make([]Object, len(arr1.Elements)+len(arr2.Elements))
+			copy(newElements, arr1.Elements)
+			copy(newElements[len(arr1.Elements):], arr2.Elements)
+			return NewArray(newElements)
+		},
+	},
+	// arrayContains - check if array contains value
+	"arrayContains": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 2 {
+				return newError("wrong number of arguments for arrayContains. got=%d, want=2", len(args))
+			}
+
+			arr, ok := args[0].(*Array)
+			if !ok {
+				return newError("first argument to 'arrayContains' must be ARRAY, got %s", args[0].Type())
+			}
+
+			for _, elem := range arr.Elements {
+				if deepEquals(elem, args[1]) {
+					return TRUE
+				}
+			}
+			return FALSE
+		},
+	},
+	// removeItems - remove items from start to end index
+	"removeItems": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 3 {
+				return newError("wrong number of arguments for removeItems. got=%d, want=3", len(args))
+			}
+
+			arr, ok := args[0].(*Array)
+			if !ok {
+				return newError("first argument to 'removeItems' must be ARRAY, got %s", args[0].Type())
+			}
+
+			start, ok := args[1].(*Int)
+			if !ok {
+				return newError("second argument to 'removeItems' must be INT, got %s", args[1].Type())
+			}
+
+			end, ok := args[2].(*Int)
+			if !ok {
+				return newError("third argument to 'removeItems' must be INT, got %s", args[2].Type())
+			}
+
+			arrLen := len(arr.Elements)
+			startIdx := int(start.Value)
+			endIdx := int(end.Value)
+
+			// Handle negative indices
+			if startIdx < 0 {
+				startIdx = arrLen + startIdx
+			}
+			if endIdx < 0 {
+				endIdx = arrLen + endIdx
+			}
+
+			// Bounds check
+			if startIdx < 0 {
+				startIdx = 0
+			}
+			if endIdx > arrLen {
+				endIdx = arrLen
+			}
+			if startIdx > endIdx {
+				return arr
+			}
+
+			// Create new array without the removed items
+			newElements := make([]Object, 0, arrLen-(endIdx-startIdx))
+			newElements = append(newElements, arr.Elements[:startIdx]...)
+			newElements = append(newElements, arr.Elements[endIdx:]...)
+			return NewArray(newElements)
+		},
+	},
+	// make - create array or map with specified length and capacity
+	"make": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 2 {
+				return newError("wrong number of arguments for make. got=%d, want>=2", len(args))
+			}
+
+			typeArg, ok := args[0].(*String)
+			if !ok {
+				return newError("first argument to 'make' must be STRING (type name), got %s", args[0].Type())
+			}
+
+			switch typeArg.Value {
+			case "array", "Array":
+				length := int64(0)
+				capacity := int64(0)
+
+				if len(args) >= 2 {
+					l, ok := args[1].(*Int)
+					if !ok {
+						return newError("second argument to 'make' must be INT, got %s", args[1].Type())
+					}
+					length = l.Value
+					capacity = length
+				}
+				if len(args) >= 3 {
+					c, ok := args[2].(*Int)
+					if !ok {
+						return newError("third argument to 'make' must be INT, got %s", args[2].Type())
+					}
+					capacity = c.Value
+				}
+
+				if capacity < length {
+					capacity = length
+				}
+
+				elements := make([]Object, length, capacity)
+				for i := range elements {
+					elements[i] = NULL
+				}
+				return NewArray(elements)
+
+			case "map", "Map":
+				capacity := int64(16)
+				if len(args) >= 2 {
+					c, ok := args[1].(*Int)
+					if !ok {
+						return newError("second argument to 'make' must be INT, got %s", args[1].Type())
+					}
+					capacity = c.Value
+				}
+				pairs := make(map[HashKey]MapPair, capacity)
+				return NewMap(pairs)
+
+			default:
+				return newError("make: unsupported type '%s'. Use 'array' or 'map'", typeArg.Value)
+			}
+		},
+	},
+	// bytes - create byte array from integer arguments
+	"bytes": {
+		Fn: func(args ...Object) Object {
+			elements := make([]Object, len(args))
+			for i, arg := range args {
+				switch v := arg.(type) {
+				case *Int:
+					if v.Value < 0 || v.Value > 255 {
+						return newError("bytes: value at index %d out of range (0-255), got %d", i, v.Value)
+					}
+					elements[i] = v
+				case *Float:
+					val := int64(v.Value)
+					if val < 0 || val > 255 {
+						return newError("bytes: value at index %d out of range (0-255), got %d", i, val)
+					}
+					elements[i] = NewInt(val)
+				default:
+					return newError("bytes: argument at index %d must be INT (0-255), got %s", i, arg.Type())
+				}
+			}
+			return NewArray(elements)
+		},
+	},
+	// plt - pretty table print for debugging
+	"plt": {
+		Fn: func(args ...Object) Object {
+			for _, arg := range args {
+				printPrettyTable(arg, 0)
+			}
+			return NULL
+		},
+	},
 }
 
 // RunCodeImpl is the implementation function for runCode, set by the VM
@@ -2581,6 +2865,37 @@ var loadPluginImpl func(path string) (Object, error)
 func SetLoadPluginImpl(fn func(path string) (Object, error)) func(path string) (Object, error) {
 	prev := loadPluginImpl
 	loadPluginImpl = fn
+	return prev
+}
+
+// CallUserFuncImpl is the implementation function for calling user-defined functions from builtins
+// The callback receives the function object and arguments, and returns the result
+var callUserFuncImpl func(fn Object, args ...Object) (Object, error)
+
+// SetCallUserFuncImpl registers the callback for calling user functions and returns the previous value
+func SetCallUserFuncImpl(fn func(fnObj Object, args ...Object) (Object, error)) func(Object, ...Object) (Object, error) {
+	prev := callUserFuncImpl
+	callUserFuncImpl = fn
+	return prev
+}
+
+// CallUserFunc calls a user-defined function from within a builtin method
+// Returns an error if the callback is not set or if the call fails
+func CallUserFunc(fn Object, args ...Object) (Object, error) {
+	if callUserFuncImpl == nil {
+		return nil, fmt.Errorf("user function callback not available in this context")
+	}
+	return callUserFuncImpl(fn, args...)
+}
+
+// DelegateImpl is the implementation function for delegate, set by the VM
+// It compiles source code and returns a callable closure
+var delegateImpl func(source string) (Object, error)
+
+// SetDelegateImpl registers the delegate implementation and returns the previous value
+func SetDelegateImpl(fn func(source string) (Object, error)) func(source string) (Object, error) {
+	prev := delegateImpl
+	delegateImpl = fn
 	return prev
 }
 
@@ -2910,5 +3225,70 @@ func goValueToObject(v interface{}) Object {
 		return NewMap(pairs)
 	default:
 		return NewString(fmt.Sprintf("%v", v))
+	}
+}
+
+// printPrettyTable prints an object as a formatted table
+func printPrettyTable(obj Object, indent int) {
+	indentStr := strings.Repeat("  ", indent)
+
+	switch v := obj.(type) {
+	case *Array:
+		if len(v.Elements) == 0 {
+			fmt.Printf("%s[]\n", indentStr)
+			return
+		}
+		fmt.Printf("%s[\n", indentStr)
+		for i, elem := range v.Elements {
+			fmt.Printf("%s  [%d]: ", indentStr, i)
+			switch e := elem.(type) {
+			case *Array:
+				fmt.Println()
+				printPrettyTable(e, indent+2)
+			case *Map:
+				fmt.Println()
+				printPrettyTable(e, indent+2)
+			default:
+				fmt.Println(e.Inspect())
+			}
+		}
+		fmt.Printf("%s]\n", indentStr)
+
+	case *Map:
+		if len(v.Pairs) == 0 {
+			fmt.Printf("%s{}\n", indentStr)
+			return
+		}
+		fmt.Printf("%s{\n", indentStr)
+		// Sort keys for consistent output
+		keys := make([]string, 0, len(v.Pairs))
+		for _, pair := range v.Pairs {
+			if ks, ok := pair.Key.(*String); ok {
+				keys = append(keys, ks.Value)
+			}
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			for _, pair := range v.Pairs {
+				if ks, ok := pair.Key.(*String); ok && ks.Value == key {
+					fmt.Printf("%s  %s: ", indentStr, key)
+					switch val := pair.Value.(type) {
+					case *Array:
+						fmt.Println()
+						printPrettyTable(val, indent+2)
+					case *Map:
+						fmt.Println()
+						printPrettyTable(val, indent+2)
+					default:
+						fmt.Println(val.Inspect())
+					}
+					break
+				}
+			}
+		}
+		fmt.Printf("%s}\n", indentStr)
+
+	default:
+		fmt.Printf("%s%s\n", indentStr, obj.Inspect())
 	}
 }

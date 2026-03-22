@@ -237,6 +237,18 @@ func (vm *RegVM) Run() error {
 	})
 	defer objects.SetLoadPluginImpl(prevLoadPlugin)
 
+	// Register callback for calling user functions from builtin methods
+	prevCallUserFunc := objects.SetCallUserFuncImpl(func(fnObj objects.Object, args ...objects.Object) (objects.Object, error) {
+		return CallUserFuncInRegVM(fnObj, args, vm)
+	})
+	defer objects.SetCallUserFuncImpl(prevCallUserFunc)
+
+	// Register callback for delegate (dynamic function creation)
+	prevDelegate := objects.SetDelegateImpl(func(source string) (objects.Object, error) {
+		return CreateDelegateInRegVM(source, vm)
+	})
+	defer objects.SetDelegateImpl(prevDelegate)
+
 	frame := vm.currentFrame()
 	code := frame.Instructions()
 
@@ -504,6 +516,15 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 		frame.IP += 3
 		return vm.handleRegBuiltin(int(builtinIdx), int(numArgs), frame)
 
+	case compiler.OpRegLoadBuiltin:
+		dst, builtinIdx := DecodeReg2(code, frame.IP)
+		frame.IP += 3
+		builtin := getBuiltin(int(builtinIdx))
+		if builtin == nil {
+			return fmt.Errorf("invalid builtin index: %d", builtinIdx)
+		}
+		regs[dst] = NewObject(builtin)
+
 	case compiler.OpRegReturn:
 		// Decode the register containing the return value
 		retReg := DecodeReg1(code, frame.IP)
@@ -640,10 +661,16 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 			if !ok {
 				return fmt.Errorf("array index must be integer")
 			}
-			if idx.Value < 0 || idx.Value >= int64(len(o.Elements)) {
-				return fmt.Errorf("array index out of bounds: %d", idx.Value)
+			// Support negative indexing: -1 means last element, -2 means second to last, etc.
+			arrLen := int64(len(o.Elements))
+			actualIdx := idx.Value
+			if actualIdx < 0 {
+				actualIdx = arrLen + actualIdx
 			}
-			result = o.Elements[idx.Value]
+			if actualIdx < 0 || actualIdx >= arrLen {
+				return fmt.Errorf("array index out of bounds: %d (length: %d)", idx.Value, arrLen)
+			}
+			result = o.Elements[actualIdx]
 		case *objects.Map:
 			hashKey := key.HashKey()
 			pair, ok := o.Pairs[hashKey]
@@ -657,10 +684,16 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 			if !ok {
 				return fmt.Errorf("string index must be integer")
 			}
-			if idx.Value < 0 || idx.Value >= int64(len(o.Value)) {
-				return fmt.Errorf("string index out of bounds: %d", idx.Value)
+			// Support negative indexing for strings too
+			strLen := int64(len(o.Value))
+			actualIdx := idx.Value
+			if actualIdx < 0 {
+				actualIdx = strLen + actualIdx
 			}
-			result = objects.NewString(string(o.Value[idx.Value]))
+			if actualIdx < 0 || actualIdx >= strLen {
+				return fmt.Errorf("string index out of bounds: %d (length: %d)", idx.Value, strLen)
+			}
+			result = objects.NewString(string(o.Value[actualIdx]))
 		default:
 			return fmt.Errorf("cannot index type %s", obj.Type())
 		}
@@ -679,10 +712,16 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 			if !ok {
 				return fmt.Errorf("array index must be integer")
 			}
-			if idx.Value < 0 || idx.Value >= int64(len(o.Elements)) {
-				return fmt.Errorf("array index out of bounds: %d", idx.Value)
+			// Support negative indexing: -1 means last element, -2 means second to last, etc.
+			arrLen := int64(len(o.Elements))
+			actualIdx := idx.Value
+			if actualIdx < 0 {
+				actualIdx = arrLen + actualIdx
 			}
-			o.Elements[idx.Value] = val
+			if actualIdx < 0 || actualIdx >= arrLen {
+				return fmt.Errorf("array index out of bounds: %d (length: %d)", idx.Value, arrLen)
+			}
+			o.Elements[actualIdx] = val
 		case *objects.Map:
 			hashKey := key.HashKey()
 			o.Pairs[hashKey] = objects.MapPair{Key: key, Value: val}
@@ -691,6 +730,129 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 			return fmt.Errorf("cannot set index on type %s", obj.Type())
 		}
 		frame.IP += 4
+
+	case compiler.OpRegSlice:
+		// Decode 4 operands: dst, obj, start, end
+		dst := int(code[frame.IP+1])
+		objReg := int(code[frame.IP+2])
+		startReg := int(code[frame.IP+3])
+		endReg := int(code[frame.IP+4])
+
+		obj := regs[objReg].ToObject()
+		startObj := regs[startReg].ToObject()
+		endObj := regs[endReg].ToObject()
+
+		var result objects.Object
+		switch o := obj.(type) {
+		case *objects.Array:
+			arrLen := int64(len(o.Elements))
+			var start, end int64
+
+			// Handle start index
+			if _, isNull := startObj.(*objects.Null); isNull {
+				start = 0
+			} else {
+				startInt, ok := startObj.(*objects.Int)
+				if !ok {
+					return fmt.Errorf("slice start must be integer or null")
+				}
+				start = startInt.Value
+				// Support negative indexing
+				if start < 0 {
+					start = arrLen + start
+				}
+				if start < 0 {
+					start = 0
+				}
+				if start > arrLen {
+					start = arrLen
+				}
+			}
+
+			// Handle end index
+			if _, isNull := endObj.(*objects.Null); isNull {
+				end = arrLen
+			} else {
+				endInt, ok := endObj.(*objects.Int)
+				if !ok {
+					return fmt.Errorf("slice end must be integer or null")
+				}
+				end = endInt.Value
+				// Support negative indexing
+				if end < 0 {
+					end = arrLen + end
+				}
+				if end < 0 {
+					end = 0
+				}
+				if end > arrLen {
+					end = arrLen
+				}
+			}
+
+			if start > end {
+				result = objects.NewArray([]objects.Object{})
+			} else {
+				result = objects.NewArray(o.Elements[start:end])
+			}
+
+		case *objects.String:
+			strLen := int64(len(o.Value))
+			var start, end int64
+
+			// Handle start index
+			if _, isNull := startObj.(*objects.Null); isNull {
+				start = 0
+			} else {
+				startInt, ok := startObj.(*objects.Int)
+				if !ok {
+					return fmt.Errorf("slice start must be integer or null")
+				}
+				start = startInt.Value
+				// Support negative indexing
+				if start < 0 {
+					start = strLen + start
+				}
+				if start < 0 {
+					start = 0
+				}
+				if start > strLen {
+					start = strLen
+				}
+			}
+
+			// Handle end index
+			if _, isNull := endObj.(*objects.Null); isNull {
+				end = strLen
+			} else {
+				endInt, ok := endObj.(*objects.Int)
+				if !ok {
+					return fmt.Errorf("slice end must be integer or null")
+				}
+				end = endInt.Value
+				// Support negative indexing
+				if end < 0 {
+					end = strLen + end
+				}
+				if end < 0 {
+					end = 0
+				}
+				if end > strLen {
+					end = strLen
+				}
+			}
+
+			if start > end {
+				result = objects.NewString("")
+			} else {
+				result = objects.NewString(o.Value[start:end])
+			}
+
+		default:
+			return fmt.Errorf("cannot slice type %s", obj.Type())
+		}
+		regs[dst] = NewObject(result)
+		frame.IP += 5
 
 	case compiler.OpRegIterKey:
 		// Get key at current index for iteration
@@ -2175,6 +2337,9 @@ func (vm *RegVM) handleRegCall(frame *RegFrame, code []byte) error {
 		return vm.callCompiledFunction(fnObj, int(numArgs), frame)
 	case *objects.Builtin:
 		return vm.callBuiltin(fnObj, int(numArgs), frame)
+	case *objects.Class:
+		// Calling a class creates a new instance
+		return vm.callClassConstructor(fnObj, int(numArgs), frame)
 	default:
 		return fmt.Errorf("cannot call %s", obj.Type())
 	}
@@ -2183,8 +2348,17 @@ func (vm *RegVM) handleRegCall(frame *RegFrame, code []byte) error {
 // callClosure calls a closure function
 func (vm *RegVM) callClosure(closure *Closure, numArgs int, callerFrame *RegFrame) error {
 	fn := closure.Fn
-	if numArgs != fn.NumParameters {
-		return fmt.Errorf("wrong number of arguments: want=%d, got=%d", fn.NumParameters, numArgs)
+
+	// Check argument count
+	if fn.Variadic {
+		// Variadic function: allow numArgs >= NumParameters
+		if numArgs < fn.NumParameters {
+			return fmt.Errorf("wrong number of arguments: want>=%d, got=%d", fn.NumParameters, numArgs)
+		}
+	} else {
+		if numArgs != fn.NumParameters {
+			return fmt.Errorf("wrong number of arguments: want=%d, got=%d", fn.NumParameters, numArgs)
+		}
 	}
 
 	// Check if there's a native call hook that can handle this function
@@ -2206,12 +2380,47 @@ func (vm *RegVM) callClosure(closure *Closure, numArgs int, callerFrame *RegFram
 
 	// Create new frame
 	newFrame := NewRegFrame(fn)
-	newFrame.Constants = callerFrame.Constants
-	newFrame.Globals = callerFrame.Globals
 
-	// Copy arguments from caller's R0-R7 to callee's R0-R7
-	for i := 0; i < numArgs && i < compiler.NumArgRegisters; i++ {
+	// Use the closure's constants if available, otherwise use caller's constants
+	if closure.Constants != nil {
+		// Convert to []Value for the frame
+		newFrame.Constants = make([]Value, len(closure.Constants))
+		for i, c := range closure.Constants {
+			newFrame.Constants[i] = NewObject(c)
+		}
+	} else {
+		newFrame.Constants = callerFrame.Constants
+	}
+
+	// Use the closure's globals if available, otherwise use caller's globals
+	if closure.Globals != nil {
+		newFrame.Globals = make([]Value, len(closure.Globals))
+		for i, g := range closure.Globals {
+			newFrame.Globals[i] = NewObject(g)
+		}
+	} else {
+		newFrame.Globals = callerFrame.Globals
+	}
+
+	// Copy regular arguments from caller's R0-R7 to callee's R0-R7
+	for i := 0; i < fn.NumParameters && i < compiler.NumArgRegisters; i++ {
 		newFrame.Registers[i] = callerFrame.Registers[i]
+	}
+
+	// Handle variadic parameter: collect extra arguments into an array
+	if fn.Variadic {
+		numVariadicArgs := numArgs - fn.NumParameters
+		variadicElements := make([]objects.Object, numVariadicArgs)
+		for i := 0; i < numVariadicArgs; i++ {
+			variadicElements[i] = callerFrame.Registers[fn.NumParameters+i].ToObject()
+		}
+		variadicArray := objects.NewArray(variadicElements)
+		// Store the variadic array in the local slot at index fn.NumParameters
+		// The variadic parameter is defined right after regular parameters
+		variadicLocalIdx := fn.NumParameters
+		if variadicLocalIdx < len(newFrame.Locals) {
+			newFrame.Locals[variadicLocalIdx] = NewObject(variadicArray)
+		}
 	}
 
 	// Set up free variables - directly reference the closure's FreeVarsValues
@@ -2231,8 +2440,16 @@ func (vm *RegVM) callClosure(closure *Closure, numArgs int, callerFrame *RegFram
 
 // callCompiledFunction calls a compiled function
 func (vm *RegVM) callCompiledFunction(fn *compiler.CompiledFunction, numArgs int, callerFrame *RegFrame) error {
-	if numArgs != fn.NumParameters {
-		return fmt.Errorf("wrong number of arguments: want=%d, got=%d", fn.NumParameters, numArgs)
+	// Check argument count
+	if fn.Variadic {
+		// Variadic function: allow numArgs >= NumParameters
+		if numArgs < fn.NumParameters {
+			return fmt.Errorf("wrong number of arguments: want>=%d, got=%d", fn.NumParameters, numArgs)
+		}
+	} else {
+		if numArgs != fn.NumParameters {
+			return fmt.Errorf("wrong number of arguments: want=%d, got=%d", fn.NumParameters, numArgs)
+		}
 	}
 
 	// Check if there's a native call hook that can handle this function
@@ -2257,9 +2474,24 @@ func (vm *RegVM) callCompiledFunction(fn *compiler.CompiledFunction, numArgs int
 	newFrame.Constants = callerFrame.Constants
 	newFrame.Globals = callerFrame.Globals
 
-	// Copy arguments
-	for i := 0; i < numArgs && i < compiler.NumArgRegisters; i++ {
+	// Copy regular arguments
+	for i := 0; i < fn.NumParameters && i < compiler.NumArgRegisters; i++ {
 		newFrame.Registers[i] = callerFrame.Registers[i]
+	}
+
+	// Handle variadic parameter: collect extra arguments into an array
+	if fn.Variadic {
+		numVariadicArgs := numArgs - fn.NumParameters
+		variadicElements := make([]objects.Object, numVariadicArgs)
+		for i := 0; i < numVariadicArgs; i++ {
+			variadicElements[i] = callerFrame.Registers[fn.NumParameters+i].ToObject()
+		}
+		variadicArray := objects.NewArray(variadicElements)
+		// Store the variadic array in the local slot after regular parameters
+		// The local index for variadic param is fn.NumParameters
+		if fn.NumParameters < len(newFrame.Locals) {
+			newFrame.Locals[fn.NumParameters] = NewObject(variadicArray)
+		}
 	}
 
 	vm.pushFrame(newFrame)
@@ -2279,6 +2511,149 @@ func (vm *RegVM) callBuiltin(builtin *objects.Builtin, numArgs int, frame *RegFr
 
 	// Store result in return register
 	frame.Registers[compiler.ReturnRegister] = NewObject(result)
+	return nil
+}
+
+// callClassConstructor handles calling a class as a constructor (e.g., Point(3, 4))
+func (vm *RegVM) callClassConstructor(class *objects.Class, numArgs int, frame *RegFrame) error {
+	regs := &frame.Registers
+
+	// Create a new instance
+	instance := &objects.Instance{
+		Class:  class,
+		Fields: make(map[string]objects.Object),
+	}
+
+	// Copy default fields
+	for k, v := range class.Fields {
+		instance.Fields[k] = v
+	}
+
+	// Call constructor if exists
+	if initMethod := class.InitMethod; initMethod != nil {
+		// Save original args
+		originalArgs := make([]Value, numArgs)
+		for i := 0; i < numArgs; i++ {
+			originalArgs[i] = regs[i]
+		}
+
+		// Put 'this' in R0, shift args to R1-R8
+		regs[0] = NewObject(instance)
+		for i := 0; i < numArgs; i++ {
+			regs[i+1] = originalArgs[i]
+		}
+
+		switch fn := initMethod.(type) {
+		case *objects.Builtin:
+			args := make([]objects.Object, numArgs+1)
+			for i := 0; i <= numArgs; i++ {
+				args[i] = regs[i].ToObject()
+			}
+			fn.Fn(args...)
+		case *compiler.CompiledFunction:
+			// Run the init method synchronously
+			if err := vm.runFunctionSync(fn, numArgs+1, frame); err != nil {
+				return err
+			}
+		case *Closure:
+			// Run the init method synchronously
+			if err := vm.runClosureSync(fn, numArgs+1, frame); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Store instance in return register (this is the constructor result)
+	regs[compiler.ReturnRegister] = NewObject(instance)
+
+	return nil
+}
+
+// runFunctionSync runs a compiled function synchronously and returns when it completes
+func (vm *RegVM) runFunctionSync(fn *compiler.CompiledFunction, numArgs int, callerFrame *RegFrame) error {
+	if numArgs != fn.NumParameters {
+		return fmt.Errorf("wrong number of arguments: want=%d, got=%d", fn.NumParameters, numArgs)
+	}
+
+	// Create new frame
+	newFrame := NewRegFrame(fn)
+	newFrame.Constants = callerFrame.Constants
+	newFrame.Globals = callerFrame.Globals
+
+	// Copy arguments
+	for i := 0; i < numArgs && i < compiler.NumArgRegisters; i++ {
+		newFrame.Registers[i] = callerFrame.Registers[i]
+	}
+
+	vm.pushFrame(newFrame)
+
+	// Run the frame synchronously
+	code := newFrame.Instructions()
+	for newFrame.IP < len(code) {
+		op := compiler.Opcode(code[newFrame.IP])
+		if compiler.IsRegisterOpcode(op) {
+			if err := vm.executeRegInstruction(op, newFrame, code); err != nil {
+				vm.popFrame()
+				return err
+			}
+			// Check if frame was popped (return instruction)
+			if vm.currentFrame() != newFrame {
+				break
+			}
+		} else {
+			newFrame.IP++
+		}
+	}
+
+	return nil
+}
+
+// runClosureSync runs a closure synchronously and returns when it completes
+func (vm *RegVM) runClosureSync(closure *Closure, numArgs int, callerFrame *RegFrame) error {
+	fn := closure.Fn
+	if numArgs != fn.NumParameters {
+		return fmt.Errorf("wrong number of arguments: want=%d, got=%d", fn.NumParameters, numArgs)
+	}
+
+	// Create new frame
+	newFrame := NewRegFrame(fn)
+	newFrame.Constants = callerFrame.Constants
+	newFrame.Globals = callerFrame.Globals
+
+	// Copy arguments
+	for i := 0; i < numArgs && i < compiler.NumArgRegisters; i++ {
+		newFrame.Registers[i] = callerFrame.Registers[i]
+	}
+
+	// Set up free variables
+	if closure.FreeVarsValues != nil {
+		newFrame.FreeVars = closure.FreeVarsValues
+	} else if closure.FreeVars != nil {
+		for i, free := range closure.FreeVars {
+			newFrame.FreeVars[i] = NewObject(free)
+		}
+	}
+
+	vm.pushFrame(newFrame)
+
+	// Run the frame synchronously
+	code := newFrame.Instructions()
+	for newFrame.IP < len(code) {
+		op := compiler.Opcode(code[newFrame.IP])
+		if compiler.IsRegisterOpcode(op) {
+			if err := vm.executeRegInstruction(op, newFrame, code); err != nil {
+				vm.popFrame()
+				return err
+			}
+			// Check if frame was popped (return instruction)
+			if vm.currentFrame() != newFrame {
+				break
+			}
+		} else {
+			newFrame.IP++
+		}
+	}
+
 	return nil
 }
 
@@ -2401,6 +2776,189 @@ func (vm *RegVM) loadPluginByPath(wasmPath string) (objects.Object, error) {
 	})
 
 	return mod, nil
+}
+
+// CallUserFuncInRegVM calls a user-defined function from within the VM
+// This is used by builtin methods like sortByFunc to invoke user callbacks
+func CallUserFuncInRegVM(fnObj objects.Object, args []objects.Object, regVM *RegVM) (objects.Object, error) {
+	// Save the current frame state
+	savedFrameIndex := regVM.frameIndex
+
+	// Get the function to call
+	var compiledFn *compiler.CompiledFunction
+	var freeVars []Value
+
+	switch fn := fnObj.(type) {
+	case *Closure:
+		compiledFn = fn.Fn
+		if fn.FreeVarsValues != nil {
+			freeVars = fn.FreeVarsValues
+		} else if fn.FreeVars != nil {
+			freeVars = make([]Value, len(fn.FreeVars))
+			for i, fv := range fn.FreeVars {
+				freeVars[i] = NewObject(fv)
+			}
+		}
+	case *compiler.CompiledFunction:
+		compiledFn = fn
+	default:
+		return nil, fmt.Errorf("cannot call %s as a function", fnObj.Type())
+	}
+
+	// Check argument count
+	numArgs := len(args)
+	if compiledFn.Variadic {
+		// Variadic function: allow numArgs >= NumParameters
+		if numArgs < compiledFn.NumParameters {
+			return nil, fmt.Errorf("wrong number of arguments: want>=%d, got=%d", compiledFn.NumParameters, numArgs)
+		}
+	} else {
+		if numArgs != compiledFn.NumParameters {
+			return nil, fmt.Errorf("wrong number of arguments: want=%d, got=%d", compiledFn.NumParameters, numArgs)
+		}
+	}
+
+	// Create a new frame for the function call
+	newFrame := NewRegFrame(compiledFn)
+	newFrame.Constants = regVM.constants
+	newFrame.Globals = regVM.globals
+
+	// Copy regular arguments to R0-R7
+	for i := 0; i < compiledFn.NumParameters && i < compiler.NumArgRegisters; i++ {
+		newFrame.Registers[i] = NewObject(args[i])
+	}
+
+	// Handle variadic parameter: collect extra arguments into an array
+	if compiledFn.Variadic {
+		numVariadicArgs := numArgs - compiledFn.NumParameters
+		variadicElements := make([]objects.Object, numVariadicArgs)
+		for i := 0; i < numVariadicArgs; i++ {
+			variadicElements[i] = args[compiledFn.NumParameters+i]
+		}
+		variadicArray := objects.NewArray(variadicElements)
+		// Store the variadic array in the local slot after regular parameters
+		if compiledFn.NumParameters < len(newFrame.Locals) {
+			newFrame.Locals[compiledFn.NumParameters] = NewObject(variadicArray)
+		}
+	}
+
+	// Set up free variables
+	if freeVars != nil {
+		newFrame.FreeVars = freeVars
+	}
+
+	// Push the new frame
+	regVM.pushFrame(newFrame)
+
+	// Execute until we return from this function
+	startFrameIndex := regVM.frameIndex
+	for regVM.frameIndex >= startFrameIndex {
+		frame := regVM.currentFrame()
+		code := frame.Instructions()
+
+		if frame.IP >= len(code) {
+			break
+		}
+
+		op := compiler.Opcode(code[frame.IP])
+
+		if compiler.IsRegisterOpcode(op) {
+			if err := regVM.executeRegInstruction(op, frame, code); err != nil {
+				// Restore frame state on error
+				regVM.frameIndex = savedFrameIndex
+				return nil, err
+			}
+		} else {
+			frame.IP++
+		}
+	}
+
+	// Restore the frame index
+	regVM.frameIndex = savedFrameIndex
+
+	// Return the result from the return register
+	return regVM.frames[savedFrameIndex-1].Registers[compiler.ReturnRegister].ToObject(), nil
+}
+
+// CreateDelegateInRegVM compiles source code into a callable closure
+// If the source is not a function definition, it wraps it in func(...vargs) { ... }
+func CreateDelegateInRegVM(source string, regVM *RegVM) (objects.Object, error) {
+	// Lexical analysis
+	l := lexer.New(source)
+
+	// Parsing
+	p := parser.New(l)
+	program := p.ParseProgram()
+
+	// Check for parser errors
+	if len(p.Errors()) > 0 {
+		return nil, fmt.Errorf("parse error: %s", p.Errors()[0])
+	}
+
+	// Check if the program is a single function literal
+	// If not, wrap it in a variadic function
+	isFunctionLiteral := false
+	if len(program.Statements) == 1 {
+		if exprStmt, ok := program.Statements[0].(*parser.ExpressionStatement); ok {
+			if _, ok := exprStmt.Expression.(*parser.FunctionLiteral); ok {
+				isFunctionLiteral = true
+			}
+		}
+	}
+
+	// If not a function, wrap in a variadic function that uses "vargs" as the parameter
+	var programToCompile *parser.Program
+	if isFunctionLiteral {
+		programToCompile = program
+	} else {
+		// Create a wrapper function: func(...vargs) { original_code }
+		wrapperSource := "func (...vargs) {\n" + source + "\n}"
+
+		l2 := lexer.New(wrapperSource)
+		p2 := parser.New(l2)
+		programToCompile = p2.ParseProgram()
+
+		if len(p2.Errors()) > 0 {
+			return nil, fmt.Errorf("parse error in wrapper: %s", p2.Errors()[0])
+		}
+	}
+
+	// Compile the program
+	c := compiler.NewRegCompiler()
+
+	if _, err := c.Compile(programToCompile); err != nil {
+		return nil, fmt.Errorf("compile error: %v", err)
+	}
+
+	// Get the compiled function
+	bytecode := c.Bytecode()
+	if len(bytecode.Constants) == 0 {
+		return nil, fmt.Errorf("no compiled function produced")
+	}
+
+	// Find the CompiledFunction in constants
+	// The function literal is compiled and added to constants, but other constants
+	// (like numbers and strings) may also be added during compilation
+	var compiledFn *compiler.CompiledFunction
+	for _, constant := range bytecode.Constants {
+		if fn, ok := constant.(*compiler.CompiledFunction); ok {
+			compiledFn = fn
+			break
+		}
+	}
+
+	if compiledFn == nil {
+		return nil, fmt.Errorf("no compiled function found in constants")
+	}
+
+	// Create a closure from the compiled function
+	// The closure needs the constants from the bytecode so the function can access them
+	closure := &Closure{
+		Fn:        compiledFn,
+		Constants: bytecode.Constants,
+	}
+
+	return closure, nil
 }
 
 // RunCodeInRegVM executes code in the register VM context
@@ -2648,6 +3206,10 @@ func (vm *RegVM) handleRegTailCall(frame *RegFrame, code []byte) error {
 			// Builtins don't benefit from TCO, fall back to normal call
 			frame.IP += 3
 			return vm.callBuiltin(fnObj, int(numArgs), frame)
+		case *objects.Class:
+			// Classes don't benefit from TCO, fall back to normal constructor call
+			frame.IP += 3
+			return vm.callClassConstructor(fnObj, int(numArgs), frame)
 		default:
 			return fmt.Errorf("cannot tail call %s", obj.Type())
 		}

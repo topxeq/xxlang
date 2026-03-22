@@ -513,6 +513,47 @@ var arrayMethods = map[string]*Builtin{
 		}
 		return NewString(strings.Join(parts, sep.Value))
 	}},
+	// sortByFunc sorts the array in-place using a custom comparator function.
+	// The comparator function receives two indices (idx1, idx2) and returns true
+	// if the element at idx1 should come before the element at idx2.
+	// Returns the array itself (sorted in-place).
+	"sortByFunc": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for sortByFunc. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Array)
+		if !ok {
+			return newError("receiver for sortByFunc must be ARRAY, got %s", args[0].Type())
+		}
+
+		if len(self.Elements) <= 1 {
+			return self
+		}
+
+		// The comparator can be a Function, Closure, or Builtin
+		comparator := args[1]
+
+		// Sort using the comparator
+		sort.Slice(self.Elements, func(i, j int) bool {
+			// Call the comparator with two indices
+			result, err := CallUserFunc(comparator, NewInt(int64(i)), NewInt(int64(j)))
+			if err != nil {
+				// If there's an error, maintain original order
+				return false
+			}
+			// Convert result to boolean
+			if b, ok := result.(*Bool); ok {
+				return b.Value
+			}
+			// Non-boolean result: treat truthy values as true
+			if result.Type() == NullType {
+				return false
+			}
+			return true
+		})
+
+		return self
+	}},
 }
 
 // ============================================================
