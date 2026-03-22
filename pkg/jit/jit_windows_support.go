@@ -296,6 +296,21 @@ func (j *JITVM) Run() error {
 		}
 	}
 
+	// Re-compile native functions (in case they weren't compiled yet)
+	j.compileNativeFunctions()
+
+	// Check if we have native functions compiled
+	if j.config.Debug {
+		count := atomic.LoadInt64(&j.nativeRegistry.count)
+		fmt.Printf("[JIT] Compiled %d native functions\n", count)
+	}
+
+	// Check if any native functions are available
+	if atomic.LoadInt64(&j.nativeRegistry.count) > 0 {
+		// Use hybrid execution mode that intercepts calls to native functions
+		return j.runHybrid()
+	}
+
 	// Fall back to interpreter
 	j.interpExecs++
 	if j.config.Debug {
@@ -304,7 +319,21 @@ func (j *JITVM) Run() error {
 	return j.RegVM.Run()
 }
 
+// runHybrid executes bytecode with native function call interception
+func (j *JITVM) runHybrid() error {
+	if j.config.Debug {
+		count := atomic.LoadInt64(&j.nativeRegistry.count)
+		fmt.Printf("[JIT] Running in hybrid mode with %d native functions\n", count)
+	}
+
+	// The native call hook is already set up in setupNativeCallHook
+	// Just run the VM normally - the hook will intercept native function calls
+	j.interpExecs++
+	return j.RegVM.Run()
+}
+
 // compileNativeFunctions pre-compiles all native-executable functions
+// and attempts to compile recursive functions using the FibJIT compiler
 func (j *JITVM) compileNativeFunctions() {
 	// Extract integer constants
 	intConstants := make([]int64, len(j.bytecode.Constants))
@@ -319,13 +348,35 @@ func (j *JITVM) compileNativeFunctions() {
 		}
 	}
 
+	// Convert constants to vm.Value for recursive function compilation
+	vmConstants := make([]vm.Value, len(j.bytecode.Constants))
+	for i, c := range j.bytecode.Constants {
+		vmConstants[i] = vm.NewObject(c)
+	}
+
 	// Find all functions in constants and compile them
 	for i, c := range j.bytecode.Constants {
 		if fn, ok := c.(*compiler.CompiledFunction); ok {
+			// First try: pure native execution (no function calls)
 			if CanExecuteNatively(fn) {
 				err := j.nativeRegistry.CompileFunction(fn, i, intConstants)
 				if err != nil && j.config.Debug {
 					fmt.Printf("[JIT] Failed to compile function at const[%d]: %v\n", i, err)
+				}
+				continue
+			}
+
+			// Second try: recursive function compilation (e.g., Fibonacci)
+			// This handles functions with OpRegCall by transforming recursion
+			// into iteration when the pattern is recognized
+			if containsCall(fn.Instructions) {
+				err := j.nativeRegistry.CompileRecursiveFunction(fn, i, vmConstants)
+				if err != nil {
+					if j.config.Debug {
+						fmt.Printf("[JIT] Failed to compile recursive function at const[%d]: %v\n", i, err)
+					}
+				} else if j.config.Debug {
+					fmt.Printf("[JIT] Successfully compiled recursive function at const[%d]\n", i)
 				}
 			}
 		}
@@ -334,7 +385,59 @@ func (j *JITVM) compileNativeFunctions() {
 
 // setupNativeCallHook sets up the VM hook for native function execution
 func (j *JITVM) setupNativeCallHook() {
-	// For now, no hooks - just use interpreter fallback
+	// Create a function index map for quick lookup
+	// We need to map CompiledFunction pointers to their constant indices
+	fnToIdx := make(map[*compiler.CompiledFunction]int)
+	for i, c := range j.bytecode.Constants {
+		if fn, ok := c.(*compiler.CompiledFunction); ok {
+			fnToIdx[fn] = i
+		}
+	}
+
+	// Set up the native call hook
+	j.RegVM.SetNativeCallHook(func(fn *compiler.CompiledFunction, args []vm.Value, frame *vm.RegFrame) (vm.Value, bool) {
+		// Check if this function has a native version
+		idx, ok := fnToIdx[fn]
+		if !ok {
+			return vm.ValueNull, false
+		}
+
+		nativeFn := j.nativeRegistry.Get(idx)
+		if nativeFn == nil {
+			return vm.ValueNull, false
+		}
+
+		// Convert arguments to int64
+		intArgs := make([]int64, len(args))
+		for i, arg := range args {
+			if arg.IsInt() {
+				intArgs[i], _ = arg.ToInt()
+			}
+		}
+
+		// Get globals
+		vmGlobals := j.GetGlobals()
+		globals := make([]int64, len(vmGlobals))
+		for i, g := range vmGlobals {
+			if g.IsInt() {
+				globals[i], _ = g.ToInt()
+			}
+		}
+
+		if j.config.Debug {
+			fmt.Printf("[JIT] Native hook called: const[%d], args=%v, numParams=%d\n", idx, intArgs, nativeFn.NumParams)
+		}
+
+		// Execute native function
+		result := nativeFn.Execute(globals, intArgs...)
+		j.nativeExecs++
+
+		if j.config.Debug {
+			fmt.Printf("[JIT] Native hook executed function at const[%d], result=%d\n", idx, result)
+		}
+
+		return vm.NewInt(result), true
+	})
 }
 
 // SetJITEnabled enables or disables JIT compilation

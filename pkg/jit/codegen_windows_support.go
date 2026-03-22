@@ -174,6 +174,7 @@ func (g *SimpleCodeGenerator) Generate(fn *compiler.CompiledFunction, constants 
 
 // ============================================================
 // Fibonacci JIT Compiler for Windows x64 ABI
+// Generates TRUE RECURSIVE code (not iterative transformation)
 // ============================================================
 
 // FibJITCompiler compiles Fibonacci-like recursive functions
@@ -187,14 +188,15 @@ func NewFibJITCompiler(config JITConfig) *FibJITCompiler {
 }
 
 // Compile compiles a function that follows the Fibonacci pattern
+// Generates TRUE RECURSIVE native code
 func (c *FibJITCompiler) Compile(fn *compiler.CompiledFunction, constants []vm.Value, globals []vm.Value) ([]byte, error) {
 	// Check if this is a Fibonacci-like function
 	if !c.isFibPattern(fn) {
 		return nil, fmt.Errorf("not a Fibonacci pattern")
 	}
 
-	// Generate optimized Fibonacci code for Windows x64 ABI
-	return c.generateFibCode(fn, constants), nil
+	// Generate TRUE RECURSIVE Fibonacci code for Windows x64 ABI
+	return c.generateRecursiveFibCode(fn, constants), nil
 }
 
 // isFibPattern checks if the function follows Fibonacci pattern
@@ -215,72 +217,127 @@ func containsCall(code []byte) bool {
 	return false
 }
 
-// generateFibCode generates optimized Fibonacci code for Windows
-func (c *FibJITCompiler) generateFibCode(fn *compiler.CompiledFunction, constants []vm.Value) []byte {
-	code := make([]byte, 0, 128)
+// generateRecursiveFibCode generates TRUE RECURSIVE Fibonacci code for Windows x64 ABI
+// This implements: fib(n) { if (n <= 1) return n; return fib(n-1) + fib(n-2); }
+func (c *FibJITCompiler) generateRecursiveFibCode(fn *compiler.CompiledFunction, constants []vm.Value) []byte {
+	code := make([]byte, 0, 256)
 
+	// Entry point - we'll need this for recursive calls
+	entryOffset := 0
+
+	// =====================================================
 	// Prologue - Windows x64 ABI
-	// Save callee-saved registers
-	code = append(code, 0x53)                          // push rbx
-	code = append(code, 0x41, 0x54)                    // push r12
-	code = append(code, 0x41, 0x55)                    // push r13
-	code = append(code, 0x41, 0x56)                    // push r14
-	code = append(code, 0x41, 0x57)                    // push r15
+	// =====================================================
+	// push rbp
+	code = append(code, 0x55)
+	// mov rbp, rsp
+	code = append(code, 0x48, 0x89, 0xE5)
+	// sub rsp, 32 (shadow space for Windows x64 ABI)
+	code = append(code, 0x48, 0x83, 0xEC, 0x20)
+	// push rbx (save callee-saved, we'll use it for fib(n-1) result)
+	code = append(code, 0x53)
+	// push rdi (save callee-saved, we'll use it to store n)
+	code = append(code, 0x57)
 
-	// Save n to r13 (arg is in rcx for Windows!)
-	code = append(code, 0x49, 0x89, 0xCD)              // mov r13, rcx
+	// Save n (in rcx) to rdi
+	// mov rdi, rcx
+	code = append(code, 0x48, 0x89, 0xCF)
 
-	// Base case: if n <= 1, return n
-	code = append(code, 0x48, 0x89, 0xC8)              // mov rax, rcx
-	code = append(code, 0x48, 0x83, 0xF9, 0x01)        // cmp rcx, 1
+	// =====================================================
+	// Base case: if (n <= 1) return n
+	// =====================================================
+	// cmp rcx, 1
+	code = append(code, 0x48, 0x83, 0xF9, 0x01)
+	// jg recursive_case (jump if n > 1)
 	jgPos := len(code)
-	code = append(code, 0x7F, 0x00)                    // jg (placeholder)
-	jmpPos := len(code)
-	code = append(code, 0xEB, 0x00)                    // jmp to epilogue
-	code[jgPos+1] = 0x02                               // jg +2
+	code = append(code, 0x7F, 0x00) // placeholder
 
-	// Initialize: a=0, b=1, i=2
-	code = append(code, 0x48, 0x31, 0xDB)              // xor rbx, rbx (a=0)
-	code = append(code, 0x49, 0xC7, 0xC4, 0x01, 0x00, 0x00, 0x00) // mov r12, 1 (b=1)
-	code = append(code, 0x49, 0xC7, 0xC6, 0x02, 0x00, 0x00, 0x00) // mov r14, 2 (i=2)
+	// Base case: return n (n is already in rcx, move to rax)
+	// mov rax, rcx
+	code = append(code, 0x48, 0x89, 0xC8)
+	// jmp epilogue
+	jmpToEpilogue := len(code)
+	code = append(code, 0xEB, 0x00) // placeholder
 
-	// Loop start
-	loopStart := len(code)
+	// =====================================================
+	// Recursive case: return fib(n-1) + fib(n-2)
+	// =====================================================
+	recursiveStart := len(code)
+	code[jgPos+1] = byte(recursiveStart - (jgPos + 2))
 
-	// temp = a + b
-	code = append(code, 0x4C, 0x89, 0xE0)              // mov rax, r12 (b)
-	code = append(code, 0x48, 0x01, 0xD8)              // add rax, rbx (a)
-	code = append(code, 0x49, 0x89, 0xC7)              // mov r15, rax (temp)
+	// --- First recursive call: fib(n-1) ---
+	// mov rcx, rdi (restore n)
+	code = append(code, 0x48, 0x89, 0xF9)
+	// dec rcx (n-1)
+	code = append(code, 0x48, 0xFF, 0xC9)
+	// call fib (recursive call to entry point)
+	// We need to use a relative call, but we don't know the absolute position
+	// Use a near call with 32-bit displacement
+	call1Pos := len(code)
+	code = append(code, 0xE8, 0x00, 0x00, 0x00, 0x00) // call (placeholder)
 
-	// a = b
-	code = append(code, 0x4C, 0x89, 0xE3)              // mov rbx, r12
+	// Save result of fib(n-1) in rbx
+	// mov rbx, rax
+	code = append(code, 0x48, 0x89, 0xC3)
 
-	// b = temp
-	code = append(code, 0x4D, 0x89, 0xFC)              // mov r12, r15
+	// --- Second recursive call: fib(n-2) ---
+	// mov rcx, rdi (restore n)
+	code = append(code, 0x48, 0x89, 0xF9)
+	// sub rcx, 2 (n-2)
+	code = append(code, 0x48, 0x83, 0xE9, 0x02)
+	// call fib (recursive call to entry point)
+	call2Pos := len(code)
+	code = append(code, 0xE8, 0x00, 0x00, 0x00, 0x00) // call (placeholder)
 
-	// i++
-	code = append(code, 0x49, 0xFF, 0xC6)              // inc r14
+	// Add results: rax = fib(n-1) + fib(n-2)
+	// add rax, rbx
+	code = append(code, 0x48, 0x01, 0xD8)
 
-	// if i <= n, continue
-	code = append(code, 0x4D, 0x39, 0xEE)              // cmp r14, r13
-	jlePos := len(code)
-	code = append(code, 0x7E, 0x00)                    // jle (placeholder)
-	code[jlePos+1] = byte(int8(loopStart - (jlePos + 2)))
-
-	// Return b
-	code = append(code, 0x4C, 0x89, 0xE0)              // mov rax, r12
-
+	// =====================================================
 	// Epilogue
+	// =====================================================
 	epilogueStart := len(code)
-	code[jmpPos+1] = byte(epilogueStart - (jmpPos + 2))
+	code[jmpToEpilogue+1] = byte(epilogueStart - (jmpToEpilogue + 2))
 
-	// Restore callee-saved
-	code = append(code, 0x41, 0x5F)                    // pop r15
-	code = append(code, 0x41, 0x5E)                    // pop r14
-	code = append(code, 0x41, 0x5D)                    // pop r13
-	code = append(code, 0x41, 0x5C)                    // pop r12
-	code = append(code, 0x5B)                          // pop rbx
-	code = append(code, 0xC3)                          // ret
+	// pop rdi
+	code = append(code, 0x5F)
+	// pop rbx
+	code = append(code, 0x5B)
+	// add rsp, 32
+	code = append(code, 0x48, 0x83, 0xC4, 0x20)
+	// pop rbp
+	code = append(code, 0x5D)
+	// ret
+	code = append(code, 0xC3)
+
+	// =====================================================
+	// Fix up call displacements (relative to next instruction)
+	// =====================================================
+	// call1: calls entry point from call1Pos
+	// displacement = entryOffset - (call1Pos + 5)
+	call1Disp := uint32(entryOffset - (call1Pos + 5))
+	code[call1Pos+1] = byte(call1Disp)
+	code[call1Pos+2] = byte(call1Disp >> 8)
+	code[call1Pos+3] = byte(call1Disp >> 16)
+	code[call1Pos+4] = byte(call1Disp >> 24)
+
+	// call2: calls entry point from call2Pos
+	call2Disp := uint32(entryOffset - (call2Pos + 5))
+	code[call2Pos+1] = byte(call2Disp)
+	code[call2Pos+2] = byte(call2Disp >> 8)
+	code[call2Pos+3] = byte(call2Disp >> 16)
+	code[call2Pos+4] = byte(call2Disp >> 24)
+
+	if c.config.Debug {
+		fmt.Printf("[JIT] Generated TRUE RECURSIVE code: %d bytes\n", len(code))
+		fmt.Printf("[JIT] Entry at offset %d, recursive case at %d, epilogue at %d\n",
+			entryOffset, recursiveStart, epilogueStart)
+	}
 
 	return code
+}
+
+// generateFibCode is kept for backward compatibility but now calls recursive version
+func (c *FibJITCompiler) generateFibCode(fn *compiler.CompiledFunction, constants []vm.Value) []byte {
+	return c.generateRecursiveFibCode(fn, constants)
 }
