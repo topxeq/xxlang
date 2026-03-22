@@ -150,6 +150,8 @@ pln("发射！")
 
 ### Switch语句
 
+Switch语句提供了一种清晰的方式来根据值进行分支。**注意：Xxlang的switch不会穿透(fall-through)，匹配到case后会自动退出。**
+
 ```xxl
 var day = 3
 
@@ -159,15 +161,81 @@ case 1:
 case 2:
     pln("星期二")
 case 3:
-    pln("星期三")
+    pln("星期三")    // 输出这个，然后退出switch
 case 4:
-    pln("星期四")
+    pln("星期四")    // 不会执行
 case 5:
-    pln("星期五")
+    pln("星期五")    // 不会执行
 default:
-    pln("周末")
+    pln("周末")      // 不会执行
 }
 ```
+
+#### 字符串匹配
+
+```xxl
+var fruit = "apple"
+
+switch (fruit) {
+case "apple":
+    pln("苹果")
+case "banana":
+    pln("香蕉")
+case "orange":
+    pln("橙子")
+default:
+    pln("未知水果")
+}
+// 输出: 苹果
+```
+
+#### 使用表达式
+
+```xxl
+var x = 10
+var y = 20
+
+switch (x + y) {
+case 10:
+    pln("和为10")
+case 20:
+    pln("和为20")
+case 30:
+    pln("和为30")
+default:
+    pln("其他值")
+}
+// 输出: 和为30
+```
+
+#### 与if-else链的比较
+
+```xxl
+// 使用switch更清晰
+switch (status) {
+case 200:
+    pln("成功")
+case 404:
+    pln("未找到")
+case 500:
+    pln("服务器错误")
+default:
+    pln("未知状态")
+}
+
+// 等价的if-else链更冗长
+if (status == 200) {
+    pln("成功")
+} else if (status == 404) {
+    pln("未找到")
+} else if (status == 500) {
+    pln("服务器错误")
+} else {
+    pln("未知状态")
+}
+```
+
+> 详细说明请参阅 [LANGUAGE.md](LANGUAGE.md#switch-statement) 中的 Switch Statement 章节。
 
 ---
 

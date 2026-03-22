@@ -150,6 +150,8 @@ pln("Liftoff!")
 
 ### Switch Statement
 
+The switch statement provides clean branching based on a value. **Note: Xxlang's switch does not fall through - it automatically exits after matching a case.**
+
 ```xxl
 var day = 3
 
@@ -159,15 +161,50 @@ case 1:
 case 2:
     pln("Tuesday")
 case 3:
-    pln("Wednesday")
+    pln("Wednesday")  // Outputs this, then exits
 case 4:
-    pln("Thursday")
+    pln("Thursday")   // Not executed
 case 5:
-    pln("Friday")
+    pln("Friday")     // Not executed
 default:
-    pln("Weekend")
+    pln("Weekend")    // Not executed
 }
 ```
+
+#### String Matching
+
+```xxl
+var fruit = "apple"
+
+switch (fruit) {
+case "apple":
+    pln("Red or Green")
+case "banana":
+    pln("Yellow")
+default:
+    pln("Unknown")
+}
+// Output: Red or Green
+```
+
+#### With Expressions
+
+```xxl
+var x = 10
+var y = 20
+
+switch (x + y) {
+case 10:
+    pln("Sum is 10")
+case 30:
+    pln("Sum is 30")
+default:
+    pln("Other sum")
+}
+// Output: Sum is 30
+```
+
+> See [LANGUAGE.md](LANGUAGE.md#switch-statement) for detailed documentation.
 
 ---
 

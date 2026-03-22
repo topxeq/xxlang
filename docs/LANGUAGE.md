@@ -589,16 +589,224 @@ for (var i = 0; i < 10; i++) {
 
 ### Switch Statement
 
+The `switch` statement provides a clean way to dispatch based on a value. Unlike C/Java, Xxlang's switch **does not fall through** - execution stops after the matching case block.
+
+#### Basic Syntax
+
 ```xxl
-switch (value) {
-    case 1:
-        pln("one")
-    case 2:
-        pln("two")
+switch (expression) {
+    case value1:
+        // statements
+    case value2:
+        // statements
     default:
-        pln("other")
+        // statements (optional)
 }
 ```
+
+#### Simple Example
+
+```xxl
+var day = 3
+switch (day) {
+    case 1:
+        pln("Monday")
+    case 2:
+        pln("Tuesday")
+    case 3:
+        pln("Wednesday")
+    case 4:
+        pln("Thursday")
+    case 5:
+        pln("Friday")
+    default:
+        pln("Weekend")
+}
+// Output: Wednesday
+```
+
+#### No Fall-Through
+
+Unlike C or Java, Xxlang's switch does **not fall through** to the next case. Each case block terminates automatically:
+
+```xxl
+var num = 1
+switch (num) {
+    case 1:
+        pln("One")      // Executes this
+    case 2:
+        pln("Two")      // NOT executed (no fall-through)
+    default:
+        pln("Default")  // NOT executed
+}
+// Output: One
+```
+
+This means you don't need explicit `break` statements - the behavior is automatic.
+
+#### Switch with Strings
+
+```xxl
+var fruit = "apple"
+switch (fruit) {
+    case "apple":
+        pln("Red or Green")
+    case "banana":
+        pln("Yellow")
+    case "orange":
+        pln("Orange")
+    default:
+        pln("Unknown fruit")
+}
+// Output: Red or Green
+```
+
+#### Switch with Expressions
+
+The switch expression can be any expression:
+
+```xxl
+var x = 10
+var y = 20
+switch (x + y) {
+    case 10:
+        pln("Sum is 10")
+    case 20:
+        pln("Sum is 20")
+    case 30:
+        pln("Sum is 30")
+    default:
+        pln("Sum is something else")
+}
+// Output: Sum is 30
+```
+
+#### Multiple Statements in Case
+
+Each case can contain multiple statements:
+
+```xxl
+var val = 2
+switch (val) {
+    case 1:
+        pln("Case 1")
+        pln("Multiple lines work")
+    case 2:
+        pln("Case 2")
+        var temp = 100
+        pln("temp = " + temp.toStr())
+    default:
+        pln("Default case")
+}
+// Output:
+// Case 2
+// temp = 100
+```
+
+#### Default Clause
+
+The `default` clause is optional and executes when no case matches:
+
+```xxl
+var n = 999
+switch (n) {
+    case 1:
+        pln("One")
+    default:
+        pln("Not one, it's " + n.toStr())
+}
+// Output: Not one, it's 999
+```
+
+#### Switch vs If-Else Chain
+
+The switch statement is cleaner than a long if-else chain:
+
+```xxl
+// Using switch (recommended for multiple discrete values)
+switch (status) {
+    case 200:
+        pln("OK")
+    case 404:
+        pln("Not Found")
+    case 500:
+        pln("Server Error")
+    default:
+        pln("Unknown status")
+}
+
+// Equivalent if-else chain (more verbose)
+if (status == 200) {
+    pln("OK")
+} else if (status == 404) {
+    pln("Not Found")
+} else if (status == 500) {
+    pln("Server Error")
+} else {
+    pln("Unknown status")
+}
+```
+
+#### Comparison with Other Languages
+
+| Feature | Xxlang | C/Java | Go |
+|---------|--------|--------|-----|
+| Fall-through | No (auto break) | Yes (needs break) | No (auto break) |
+| Default case | Optional | Optional | Optional |
+| String matching | Yes | Yes (Java 7+) | Yes |
+| Expression in switch | Yes | Yes | Yes |
+| Multiple values per case | No | No | Yes |
+
+#### Best Practices
+
+1. **Use switch for discrete values**: When comparing against multiple specific values, switch is clearer than if-else chains.
+
+2. **Always include default**: Handle unexpected values with a default clause.
+
+   ```xxl
+   switch (command) {
+       case "start":
+           startService()
+       case "stop":
+           stopService()
+       default:
+           pln("Unknown command: " + command)
+   }
+   ```
+
+3. **Use if-else for ranges**: Switch works best with exact matches; use if-else for range comparisons.
+
+   ```xxl
+   // Use if-else for ranges
+   if (score >= 90) {
+       grade = "A"
+   } else if (score >= 80) {
+       grade = "B"
+   } else if (score >= 70) {
+       grade = "C"
+   }
+   ```
+
+4. **Group related cases logically**: Order cases by frequency or logical grouping.
+
+   ```xxl
+   switch (httpStatus) {
+       case 200:   // Success
+       case 201:
+       case 204:
+           handleSuccess()
+       case 400:   // Client errors
+       case 404:
+       case 403:
+           handleClientError()
+       case 500:   // Server errors
+       case 502:
+       case 503:
+           handleServerError()
+       default:
+           handleUnknown()
+   }
+   ```
 
 ## Functions
 

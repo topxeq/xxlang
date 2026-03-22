@@ -58,10 +58,10 @@ if (isLoggedIn) {
 }
 
 // === Switch-like Pattern (using if-else) ===
-pln("\n=== Switch-like Pattern ===")
+pln("\n=== Switch-like Pattern (old way) ===")
 var day = 3
 
-// Xxlang uses if-else chains for switch-like behavior
+// Before: Xxlang used if-else chains for switch-like behavior
 if (day == 1) {
     pln("Monday")
 } else {
@@ -71,25 +71,58 @@ if (day == 1) {
         if (day == 3) {
             pln("Wednesday")
         } else {
-            if (day == 4) {
-                pln("Thursday")
-            } else {
-                if (day == 5) {
-                    pln("Friday")
-                } else {
-                    if (day == 6) {
-                        pln("Saturday")
-                    } else {
-                        if (day == 7) {
-                            pln("Sunday")
-                        } else {
-                            pln("Invalid day")
-                        }
-                    }
-                }
-            }
+            pln("Other day")
         }
     }
+}
+
+// === Switch Statement (preferred) ===
+pln("\n=== Switch Statement ===")
+// Xxlang now supports switch statements (no fall-through!)
+switch (day) {
+    case 1:
+        pln("Monday")
+    case 2:
+        pln("Tuesday")
+    case 3:
+        pln("Wednesday")   // This executes
+    case 4:
+        pln("Thursday")    // NOT executed (no fall-through)
+    case 5:
+        pln("Friday")
+    default:
+        pln("Weekend")
+}
+
+// === Switch with Strings ===
+pln("\n=== Switch with Strings ===")
+var fruit = "apple"
+
+switch (fruit) {
+    case "apple":
+        pln("Red or Green")
+    case "banana":
+        pln("Yellow")
+    case "orange":
+        pln("Orange")
+    default:
+        pln("Unknown fruit")
+}
+
+// === Switch with Expressions ===
+pln("\n=== Switch with Expressions ===")
+var x = 10
+var y = 20
+
+switch (x + y) {
+    case 10:
+        pln("Sum is 10")
+    case 20:
+        pln("Sum is 20")
+    case 30:
+        pln("Sum is 30")
+    default:
+        pln("Sum is something else")
 }
 
 // === Season Example ===
