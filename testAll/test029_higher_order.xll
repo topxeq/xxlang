@@ -1,0 +1,86 @@
+// Test 029: Higher-Order Functions
+// Tests functions that take or return other functions
+
+pln("Function as argument:")
+func applyFunc(fn, x) {
+    return fn(x)
+}
+
+func double(n) {
+    return n * 2
+}
+pln(applyFunc(double, 5))
+
+pln("Function returning function:")
+func makeMultiplier(factor) {
+    return func(x) {
+        return x * factor
+    }
+}
+
+var triple = makeMultiplier(3)
+pln(triple(4))
+pln(triple(10))
+
+pln("Map function:")
+func mapArray(arr, fn) {
+    var result = []
+    for (var i = 0; i < len(arr); i = i + 1) {
+        result = push(result, fn(arr[i]))
+    }
+    return result
+}
+
+var nums = [1, 2, 3, 4, 5]
+var squared = mapArray(nums, func(x) { return x * x })
+pln(squared)
+
+pln("Filter function:")
+func filterArray(arr, predicate) {
+    var result = []
+    for (var i = 0; i < len(arr); i = i + 1) {
+        if (predicate(arr[i])) {
+            result = push(result, arr[i])
+        }
+    }
+    return result
+}
+
+var evens = filterArray([1, 2, 3, 4, 5, 6], func(x) { return x % 2 == 0 })
+pln(evens)
+
+pln("Reduce function:")
+func reduceArray(arr, fn, initial) {
+    var result = initial
+    for (var i = 0; i < len(arr); i = i + 1) {
+        result = fn(result, arr[i])
+    }
+    return result
+}
+
+var sum = reduceArray([1, 2, 3, 4, 5], func(acc, x) { return acc + x }, 0)
+pln(sum)
+
+pln("Compose functions:")
+func compose(f, g) {
+    return func(x) {
+        return f(g(x))
+    }
+}
+
+func addOne(x) { return x + 1 }
+func doubleIt(x) { return x * 2 }
+
+var addThenDouble = compose(doubleIt, addOne)
+pln(addThenDouble(5))
+
+pln("Function stored in data structure:")
+var operations = {
+    "add": func(a, b) { return a + b },
+    "sub": func(a, b) { return a - b },
+    "mul": func(a, b) { return a * b }
+}
+
+pln(operations["add"](10, 5))
+pln(operations["sub"](10, 5))
+pln(operations["mul"](10, 5))

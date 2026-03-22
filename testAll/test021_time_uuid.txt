@@ -1,0 +1,14 @@
+now function:
+true
+nowMs function:
+true
+uuid function:
+true
+true
+Multiple UUIDs are unique:
+true
+Timing comparison:
+time elapsed (ms): 0
+49995000
+sleep function (short):
+true

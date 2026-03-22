@@ -1,0 +1,32 @@
+Simple recursion:
+5
+4
+3
+2
+1
+Done!
+Factorial (recursive):
+1
+120
+3628800
+Fibonacci (recursive):
+0
+1
+55
+610
+GCD (recursive):
+6
+5
+1
+Sum of digits:
+6
+27
+2
+Power (recursive):
+1024
+81
+1
+Reverse string (recursive):
+olleh
+a
+

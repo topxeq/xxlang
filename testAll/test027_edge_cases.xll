@@ -1,0 +1,67 @@
+// Test 027: Edge Cases
+// Tests edge cases and boundary conditions
+
+pln("Empty collections:")
+var emptyArr = []
+var emptyMap = {}
+var emptyStr = ""
+
+pln(len(emptyArr))
+pln(len(emptyMap))
+pln(len(emptyStr))
+pln(isEmpty(emptyArr))
+pln(isEmpty(emptyMap))
+pln(isEmpty(emptyStr))
+
+pln("Zero values:")
+pln(0)
+pln(0.0)
+pln(!0)
+
+pln("Large numbers:")
+var big = 1000000000
+pln(big)
+pln(big * big)
+pln(big / 1000)
+
+pln("Negative numbers:")
+pln(-1)
+pln(-999)
+pln(-3.14)
+pln(abs(-42))
+
+pln("Boolean operations:")
+pln(true == true)
+pln(true == false)
+pln(false == false)
+pln(!true == false)
+pln(!false == true)
+
+pln("Null operations:")
+pln(null == null)
+pln(null != null)
+pln(isNull(null))
+pln(!null)
+
+pln("String edge cases:")
+pln(len(""))
+pln("" == "")
+pln("" + "" == "")
+pln("a" + "" == "a")
+pln("" + "b" == "b")
+
+pln("Array edge cases:")
+pln(len([]))
+pln([] == [])
+pln(first([]))
+pln(last([]))
+pln(first([1]))
+pln(last([1]))
+
+pln("Nested structures:")
+var nested = {"a": {"b": {"c": 1}}}
+pln(nested["a"]["b"]["c"])
+
+pln("Deep nesting:")
+var deep = [[[[1]]]]
+pln(deep[0][0][0][0])

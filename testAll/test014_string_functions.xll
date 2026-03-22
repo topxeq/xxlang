@@ -1,0 +1,66 @@
+// Test 014: String Built-in Functions
+// Tests various string manipulation functions
+
+pln("String length:")
+pln(len("hello"))
+pln(len(""))
+pln(len("hello world"))
+
+pln("String case:")
+pln(upper("hello"))
+pln(lower("HELLO"))
+
+pln("String trim:")
+pln(trim("  hello  "))
+pln(trimLeft("  hello  "))
+pln(trimRight("  hello  "))
+
+pln("String split and join:")
+var parts = split("a,b,c", ",")
+pln(parts)
+pln(join(parts, "-"))
+
+pln("String contains and index:")
+pln(containsStr("hello world", "world"))
+pln(containsStr("hello world", "xyz"))
+pln(indexOf("hello world", "o"))
+pln(indexOf("hello world", "x"))
+
+pln("String prefix and suffix:")
+pln(startsWith("hello", "he"))
+pln(startsWith("hello", "lo"))
+pln(endsWith("hello", "lo"))
+pln(endsWith("hello", "he"))
+
+pln("String replace:")
+pln(replace("hello world", "world", "universe"))
+
+pln("String substring:")
+pln(substr("hello world", 0, 5))
+pln(substr("hello world", 6))
+pln(substr("hello", 1, 4))
+
+pln("String repeat and pad:")
+pln(repeat("ab", 3))
+pln(lpad("5", 3, "0"))
+pln(rpad("5", 3, "0"))
+
+pln("String charAt:")
+pln(charAt("hello", 0))
+pln(charAt("hello", 4))
+
+pln("String type checking:")
+pln(isDigit("12345"))
+pln(isDigit("123a5"))
+pln(isAlpha("hello"))
+pln(isAlpha("hello1"))
+pln(isAlphaNum("hello123"))
+pln(isAlphaNum("hello!"))
+
+pln("String count:")
+pln(count("hello hello", "l"))
+pln(count("ababab", "ab"))
+
+pln("String trimPrefix and trimSuffix:")
+pln(trimPrefix("hello world", "hello "))
+pln(trimSuffix("hello world", " world"))

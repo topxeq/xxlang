@@ -1,0 +1,35 @@
+Equality:
+true
+false
+true
+false
+true
+false
+true
+Inequality:
+true
+false
+true
+false
+Less than:
+true
+false
+false
+true
+Greater than:
+true
+false
+false
+true
+Less than or equal:
+true
+false
+true
+Greater than or equal:
+true
+false
+true
+String comparison:
+true
+true
+true

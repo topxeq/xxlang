@@ -1,0 +1,57 @@
+// Test 026: Prefix and Infix Operators
+// Tests various prefix and infix operators
+
+pln("Prefix operators:")
+pln(-5)
+pln(-(-5))
+pln(!true)
+pln(!false)
+pln(!0)
+pln(!1)
+pln(!null)
+pln(!"")
+pln(!"hello")
+
+pln("Arithmetic infix:")
+var a = 10
+var b = 3
+pln(a + b)
+pln(a - b)
+pln(a * b)
+pln(a / b)
+pln(a % b)
+
+pln("Comparison infix:")
+pln(a == b)
+pln(a != b)
+pln(a < b)
+pln(a > b)
+pln(a <= b)
+pln(a >= b)
+
+pln("Logical infix:")
+pln(true && true)
+pln(true && false)
+pln(false || true)
+pln(false || false)
+
+pln("String concatenation:")
+pln("Hello" + " " + "World")
+pln("Count: " + toStr(42))
+pln("Pi: " + toStr(3.14))
+
+pln("Mixed expressions:")
+pln(5 + 3 * 2)
+pln((5 + 3) * 2)
+pln(10 / 2 + 3)
+pln(10 / (2 + 3))
+
+pln("Chained comparisons (evaluated left to right):")
+var x = 5
+pln(x > 3 && x < 10)
+pln(x < 3 || x > 10)
+
+pln("Operator precedence:")
+pln(2 + 3 * 4 - 1)
+pln(2 * 3 + 4 * 5)
+pln(100 / 10 / 2)

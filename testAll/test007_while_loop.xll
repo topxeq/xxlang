@@ -1,0 +1,51 @@
+// Test 007: While Loop
+// Tests while loop with break and continue
+
+pln("Basic while loop:")
+var i = 0
+while (i < 5) {
+    pln(i)
+    i = i + 1
+}
+
+pln("While with break:")
+var j = 0
+while (true) {
+    if (j >= 3) {
+        break
+    }
+    pln(j)
+    j = j + 1
+}
+
+pln("While with continue:")
+var k = 0
+while (k < 5) {
+    k = k + 1
+    if (k == 3) {
+        continue
+    }
+    pln(k)
+}
+
+pln("Nested while:")
+var row = 1
+while (row <= 3) {
+    var col = 1
+    while (col <= 3) {
+        pr(row * col)
+        pr(" ")
+        col = col + 1
+    }
+    pln("")
+    row = row + 1
+}
+
+pln("Sum using while:")
+var sum = 0
+var n = 1
+while (n <= 10) {
+    sum = sum + n
+    n = n + 1
+}
+pln(sum)

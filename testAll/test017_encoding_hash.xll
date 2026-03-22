@@ -1,0 +1,50 @@
+// Test 017: Encoding and Hash Functions
+// Tests base64, hex, md5, sha256 functions
+
+pln("base64Encode:")
+var encoded = base64Encode("hello world")
+pln(encoded)
+
+pln("base64Decode:")
+var decoded = base64Decode(encoded)
+pln(decoded)
+
+pln("hexEncode:")
+var hexEncoded = hexEncode("hello")
+pln(hexEncoded)
+
+pln("hexDecode:")
+var hexDecoded = hexDecode(hexEncoded)
+pln(hexDecoded)
+
+pln("md5 hash:")
+pln(md5("hello"))
+
+pln("sha256 hash:")
+pln(sha256("hello"))
+
+pln("format function:")
+pln(format("Hello, %s!", "World"))
+pln(format("The answer is %d.", 42))
+pln(format("Pi is approximately %.2f.", 3.14159))
+pln(format("%s has %d apples.", "Alice", 5))
+
+pln("Object utility functions:")
+var obj = {"a": 1, "b": 2}
+var objCopy = copy(obj)
+objCopy["a"] = 100
+pln(obj["a"])
+pln(objCopy["a"])
+
+pln("equals function:")
+pln(equals([1, 2, 3], [1, 2, 3]))
+pln(equals([1, 2, 3], [1, 2, 4]))
+pln(equals({"a": 1}, {"a": 1}))
+pln(equals({"a": 1}, {"a": 2}))
+
+pln("defaults function:")
+var config = {"timeout": 30}
+var defaultConfig = {"timeout": 10, "retries": 3}
+var merged = defaults(config, defaultConfig)
+pln(merged["timeout"])
+pln(merged["retries"])

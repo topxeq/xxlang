@@ -1,0 +1,29 @@
+Simple assignment:
+10
+Reassignment:
+20
+Assignment with expression:
+25
+Chained assignments:
+1
+2
+3
+Assignment in expressions:
+100
+101
+Array element assignment:
+[10, 20, 3]
+Map element assignment:
+{a: 100, b: 200}
+Short variable declaration:
+42
+Assignment with function call:
+99
+Assignment in loop:
+0
+10
+20
+Multiple scope assignment:
+outer
+inner
+outer

@@ -1,0 +1,44 @@
+Prefix operators:
+-5
+5
+false
+true
+true
+false
+true
+true
+false
+Arithmetic infix:
+13
+7
+30
+3.3333333333333335
+1
+Comparison infix:
+false
+true
+false
+true
+false
+true
+Logical infix:
+true
+false
+true
+false
+String concatenation:
+Hello World
+Count: 42
+Pi: 3.14
+Mixed expressions:
+11
+16
+8
+2
+Chained comparisons (evaluated left to right):
+true
+false
+Operator precedence:
+13
+26
+5

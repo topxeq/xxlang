@@ -1,0 +1,65 @@
+// Test 028: Assignment Expressions
+// Tests various assignment patterns
+
+pln("Simple assignment:")
+var x = 10
+pln(x)
+
+pln("Reassignment:")
+x = 20
+pln(x)
+
+pln("Assignment with expression:")
+var y = x + 5
+pln(y)
+
+pln("Chained assignments:")
+var a = 1
+var b = 2
+var c = 3
+pln(a)
+pln(b)
+pln(c)
+
+pln("Assignment in expressions:")
+var result = (x = 100) + 1
+pln(x)
+pln(result)
+
+pln("Array element assignment:")
+var arr = [1, 2, 3]
+arr[0] = 10
+arr[1] = 20
+pln(arr)
+
+pln("Map element assignment:")
+var m = {"a": 1}
+m["a"] = 100
+m["b"] = 200
+pln(m)
+
+pln("Short variable declaration:")
+shortVar := 42
+pln(shortVar)
+
+pln("Assignment with function call:")
+func getValue() {
+    return 99
+}
+var funcResult = getValue()
+pln(funcResult)
+
+pln("Assignment in loop:")
+for (var i = 0; i < 3; i = i + 1) {
+    var loopVar = i * 10
+    pln(loopVar)
+}
+
+pln("Multiple scope assignment:")
+var outer = "outer"
+{
+    var inner = "inner"
+    pln(outer)
+    pln(inner)
+}
+pln(outer)

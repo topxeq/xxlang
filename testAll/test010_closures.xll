@@ -1,0 +1,64 @@
+// Test 010: Closures
+// Tests closures and higher-order functions
+
+pln("Basic closure:")
+func makeCounter() {
+    var count = 0
+    return func() {
+        count = count + 1
+        return count
+    }
+}
+
+var counter = makeCounter()
+pln(counter())
+pln(counter())
+pln(counter())
+
+pln("Closure with parameters:")
+func makeAdder(n) {
+    return func(x) {
+        return x + n
+    }
+}
+
+var add5 = makeAdder(5)
+var add10 = makeAdder(10)
+pln(add5(3))
+pln(add10(3))
+
+pln("Closure capturing multiple variables:")
+func makeMultiplier(factor) {
+    var calls = 0
+    return func(x) {
+        calls = calls + 1
+        pln("called " + calls + " times")
+        return x * factor
+    }
+}
+
+var double = makeMultiplier(2)
+pln(double(5))
+pln(double(10))
+
+pln("Higher-order function:")
+func applyTwice(fn, x) {
+    return fn(fn(x))
+}
+
+func increment(n) {
+    return n + 1
+}
+pln(applyTwice(increment, 5))
+
+pln("Closure in loop:")
+var funcs = []
+for (var i = 0; i < 3; i = i + 1) {
+    funcs = push(funcs, func() {
+        return i
+    })
+}
+// Note: closures capture by reference
+for (var j = 0; j < 3; j = j + 1) {
+    pln(funcs[j]())
+}

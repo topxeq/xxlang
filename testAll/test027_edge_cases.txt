@@ -1,0 +1,48 @@
+Empty collections:
+0
+0
+0
+true
+true
+true
+Zero values:
+0
+0
+true
+Large numbers:
+1000000000
+1000000000000000000
+1000000
+Negative numbers:
+-1
+-999
+-3.14
+42
+Boolean operations:
+true
+false
+true
+true
+true
+Null operations:
+true
+false
+true
+true
+String edge cases:
+0
+true
+true
+true
+true
+Array edge cases:
+0
+true
+null
+null
+1
+1
+Nested structures:
+1
+Deep nesting:
+1

@@ -1,0 +1,62 @@
+// Test 006: If-Else Statements
+// Tests conditional branching
+
+pln("Basic if:")
+if (true) {
+    pln("true branch")
+}
+
+if (false) {
+    pln("won't print")
+} else {
+    pln("false branch")
+}
+
+pln("If-else if-else:")
+var score = 85
+
+if (score >= 90) {
+    pln("A")
+} else if (score >= 80) {
+    pln("B")
+} else if (score >= 70) {
+    pln("C")
+} else {
+    pln("F")
+}
+
+pln("Nested if:")
+var x = 10
+var y = 20
+
+if (x > 5) {
+    if (y > 15) {
+        pln("both conditions met")
+    } else {
+        pln("only x condition met")
+    }
+}
+
+pln("If with expressions:")
+var a = 5
+var b = 10
+
+if (a + b == 15) {
+    pln("sum is 15")
+}
+
+if (a * b > 40) {
+    pln("product is greater than 40")
+}
+
+pln("If with logical operators:")
+var isLoggedIn = true
+var isAdmin = false
+
+if (isLoggedIn && isAdmin) {
+    pln("admin access")
+} else if (isLoggedIn) {
+    pln("user access")
+} else {
+    pln("guest access")
+}

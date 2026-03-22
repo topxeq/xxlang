@@ -1,0 +1,35 @@
+Map literals:
+{name: Alice, age: 30}
+{a: 1, b: 2, c: 3}
+Map access:
+Alice
+30
+Map modification:
+31
+NYC
+Map with different value types:
+42
+3.14
+hello
+true
+null
+[1, 2, 3]
+Map functions:
+3
+[name, age, city]
+[Alice, 31, NYC]
+hasKey function:
+true
+false
+delete function:
+{a: 1, c: 3}
+merge function:
+{a: 1, b: 2, c: 3, d: 4}
+entries function:
+[[x, 1], [y, 2]]
+Empty map:
+0
+true
+Map with integer keys:
+one
+two

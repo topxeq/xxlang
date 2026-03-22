@@ -1,0 +1,17 @@
+Function as argument:
+10
+Function returning function:
+12
+30
+Map function:
+[1, 4, 9, 16, 25]
+Filter function:
+[2, 4, 6]
+Reduce function:
+15
+Compose functions:
+12
+Function stored in data structure:
+15
+5
+50

@@ -1,0 +1,70 @@
+// Test 023: Object Methods
+// Tests methods on different types (string, array, map, int, float)
+
+pln("String methods:")
+var str = "  Hello World  "
+pln(str.trim())
+pln(str.trim().upper())
+pln(str.trim().lower())
+pln(str.len())
+
+pln("String split method:")
+var csv = "a,b,c,d"
+pln(csv.split(","))
+
+pln("String contains method:")
+pln("hello world".contains("world"))
+pln("hello world".contains("xyz"))
+
+pln("String indexOf method:")
+pln("hello world".indexOf("o"))
+pln("hello world".indexOf("x"))
+
+pln("String startsWith/endsWith methods:")
+pln("hello".startsWith("he"))
+pln("hello".endsWith("lo"))
+
+pln("String subStr method:")
+pln("hello world".subStr(0, 5))
+pln("hello world".subStr(6))
+
+pln("String typeOf method:")
+pln("test".typeOf())
+pln("test".toStr())
+
+pln("Array methods:")
+var arr = [1, 2, 3]
+pln(arr.len())
+pln(arr.first())
+pln(arr.last())
+pln(arr.indexOf(2))
+pln(arr.indexOf(10))
+pln(arr.contains(2))
+pln(arr.contains(10))
+
+pln("Array reverse method:")
+pln([1, 2, 3, 4, 5].reverse())
+
+pln("Array join method:")
+pln(["a", "b", "c"].join("-"))
+
+pln("Map methods:")
+var m = {"a": 1, "b": 2}
+pln(m.len())
+pln(m.keys())
+pln(m.values())
+pln(m.hasKey("a"))
+pln(m.hasKey("c"))
+
+pln("Int methods:")
+pln(42.typeOf())
+pln((-10).abs())
+pln(42.toFloat())
+
+pln("Float methods:")
+pln(3.14.typeOf())
+pln((-3.14).abs())
+pln(3.7.floor())
+pln(3.2.ceil())
+pln(3.7.round())
+pln(3.14.toInt())

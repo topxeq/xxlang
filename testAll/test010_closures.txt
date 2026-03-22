@@ -1,0 +1,18 @@
+Basic closure:
+1
+2
+3
+Closure with parameters:
+8
+13
+Closure capturing multiple variables:
+called 1 times
+10
+called 2 times
+20
+Higher-order function:
+7
+Closure in loop:
+3
+3
+3

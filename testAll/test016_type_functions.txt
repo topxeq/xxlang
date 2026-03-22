@@ -1,0 +1,54 @@
+Type checking functions:
+true
+false
+true
+false
+true
+false
+true
+false
+true
+false
+true
+false
+true
+false
+typeOf function:
+INT
+FLOAT
+STRING
+BOOL
+ARRAY
+MAP
+NULL
+FUNCTION
+isEmpty function:
+true
+false
+true
+false
+true
+false
+true
+int conversion:
+3
+42
+1
+0
+float conversion:
+42
+3.14
+string conversion:
+42
+3.14
+true
+[1, 2, 3]
+{a: 1}
+toStr function:
+100
+true
+null
+isFunction:
+true
+true
+false

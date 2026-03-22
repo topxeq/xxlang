@@ -1,0 +1,37 @@
+abs function:
+5
+5
+3.14
+floor and ceil:
+3
+-4
+4
+-3
+round function:
+3
+4
+3.14
+sqrt function:
+4
+1.4142135623730951
+pow function:
+1024
+27
+6.25
+min and max:
+3
+3
+7
+7
+-5
+clamp function:
+5
+0
+10
+sign function:
+1
+-1
+0
+random functions (sample checks):
+true
+true

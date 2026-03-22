@@ -1,0 +1,46 @@
+// Test 032: Command Line Argument Utilities
+// Tests getSwitch and switchExists functions
+
+pln("getSwitch function:")
+var args = ["--port=8080", "--host=localhost", "--verbose"]
+
+pln(getSwitch(args, "--port=", "3000"))
+pln(getSwitch(args, "--host=", "127.0.0.1"))
+pln(getSwitch(args, "--timeout=", "30"))
+
+pln("switchExists function:")
+pln(switchExists(args, "--verbose"))
+pln(switchExists(args, "--debug"))
+pln(switchExists(args, "--port="))
+
+pln("Combined usage:")
+var config = {
+    "port": getSwitch(args, "--port=", "3000"),
+    "host": getSwitch(args, "--host=", "localhost"),
+    "debug": switchExists(args, "--debug"),
+    "verbose": switchExists(args, "--verbose")
+}
+
+pln(config.port)
+pln(config.host)
+pln(config.debug)
+pln(config.verbose)
+
+pln("Parse arguments pattern:")
+func parseArgs(argList, defaults) {
+    var result = copy(defaults)
+    for (var i = 0; i < len(argList); i = i + 1) {
+        var arg = argList[i]
+        if (startsWith(arg, "--")) {
+            var parts = split(arg, "=")
+            var key = substr(parts[0], 2)
+            var value = len(parts) > 1 ? parts[1] : "true"
+            result[key] = value
+        }
+    }
+    return result
+}
+
+var defaults = {"port": "3000", "host": "localhost", "debug": "false"}
+var parsed = parseArgs(args, defaults)
+pln(parsed)

@@ -1,0 +1,14 @@
+Basic class:
+3
+4
+Point(3, 4)
+Point(4, 6)
+Class with methods:
+0
+2
+1
+Type checking with classes:
+Point
+INSTANCE
+Class instance is truthy:
+instance is truthy

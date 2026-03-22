@@ -1,0 +1,44 @@
+// Test 002: Arithmetic Operations
+// Tests addition, subtraction, multiplication, division, and modulo
+
+pln("Addition:")
+pln(5 + 3)
+pln(10 + -5)
+pln(0 + 0)
+
+pln("Subtraction:")
+pln(10 - 3)
+pln(5 - 10)
+pln(0 - 0)
+
+pln("Multiplication:")
+pln(4 * 5)
+pln(-3 * 7)
+pln(0 * 100)
+
+pln("Division:")
+pln(20 / 4)
+pln(7 / 2)
+pln(-15 / 3)
+
+pln("Modulo:")
+pln(10 % 3)
+pln(15 % 5)
+pln(7 % 4)
+
+pln("Float arithmetic:")
+pln(3.5 + 2.5)
+pln(10.0 - 3.5)
+pln(2.5 * 4.0)
+pln(7.5 / 2.5)
+
+pln("Mixed int/float:")
+pln(5 + 2.5)
+pln(10 - 3.0)
+pln(3 * 2.5)
+pln(10 / 4.0)
+
+pln("Complex expressions:")
+pln(2 + 3 * 4)
+pln((2 + 3) * 4)
+pln(10 / 2 + 3 * 4 - 5)

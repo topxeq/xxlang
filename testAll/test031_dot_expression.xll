@@ -1,0 +1,68 @@
+// Test 031: Dot Expression and Property Access
+// Tests dot notation for property and method access
+
+pln("Object property access:")
+var obj = {"name": "Alice", "age": 30}
+pln(obj.name)
+pln(obj.age)
+
+pln("Nested property access:")
+var person = {
+    "name": "Bob",
+    "address": {
+        "city": "NYC",
+        "zip": "10001"
+    }
+}
+pln(person.name)
+pln(person.address.city)
+pln(person.address.zip)
+
+pln("Property assignment:")
+obj.name = "Charlie"
+pln(obj.name)
+
+pln("Adding new property:")
+obj.email = "test@example.com"
+pln(obj.email)
+
+pln("Method call on string:")
+var s = "hello"
+pln(s.len())
+pln(s.upper())
+pln(s.contains("ell"))
+
+pln("Method call on array:")
+var arr = [3, 1, 4, 1, 5]
+pln(arr.len())
+pln(arr.first())
+pln(arr.last())
+pln(arr.indexOf(4))
+
+pln("Chained method calls:")
+pln("  hello  ".trim().upper())
+pln([1, 2, 3].reverse().first())
+
+pln("Method with arguments:")
+pln("a,b,c".split(","))
+pln(["x", "y", "z"].join("-"))
+
+pln("Instance method calls:")
+class Box {
+    init(value) {
+        this.value = value
+    }
+
+    getValue() {
+        return this.value
+    }
+
+    double() {
+        this.value = this.value * 2
+    }
+}
+
+var box = Box(10)
+pln(box.getValue())
+box.double()
+pln(box.getValue())

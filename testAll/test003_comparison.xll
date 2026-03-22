@@ -1,0 +1,44 @@
+// Test 003: Comparison Operations
+// Tests comparison operators: ==, !=, <, >, <=, >=
+
+pln("Equality:")
+pln(5 == 5)
+pln(5 == 3)
+pln("hello" == "hello")
+pln("hello" == "world")
+pln(true == true)
+pln(true == false)
+pln(null == null)
+
+pln("Inequality:")
+pln(5 != 3)
+pln(5 != 5)
+pln("a" != "b")
+pln("a" != "a")
+
+pln("Less than:")
+pln(3 < 5)
+pln(5 < 3)
+pln(3 < 3)
+pln(3.5 < 4.5)
+
+pln("Greater than:")
+pln(5 > 3)
+pln(3 > 5)
+pln(5 > 5)
+pln(4.5 > 3.5)
+
+pln("Less than or equal:")
+pln(3 <= 5)
+pln(5 <= 3)
+pln(5 <= 5)
+
+pln("Greater than or equal:")
+pln(5 >= 3)
+pln(3 >= 5)
+pln(5 >= 5)
+
+pln("String comparison:")
+pln("abc" < "abd")
+pln("abc" > "abb")
+pln("abc" == "abc")

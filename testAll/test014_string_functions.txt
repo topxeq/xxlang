@@ -1,0 +1,50 @@
+String length:
+5
+0
+11
+String case:
+HELLO
+hello
+String trim:
+hello
+hello
+  hello
+String split and join:
+[a, b, c]
+a-b-c
+String contains and index:
+true
+false
+4
+-1
+String prefix and suffix:
+true
+false
+true
+false
+String replace:
+hello universe
+String substring:
+hello
+world
+ell
+String repeat and pad:
+ababab
+005
+500
+String charAt:
+h
+o
+String type checking:
+true
+false
+true
+false
+true
+false
+String count:
+4
+3
+String trimPrefix and trimSuffix:
+world
+hello

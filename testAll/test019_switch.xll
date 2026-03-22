@@ -1,0 +1,64 @@
+// Test 019: Switch Statement
+// Tests switch-case-default statements
+
+pln("Basic switch:")
+var day = 3
+switch (day) {
+    case 1:
+        pln("Monday")
+    case 2:
+        pln("Tuesday")
+    case 3:
+        pln("Wednesday")
+    case 4:
+        pln("Thursday")
+    case 5:
+        pln("Friday")
+    default:
+        pln("Weekend")
+}
+
+pln("Switch with default:")
+var val = 10
+switch (val) {
+    case 1:
+        pln("one")
+    case 2:
+        pln("two")
+    default:
+        pln("other: " + toStr(val))
+}
+
+pln("Switch with strings:")
+var fruit = "apple"
+switch (fruit) {
+    case "apple":
+        pln("red")
+    case "banana":
+        pln("yellow")
+    case "grape":
+        pln("purple")
+    default:
+        pln("unknown color")
+}
+
+pln("Switch with expressions:")
+var x = 15
+switch (true) {
+    case x < 10:
+        pln("small")
+    case x < 20:
+        pln("medium")
+    default:
+        pln("large")
+}
+
+pln("Switch with no match:")
+var unmatched = 99
+switch (unmatched) {
+    case 1:
+        pln("one")
+    case 2:
+        pln("two")
+}
+pln("after switch")

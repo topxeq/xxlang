@@ -1,0 +1,36 @@
+// Test 021: Time and UUID Functions
+// Tests time-related and UUID functions
+
+pln("now function:")
+var t = now()
+pln(t > 0)
+
+pln("nowMs function:")
+var ms = nowMs()
+pln(ms > 0)
+
+pln("uuid function:")
+var id = uuid()
+pln(len(id) == 36)
+pln(containsStr(id, "-"))
+
+pln("Multiple UUIDs are unique:")
+var id1 = uuid()
+var id2 = uuid()
+pln(id1 != id2)
+
+pln("Timing comparison:")
+var start = nowMs()
+var sum = 0
+for (var i = 0; i < 10000; i = i + 1) {
+    sum = sum + i
+}
+var end = nowMs()
+pln("time elapsed (ms): " + toStr(end - start))
+pln(sum)
+
+pln("sleep function (short):")
+var before = nowMs()
+sleep(10)
+var after = nowMs()
+pln(after >= before)

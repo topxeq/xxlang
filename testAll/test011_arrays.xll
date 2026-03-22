@@ -1,0 +1,50 @@
+// Test 011: Arrays
+// Tests array literals, indexing, and operations
+
+pln("Array literals:")
+var arr1 = [1, 2, 3, 4, 5]
+pln(arr1)
+
+var arr2 = ["a", "b", "c"]
+pln(arr2)
+
+var arr3 = [true, false, true]
+pln(arr3)
+
+pln("Array indexing:")
+pln(arr1[0])
+pln(arr1[2])
+pln(arr1[4])
+
+pln("Array length:")
+pln(len(arr1))
+pln(len(arr2))
+
+pln("Array modification:")
+arr1[0] = 100
+pln(arr1[0])
+
+pln("Array with mixed types:")
+var mixed = [1, "two", 3.0, true]
+pln(mixed)
+pln(mixed[0])
+pln(mixed[1])
+pln(mixed[2])
+pln(mixed[3])
+
+pln("Nested arrays:")
+var nested = [[1, 2], [3, 4], [5, 6]]
+pln(nested)
+pln(nested[0])
+pln(nested[0][1])
+pln(nested[2][0])
+
+pln("Array operations:")
+var a = [1, 2]
+var b = [3, 4]
+pln(concat(a, b))
+
+pln("Empty array:")
+var empty = []
+pln(len(empty))
+pln(isEmpty(empty))

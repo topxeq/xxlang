@@ -1,0 +1,10 @@
+Basic switch:
+Wednesday
+Switch with default:
+other: 10
+Switch with strings:
+red
+Switch with expressions:
+medium
+Switch with no match:
+after switch
