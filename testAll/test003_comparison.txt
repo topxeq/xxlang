@@ -1,35 +1,143 @@
-Equality:
+=== Numeric Equality ===
+Integer equality:
 true
 false
 true
-false
 true
-false
 true
+Float equality:
+true
+true
+true
+Mixed numeric equality:
+true
+true
+true
+=== Numeric Inequality ===
 Inequality:
 true
 false
 true
-false
-Less than:
+true
+=== Numeric Less Than ===
+Integer less than:
 true
 false
 false
 true
-Greater than:
+true
+Float less than:
+true
+false
+true
+Mixed less than:
+true
+true
+=== Numeric Greater Than ===
+Integer greater than:
 true
 false
 false
 true
+true
+Float greater than:
+true
+false
+Mixed greater than:
+true
+true
+=== Numeric Less Than or Equal ===
 Less than or equal:
 true
 false
 true
+true
+true
+=== Numeric Greater Than or Equal ===
 Greater than or equal:
 true
 false
 true
-String comparison:
+true
+true
+=== Boolean Comparison ===
+Boolean equality:
+true
+true
+false
+false
+Boolean inequality:
+true
+true
+false
+false
+=== Null Comparison ===
+Null equality:
+true
+false
+false
+false
+Null inequality:
+false
+true
+true
+=== String Equality ===
+String equality:
+true
+false
+true
+false
+true
+false
+String inequality:
+true
+false
+true
+true
+=== String Comparison (Lexicographic) ===
+Basic string less than:
+true
+false
+false
 true
 true
 true
+Basic string greater than:
+true
+false
+false
+true
+true
+true
+String less than or equal:
+true
+true
+false
+true
+String greater than or equal:
+true
+true
+false
+true
+Case sensitivity:
+true
+true
+true
+Numeric-like strings (lexicographic, not numeric):
+false
+false
+true
+=== Chained Comparisons ===
+Multiple comparisons:
+true
+true
+true
+true
+=== Type Coercion Edge Cases ===
+Int and float comparison:
+true
+true
+true
+true
+true
+=== All comparison tests completed! ===

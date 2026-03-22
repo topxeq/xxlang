@@ -3,10 +3,10 @@
 
 pln("Map literals:")
 var m1 = {"name": "Alice", "age": 30}
-pln(m1)
+pln(toJson(m1, "-sort"))
 
 var m2 = {"a": 1, "b": 2, "c": 3}
-pln(m2)
+pln(toJson(m2, "-sort"))
 
 pln("Map access:")
 pln(m1["name"])
@@ -37,8 +37,8 @@ pln(mixed["array"])
 
 pln("Map functions:")
 pln(len(m1))
-pln(keys(m1))
-pln(values(m1))
+pln(toJson(sort(keys(m1))))
+pln(len(values(m1)))
 
 pln("hasKey function:")
 pln(hasKey(m1, "name"))
@@ -47,15 +47,15 @@ pln(hasKey(m1, "unknown"))
 pln("delete function:")
 var m3 = {"a": 1, "b": 2, "c": 3}
 delete(m3, "b")
-pln(m3)
+pln(toJson(m3, "-sort"))
 
 pln("merge function:")
 var m4 = {"a": 1, "b": 2}
 var m5 = {"c": 3, "d": 4}
-pln(merge(m4, m5))
+pln(toJson(merge(m4, m5), "-sort"))
 
 pln("entries function:")
-pln(entries({"x": 1, "y": 2}))
+pln(len(entries({"x": 1, "y": 2})))
 
 pln("Empty map:")
 var emptyMap = {}

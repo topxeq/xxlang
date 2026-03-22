@@ -1,0 +1,127 @@
+// Test 033: Charlang Compatibility - Closures and Anonymous Functions
+// Tests patterns from Charlang (github.com/topxeq/charlang)
+
+import { println } from "io"
+
+// ============================================
+// Part 1: Immediately Invoked Function Expression (IIFE)
+// Complex anonymous function pattern
+// ============================================
+pln("=== Part 1: Complex IIFE ===")
+
+// Equivalent to Charlang's:
+// func(x) {
+//     return func(y) {
+//         x(y)
+//     }
+// }(func(z) {
+//         println("Hi!", z)
+//     })("Nice to see you.")
+
+// IIFE pattern: function that takes a callback, returns a function
+// that calls the callback with another value
+func(x) {
+    return func(y) {
+        x(y)
+    }
+}(func(z) {
+    println("Hi!", z)
+})("Nice to see you.")
+
+pln("")
+
+// ============================================
+// Part 2: Closure with Mutable State (Counter Factory)
+// Classic closure pattern with private state
+// ============================================
+pln("=== Part 2: Closure Counter Factory ===")
+
+// Equivalent to Charlang's NewAddFunc
+var NewAddFunc = func() {
+    var count = 0
+
+    return func(n) {
+        count += n
+
+        return count
+    }
+}
+
+// Create first instance
+var f1 = NewAddFunc()
+
+println(f1(3))
+println(f1(5))
+println(f1(9))
+
+// Create second instance - independent count
+pln("--- Second instance ---")
+var f2 = NewAddFunc()
+
+println(f2(10))
+println(f2(20))
+
+// First instance still has its own count
+pln("--- Back to first instance ---")
+println(f1(100))
+
+// ============================================
+// Part 3: Nested IIFE Patterns
+// ============================================
+pln("=== Part 3: Nested IIFE ===")
+
+// Simple IIFE
+var result1 = func(x) {
+    return x * 2
+}(5)
+pln(result1)
+
+// Nested IIFE
+var result2 = func(a) {
+    return func(b) {
+        return a + b
+    }
+}(10)(20)
+pln(result2)
+
+// IIFE returning closure
+var addN = func(n) {
+    return func(x) {
+        return x + n
+    }
+}(100)
+
+pln(addN(5))
+pln(addN(50))
+
+// ============================================
+// Part 4: IIFE with Complex Logic
+// ============================================
+pln("=== Part 4: IIFE with Complex Logic ===")
+
+// IIFE for initialization
+var config = func() {
+    var settings = {
+        "debug": true,
+        "version": "1.0"
+    }
+    return settings
+}()
+
+pln(config["debug"])
+pln(config["version"])
+
+// IIFE with immediate computation
+var computed = func(x, y) {
+    if (x > y) {
+        return x - y
+    }
+    return y - x
+}(10, 3)
+
+pln(computed)
+
+// ============================================
+// All tests completed!
+// ============================================
+pln("=== All Charlang compatibility tests passed! ===")

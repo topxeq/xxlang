@@ -10,10 +10,12 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"math"
 	"math/rand"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -67,7 +69,10 @@ var Builtins = map[string]*Builtin{
 	},
 	"pln": {
 		Fn: func(args ...Object) Object {
-			for _, arg := range args {
+			for i, arg := range args {
+				if i > 0 {
+					fmt.Print(" ")
+				}
 				fmt.Print(arg.Inspect())
 			}
 			fmt.Println()
@@ -286,7 +291,9 @@ var Builtins = map[string]*Builtin{
 				return newError("second argument to 'substr' must be INT, got %s", args[1].Type())
 			}
 
-			strLen := int64(len(str.Value))
+			// Convert to runes for proper Unicode handling
+			runes := []rune(str.Value)
+			strLen := int64(len(runes))
 			end := strLen
 			if len(args) == 3 {
 				e, ok := args[2].(*Int)
@@ -300,7 +307,7 @@ var Builtins = map[string]*Builtin{
 				return newError("substring indices out of range")
 			}
 
-			return NewString(str.Value[start.Value:end])
+			return NewString(string(runes[start.Value:end]))
 		},
 	},
 	"split": {
@@ -917,18 +924,25 @@ var Builtins = map[string]*Builtin{
 				return newError("wrong number of arguments for indexOf. got=%d, want=2", len(args))
 			}
 
-			arr, ok := args[0].(*Array)
-			if !ok {
-				return newError("first argument to 'indexOf' must be ARRAY, got %s", args[0].Type())
-			}
-
-			for i, elem := range arr.Elements {
-				if compareObjects(elem, args[1]) {
-					return NewInt(int64(i))
+			// Support both array and string
+			switch obj := args[0].(type) {
+			case *Array:
+				for i, elem := range obj.Elements {
+					if compareObjects(elem, args[1]) {
+						return NewInt(int64(i))
+					}
 				}
+				return NewInt(-1)
+			case *String:
+				substr, ok := args[1].(*String)
+				if !ok {
+					return newError("second argument to 'indexOf' for string must be STRING, got %s", args[1].Type())
+				}
+				idx := strings.Index(obj.Value, substr.Value)
+				return NewInt(int64(idx))
+			default:
+				return newError("first argument to 'indexOf' must be ARRAY or STRING, got %s", args[0].Type())
 			}
-
-			return NewInt(-1)
 		},
 	},
 	"containsArr": {
@@ -970,6 +984,10 @@ var Builtins = map[string]*Builtin{
 				keys[i] = pair.Key
 				i++
 			}
+			// Sort keys for deterministic output
+			sort.Slice(keys, func(i, j int) bool {
+				return keys[i].Inspect() < keys[j].Inspect()
+			})
 			return NewArray(keys)
 		},
 	},
@@ -983,11 +1001,20 @@ var Builtins = map[string]*Builtin{
 			if !ok {
 				return newError("argument to 'values' must be MAP, got %s", args[0].Type())
 			}
-			vals := make([]Object, len(m.Pairs))
+			// Get keys and sort them for deterministic order
+			keys := make([]Object, len(m.Pairs))
 			i := 0
 			for _, pair := range m.Pairs {
-				vals[i] = pair.Value
+				keys[i] = pair.Key
 				i++
+			}
+			sort.Slice(keys, func(i, j int) bool {
+				return keys[i].Inspect() < keys[j].Inspect()
+			})
+			// Get values in the same order as sorted keys
+			vals := make([]Object, len(keys))
+			for i, key := range keys {
+				vals[i] = m.Pairs[key.HashKey()].Value
 			}
 			return NewArray(vals)
 		},
@@ -1749,7 +1776,7 @@ var Builtins = map[string]*Builtin{
 				return newError("argument to 'flatten' must be ARRAY, got %s", args[0].Type())
 			}
 
-			depth := int64(-1) // -1 means infinite depth
+			depth := int64(1) // default: flatten one level only
 			if len(args) == 2 {
 				d, ok := args[1].(*Int)
 				if !ok {
@@ -2485,6 +2512,56 @@ var Builtins = map[string]*Builtin{
 			return FALSE
 		},
 	},
+	"toJson": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("wrong number of arguments for toJson. got=%d, want>=1", len(args))
+			}
+
+			// Parse options
+			indent := false
+			sortKeys := false
+			indentStr := "  " // default 2 spaces
+
+			for i := 1; i < len(args); i++ {
+				if str, ok := args[i].(*String); ok {
+					switch str.Value {
+					case "-indent":
+						indent = true
+					case "-sort":
+						sortKeys = true
+					}
+				}
+			}
+
+			// Convert object to JSON
+			jsonBytes, err := objectToJSON(args[0], indent, sortKeys, indentStr, 0)
+			if err != nil {
+				return newError("toJson error: %s", err.Error())
+			}
+
+			return NewString(string(jsonBytes))
+		},
+	},
+	"fromJson": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for fromJson. got=%d, want=1", len(args))
+			}
+
+			str, ok := args[0].(*String)
+			if !ok {
+				return newError("argument to 'fromJson' must be STRING, got %s", args[0].Type())
+			}
+
+			obj, err := jsonToObject(str.Value)
+			if err != nil {
+				return newError("fromJson error: %s", err.Error())
+			}
+
+			return obj
+		},
+	},
 }
 
 // RunCodeImpl is the implementation function for runCode, set by the VM
@@ -2663,5 +2740,175 @@ func deepEquals(a, b Object) bool {
 		return true
 	default:
 		return a.Inspect() == b.Inspect()
+	}
+}
+
+// objectToJSON converts an Object to JSON bytes
+func objectToJSON(obj Object, indent, sortKeys bool, indentStr string, level int) ([]byte, error) {
+	switch o := obj.(type) {
+	case *Null:
+		return []byte("null"), nil
+	case *Bool:
+		if o.Value {
+			return []byte("true"), nil
+		}
+		return []byte("false"), nil
+	case *Int:
+		return []byte(strconv.FormatInt(o.Value, 10)), nil
+	case *Float:
+		return []byte(strconv.FormatFloat(o.Value, 'f', -1, 64)), nil
+	case *String:
+		data, err := json.Marshal(o.Value)
+		if err != nil {
+			return nil, err
+		}
+		return data, nil
+	case *Array:
+		var buf strings.Builder
+		buf.WriteString("[")
+		if indent {
+			buf.WriteString("\n")
+		}
+		for i, elem := range o.Elements {
+			if indent {
+				for j := 0; j <= level; j++ {
+					buf.WriteString(indentStr)
+				}
+			}
+			data, err := objectToJSON(elem, indent, sortKeys, indentStr, level+1)
+			if err != nil {
+				return nil, err
+			}
+			buf.Write(data)
+			if i < len(o.Elements)-1 {
+				buf.WriteString(",")
+			}
+			if indent {
+				buf.WriteString("\n")
+			}
+		}
+		if indent {
+			for j := 0; j < level; j++ {
+				buf.WriteString(indentStr)
+			}
+		}
+		buf.WriteString("]")
+		return []byte(buf.String()), nil
+	case *Map:
+		var buf strings.Builder
+		buf.WriteString("{")
+		if indent {
+			buf.WriteString("\n")
+		}
+
+		// Get keys
+		keys := make([]string, 0, len(o.Pairs))
+		for _, pair := range o.Pairs {
+			if keyStr, ok := pair.Key.(*String); ok {
+				keys = append(keys, keyStr.Value)
+			}
+		}
+
+		// Sort keys if requested
+		if sortKeys {
+			sort.Strings(keys)
+		}
+
+		for i, key := range keys {
+			if indent {
+				for j := 0; j <= level; j++ {
+					buf.WriteString(indentStr)
+				}
+			}
+			// Write key
+			keyData, _ := json.Marshal(key)
+			buf.Write(keyData)
+			buf.WriteString(":")
+			if indent {
+				buf.WriteString(" ")
+			}
+			// Find value for this key
+			for _, pair := range o.Pairs {
+				if keyStr, ok := pair.Key.(*String); ok && keyStr.Value == key {
+					data, err := objectToJSON(pair.Value, indent, sortKeys, indentStr, level+1)
+					if err != nil {
+						return nil, err
+					}
+					buf.Write(data)
+					break
+				}
+			}
+			if i < len(keys)-1 {
+				buf.WriteString(",")
+			}
+			if indent {
+				buf.WriteString("\n")
+			}
+		}
+		if indent {
+			for j := 0; j < level; j++ {
+				buf.WriteString(indentStr)
+			}
+		}
+		buf.WriteString("}")
+		return []byte(buf.String()), nil
+	default:
+		// For other types, use Inspect as string
+		data, err := json.Marshal(o.Inspect())
+		if err != nil {
+			return nil, err
+		}
+		return data, nil
+	}
+}
+
+// jsonToObject parses JSON string to Object
+func jsonToObject(s string) (Object, error) {
+	var v interface{}
+	if err := json.Unmarshal([]byte(s), &v); err != nil {
+		return nil, err
+	}
+	return goValueToObject(v), nil
+}
+
+// goValueToObject converts a Go value to Object
+func goValueToObject(v interface{}) Object {
+	if v == nil {
+		return NULL
+	}
+
+	switch val := v.(type) {
+	case bool:
+		if val {
+			return TRUE
+		}
+		return FALSE
+	case float64:
+		// Check if it's actually an integer
+		if val == float64(int64(val)) {
+			return NewInt(int64(val))
+		}
+		return NewFloat(val)
+	case string:
+		return NewString(val)
+	case []interface{}:
+		elements := make([]Object, len(val))
+		for i, elem := range val {
+			elements[i] = goValueToObject(elem)
+		}
+		return NewArray(elements)
+	case map[string]interface{}:
+		pairs := make(map[HashKey]MapPair)
+		for k, v := range val {
+			key := NewString(k)
+			hashKey := key.HashKey()
+			pairs[hashKey] = MapPair{
+				Key:   key,
+				Value: goValueToObject(v),
+			}
+		}
+		return NewMap(pairs)
+	default:
+		return NewString(fmt.Sprintf("%v", v))
 	}
 }

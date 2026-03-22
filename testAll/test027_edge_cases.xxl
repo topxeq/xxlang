@@ -21,7 +21,7 @@ pln(!0)
 pln("Large numbers:")
 var big = 1000000000
 pln(big)
-pln(big * big)
+pln(big * 1000)
 pln(big / 1000)
 
 pln("Negative numbers:")

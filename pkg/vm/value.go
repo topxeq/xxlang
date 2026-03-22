@@ -278,6 +278,12 @@ func (v Value) IsTruthy() bool {
 	if v.IsFloat() {
 		return v.GetFloat() != 0
 	}
+	// Check for empty string (falsy)
+	if v.IsObject() {
+		if s, ok := v.GetObject().(*objects.String); ok {
+			return len(s.Value) > 0
+		}
+	}
 	return true
 }
 
@@ -636,6 +642,17 @@ func (v Value) Less(other Value) (bool, bool) {
 		return vPayload < otherPayload, true
 	}
 
+	// Handle string comparison
+	if vTag == tagObject && otherTag == tagObject {
+		obj1 := v.GetObject()
+		obj2 := other.GetObject()
+		if s1, ok1 := obj1.(*objects.String); ok1 {
+			if s2, ok2 := obj2.(*objects.String); ok2 {
+				return s1.Value < s2.Value, true
+			}
+		}
+	}
+
 	f1, ok1 := v.ToFloat()
 	f2, ok2 := other.ToFloat()
 	if ok1 && ok2 {
@@ -662,6 +679,17 @@ func (v Value) Greater(other Value) (bool, bool) {
 			otherPayload -= (1 << 48)
 		}
 		return vPayload > otherPayload, true
+	}
+
+	// Handle string comparison
+	if vTag == tagObject && otherTag == tagObject {
+		obj1 := v.GetObject()
+		obj2 := other.GetObject()
+		if s1, ok1 := obj1.(*objects.String); ok1 {
+			if s2, ok2 := obj2.(*objects.String); ok2 {
+				return s1.Value > s2.Value, true
+			}
+		}
 	}
 
 	f1, ok1 := v.ToFloat()

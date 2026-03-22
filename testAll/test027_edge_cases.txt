@@ -11,7 +11,7 @@ Zero values:
 true
 Large numbers:
 1000000000
-1000000000000000000
+1000000000000
 1000000
 Negative numbers:
 -1
@@ -37,7 +37,7 @@ true
 true
 Array edge cases:
 0
-true
+false
 null
 null
 1

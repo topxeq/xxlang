@@ -1,0 +1,323 @@
+// Test 014: String Built-in Functions - Comprehensive
+// Tests various string manipulation functions
+
+// ============================================
+// Part 1: Basic String Operations
+// ============================================
+pln("=== Part 1: Basic String Operations ===")
+
+pln("String length:")
+pln(len("hello"))
+pln(len(""))
+pln(len("hello world"))
+pln("中文".len())
+
+pln("String concatenation:")
+pln("hello" + " " + "world")
+pln("a" + "b" + "c")
+pln("" + "test")
+
+// ============================================
+// Part 2: String Case Conversion
+// ============================================
+pln("=== Part 2: Case Conversion ===")
+
+pln("String case:")
+pln(upper("hello"))
+pln(upper("Hello World"))
+pln(lower("HELLO"))
+pln(lower("Hello World"))
+
+// Method form
+pln("Method form:")
+pln("hello".upper())
+pln("HELLO".lower())
+
+// ============================================
+// Part 3: String Trimming
+// ============================================
+pln("=== Part 3: String Trimming ===")
+
+pln("Basic trim:")
+pln(trim("  hello  "))
+pln(trim("\t\nhello\n\t"))
+pln(trim("hello"))
+
+pln("trimLeft:")
+pln(trimLeft("  hello  "))
+pln(trimLeft("xxxhelloxxx", "x"))
+pln(trimLeft("aabbaahello", "ab"))
+
+pln("trimRight:")
+pln(trimRight("  hello  "))
+pln(trimRight("xxxhelloxxx", "x"))
+pln(trimRight("helloaabbaa", "ab"))
+
+pln("trimPrefix and trimSuffix:")
+pln(trimPrefix("hello world", "hello "))
+pln(trimPrefix("hello world", "world"))
+pln(trimSuffix("hello world", " world"))
+pln(trimSuffix("hello world", "hello"))
+
+// Method form for trim
+pln("Trim methods:")
+pln("  hello  ".trim())
+pln("  hello  ".trimLeft())
+pln("  hello  ".trimRight())
+pln("xxhelloxx".trimLeft("x"))
+pln("xxhelloxx".trimRight("x"))
+
+// ============================================
+// Part 4: String Split and Join
+// ============================================
+pln("=== Part 4: Split and Join ===")
+
+pln("String split:")
+var parts = split("a,b,c", ",")
+pln(parts)
+pln(split("hello world", " "))
+pln(split("a-b-c-d", "-"))
+
+pln("String join:")
+pln(join(parts, "-"))
+pln(join(["a", "b", "c"], "|"))
+
+// Method form
+pln("Split method:")
+pln("x,y,z".split(","))
+
+// ============================================
+// Part 5: String Search
+// ============================================
+pln("=== Part 5: String Search ===")
+
+pln("containsStr:")
+pln(containsStr("hello world", "world"))
+pln(containsStr("hello world", "xyz"))
+pln(containsStr("hello world", ""))
+
+pln("indexOf:")
+pln(indexOf("hello world", "o"))
+pln(indexOf("hello world", "x"))
+pln(indexOf("hello world", "world"))
+pln(indexOf("hello hello", "lo"))
+
+pln("startsWith / endsWith:")
+pln(startsWith("hello", "he"))
+pln(startsWith("hello", "lo"))
+pln(startsWith("hello", ""))
+pln(endsWith("hello", "lo"))
+pln(endsWith("hello", "he"))
+pln(endsWith("hello", ""))
+
+// Method form
+pln("Search methods:")
+pln("hello world".contains("world"))
+pln("hello world".indexOf("o"))
+pln("hello".startsWith("he"))
+pln("hello".endsWith("lo"))
+
+// ============================================
+// Part 6: String Substring
+// ============================================
+pln("=== Part 6: Substring ===")
+
+pln("substr:")
+pln(substr("hello world", 0, 5))
+pln(substr("hello world", 6))
+pln(substr("hello", 1, 4))
+pln(substr("hello", 0))
+pln(substr("hello", 2, 2))
+
+// Method form
+pln("subStr method:")
+pln("hello world".subStr(0, 5))
+pln("hello world".subStr(6))
+
+// ============================================
+// Part 7: String Replace
+// ============================================
+pln("=== Part 7: String Replace ===")
+
+pln("replace:")
+pln(replace("hello world", "world", "universe"))
+pln(replace("aaa", "a", "b"))
+pln(replace("hello hello", "hello", "hi"))
+
+// ============================================
+// Part 8: String Repeat and Padding
+// ============================================
+pln("=== Part 8: Repeat and Padding ===")
+
+pln("repeat:")
+pln(repeat("ab", 3))
+pln(repeat("x", 5))
+pln(repeat("", 3))
+pln(repeat("hi", 0))
+
+pln("lpad:")
+pln(lpad("5", 3, "0"))
+pln(lpad("hello", 10, "."))
+pln(lpad("test", 4, "x"))
+
+pln("rpad:")
+pln(rpad("5", 3, "0"))
+pln(rpad("hello", 10, "."))
+pln(rpad("test", 4, "x"))
+
+// ============================================
+// Part 9: String Character Access
+// ============================================
+pln("=== Part 9: Character Access ===")
+
+pln("charAt:")
+pln(charAt("hello", 0))
+pln(charAt("hello", 4))
+pln(charAt("hello", -1))
+pln(charAt("hello", 100))
+
+// ============================================
+// Part 10: String Type Checking
+// ============================================
+pln("=== Part 10: Type Checking ===")
+
+pln("isDigit:")
+pln(isDigit("12345"))
+pln(isDigit("123a5"))
+pln(isDigit(""))
+pln(isDigit("0"))
+
+pln("isAlpha:")
+pln(isAlpha("hello"))
+pln(isAlpha("hello1"))
+pln(isAlpha("Hello"))
+pln(isAlpha(""))
+
+pln("isAlphaNum:")
+pln(isAlphaNum("hello123"))
+pln(isAlphaNum("hello!"))
+pln(isAlphaNum("ABC123"))
+pln(isAlphaNum(""))
+
+pln("isString:")
+pln(isString("hello"))
+pln(isString(123))
+pln(isString(true))
+
+// ============================================
+// Part 11: String Count
+// ============================================
+pln("=== Part 11: String Count ===")
+
+pln("count:")
+pln(count("hello hello", "l"))
+pln(count("ababab", "ab"))
+pln(count("aaa", "a"))
+pln(count("hello", "x"))
+
+// ============================================
+// Part 12: String Comparison
+// ============================================
+pln("=== Part 12: String Comparison ===")
+
+pln("Equality:")
+pln("abc" == "abc")
+pln("abc" == "abd")
+pln("abc" != "abd")
+pln("abc" != "abc")
+
+pln("Less than:")
+pln("a" < "b")
+pln("b" < "a")
+pln("abc" < "abd")
+pln("abc" < "abcd")
+
+pln("Greater than:")
+pln("b" > "a")
+pln("a" > "b")
+pln("abc" > "abb")
+pln("abcd" > "abc")
+
+pln("Less than or equal:")
+pln("abc" <= "abc")
+pln("abc" <= "abd")
+pln("abd" <= "abc")
+
+pln("Greater than or equal:")
+pln("abc" >= "abc")
+pln("abc" >= "abb")
+pln("abb" >= "abc")
+
+pln("Empty string comparison:")
+pln("" < "a")
+pln("a" > "")
+pln("" == "")
+
+// ============================================
+// Part 13: String Type Conversion
+// ============================================
+pln("=== Part 13: Type Conversion ===")
+
+pln("toInt:")
+pln("123".toInt())
+pln("-456".toInt())
+
+pln("toFloat:")
+pln("3.14".toFloat())
+pln("-2.5".toFloat())
+
+pln("string conversion:")
+pln(string(123))
+pln(string(3.14))
+pln(string(true))
+
+// ============================================
+// Part 14: String Format
+// ============================================
+pln("=== Part 14: String Format ===")
+
+pln("format:")
+pln(format("Hello %s", "World"))
+pln(format("Number: %d", 42))
+pln(format("Pi: %f", 3.14159))
+pln(format("Mixed: %s=%d", "count", 100))
+
+// ============================================
+// Part 15: Edge Cases
+// ============================================
+pln("=== Part 15: Edge Cases ===")
+
+pln("Empty string operations:")
+pln(len(""))
+pln("".trim())
+pln("".upper())
+pln("".lower())
+pln("".split(","))
+pln(join([], "-"))
+
+pln("Unicode/Chinese strings:")
+pln("你好世界")
+pln(len("你好"))
+pln("你好".upper())
+pln("你好世界".subStr(0, 2))
+pln("中文测试".indexOf("测"))
+
+pln("Special characters:")
+pln("hello\tworld")
+pln("line1\nline2")
+pln("quote\"test")
+
+// ============================================
+// Part 16: String Methods on Literals
+// ============================================
+pln("=== Part 16: String Methods on Literals ===")
+
+pln("Chained methods:")
+pln("  HELLO WORLD  ".trim().lower())
+pln("hello".upper().len())
+pln("a,b,c".split(",").len())
+
+// ============================================
+// All tests completed!
+// ============================================
+pln("=== All string tests completed! ===")

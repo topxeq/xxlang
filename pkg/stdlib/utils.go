@@ -3,6 +3,8 @@
 package stdlib
 
 import (
+	"sort"
+
 	"github.com/topxeq/xxlang/pkg/objects"
 )
 
@@ -82,7 +84,7 @@ func init() {
 				return omitKeys(m, keys)
 			}),
 
-			// keys returns all keys of a map as an array
+			// keys returns all keys of a map as an array (sorted for deterministic output)
 			"keys": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				if len(args) != 1 {
 					return Error("keys() takes exactly 1 argument")
@@ -95,6 +97,10 @@ func init() {
 				for _, pair := range m.Pairs {
 					result = append(result, pair.Key)
 				}
+				// Sort keys for deterministic output
+				sort.Slice(result, func(i, j int) bool {
+					return result[i].Inspect() < result[j].Inspect()
+				})
 				return Array(result...)
 			}),
 

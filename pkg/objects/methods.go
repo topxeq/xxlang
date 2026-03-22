@@ -3,6 +3,7 @@ package objects
 
 import (
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -190,6 +191,42 @@ var stringMethods = map[string]*Builtin{
 		}
 		return NewString(strings.TrimSpace(self.Value))
 	}},
+	"trimLeft": {Fn: func(args ...Object) Object {
+		if len(args) < 1 || len(args) > 2 {
+			return newError("wrong number of arguments for trimLeft. got=%d, want=1 or 2", len(args))
+		}
+		self, ok := args[0].(*String)
+		if !ok {
+			return newError("receiver for trimLeft must be STRING, got %s", args[0].Type())
+		}
+		cutset := " \t\n\r"
+		if len(args) == 2 {
+			cs, ok := args[1].(*String)
+			if !ok {
+				return newError("argument for trimLeft must be STRING, got %s", args[1].Type())
+			}
+			cutset = cs.Value
+		}
+		return NewString(strings.TrimLeft(self.Value, cutset))
+	}},
+	"trimRight": {Fn: func(args ...Object) Object {
+		if len(args) < 1 || len(args) > 2 {
+			return newError("wrong number of arguments for trimRight. got=%d, want=1 or 2", len(args))
+		}
+		self, ok := args[0].(*String)
+		if !ok {
+			return newError("receiver for trimRight must be STRING, got %s", args[0].Type())
+		}
+		cutset := " \t\n\r"
+		if len(args) == 2 {
+			cs, ok := args[1].(*String)
+			if !ok {
+				return newError("argument for trimRight must be STRING, got %s", args[1].Type())
+			}
+			cutset = cs.Value
+		}
+		return NewString(strings.TrimRight(self.Value, cutset))
+	}},
 	"split": {Fn: func(args ...Object) Object {
 		if len(args) != 2 {
 			return newError("wrong number of arguments for split. got=%d, want=2", len(args))
@@ -277,13 +314,15 @@ var stringMethods = map[string]*Builtin{
 		if !ok {
 			return newError("start index for subStr must be INT, got %s", args[1].Type())
 		}
-		s := self.Value
+		// Convert to runes for proper Unicode handling
+		runes := []rune(self.Value)
+		runeLen := len(runes)
 		startIdx := int(start.Value)
 		if startIdx < 0 {
 			startIdx = 0
 		}
-		if startIdx > len(s) {
-			startIdx = len(s)
+		if startIdx > runeLen {
+			startIdx = runeLen
 		}
 		if len(args) == 3 {
 			end, ok := args[2].(*Int)
@@ -294,12 +333,12 @@ var stringMethods = map[string]*Builtin{
 			if endIdx < startIdx {
 				endIdx = startIdx
 			}
-			if endIdx > len(s) {
-				endIdx = len(s)
+			if endIdx > runeLen {
+				endIdx = runeLen
 			}
-			return NewString(s[startIdx:endIdx])
+			return NewString(string(runes[startIdx:endIdx]))
 		}
-		return NewString(s[startIdx:])
+		return NewString(string(runes[startIdx:]))
 	}},
 	"toInt": {Fn: func(args ...Object) Object {
 		if len(args) != 1 {
@@ -507,6 +546,10 @@ var mapMethods = map[string]*Builtin{
 			keys[i] = pair.Key
 			i++
 		}
+		// Sort keys for deterministic output
+		sort.Slice(keys, func(i, j int) bool {
+			return keys[i].Inspect() < keys[j].Inspect()
+		})
 		return NewArray(keys)
 	}},
 	"values": {Fn: func(args ...Object) Object {
@@ -517,11 +560,20 @@ var mapMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for values must be MAP, got %s", args[0].Type())
 		}
-		vals := make([]Object, len(self.Pairs))
+		// Get keys and sort them for deterministic order
+		keys := make([]Object, len(self.Pairs))
 		i := 0
 		for _, pair := range self.Pairs {
-			vals[i] = pair.Value
+			keys[i] = pair.Key
 			i++
+		}
+		sort.Slice(keys, func(i, j int) bool {
+			return keys[i].Inspect() < keys[j].Inspect()
+		})
+		// Get values in the same order as sorted keys
+		vals := make([]Object, len(keys))
+		for i, key := range keys {
+			vals[i] = self.Pairs[key.HashKey()].Value
 		}
 		return NewArray(vals)
 	}},

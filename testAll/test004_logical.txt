@@ -16,8 +16,8 @@ false
 true
 true
 Short-circuit evaluation:
-0
-0
+1
+2
 Complex logical expressions:
 true
 false

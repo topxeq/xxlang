@@ -49,15 +49,15 @@ pln(["x", "y", "z"].join("-"))
 
 pln("Instance method calls:")
 class Box {
-    init(value) {
+    func init(value) {
         this.value = value
     }
 
-    getValue() {
+    func getValue() {
         return this.value
     }
 
-    double() {
+    func double() {
         this.value = this.value * 2
     }
 }

@@ -47,7 +47,7 @@ func binarySearch(arr, target) {
     var right = len(arr) - 1
 
     while (left <= right) {
-        var mid = (left + right) / 2
+        var mid = int((left + right) / 2)
         if (arr[mid] == target) {
             return mid
         }

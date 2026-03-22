@@ -2,7 +2,7 @@ String methods:
 Hello World
 HELLO WORLD
 hello world
-14
+15
 String split method:
 [a, b, c, d]
 String contains method:
