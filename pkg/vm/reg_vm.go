@@ -736,6 +736,22 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 				return fmt.Errorf("string index out of bounds: %d (length: %d)", idx.Value, strLen)
 			}
 			result = objects.NewString(string(o.Value[actualIdx]))
+		case *objects.Chars:
+			idx, ok := key.(*objects.Int)
+			if !ok {
+				return fmt.Errorf("chars index must be integer")
+			}
+			// Support negative indexing for chars
+			charsLen := int64(len(o.Value))
+			actualIdx := idx.Value
+			if actualIdx < 0 {
+				actualIdx = charsLen + actualIdx
+			}
+			if actualIdx < 0 || actualIdx >= charsLen {
+				return fmt.Errorf("chars index out of bounds: %d (length: %d)", idx.Value, charsLen)
+			}
+			// Return single character as string
+			result = objects.NewString(string(o.Value[actualIdx]))
 		default:
 			return fmt.Errorf("cannot index type %s", obj.Type())
 		}
@@ -888,6 +904,58 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 				result = objects.NewString("")
 			} else {
 				result = objects.NewString(o.Value[start:end])
+			}
+
+		case *objects.Chars:
+			charsLen := int64(len(o.Value))
+			var start, end int64
+
+			// Handle start index
+			if _, isNull := startObj.(*objects.Null); isNull {
+				start = 0
+			} else {
+				startInt, ok := startObj.(*objects.Int)
+				if !ok {
+					return fmt.Errorf("slice start must be integer or null")
+				}
+				start = startInt.Value
+				// Support negative indexing
+				if start < 0 {
+					start = charsLen + start
+				}
+				if start < 0 {
+					start = 0
+				}
+				if start > charsLen {
+					start = charsLen
+				}
+			}
+
+			// Handle end index
+			if _, isNull := endObj.(*objects.Null); isNull {
+				end = charsLen
+			} else {
+				endInt, ok := endObj.(*objects.Int)
+				if !ok {
+					return fmt.Errorf("slice end must be integer or null")
+				}
+				end = endInt.Value
+				// Support negative indexing
+				if end < 0 {
+					end = charsLen + end
+				}
+				if end < 0 {
+					end = 0
+				}
+				if end > charsLen {
+					end = charsLen
+				}
+			}
+
+			if start > end {
+				result = objects.NewChars([]rune{})
+			} else {
+				result = objects.NewChars(o.Value[start:end])
 			}
 
 		default:

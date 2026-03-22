@@ -50,6 +50,8 @@ var Builtins = map[string]*Builtin{
 			switch arg := args[0].(type) {
 			case *String:
 				return NewInt(int64(len(arg.Value)))
+			case *Chars:
+				return NewInt(int64(len(arg.Value)))
 			case *Array:
 				return NewInt(int64(len(arg.Elements)))
 			case *Map:
@@ -271,12 +273,40 @@ var Builtins = map[string]*Builtin{
 			return NewString(args[0].Inspect())
 		},
 	},
+	"toChars": {
+		Fn: func(args ...Object) Object {
+			// toChars converts a string to chars ([]rune) for character-based operations
+			if len(args) != 1 {
+				return newError("wrong number of arguments for toChars. got=%d, want=1", len(args))
+			}
+			str, ok := args[0].(*String)
+			if !ok {
+				return newError("argument to 'toChars' must be STRING, got %s", args[0].Type())
+			}
+			return NewCharsFromString(str.Value)
+		},
+	},
+	"charLen": {
+		Fn: func(args ...Object) Object {
+			// charLen returns the number of Unicode characters (runes) in a string
+			if len(args) != 1 {
+				return newError("wrong number of arguments for charLen. got=%d, want=1", len(args))
+			}
+			str, ok := args[0].(*String)
+			if !ok {
+				return newError("argument to 'charLen' must be STRING, got %s", args[0].Type())
+			}
+			return NewInt(int64(len([]rune(str.Value))))
+		},
+	},
 
 	// ============================================================
 	// String Functions
 	// ============================================================
 	"substr": {
 		Fn: func(args ...Object) Object {
+			// substr uses BYTE indices (Go-compatible behavior)
+			// For character-based slicing, use toChars(s).subStr(start, end) instead
 			if len(args) < 2 || len(args) > 3 {
 				return newError("wrong number of arguments for substr. got=%d, want=2 or 3", len(args))
 			}
@@ -291,9 +321,8 @@ var Builtins = map[string]*Builtin{
 				return newError("second argument to 'substr' must be INT, got %s", args[1].Type())
 			}
 
-			// Convert to runes for proper Unicode handling
-			runes := []rune(str.Value)
-			strLen := int64(len(runes))
+			// Use byte indices (Go-compatible)
+			strLen := int64(len(str.Value))
 			end := strLen
 			if len(args) == 3 {
 				e, ok := args[2].(*Int)
@@ -307,7 +336,7 @@ var Builtins = map[string]*Builtin{
 				return newError("substring indices out of range")
 			}
 
-			return NewString(string(runes[start.Value:end]))
+			return NewString(str.Value[start.Value:end])
 		},
 	},
 	"split": {

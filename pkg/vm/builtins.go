@@ -148,6 +148,9 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["bigFloat"],   // 117
 		objects.Builtins["isBigInt"],   // 118
 		objects.Builtins["isBigFloat"], // 119
+		// Chars (Unicode character handling)
+		objects.Builtins["toChars"],  // 120
+		objects.Builtins["charLen"],  // 121
 	}
 
 	if index < 0 || index >= len(builtins) {

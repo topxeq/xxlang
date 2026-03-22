@@ -181,6 +181,9 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(117, "bigFloat")
 	s.DefineBuiltin(118, "isBigInt")
 	s.DefineBuiltin(119, "isBigFloat")
+	// Chars (Unicode character handling)
+	s.DefineBuiltin(120, "toChars")
+	s.DefineBuiltin(121, "charLen")
 	return s
 }
 

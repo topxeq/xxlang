@@ -12,6 +12,7 @@ const (
 	IntType          ObjectType = "INT"
 	FloatType        ObjectType = "FLOAT"
 	StringType       ObjectType = "STRING"
+	CharsType        ObjectType = "CHARS"
 	BoolType         ObjectType = "BOOL"
 	ArrayType        ObjectType = "ARRAY"
 	MapType          ObjectType = "MAP"
@@ -38,6 +39,7 @@ const (
 	TagInt
 	TagFloat
 	TagString
+	TagChars
 	TagBool
 	TagArray
 	TagMap

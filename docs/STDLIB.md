@@ -1613,3 +1613,539 @@ Additional standard library modules available:
 | `strconv` | String conversion utilities |
 | `text` | Text processing utilities |
 | `validate` | Input validation utilities |
+
+---
+
+### bytes Module
+
+Byte manipulation utilities for low-level operations.
+
+```xxlang
+load("bytes")
+
+// Create byte array from string
+var b = bytes.fromString("hello")  // [104, 101, 108, 108, 111]
+
+// Convert back to string
+var s = bytes.toString(b)  // "hello"
+
+// Get/set byte at index
+var byte = bytes.get(b, 0)  // 104
+bytes.set(b, 0, 72)  // Change first byte
+
+// Encode/decode integers (big/little endian)
+var encoded = bytes.encodeInt64BE(12345)
+var decoded = bytes.decodeInt64BE(encoded)
+
+// Other operations
+bytes.concat(b1, b2)     // Concatenate byte arrays
+bytes.slice(b, 0, 3)     // Slice byte array
+bytes.compare(b1, b2)    // Compare (-1, 0, 1)
+bytes.equal(b1, b2)      // Check equality
+bytes.count(b, 65)       // Count occurrences of byte
+bytes.indexOf(b, 65)     // Find byte index (-1 if not found)
+```
+
+---
+
+### collections Module
+
+Collection utilities for working with arrays and sets.
+
+```xxlang
+load("collections")
+
+// Set operations
+var a = [1, 2, 3]
+var b = [2, 3, 4]
+collections.union(a, b)         // [1, 2, 3, 4]
+collections.intersection(a, b)  // [2, 3]
+collections.difference(a, b)    // [1]
+
+// Chunk array
+collections.chunk([1,2,3,4,5], 2)  // [[1,2], [3,4], [5]]
+
+// Zip arrays
+collections.zip([1,2], [3,4], [5,6])  // [[1,3,5], [2,4,6]]
+
+// Flatten deeply nested arrays
+collections.flattenDeep([[1,[2]],3])  // [1, 2, 3]
+
+// Group and count
+collections.countBy([1,1,2,3])  // [["1", 2], ["2", 1], ["3", 1]]
+collections.groupBy([1,2,3,4], fn(x) { x % 2 })
+
+// Partition by predicate
+collections.partition([1,2,3,4,5], fn(x) { x > 2 })  // [[3,4,5], [1,2]]
+
+// Take/drop
+collections.take([1,2,3,4,5], 3)      // [1, 2, 3]
+collections.drop([1,2,3,4,5], 2)      // [3, 4, 5]
+collections.takeWhile([1,2,3,4], fn(x) { x < 3 })  // [1, 2]
+
+// Find
+collections.find([1,2,3,4], fn(x) { x > 2 })      // 3
+collections.findIndex([1,2,3,4], fn(x) { x > 2 }) // 2
+
+// Every/some
+collections.every([1,2,3], fn(x) { x > 0 })  // true
+collections.some([1,2,3], fn(x) { x > 2 })   // true
+
+// Range with step
+collections.rangeStep(0, 10, 2)  // [0, 2, 4, 6, 8]
+
+// Repeat element
+collections.repeat("x", 5)  // ["x", "x", "x", "x", "x"]
+
+// Shuffle and sample
+collections.shuffle([1,2,3,4,5])
+collections.sample([1,2,3,4,5])      // Random element
+collections.sample([1,2,3,4,5], 2)   // 2 random elements
+```
+
+---
+
+### csv Module
+
+CSV parsing and generation utilities.
+
+```xxlang
+load("csv")
+
+// Parse CSV string
+var data = csv.parse("a,b,c\n1,2,3\n4,5,6")
+// [["a","b","c"], ["1","2","3"], ["4","5","6"]]
+
+// Parse with header (returns array of maps)
+var records = csv.parseWithHeader("name,age\nAlice,30\nBob,25")
+// [{"name": "Alice", "age": "30"}, {"name": "Bob", "age": "25"}]
+
+// Custom delimiter
+csv.parse("a;b;c", ";")
+
+// Generate CSV
+csv.stringify([["a","b"], ["1","2"]])  // "a,b\n1,2"
+
+// Generate from maps
+csv.stringifyMaps([{"a": 1}], ["a"])  // "a\n1"
+
+// Get column/row
+csv.column(data, 0)  // Get first column
+csv.row(data, 0)     // Get first row
+
+// Transpose
+csv.transpose([[1,2], [3,4]])  // [[1,3], [2,4]]
+
+// Filter/map rows
+csv.filterRows(data, fn(row) { row[0] == "1" })
+csv.mapRows(data, fn(row) { row })
+
+// Count
+csv.rowCount(data)
+csv.colCount(data)
+
+// Skip/take
+csv.skip(data, 1)   // Skip first row
+csv.take(data, 2)   // Take first 2 rows
+
+// Append/prepend row
+csv.appendRow(data, ["x", "y"])
+csv.prependRow(data, ["header"])
+```
+
+---
+
+### env Module
+
+Environment variable and system utilities.
+
+```xxlang
+load("env")
+
+// Environment variables
+env.get("HOME")            // Get env var
+env.getOr("DEBUG", "0")    // Get with default
+env.set("MY_VAR", "value") // Set env var
+env.unset("MY_VAR")        // Unset env var
+env.has("HOME")            // Check if exists
+env.all()                  // Get all as array of pairs
+env.map()                  // Get all as map
+env.path()                 // Get PATH as array
+env.expand("$HOME/test")   // Expand env vars in string
+
+// Type-specific getters
+env.getInt("PORT", 8080)   // Get as int with default
+env.getBool("DEBUG", false) // Get as bool
+env.lookup("HOME")         // [exists, value]
+
+// Working directory
+env.cwd()                  // Get current directory
+env.cd("/tmp")             // Change directory
+
+// Process info
+env.pid()                  // Process ID
+env.ppid()                 // Parent process ID
+env.exe()                  // Executable path
+env.exit(0)                // Exit program
+
+// Arguments
+env.args()                 // Command line args
+env.scriptArgs()           // Args after --
+env.mixArgs()              // Script args or all args
+
+// User directories
+env.cacheDir()             // User cache directory
+env.configDir()            // User config directory
+
+// Other
+env.clear()                // Clear all env vars
+env.streams()              // [stdin, stdout, stderr available]
+```
+
+---
+
+### fp Module
+
+Functional programming utilities.
+
+```xxlang
+load("fp")
+
+// Function composition
+var double = fn(x) { x * 2 }
+var addOne = fn(x) { x + 1 }
+var composed = fp.compose(double, addOne)
+composed(5)  // (5 + 1) * 2 = 12
+
+var piped = fp.pipe(double, addOne)
+piped(5)     // (5 * 2) + 1 = 11
+
+// Utility functions
+fp.identity(5)         // 5
+fp.constant(10)(x)     // Always returns 10
+fp.alwaysTrue()        // true
+fp.alwaysFalse()       // false
+
+// Predicate combinators
+fp.not(fn(x) { x > 0 })        // Negate predicate
+fp.allPass(fn(x) { x > 0 }, fn(x) { x < 10 })
+fp.anyPass(fn(x) { x < 0 }, fn(x) { x > 10 })
+
+// Higher-order utilities
+fp.tap(fn(x) { pln(x) })(5)   // Execute side effect, return value
+fp.defaultTo(0)(null)          // Default if null
+
+// Object utilities
+fp.equals(5)(5)                // true
+fp.prop("name")({"name": "A"}) // Get property
+fp.pick(["a", "b"])({"a": 1, "b": 2, "c": 3})  // {"a": 1, "b": 2}
+fp.omit(["c"])({"a": 1, "b": 2, "c": 3})       // {"a": 1, "b": 2}
+
+// Array utilities
+fp.concat([1,2], [3,4])  // [1,2,3,4]
+fp.flatten([[1,2], [3]]) // [1,2,3]
+fp.head([1,2,3])         // 1
+fp.tail([1,2,3])         // [2,3]
+fp.init([1,2,3])         // [1,2]
+fp.last([1,2,3])         // 3
+fp.length([1,2,3])       // 3
+fp.isEmpty([])           // true
+
+// Range
+fp.range(5)              // [0,1,2,3,4]
+fp.range(1, 5)           // [1,2,3,4]
+fp.range(0, 10, 2)       // [0,2,4,6,8]
+
+// Times
+fp.times(3, fn(i) { i * 2 })  // [0, 2, 4]
+
+// Memoize
+var memoized = fp.memoize(fn(x) { /* expensive */ })
+
+// Until (iterate until predicate true)
+fp.until(fn(x) { x > 10 }, fn(x) { x * 2 }, 1)  // 16
+```
+
+---
+
+### log Module
+
+Logging utilities with levels.
+
+```xxlang
+load("log")
+
+// Basic logging
+log.debug("Debug message")
+log.info("Info message")
+log.warn("Warning message")
+log.error("Error message")
+log.fatal("Fatal error")  // Logs and exits
+
+// Set log level
+log.setLevel("debug")  // debug, info, warn, error
+log.getLevel()         // Current level
+
+// Format without printing
+log.format("info", "message")  // "[timestamp] INFO: message"
+
+// Log to file
+log.toFile("app.log", "info", "message")
+
+// Simple print
+log.print("message")
+log.printNoNL("no newline")
+log.printf("Value: %d", 42)
+
+// Log with prefix
+log.withPrefix("APP", "message")
+
+// JSON format
+log.json("info", "message")
+// {"timestamp":"...","level":"info","message":"..."}
+
+// Stack trace
+log.stack()
+
+// Check if level enabled
+log.isLevel("debug")  // true/false
+```
+
+---
+
+### net Module
+
+HTTP client utilities.
+
+```xxlang
+load("net")
+
+// HTTP GET
+var result = net.get("https://api.example.com/data")
+// [body, statusCode, status]
+
+// HTTP POST
+var result = net.post("https://api.example.com/api", '{"key":"value"}')
+var result = net.post(url, body, "application/json")
+
+// Generic request
+net.request("PUT", url, body, {"Authorization": "Bearer token"})
+
+// HEAD request
+var result = net.head(url)  // [statusCode, headers]
+
+// Download file content
+var content = net.download("https://example.com/file.txt")
+
+// Set timeout (seconds)
+net.setTimeout(60)
+
+// Status code helpers
+net.isOK(200)           // true (200-299)
+net.isRedirect(301)     // true (300-399)
+net.isClientError(404)  // true (400-499)
+net.isServerError(500)  // true (500+)
+
+// JSON helpers
+net.getJson("https://api.example.com/data")
+net.postJson("https://api.example.com/api", '{"key":"value"}')
+```
+
+---
+
+### sort Module
+
+Sorting utilities for arrays.
+
+```xxlang
+load("sort")
+
+// Sort numbers
+sort.numbers([3, 1, 4, 1, 5])       // [1, 1, 3, 4, 5]
+sort.numbersDesc([3, 1, 4, 1, 5])   // [5, 4, 3, 1, 1]
+
+// Sort strings
+sort.strings(["c", "a", "b"])       // ["a", "b", "c"]
+sort.stringsDesc(["c", "a", "b"])   // ["c", "b", "a"]
+
+// Sort by key function
+sort.by([{name: "Bob"}, {name: "Alice"}], fn(x) { x.name })
+
+// Reverse array
+sort.reverse([1, 2, 3, 4])  // [4, 3, 2, 1]
+
+// Check if sorted
+sort.isSorted([1, 2, 3])    // true
+
+// Min/max
+sort.min([3, 1, 2])         // 1
+sort.max([3, 1, 2])         // 3
+sort.minIndex([3, 1, 2])    // 1
+sort.maxIndex([3, 1, 2])    // 0
+```
+
+---
+
+### strconv Module
+
+String conversion utilities.
+
+```xxlang
+load("strconv")
+
+// Parse functions
+strconv.parseInt("42")         // 42
+strconv.parseInt("ff", 16)     // 255 (hex)
+strconv.parseFloat("3.14")     // 3.14
+strconv.parseBool("true")      // true
+
+// Format functions
+strconv.formatInt(42)          // "42"
+strconv.formatInt(255, 16)     // "ff"
+strconv.formatFloat(3.14)      // "3.14"
+strconv.formatFloat(3.14, 2)   // "3.14" with precision
+strconv.formatBool(true)       // "true"
+
+// Quote/unquote
+strconv.quote("hello\nworld")  // "\"hello\\nworld\""
+strconv.unquote("\"hello\"")   // "hello"
+
+// Type conversions
+strconv.toString(42)           // "42"
+strconv.toString(3.14)         // "3.14"
+strconv.toInt("42")            // 42
+strconv.toInt(3.14)            // 3
+strconv.toFloat("3.14")        // 3.14
+strconv.toFloat(42)            // 42.0
+strconv.toBool("true")         // true
+strconv.toBool(1)              // true
+
+// JSON
+strconv.toJSON(obj)
+strconv.toJSONPretty(obj)
+
+// Formatting helpers
+strconv.formatNumber(1234.567, 2)  // "1234.57"
+strconv.formatBytes(1536)          // "1.50 KB"
+strconv.formatDuration(65000)      // "1m 5s"
+```
+
+---
+
+### text Module
+
+Text processing utilities.
+
+```xxlang
+load("text")
+
+// Word wrap
+text.wordWrap("Hello world this is a test", 10)
+// "Hello\nworld this\nis a test"
+
+// Truncate
+text.truncate("Hello world", 8)        // "Hello..."
+text.truncate("Hello world", 8, "…")   // "Hello w…"
+
+// Count
+text.wordCount("Hello world")   // 2
+text.lineCount("Line1\nLine2")  // 2
+text.charCount("中文")          // 2 (characters/runes)
+text.byteCount("中文")          // 6 (bytes)
+
+// Split/join
+text.lines("a\nb\nc")           // ["a", "b", "c"]
+text.joinLines(["a", "b"])      // "a\nb"
+text.words("hello world")       // ["hello", "world"]
+text.chars("abc")               // ["a", "b", "c"]
+
+// Case conversion
+text.title("hello world")       // "Hello World"
+text.capitalize("hello")        // "Hello"
+text.swapCase("Hello")          // "hELLO"
+
+// Type checks
+text.isAlphaNum("abc123")       // true
+text.isAlpha("abc")             // true
+text.isNumeric("123")           // true
+text.isSpace("   ")             // true
+text.isBlank("   ")             // true
+
+// Whitespace
+text.removeSpaces("a b c")      // "abc"
+text.normalizeSpace("a   b")    // "a b"
+
+// Padding
+text.padLeft("5", 3, "0")       // "005"
+text.padRight("5", 3, "0")      // "500"
+
+// Indentation
+text.indent("a\nb", "  ")       // "  a\n  b"
+text.dedent("  a\n  b")         // "a\nb"
+text.centerText("hi", 10)       // "    hi    "
+
+// Repeat
+text.repeat("ab", 3)            // "ababab"
+
+// Character utilities
+text.charAt("hello", 1)         // "e"
+text.charCode("A", 0)           // 65
+text.fromCode(65)               // "A"
+
+// Escaping
+text.shellEscape("hello'world") // "'hello'\"'\"'world'"
+text.jsonEscape("hello\n")      // "hello\\n"
+text.jsonUnescape("hello\\n")   // "hello\n"
+```
+
+---
+
+### validate Module
+
+Input validation utilities.
+
+```xxlang
+load("validate")
+
+// Format validation
+validate.isEmail("user@example.com")  // true
+validate.isURL("https://example.com") // true
+
+// Regex matching
+validate.matches("hello123", "^[a-z]+[0-9]+$")  // true
+
+// String validation
+validate.lengthRange("hello", 1, 10)  // true
+validate.required("  hello  ")        // true (not empty after trim)
+
+// Array membership
+validate.inArray("a", ["a", "b", "c"])    // true
+validate.notInArray("x", ["a", "b", "c"]) // true
+
+// Numeric range
+validate.inRange(5, 1, 10)   // true
+
+// Type checks
+validate.isJSON('{"a":1}')        // true
+validate.isAlphanumeric("abc123") // true
+validate.isAlpha("abc")           // true
+validate.isNumeric("123.45")      // true
+validate.isInteger("123")         // true
+
+// Format checks
+validate.isHexColor("#ff0000")    // true
+validate.isUUID("550e8400-e29b-41d4-a716-446655440000")  // true
+validate.isIPv4("192.168.1.1")    // true
+validate.isPhone("+1-555-123-4567")  // true
+validate.isDate("2024-01-15")     // true
+validate.isTime("14:30:00")       // true
+
+// String operations
+validate.startsWith("hello", "he")  // true
+validate.endsWith("hello", "lo")    // true
+validate.contains("hello", "ell")   // true
+
+// Credit card (Luhn algorithm)
+validate.isCreditCard("4111111111111111")  // true
+```
+

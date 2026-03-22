@@ -15,6 +15,7 @@ var TypeMethods = map[ObjectType]map[string]*Builtin{
 	BigIntType:       bigIntMethods,
 	BigFloatType:     bigFloatMethods,
 	StringType:       stringMethods,
+	CharsType:        charsMethods,
 	ArrayType:        arrayMethods,
 	MapType:          mapMethods,
 	BoolType:         boolMethods,
@@ -512,6 +513,8 @@ var stringMethods = map[string]*Builtin{
 		return &Bool{Value: strings.HasSuffix(self.Value, suffix.Value)}
 	}},
 	"subStr": {Fn: func(args ...Object) Object {
+		// subStr uses BYTE indices (Go-compatible behavior)
+		// For character-based slicing, use toChars().subStr() instead
 		if len(args) < 2 || len(args) > 3 {
 			return newError("wrong number of arguments for subStr. got=%d, want=2 or 3", len(args))
 		}
@@ -523,15 +526,13 @@ var stringMethods = map[string]*Builtin{
 		if !ok {
 			return newError("start index for subStr must be INT, got %s", args[1].Type())
 		}
-		// Convert to runes for proper Unicode handling
-		runes := []rune(self.Value)
-		runeLen := len(runes)
+		byteLen := len(self.Value)
 		startIdx := int(start.Value)
 		if startIdx < 0 {
 			startIdx = 0
 		}
-		if startIdx > runeLen {
-			startIdx = runeLen
+		if startIdx > byteLen {
+			startIdx = byteLen
 		}
 		if len(args) == 3 {
 			end, ok := args[2].(*Int)
@@ -542,12 +543,35 @@ var stringMethods = map[string]*Builtin{
 			if endIdx < startIdx {
 				endIdx = startIdx
 			}
-			if endIdx > runeLen {
-				endIdx = runeLen
+			if endIdx > byteLen {
+				endIdx = byteLen
 			}
-			return NewString(string(runes[startIdx:endIdx]))
+			return NewString(self.Value[startIdx:endIdx])
 		}
-		return NewString(string(runes[startIdx:]))
+		return NewString(self.Value[startIdx:])
+	}},
+	"charLen": {Fn: func(args ...Object) Object {
+		// charLen returns the number of Unicode characters (runes)
+		// Use this instead of len() when working with Unicode text
+		if len(args) != 1 {
+			return newError("wrong number of arguments for charLen. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*String)
+		if !ok {
+			return newError("receiver for charLen must be STRING, got %s", args[0].Type())
+		}
+		return NewInt(int64(len([]rune(self.Value))))
+	}},
+	"toChars": {Fn: func(args ...Object) Object {
+		// toChars converts string to chars ([]rune) for character-based operations
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toChars. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*String)
+		if !ok {
+			return newError("receiver for toChars must be STRING, got %s", args[0].Type())
+		}
+		return NewCharsFromString(self.Value)
 	}},
 	"toInt": {Fn: func(args ...Object) Object {
 		if len(args) != 1 {
@@ -576,6 +600,262 @@ var stringMethods = map[string]*Builtin{
 			return newError("could not convert string to float: %s", self.Value)
 		}
 		return NewFloat(val)
+	}},
+}
+
+// ============================================================
+// Chars Methods ([]rune-like operations for Unicode character handling)
+// ============================================================
+
+var charsMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"len": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for len. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Chars)
+		if !ok {
+			return newError("receiver for len must be CHARS, got %s", args[0].Type())
+		}
+		return NewInt(int64(len(self.Value)))
+	}},
+	"upper": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for upper. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Chars)
+		if !ok {
+			return newError("receiver for upper must be CHARS, got %s", args[0].Type())
+		}
+		return NewCharsFromString(strings.ToUpper(string(self.Value)))
+	}},
+	"lower": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for lower. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Chars)
+		if !ok {
+			return newError("receiver for lower must be CHARS, got %s", args[0].Type())
+		}
+		return NewCharsFromString(strings.ToLower(string(self.Value)))
+	}},
+	"trim": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for trim. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Chars)
+		if !ok {
+			return newError("receiver for trim must be CHARS, got %s", args[0].Type())
+		}
+		return NewCharsFromString(strings.TrimSpace(string(self.Value)))
+	}},
+	"split": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for split. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Chars)
+		if !ok {
+			return newError("receiver for split must be CHARS, got %s", args[0].Type())
+		}
+		sep, ok := args[1].(*String)
+		if !ok {
+			sepChars, ok := args[1].(*Chars)
+			if !ok {
+				return newError("separator for split must be STRING or CHARS, got %s", args[1].Type())
+			}
+			sep = NewString(string(sepChars.Value))
+		}
+		parts := strings.Split(string(self.Value), sep.Value)
+		elements := make([]Object, len(parts))
+		for i, part := range parts {
+			elements[i] = NewCharsFromString(part)
+		}
+		return NewArray(elements)
+	}},
+	"contains": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for contains. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Chars)
+		if !ok {
+			return newError("receiver for contains must be CHARS, got %s", args[0].Type())
+		}
+		var substr string
+		switch s := args[1].(type) {
+		case *String:
+			substr = s.Value
+		case *Chars:
+			substr = string(s.Value)
+		default:
+			return newError("argument for contains must be STRING or CHARS, got %s", args[1].Type())
+		}
+		return &Bool{Value: strings.Contains(string(self.Value), substr)}
+	}},
+	"indexOf": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for indexOf. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Chars)
+		if !ok {
+			return newError("receiver for indexOf must be CHARS, got %s", args[0].Type())
+		}
+		var substr string
+		switch s := args[1].(type) {
+		case *String:
+			substr = s.Value
+		case *Chars:
+			substr = string(s.Value)
+		default:
+			return newError("argument for indexOf must be STRING or CHARS, got %s", args[1].Type())
+		}
+		// Return character index, not byte index
+		byteIdx := strings.Index(string(self.Value), substr)
+		if byteIdx < 0 {
+			return NewInt(-1)
+		}
+		// Convert byte index to character index
+		charIdx := len([]rune(string(self.Value)[:byteIdx]))
+		return NewInt(int64(charIdx))
+	}},
+	"startsWith": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for startsWith. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Chars)
+		if !ok {
+			return newError("receiver for startsWith must be CHARS, got %s", args[0].Type())
+		}
+		var prefix string
+		switch s := args[1].(type) {
+		case *String:
+			prefix = s.Value
+		case *Chars:
+			prefix = string(s.Value)
+		default:
+			return newError("argument for startsWith must be STRING or CHARS, got %s", args[1].Type())
+		}
+		return &Bool{Value: strings.HasPrefix(string(self.Value), prefix)}
+	}},
+	"endsWith": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for endsWith. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Chars)
+		if !ok {
+			return newError("receiver for endsWith must be CHARS, got %s", args[0].Type())
+		}
+		var suffix string
+		switch s := args[1].(type) {
+		case *String:
+			suffix = s.Value
+		case *Chars:
+			suffix = string(s.Value)
+		default:
+			return newError("argument for endsWith must be STRING or CHARS, got %s", args[1].Type())
+		}
+		return &Bool{Value: strings.HasSuffix(string(self.Value), suffix)}
+	}},
+	"subStr": {Fn: func(args ...Object) Object {
+		if len(args) < 2 || len(args) > 3 {
+			return newError("wrong number of arguments for subStr. got=%d, want=2 or 3", len(args))
+		}
+		self, ok := args[0].(*Chars)
+		if !ok {
+			return newError("receiver for subStr must be CHARS, got %s", args[0].Type())
+		}
+		start, ok := args[1].(*Int)
+		if !ok {
+			return newError("start index for subStr must be INT, got %s", args[1].Type())
+		}
+		runes := self.Value
+		runeLen := len(runes)
+		startIdx := int(start.Value)
+		if startIdx < 0 {
+			startIdx = 0
+		}
+		if startIdx > runeLen {
+			startIdx = runeLen
+		}
+		if len(args) == 3 {
+			end, ok := args[2].(*Int)
+			if !ok {
+				return newError("end index for subStr must be INT, got %s", args[2].Type())
+			}
+			endIdx := int(end.Value)
+			if endIdx < startIdx {
+				endIdx = startIdx
+			}
+			if endIdx > runeLen {
+				endIdx = runeLen
+			}
+			return NewChars(runes[startIdx:endIdx])
+		}
+		return NewChars(runes[startIdx:])
+	}},
+	"at": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for at. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Chars)
+		if !ok {
+			return newError("receiver for at must be CHARS, got %s", args[0].Type())
+		}
+		idx, ok := args[1].(*Int)
+		if !ok {
+			return newError("index for at must be INT, got %s", args[1].Type())
+		}
+		runes := self.Value
+		runeLen := len(runes)
+		actualIdx := int(idx.Value)
+		if actualIdx < 0 {
+			actualIdx = runeLen + actualIdx
+		}
+		if actualIdx < 0 || actualIdx >= runeLen {
+			return newError("chars index out of bounds: %d (length: %d)", idx.Value, runeLen)
+		}
+		return NewString(string(runes[actualIdx]))
+	}},
+	"reverse": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for reverse. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Chars)
+		if !ok {
+			return newError("receiver for reverse must be CHARS, got %s", args[0].Type())
+		}
+		if len(self.Value) == 0 {
+			return self
+		}
+		reversed := make([]rune, len(self.Value))
+		for i := 0; i < len(self.Value); i++ {
+			reversed[i] = self.Value[len(self.Value)-1-i]
+		}
+		return NewChars(reversed)
+	}},
+	"repeat": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for repeat. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Chars)
+		if !ok {
+			return newError("receiver for repeat must be CHARS, got %s", args[0].Type())
+		}
+		count, ok := args[1].(*Int)
+		if !ok {
+			return newError("count for repeat must be INT, got %s", args[1].Type())
+		}
+		if count.Value < 0 {
+			return newError("count for repeat must be non-negative")
+		}
+		if count.Value == 0 {
+			return CHARS_EMPTY
+		}
+		result := make([]rune, 0, len(self.Value)*int(count.Value))
+		for i := int64(0); i < count.Value; i++ {
+			result = append(result, self.Value...)
+		}
+		return NewChars(result)
 	}},
 }
 
