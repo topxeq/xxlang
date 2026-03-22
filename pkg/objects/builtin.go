@@ -2846,6 +2846,84 @@ var Builtins = map[string]*Builtin{
 			return NULL
 		},
 	},
+	// bigInt - create a BigInt from int, float, or string
+	"bigInt": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for bigInt. got=%d, want=1", len(args))
+			}
+			switch v := args[0].(type) {
+			case *BigInt:
+				return v
+			case *Int:
+				return NewBigIntFromInt64(v.Value)
+			case *Float:
+				return NewBigFloatFromFloat64(v.Value).ToBigInt()
+			case *BigFloat:
+				return v.ToBigInt()
+			case *String:
+				bigInt, err := NewBigIntFromString(v.Value)
+				if err != nil {
+					return newError("bigInt: %v", err)
+				}
+				return bigInt
+			default:
+				return newError("bigInt: cannot convert %s to BigInt", args[0].Type())
+			}
+		},
+	},
+	// bigFloat - create a BigFloat from int, float, bigint, or string
+	"bigFloat": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for bigFloat. got=%d, want=1", len(args))
+			}
+			switch v := args[0].(type) {
+			case *BigFloat:
+				return v
+			case *BigInt:
+				return v.ToBigFloat()
+			case *Int:
+				return NewBigFloatFromInt64(v.Value)
+			case *Float:
+				return NewBigFloatFromFloat64(v.Value)
+			case *String:
+				bigFloat, err := NewBigFloatFromString(v.Value)
+				if err != nil {
+					return newError("bigFloat: %v", err)
+				}
+				return bigFloat
+			default:
+				return newError("bigFloat: cannot convert %s to BigFloat", args[0].Type())
+			}
+		},
+	},
+	// isBigInt - check if value is a BigInt
+	"isBigInt": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for isBigInt. got=%d, want=1", len(args))
+			}
+			_, ok := args[0].(*BigInt)
+			if ok {
+				return TRUE
+			}
+			return FALSE
+		},
+	},
+	// isBigFloat - check if value is a BigFloat
+	"isBigFloat": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for isBigFloat. got=%d, want=1", len(args))
+			}
+			_, ok := args[0].(*BigFloat)
+			if ok {
+				return TRUE
+			}
+			return FALSE
+		},
+	},
 }
 
 // RunCodeImpl is the implementation function for runCode, set by the VM

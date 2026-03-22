@@ -84,6 +84,8 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(lexer.TokenIdent, p.parseIdentifier)
 	p.registerPrefix(lexer.TokenInt, p.parseIntegerLiteral)
 	p.registerPrefix(lexer.TokenFloat, p.parseFloatLiteral)
+	p.registerPrefix(lexer.TokenBigInt, p.parseBigIntLiteral)
+	p.registerPrefix(lexer.TokenBigFloat, p.parseBigFloatLiteral)
 	p.registerPrefix(lexer.TokenString, p.parseStringLiteral)
 	p.registerPrefix(lexer.TokenTrue, p.parseBooleanLiteral)
 	p.registerPrefix(lexer.TokenFalse, p.parseBooleanLiteral)
@@ -1312,6 +1314,18 @@ func (p *Parser) parseFloatLiteral() Expression {
 	}
 
 	lit.Value = value
+	return lit
+}
+
+// parseBigIntLiteral parses a big integer literal (e.g., 123n)
+func (p *Parser) parseBigIntLiteral() Expression {
+	lit := &BigIntLiteral{Token: p.curToken, Value: p.curToken.Literal}
+	return lit
+}
+
+// parseBigFloatLiteral parses a big float literal (e.g., 3.14m)
+func (p *Parser) parseBigFloatLiteral() Expression {
+	lit := &BigFloatLiteral{Token: p.curToken, Value: p.curToken.Literal}
 	return lit
 }
 

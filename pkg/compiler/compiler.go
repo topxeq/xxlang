@@ -176,6 +176,11 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(113, "bytes")
 	s.DefineBuiltin(114, "plt")
 	s.DefineBuiltin(115, "make")
+	// BigInt/BigFloat
+	s.DefineBuiltin(116, "bigInt")
+	s.DefineBuiltin(117, "bigFloat")
+	s.DefineBuiltin(118, "isBigInt")
+	s.DefineBuiltin(119, "isBigFloat")
 	return s
 }
 
@@ -833,6 +838,22 @@ func (c *Compiler) Compile(node parser.Node) error {
 	case *parser.FloatLiteral:
 		float := &objects.Float{Value: node.Value}
 		c.emit(OpConstant, c.addConstant(float))
+
+	case *parser.BigIntLiteral:
+		bigInt, err := objects.NewBigIntFromString(node.Value)
+		if err != nil {
+			return fmt.Errorf("line %d:%d: could not parse %q as big int: %v",
+				node.Token.Line, node.Token.Column, node.Value, err)
+		}
+		c.emit(OpConstant, c.addConstant(bigInt))
+
+	case *parser.BigFloatLiteral:
+		bigFloat, err := objects.NewBigFloatFromString(node.Value)
+		if err != nil {
+			return fmt.Errorf("line %d:%d: could not parse %q as big float: %v",
+				node.Token.Line, node.Token.Column, node.Value, err)
+		}
+		c.emit(OpConstant, c.addConstant(bigFloat))
 
 	case *parser.StringLiteral:
 		str := objects.InternString(node.Value)

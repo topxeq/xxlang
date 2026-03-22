@@ -1065,7 +1065,7 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 					}
 				}
 			}
-		} else if obj.TypeTag() <= objects.TagStringBuilder {
+		} else if obj.TypeTag() <= objects.TagBigFloat {
 			// Handle primitive type methods with inline caching
 			typeTag := obj.TypeTag()
 			nameHash := hashName(name.Value)
@@ -1194,7 +1194,7 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 				}
 			}
 			_ = mapObj // avoid unused variable error
-		} else if obj.TypeTag() <= objects.TagStringBuilder {
+		} else if obj.TypeTag() <= objects.TagBigFloat {
 			// Handle primitive type methods with inline caching
 			typeTag := obj.TypeTag()
 			nameHash := hashName(name.Value)

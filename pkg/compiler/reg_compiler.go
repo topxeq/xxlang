@@ -138,6 +138,10 @@ func (c *RegCompiler) Compile(node parser.Node) (int, error) {
 		return c.compileIntegerLiteral(n)
 	case *parser.FloatLiteral:
 		return c.compileFloatLiteral(n)
+	case *parser.BigIntLiteral:
+		return c.compileBigIntLiteral(n)
+	case *parser.BigFloatLiteral:
+		return c.compileBigFloatLiteral(n)
 	case *parser.BooleanLiteral:
 		return c.compileBooleanLiteral(n)
 	case *parser.NullLiteral:
@@ -244,6 +248,30 @@ func (c *RegCompiler) compileIntegerLiteral(n *parser.IntegerLiteral) (int, erro
 // compileFloatLiteral compiles a float literal
 func (c *RegCompiler) compileFloatLiteral(n *parser.FloatLiteral) (int, error) {
 	constIdx := c.addConstant(&objects.Float{Value: n.Value})
+	dst := c.allocTempReg()
+	c.emitRegLoadConst(dst, constIdx)
+	return dst, nil
+}
+
+// compileBigIntLiteral compiles a big integer literal
+func (c *RegCompiler) compileBigIntLiteral(n *parser.BigIntLiteral) (int, error) {
+	bigInt, err := objects.NewBigIntFromString(n.Value)
+	if err != nil {
+		return -1, fmt.Errorf("could not parse %q as big int: %v", n.Value, err)
+	}
+	constIdx := c.addConstant(bigInt)
+	dst := c.allocTempReg()
+	c.emitRegLoadConst(dst, constIdx)
+	return dst, nil
+}
+
+// compileBigFloatLiteral compiles a big float literal
+func (c *RegCompiler) compileBigFloatLiteral(n *parser.BigFloatLiteral) (int, error) {
+	bigFloat, err := objects.NewBigFloatFromString(n.Value)
+	if err != nil {
+		return -1, fmt.Errorf("could not parse %q as big float: %v", n.Value, err)
+	}
+	constIdx := c.addConstant(bigFloat)
 	dst := c.allocTempReg()
 	c.emitRegLoadConst(dst, constIdx)
 	return dst, nil

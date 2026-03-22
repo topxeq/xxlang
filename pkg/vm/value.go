@@ -264,6 +264,24 @@ func (v Value) IsNumber() bool {
 	return v.IsInt() || v.IsFloat()
 }
 
+// IsBigInt returns true if the value is a BigInt object
+func (v Value) IsBigInt() bool {
+	if !v.IsObject() {
+		return false
+	}
+	_, ok := v.GetObject().(*objects.BigInt)
+	return ok
+}
+
+// IsBigFloat returns true if the value is a BigFloat object
+func (v Value) IsBigFloat() bool {
+	if !v.IsObject() {
+		return false
+	}
+	_, ok := v.GetObject().(*objects.BigFloat)
+	return ok
+}
+
 // IsTruthy returns true if the value is truthy
 func (v Value) IsTruthy() bool {
 	if v.IsNull() {
@@ -443,8 +461,18 @@ func (v Value) Add(other Value) (Value, bool) {
 	return ValueNull, false
 }
 
-// addSlow handles string concatenation and other slow paths
+// addSlow handles string concatenation, BigInt/BigFloat, and other slow paths
 func (v Value) addSlow(other Value) (Value, bool) {
+	// Handle BigInt operations
+	if v.IsBigInt() || other.IsBigInt() {
+		return v.addBigInt(other)
+	}
+
+	// Handle BigFloat operations
+	if v.IsBigFloat() || other.IsBigFloat() {
+		return v.addBigFloat(other)
+	}
+
 	var str1, str2 string
 	var hasStr1, hasStr2 bool
 
@@ -481,6 +509,293 @@ func (v Value) addSlow(other Value) (Value, bool) {
 		return NewFloat(f1 + f2), true
 	}
 	return ValueNull, false
+}
+
+// addBigInt handles BigInt addition with type promotion
+func (v Value) addBigInt(other Value) (Value, bool) {
+	var leftBigInt *objects.BigInt
+
+	// Convert left operand to BigInt
+	if v.IsBigInt() {
+		leftBigInt = v.GetObject().(*objects.BigInt)
+	} else if v.IsInt() {
+		leftBigInt = objects.NewBigIntFromInt64(v.GetInt())
+	} else if v.IsFloat() {
+		// Promote float to BigFloat first, then to BigInt (truncates)
+		leftBigInt = objects.NewBigFloatFromFloat64(v.GetFloat()).ToBigInt()
+	} else {
+		return ValueNull, false
+	}
+
+	// Convert right operand to BigInt
+	var rightBigInt *objects.BigInt
+	if other.IsBigInt() {
+		rightBigInt = other.GetObject().(*objects.BigInt)
+	} else if other.IsInt() {
+		rightBigInt = objects.NewBigIntFromInt64(other.GetInt())
+	} else if other.IsFloat() {
+		rightBigInt = objects.NewBigFloatFromFloat64(other.GetFloat()).ToBigInt()
+	} else {
+		return ValueNull, false
+	}
+
+	result := leftBigInt.Add(rightBigInt)
+	return NewObject(result), true
+}
+
+// addBigFloat handles BigFloat addition with type promotion
+func (v Value) addBigFloat(other Value) (Value, bool) {
+	var leftBigFloat *objects.BigFloat
+
+	// Convert left operand to BigFloat
+	if v.IsBigFloat() {
+		leftBigFloat = v.GetObject().(*objects.BigFloat)
+	} else if v.IsBigInt() {
+		leftBigFloat = v.GetObject().(*objects.BigInt).ToBigFloat()
+	} else if v.IsInt() {
+		leftBigFloat = objects.NewBigFloatFromInt64(v.GetInt())
+	} else if v.IsFloat() {
+		leftBigFloat = objects.NewBigFloatFromFloat64(v.GetFloat())
+	} else {
+		return ValueNull, false
+	}
+
+	// Convert right operand to BigFloat
+	var rightBigFloat *objects.BigFloat
+	if other.IsBigFloat() {
+		rightBigFloat = other.GetObject().(*objects.BigFloat)
+	} else if other.IsBigInt() {
+		rightBigFloat = other.GetObject().(*objects.BigInt).ToBigFloat()
+	} else if other.IsInt() {
+		rightBigFloat = objects.NewBigFloatFromInt64(other.GetInt())
+	} else if other.IsFloat() {
+		rightBigFloat = objects.NewBigFloatFromFloat64(other.GetFloat())
+	} else {
+		return ValueNull, false
+	}
+
+	result := leftBigFloat.Add(rightBigFloat)
+	return NewObject(result), true
+}
+
+// subBigInt handles BigInt subtraction with type promotion
+func (v Value) subBigInt(other Value) (Value, bool) {
+	var leftBigInt *objects.BigInt
+
+	if v.IsBigInt() {
+		leftBigInt = v.GetObject().(*objects.BigInt)
+	} else if v.IsInt() {
+		leftBigInt = objects.NewBigIntFromInt64(v.GetInt())
+	} else if v.IsFloat() {
+		leftBigInt = objects.NewBigFloatFromFloat64(v.GetFloat()).ToBigInt()
+	} else {
+		return ValueNull, false
+	}
+
+	var rightBigInt *objects.BigInt
+	if other.IsBigInt() {
+		rightBigInt = other.GetObject().(*objects.BigInt)
+	} else if other.IsInt() {
+		rightBigInt = objects.NewBigIntFromInt64(other.GetInt())
+	} else if other.IsFloat() {
+		rightBigInt = objects.NewBigFloatFromFloat64(other.GetFloat()).ToBigInt()
+	} else {
+		return ValueNull, false
+	}
+
+	result := leftBigInt.Sub(rightBigInt)
+	return NewObject(result), true
+}
+
+// subBigFloat handles BigFloat subtraction with type promotion
+func (v Value) subBigFloat(other Value) (Value, bool) {
+	var leftBigFloat *objects.BigFloat
+
+	if v.IsBigFloat() {
+		leftBigFloat = v.GetObject().(*objects.BigFloat)
+	} else if v.IsBigInt() {
+		leftBigFloat = v.GetObject().(*objects.BigInt).ToBigFloat()
+	} else if v.IsInt() {
+		leftBigFloat = objects.NewBigFloatFromInt64(v.GetInt())
+	} else if v.IsFloat() {
+		leftBigFloat = objects.NewBigFloatFromFloat64(v.GetFloat())
+	} else {
+		return ValueNull, false
+	}
+
+	var rightBigFloat *objects.BigFloat
+	if other.IsBigFloat() {
+		rightBigFloat = other.GetObject().(*objects.BigFloat)
+	} else if other.IsBigInt() {
+		rightBigFloat = other.GetObject().(*objects.BigInt).ToBigFloat()
+	} else if other.IsInt() {
+		rightBigFloat = objects.NewBigFloatFromInt64(other.GetInt())
+	} else if other.IsFloat() {
+		rightBigFloat = objects.NewBigFloatFromFloat64(other.GetFloat())
+	} else {
+		return ValueNull, false
+	}
+
+	result := leftBigFloat.Sub(rightBigFloat)
+	return NewObject(result), true
+}
+
+// mulBigInt handles BigInt multiplication with type promotion
+func (v Value) mulBigInt(other Value) (Value, bool) {
+	var leftBigInt *objects.BigInt
+
+	if v.IsBigInt() {
+		leftBigInt = v.GetObject().(*objects.BigInt)
+	} else if v.IsInt() {
+		leftBigInt = objects.NewBigIntFromInt64(v.GetInt())
+	} else if v.IsFloat() {
+		leftBigInt = objects.NewBigFloatFromFloat64(v.GetFloat()).ToBigInt()
+	} else {
+		return ValueNull, false
+	}
+
+	var rightBigInt *objects.BigInt
+	if other.IsBigInt() {
+		rightBigInt = other.GetObject().(*objects.BigInt)
+	} else if other.IsInt() {
+		rightBigInt = objects.NewBigIntFromInt64(other.GetInt())
+	} else if other.IsFloat() {
+		rightBigInt = objects.NewBigFloatFromFloat64(other.GetFloat()).ToBigInt()
+	} else {
+		return ValueNull, false
+	}
+
+	result := leftBigInt.Mul(rightBigInt)
+	return NewObject(result), true
+}
+
+// mulBigFloat handles BigFloat multiplication with type promotion
+func (v Value) mulBigFloat(other Value) (Value, bool) {
+	var leftBigFloat *objects.BigFloat
+
+	if v.IsBigFloat() {
+		leftBigFloat = v.GetObject().(*objects.BigFloat)
+	} else if v.IsBigInt() {
+		leftBigFloat = v.GetObject().(*objects.BigInt).ToBigFloat()
+	} else if v.IsInt() {
+		leftBigFloat = objects.NewBigFloatFromInt64(v.GetInt())
+	} else if v.IsFloat() {
+		leftBigFloat = objects.NewBigFloatFromFloat64(v.GetFloat())
+	} else {
+		return ValueNull, false
+	}
+
+	var rightBigFloat *objects.BigFloat
+	if other.IsBigFloat() {
+		rightBigFloat = other.GetObject().(*objects.BigFloat)
+	} else if other.IsBigInt() {
+		rightBigFloat = other.GetObject().(*objects.BigInt).ToBigFloat()
+	} else if other.IsInt() {
+		rightBigFloat = objects.NewBigFloatFromInt64(other.GetInt())
+	} else if other.IsFloat() {
+		rightBigFloat = objects.NewBigFloatFromFloat64(other.GetFloat())
+	} else {
+		return ValueNull, false
+	}
+
+	result := leftBigFloat.Mul(rightBigFloat)
+	return NewObject(result), true
+}
+
+// divBigInt handles BigInt division with type promotion
+func (v Value) divBigInt(other Value) (Value, bool) {
+	var leftBigInt *objects.BigInt
+
+	if v.IsBigInt() {
+		leftBigInt = v.GetObject().(*objects.BigInt)
+	} else if v.IsInt() {
+		leftBigInt = objects.NewBigIntFromInt64(v.GetInt())
+	} else if v.IsFloat() {
+		leftBigInt = objects.NewBigFloatFromFloat64(v.GetFloat()).ToBigInt()
+	} else {
+		return ValueNull, false
+	}
+
+	var rightBigInt *objects.BigInt
+	if other.IsBigInt() {
+		rightBigInt = other.GetObject().(*objects.BigInt)
+	} else if other.IsInt() {
+		rightBigInt = objects.NewBigIntFromInt64(other.GetInt())
+	} else if other.IsFloat() {
+		rightBigInt = objects.NewBigFloatFromFloat64(other.GetFloat()).ToBigInt()
+	} else {
+		return ValueNull, false
+	}
+
+	result := leftBigInt.Div(rightBigInt)
+	if result == nil {
+		return ValueNull, false
+	}
+	return NewObject(result), true
+}
+
+// divBigFloat handles BigFloat division with type promotion
+func (v Value) divBigFloat(other Value) (Value, bool) {
+	var leftBigFloat *objects.BigFloat
+
+	if v.IsBigFloat() {
+		leftBigFloat = v.GetObject().(*objects.BigFloat)
+	} else if v.IsBigInt() {
+		leftBigFloat = v.GetObject().(*objects.BigInt).ToBigFloat()
+	} else if v.IsInt() {
+		leftBigFloat = objects.NewBigFloatFromInt64(v.GetInt())
+	} else if v.IsFloat() {
+		leftBigFloat = objects.NewBigFloatFromFloat64(v.GetFloat())
+	} else {
+		return ValueNull, false
+	}
+
+	var rightBigFloat *objects.BigFloat
+	if other.IsBigFloat() {
+		rightBigFloat = other.GetObject().(*objects.BigFloat)
+	} else if other.IsBigInt() {
+		rightBigFloat = other.GetObject().(*objects.BigInt).ToBigFloat()
+	} else if other.IsInt() {
+		rightBigFloat = objects.NewBigFloatFromInt64(other.GetInt())
+	} else if other.IsFloat() {
+		rightBigFloat = objects.NewBigFloatFromFloat64(other.GetFloat())
+	} else {
+		return ValueNull, false
+	}
+
+	result := leftBigFloat.Div(rightBigFloat)
+	if result == nil {
+		return ValueNull, false
+	}
+	return NewObject(result), true
+}
+
+// modBigInt handles BigInt modulo with type promotion
+func (v Value) modBigInt(other Value) (Value, bool) {
+	var leftBigInt *objects.BigInt
+
+	if v.IsBigInt() {
+		leftBigInt = v.GetObject().(*objects.BigInt)
+	} else if v.IsInt() {
+		leftBigInt = objects.NewBigIntFromInt64(v.GetInt())
+	} else {
+		return ValueNull, false
+	}
+
+	var rightBigInt *objects.BigInt
+	if other.IsBigInt() {
+		rightBigInt = other.GetObject().(*objects.BigInt)
+	} else if other.IsInt() {
+		rightBigInt = objects.NewBigIntFromInt64(other.GetInt())
+	} else {
+		return ValueNull, false
+	}
+
+	result := leftBigInt.Mod(rightBigInt)
+	if result == nil {
+		return ValueNull, false
+	}
+	return NewObject(result), true
 }
 
 // toString converts a value to string (optimized with strconv)
@@ -526,6 +841,16 @@ func (v Value) Sub(other Value) (Value, bool) {
 		return NewInt(vPayload - otherPayload), true
 	}
 
+	// Handle BigInt/BigFloat operations
+	if vTag == tagObject || otherTag == tagObject {
+		if v.IsBigInt() || other.IsBigInt() {
+			return v.subBigInt(other)
+		}
+		if v.IsBigFloat() || other.IsBigFloat() {
+			return v.subBigFloat(other)
+		}
+	}
+
 	f1, ok1 := v.ToFloat()
 	f2, ok2 := other.ToFloat()
 	if ok1 && ok2 {
@@ -554,6 +879,16 @@ func (v Value) Mul(other Value) (Value, bool) {
 		return NewInt(vPayload * otherPayload), true
 	}
 
+	// Handle BigInt/BigFloat operations
+	if vTag == tagObject || otherTag == tagObject {
+		if v.IsBigInt() || other.IsBigInt() {
+			return v.mulBigInt(other)
+		}
+		if v.IsBigFloat() || other.IsBigFloat() {
+			return v.mulBigFloat(other)
+		}
+	}
+
 	f1, ok1 := v.ToFloat()
 	f2, ok2 := other.ToFloat()
 	if ok1 && ok2 {
@@ -564,6 +899,21 @@ func (v Value) Mul(other Value) (Value, bool) {
 
 // Div divides two values
 func (v Value) Div(other Value) (Value, bool) {
+	vBits := uint64(v)
+	otherBits := uint64(other)
+	vTag := vBits >> 48
+	otherTag := otherBits >> 48
+
+	// Handle BigInt/BigFloat operations
+	if vTag == tagObject || otherTag == tagObject {
+		if v.IsBigInt() || other.IsBigInt() {
+			return v.divBigInt(other)
+		}
+		if v.IsBigFloat() || other.IsBigFloat() {
+			return v.divBigFloat(other)
+		}
+	}
+
 	f1, ok1 := v.ToFloat()
 	f2, ok2 := other.ToFloat()
 	if ok1 && ok2 {
@@ -598,6 +948,13 @@ func (v Value) Mod(other Value) (Value, bool) {
 		return NewInt(vPayload % otherPayload), true
 	}
 
+	// Handle BigInt operations (modulo only makes sense for integers)
+	if vTag == tagObject || otherTag == tagObject {
+		if v.IsBigInt() || other.IsBigInt() {
+			return v.modBigInt(other)
+		}
+	}
+
 	f1, ok1 := v.ToFloat()
 	f2, ok2 := other.ToFloat()
 	if ok1 && ok2 {
@@ -616,6 +973,14 @@ func (v Value) Neg() (Value, bool) {
 	}
 	if v.IsFloat() {
 		return NewFloat(-v.GetFloat()), true
+	}
+	if v.IsBigInt() {
+		bigInt := v.GetObject().(*objects.BigInt)
+		return NewObject(bigInt.Neg()), true
+	}
+	if v.IsBigFloat() {
+		bigFloat := v.GetObject().(*objects.BigFloat)
+		return NewObject(bigFloat.Neg()), true
 	}
 	return ValueNull, false
 }
@@ -640,6 +1005,20 @@ func (v Value) Less(other Value) (bool, bool) {
 			otherPayload -= (1 << 48)
 		}
 		return vPayload < otherPayload, true
+	}
+
+	// Handle BigInt/BigFloat comparison
+	if vTag == tagObject || otherTag == tagObject {
+		if v.IsBigInt() && other.IsBigInt() {
+			bi1 := v.GetObject().(*objects.BigInt)
+			bi2 := other.GetObject().(*objects.BigInt)
+			return bi1.Cmp(bi2) < 0, true
+		}
+		if v.IsBigFloat() && other.IsBigFloat() {
+			bf1 := v.GetObject().(*objects.BigFloat)
+			bf2 := other.GetObject().(*objects.BigFloat)
+			return bf1.Cmp(bf2) < 0, true
+		}
 	}
 
 	// Handle string comparison
@@ -679,6 +1058,20 @@ func (v Value) Greater(other Value) (bool, bool) {
 			otherPayload -= (1 << 48)
 		}
 		return vPayload > otherPayload, true
+	}
+
+	// Handle BigInt/BigFloat comparison
+	if vTag == tagObject || otherTag == tagObject {
+		if v.IsBigInt() && other.IsBigInt() {
+			bi1 := v.GetObject().(*objects.BigInt)
+			bi2 := other.GetObject().(*objects.BigInt)
+			return bi1.Cmp(bi2) > 0, true
+		}
+		if v.IsBigFloat() && other.IsBigFloat() {
+			bf1 := v.GetObject().(*objects.BigFloat)
+			bf2 := other.GetObject().(*objects.BigFloat)
+			return bf1.Cmp(bf2) > 0, true
+		}
 	}
 
 	// Handle string comparison
@@ -734,6 +1127,18 @@ func (v Value) Equal(other Value) (bool, bool) {
 		obj2 := other.GetObject()
 		if obj1 == nil || obj2 == nil {
 			return obj1 == obj2, true
+		}
+		// Use type-specific comparison for BigInt
+		if bi1, ok1 := obj1.(*objects.BigInt); ok1 {
+			if bi2, ok2 := obj2.(*objects.BigInt); ok2 {
+				return bi1.Cmp(bi2) == 0, true
+			}
+		}
+		// Use type-specific comparison for BigFloat
+		if bf1, ok1 := obj1.(*objects.BigFloat); ok1 {
+			if bf2, ok2 := obj2.(*objects.BigFloat); ok2 {
+				return bf1.Cmp(bf2) == 0, true
+			}
 		}
 		// Use type-specific comparison for strings
 		if s1, ok1 := obj1.(*objects.String); ok1 {

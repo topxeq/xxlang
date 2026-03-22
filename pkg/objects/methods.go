@@ -10,13 +10,15 @@ import (
 
 // TypeMethods maps ObjectType -> methodName -> *Builtin
 var TypeMethods = map[ObjectType]map[string]*Builtin{
-	IntType:         intMethods,
-	FloatType:       floatMethods,
-	StringType:      stringMethods,
-	ArrayType:       arrayMethods,
-	MapType:         mapMethods,
-	BoolType:        boolMethods,
-	NullType:        nullMethods,
+	IntType:          intMethods,
+	FloatType:        floatMethods,
+	BigIntType:       bigIntMethods,
+	BigFloatType:     bigFloatMethods,
+	StringType:       stringMethods,
+	ArrayType:        arrayMethods,
+	MapType:          mapMethods,
+	BoolType:         boolMethods,
+	NullType:         nullMethods,
 	StringBuilderType: stringBuilderMethods,
 }
 
@@ -141,6 +143,203 @@ var floatMethods = map[string]*Builtin{
 			return newError("receiver for round must be FLOAT, got %s", args[0].Type())
 		}
 		return NewInt(int64(math.Round(self.Value)))
+	}},
+}
+
+// ============================================================
+// BigInt Methods
+// ============================================================
+
+var bigIntMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"toInt": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toInt. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BigInt)
+		if !ok {
+			return newError("receiver for toInt must be BIGINT, got %s", args[0].Type())
+		}
+		n, ok := self.ToInt64()
+		if !ok {
+			return newError("BigInt value overflow for int64")
+		}
+		return NewInt(n)
+	}},
+	"toFloat": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toFloat. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BigInt)
+		if !ok {
+			return newError("receiver for toFloat must be BIGINT, got %s", args[0].Type())
+		}
+		return NewFloat(self.ToFloat64())
+	}},
+	"toBigFloat": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toBigFloat. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BigInt)
+		if !ok {
+			return newError("receiver for toBigFloat must be BIGINT, got %s", args[0].Type())
+		}
+		return self.ToBigFloat()
+	}},
+	"abs": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for abs. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BigInt)
+		if !ok {
+			return newError("receiver for abs must be BIGINT, got %s", args[0].Type())
+		}
+		return self.Abs()
+	}},
+	"neg": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for neg. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BigInt)
+		if !ok {
+			return newError("receiver for neg must be BIGINT, got %s", args[0].Type())
+		}
+		return self.Neg()
+	}},
+	"bits": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for bits. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BigInt)
+		if !ok {
+			return newError("receiver for bits must be BIGINT, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.BitLen()))
+	}},
+	"sign": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for sign. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BigInt)
+		if !ok {
+			return newError("receiver for sign must be BIGINT, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.Sign()))
+	}},
+}
+
+// ============================================================
+// BigFloat Methods
+// ============================================================
+
+var bigFloatMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"toInt": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toInt. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BigFloat)
+		if !ok {
+			return newError("receiver for toInt must be BIGFLOAT, got %s", args[0].Type())
+		}
+		n, ok := self.ToInt64()
+		if !ok {
+			return newError("BigFloat value overflow for int64")
+		}
+		return NewInt(n)
+	}},
+	"toFloat": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toFloat. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BigFloat)
+		if !ok {
+			return newError("receiver for toFloat must be BIGFLOAT, got %s", args[0].Type())
+		}
+		f, _ := self.ToFloat64()
+		return NewFloat(f)
+	}},
+	"toBigInt": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toBigInt. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BigFloat)
+		if !ok {
+			return newError("receiver for toBigInt must be BIGFLOAT, got %s", args[0].Type())
+		}
+		return self.ToBigInt()
+	}},
+	"abs": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for abs. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BigFloat)
+		if !ok {
+			return newError("receiver for abs must be BIGFLOAT, got %s", args[0].Type())
+		}
+		return self.Abs()
+	}},
+	"neg": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for neg. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BigFloat)
+		if !ok {
+			return newError("receiver for neg must be BIGFLOAT, got %s", args[0].Type())
+		}
+		return self.Neg()
+	}},
+	"floor": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for floor. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BigFloat)
+		if !ok {
+			return newError("receiver for floor must be BIGFLOAT, got %s", args[0].Type())
+		}
+		return self.Floor()
+	}},
+	"ceil": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for ceil. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BigFloat)
+		if !ok {
+			return newError("receiver for ceil must be BIGFLOAT, got %s", args[0].Type())
+		}
+		return self.Ceil()
+	}},
+	"round": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for round. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BigFloat)
+		if !ok {
+			return newError("receiver for round must be BIGFLOAT, got %s", args[0].Type())
+		}
+		return self.Round()
+	}},
+	"precision": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for precision. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BigFloat)
+		if !ok {
+			return newError("receiver for precision must be BIGFLOAT, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.Precision()))
+	}},
+	"sign": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for sign. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BigFloat)
+		if !ok {
+			return newError("receiver for sign must be BIGFLOAT, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.Sign()))
 	}},
 }
 

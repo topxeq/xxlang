@@ -9,10 +9,12 @@ type TokenType string
 // Token types
 const (
 	// Literals
-	TokenInt    TokenType = "INT"
-	TokenFloat  TokenType = "FLOAT"
-	TokenString TokenType = "STRING"
-	TokenIdent  TokenType = "IDENT"
+	TokenInt      TokenType = "INT"
+	TokenFloat    TokenType = "FLOAT"
+	TokenBigInt   TokenType = "BIGINT"
+	TokenBigFloat TokenType = "BIGFLOAT"
+	TokenString   TokenType = "STRING"
+	TokenIdent    TokenType = "IDENT"
 
 	// Operators
 	TokenPlus           TokenType = "+"

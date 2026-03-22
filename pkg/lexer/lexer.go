@@ -275,7 +275,7 @@ func (l *Lexer) readIdentifier() string {
 	return l.input[position:l.position]
 }
 
-// readNumber reads a number literal (integer or float)
+// readNumber reads a number literal (integer, float, bigint, or bigfloat)
 func (l *Lexer) readNumber() (string, TokenType) {
 	position := l.position
 	tokenType := TokenInt
@@ -304,6 +304,19 @@ func (l *Lexer) readNumber() (string, TokenType) {
 		for isDigit(l.ch) {
 			l.readChar()
 		}
+	}
+
+	// Check for BigInt suffix 'n' (e.g., 123n)
+	// Must be an integer (no decimal point or exponent)
+	if l.ch == 'n' && tokenType == TokenInt {
+		l.readChar() // consume 'n'
+		return l.input[position : l.position-1], TokenBigInt
+	}
+
+	// Check for BigFloat suffix 'm' (e.g., 3.14m, 123m)
+	if l.ch == 'm' {
+		l.readChar() // consume 'm'
+		return l.input[position : l.position-1], TokenBigFloat
 	}
 
 	return l.input[position:l.position], tokenType
