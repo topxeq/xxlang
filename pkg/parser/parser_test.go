@@ -2596,3 +2596,100 @@ func TestCompoundAssignmentWithIndex(t *testing.T) {
 		t.Fatalf("left not *IndexExpression. got=%T", compound.Left)
 	}
 }
+
+// TestShortVarStatement tests short variable declaration (:=)
+func TestShortVarStatement(t *testing.T) {
+	input := `x := 10`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 1 {
+		t.Fatalf("program.Statements does not contain 1 statement. got=%d", len(program.Statements))
+	}
+
+	stmt, ok := program.Statements[0].(*ShortVarStatement)
+	if !ok {
+		t.Fatalf("stmt not *ShortVarStatement. got=%T", program.Statements[0])
+	}
+
+	if stmt.Name.Value != "x" {
+		t.Errorf("stmt.Name.Value not 'x'. got=%s", stmt.Name.Value)
+	}
+
+	if stmt.Name.TokenLiteral() != "x" {
+		t.Errorf("stmt.Name.TokenLiteral() not 'x'. got=%s", stmt.Name.TokenLiteral())
+	}
+
+	lit, ok := stmt.Value.(*IntegerLiteral)
+	if !ok {
+		t.Fatalf("stmt.Value not *IntegerLiteral. got=%T", stmt.Value)
+	}
+
+	if lit.Value != 10 {
+		t.Errorf("lit.Value not 10. got=%d", lit.Value)
+	}
+}
+
+// TestShortVarStatementMultiple tests multiple short variable declarations
+func TestShortVarStatementMultiple(t *testing.T) {
+	input := `
+x := 10
+y := 20
+name := "hello"
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 3 {
+		t.Fatalf("program.Statements does not contain 3 statements. got=%d", len(program.Statements))
+	}
+
+	tests := []struct {
+		expectedName    string
+		expectedLiteral interface{}
+	}{
+		{"x", int64(10)},
+		{"y", int64(20)},
+		{"name", "hello"},
+	}
+
+	for i, tt := range tests {
+		stmt := program.Statements[i]
+		shortVar, ok := stmt.(*ShortVarStatement)
+		if !ok {
+			t.Errorf("stmt %d not *ShortVarStatement. got=%T", i, stmt)
+			continue
+		}
+
+		if shortVar.Name.Value != tt.expectedName {
+			t.Errorf("stmt %d: shortVar.Name.Value not '%s'. got=%s", i, tt.expectedName, shortVar.Name.Value)
+		}
+
+		switch expected := tt.expectedLiteral.(type) {
+		case int64:
+			lit, ok := shortVar.Value.(*IntegerLiteral)
+			if !ok {
+				t.Errorf("stmt %d: shortVar.Value not *IntegerLiteral. got=%T", i, shortVar.Value)
+				continue
+			}
+			if lit.Value != expected {
+				t.Errorf("stmt %d: lit.Value not %d. got=%d", i, expected, lit.Value)
+			}
+		case string:
+			lit, ok := shortVar.Value.(*StringLiteral)
+			if !ok {
+				t.Errorf("stmt %d: shortVar.Value not *StringLiteral. got=%T", i, shortVar.Value)
+				continue
+			}
+			if lit.Value != expected {
+				t.Errorf("stmt %d: lit.Value not %s. got=%s", i, expected, lit.Value)
+			}
+		}
+	}
+}

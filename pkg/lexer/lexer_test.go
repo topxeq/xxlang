@@ -87,7 +87,7 @@ var add = func(a, b) {
 }
 
 func TestNextToken_Operators(t *testing.T) {
-	input := `== != <= >= && || += -= ++ -- =>`
+	input := `== != <= >= && || += -= ++ -- => :=`
 
 	expected := []Token{
 		{Type: TokenEqual, Literal: "=="},
@@ -101,6 +101,7 @@ func TestNextToken_Operators(t *testing.T) {
 		{Type: TokenIncrement, Literal: "++"},
 		{Type: TokenDecrement, Literal: "--"},
 		{Type: TokenArrow, Literal: "=>"},
+		{Type: TokenColonAssign, Literal: ":="},
 		{Type: TokenEOF, Literal: ""},
 	}
 

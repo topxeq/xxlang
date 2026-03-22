@@ -148,6 +148,8 @@ func (c *RegCompiler) Compile(node parser.Node) (int, error) {
 		return c.compileIdentifier(n)
 	case *parser.VarStatement:
 		return c.compileVarStatement(n)
+	case *parser.ShortVarStatement:
+		return c.compileShortVarStatement(n)
 	case *parser.ConstStatement:
 		return c.compileConstStatement(n)
 	case *parser.BlockStatement:
@@ -472,6 +474,44 @@ func (c *RegCompiler) compileVarStatement(n *parser.VarStatement) (int, error) {
 	}
 
 	// Store to local or global
+	if symbol.Scope == GlobalScope {
+		c.emitRegStoreGlobal(valReg, symbol.Index)
+	} else {
+		c.emitRegStoreLocal(valReg, symbol.Index)
+	}
+
+	c.freeTempReg(valReg)
+	return valReg, nil
+}
+
+// compileShortVarStatement compiles a short variable declaration (:=)
+func (c *RegCompiler) compileShortVarStatement(n *parser.ShortVarStatement) (int, error) {
+	// Short variable declaration - same semantics as var but simpler syntax
+	// Pre-define the variable if the value is a function literal
+	if fn, ok := n.Value.(*parser.FunctionLiteral); ok {
+		symbol := c.symbolTable.Define(n.Name.Value)
+		fn.Name = n.Name.Value
+		valReg, err := c.Compile(fn)
+		if err != nil {
+			return 0, err
+		}
+		if symbol.Scope == GlobalScope {
+			c.emitRegStoreGlobal(valReg, symbol.Index)
+		} else {
+			c.emitRegStoreLocal(valReg, symbol.Index)
+		}
+		c.freeTempReg(valReg)
+		return valReg, nil
+	}
+
+	// Regular short variable declaration
+	symbol := c.symbolTable.Define(n.Name.Value)
+
+	valReg, err := c.Compile(n.Value)
+	if err != nil {
+		return 0, err
+	}
+
 	if symbol.Scope == GlobalScope {
 		c.emitRegStoreGlobal(valReg, symbol.Index)
 	} else {

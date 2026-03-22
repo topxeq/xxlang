@@ -185,7 +185,14 @@ func (l *Lexer) NextToken() Token {
 	case ',':
 		tok = newToken(TokenComma, l.ch, line, column)
 	case ':':
-		tok = newToken(TokenColon, l.ch, line, column)
+		if l.peekChar() == '=' {
+			ch := l.ch
+			l.readChar()
+			literal := string(ch) + string(l.ch)
+			tok = Token{Type: TokenColonAssign, Literal: literal, Line: line, Column: column}
+		} else {
+			tok = newToken(TokenColon, l.ch, line, column)
+		}
 	case ';':
 		tok = newToken(TokenSemicolon, l.ch, line, column)
 	case '(':

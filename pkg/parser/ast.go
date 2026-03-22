@@ -79,6 +79,32 @@ func (vs *VarStatement) String() string {
 	return sb.String()
 }
 
+// ShortVarStatement represents a short variable declaration (:=)
+type ShortVarStatement struct {
+	Token lexer.Token // the identifier token (first identifier in the declaration)
+	Name  *Identifier
+	Value Expression
+}
+
+func (svs *ShortVarStatement) statementNode() {}
+
+// TokenLiteral returns the token literal
+func (svs *ShortVarStatement) TokenLiteral() string {
+	return svs.Token.Literal
+}
+
+// String returns a string representation of the short var statement
+func (svs *ShortVarStatement) String() string {
+	var sb strings.Builder
+	sb.WriteString(svs.Name.String())
+	sb.WriteString(" := ")
+	if svs.Value != nil {
+		sb.WriteString(svs.Value.String())
+	}
+	sb.WriteString(";")
+	return sb.String()
+}
+
 // ConstStatement represents a constant declaration statement
 type ConstStatement struct {
 	Token lexer.Token // the 'const' token

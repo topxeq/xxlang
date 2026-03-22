@@ -274,6 +274,12 @@ func (p *Parser) parseStatement() Statement {
 		}
 		// Standalone block statement
 		return p.parseBlockStatement()
+	case lexer.TokenIdent:
+		// Check for short variable declaration: ident := value
+		if p.peekTokenIs(lexer.TokenColonAssign) {
+			return p.parseShortVarStatement()
+		}
+		return p.parseExpressionStatement()
 	default:
 		return p.parseExpressionStatement()
 	}
@@ -292,6 +298,26 @@ func (p *Parser) parseVarStatement() *VarStatement {
 	if !p.expectPeek(lexer.TokenAssign) {
 		return nil
 	}
+
+	p.nextToken()
+
+	stmt.Value = p.parseExpression(LOWEST)
+
+	if p.peekTokenIs(lexer.TokenSemicolon) {
+		p.nextToken()
+	}
+
+	return stmt
+}
+
+// parseShortVarStatement parses a short variable declaration (:=)
+func (p *Parser) parseShortVarStatement() *ShortVarStatement {
+	stmt := &ShortVarStatement{Token: p.curToken}
+
+	stmt.Name = &Identifier{Token: p.curToken, Value: p.curToken.Literal}
+
+	// Skip the ':=' token
+	p.nextToken()
 
 	p.nextToken()
 

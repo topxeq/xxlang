@@ -39,9 +39,10 @@ const (
 	TokenDecrement      TokenType = "--"
 
 	// Delimiters
-	TokenComma     TokenType = ","
-	TokenColon     TokenType = ":"
-	TokenSemicolon TokenType = ";"
+	TokenComma      TokenType = ","
+	TokenColon      TokenType = ":"
+	TokenColonAssign TokenType = ":="
+	TokenSemicolon  TokenType = ";"
 	TokenLParen    TokenType = "("
 	TokenRParen    TokenType = ")"
 	TokenLBrace    TokenType = "{"

@@ -186,6 +186,29 @@ var name = "Alice"
 var arr = [1, 2, 3]
 ```
 
+### := Short Variable Declaration
+
+Xxlang supports Go-style short variable declaration:
+
+```xxl
+x := 10
+name := "Alice"
+arr := [1, 2, 3]
+```
+
+The `:=` syntax is equivalent to `var` and creates a new variable in the current scope:
+
+```xxl
+// These are equivalent:
+var a = 10
+a := 10
+
+// Works with any expression:
+result := add(3, 4)
+items := [1, 2, 3]
+config := {"debug": true, "name": "test"}
+```
+
 ### const - Constants
 
 ```xxl
@@ -476,6 +499,7 @@ func outer() {
 | Operator | Description | Example |
 |----------|-------------|---------|
 | `=` | Assign | `x = 10` |
+| `:=` | Short variable declaration | `x := 10` |
 | `+=` | Add and assign | `x += 5` |
 | `-=` | Subtract and assign | `x -= 3` |
 | `*=` | Multiply and assign | `x *= 2` |

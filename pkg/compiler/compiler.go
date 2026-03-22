@@ -440,6 +440,34 @@ func (c *Compiler) Compile(node parser.Node) error {
 			}
 		}
 
+	case *parser.ShortVarStatement:
+		// Short variable declaration (:=) - same semantics as var but simpler syntax
+		// Pre-define the variable if the value is a function literal
+		if fn, ok := node.Value.(*parser.FunctionLiteral); ok {
+			symbol := c.symbolTable.Define(node.Name.Value)
+			fn.Name = node.Name.Value
+			if err := c.Compile(fn); err != nil {
+				return err
+			}
+			switch symbol.Scope {
+			case GlobalScope:
+				c.emit(OpSetGlobal, symbol.Index)
+			case LocalScope:
+				c.emit(OpSetLocal, symbol.Index)
+			}
+		} else {
+			if err := c.Compile(node.Value); err != nil {
+				return err
+			}
+			symbol := c.symbolTable.Define(node.Name.Value)
+			switch symbol.Scope {
+			case GlobalScope:
+				c.emit(OpSetGlobal, symbol.Index)
+			case LocalScope:
+				c.emit(OpSetLocal, symbol.Index)
+			}
+		}
+
 	case *parser.ConstStatement:
 		if err := c.Compile(node.Value); err != nil {
 			return err
