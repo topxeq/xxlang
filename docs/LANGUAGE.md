@@ -681,6 +681,81 @@ switch (x + y) {
 // Output: Sum is 30
 ```
 
+#### Conditional Switch Pattern
+
+A powerful pattern is using `switch (true)` with conditional expressions in case statements. This provides a cleaner alternative to if-else chains for range checks and complex conditions:
+
+```xxl
+var score = 85
+switch (true) {
+    case score >= 90:
+        pln("Grade: A")
+    case score >= 80:
+        pln("Grade: B")
+    case score >= 70:
+        pln("Grade: C")
+    case score >= 60:
+        pln("Grade: D")
+    default:
+        pln("Grade: F")
+}
+// Output: Grade: B
+```
+
+Each case expression is evaluated in order until one matches `true`. This works because:
+
+1. The switch expression is `true`
+2. Each case evaluates a boolean expression
+3. The first case that evaluates to `true` matches
+
+This pattern is especially useful for:
+
+```xxl
+// Range comparisons
+var age = 25
+switch (true) {
+    case age < 13:
+        pln("Child")
+    case age < 20:
+        pln("Teenager")
+    case age < 60:
+        pln("Adult")
+    default:
+        pln("Senior")
+}
+
+// Multiple condition checks
+var x = 10
+var y = 20
+switch (true) {
+    case x < 0 || y < 0:
+        pln("Negative value")
+    case x > 100 && y > 100:
+        pln("Both large")
+    case x == y:
+        pln("Equal")
+    default:
+        pln("Other case")
+}
+```
+
+**Note**: Cases are evaluated in order. Place more specific conditions before general ones:
+
+```xxl
+var value = 15
+switch (true) {
+    case value > 20:    // Checked first
+        pln("Large")
+    case value > 10:    // Checked second - matches here
+        pln("Medium")
+    case value > 0:     // Never reached for value=15
+        pln("Positive")
+    default:
+        pln("Non-positive")
+}
+// Output: Medium
+```
+
 #### Multiple Statements in Case
 
 Each case can contain multiple statements:
@@ -774,37 +849,56 @@ if (status == 200) {
    }
    ```
 
-3. **Use if-else for ranges**: Switch works best with exact matches; use if-else for range comparisons.
+3. **Use conditional switch for range comparisons**: Use `switch (true)` pattern for cleaner range comparisons instead of if-else chains.
 
    ```xxl
-   // Use if-else for ranges
-   if (score >= 90) {
-       grade = "A"
-   } else if (score >= 80) {
-       grade = "B"
-   } else if (score >= 70) {
-       grade = "C"
+   // Use conditional switch for ranges (cleaner than if-else)
+   switch (true) {
+       case score >= 90:
+           grade = "A"
+       case score >= 80:
+           grade = "B"
+       case score >= 70:
+           grade = "C"
+       default:
+           grade = "F"
    }
    ```
 
-4. **Group related cases logically**: Order cases by frequency or logical grouping.
+4. **Order cases by frequency or logic**: Place commonly matched cases first for better readability and slight performance benefit.
 
    ```xxl
    switch (httpStatus) {
-       case 200:   // Success
-       case 201:
-       case 204:
+       case 200:   // Most common - check first
            handleSuccess()
-       case 400:   // Client errors
-       case 404:
-       case 403:
-           handleClientError()
-       case 500:   // Server errors
-       case 502:
-       case 503:
+       case 404:   // Common client error
+           handleNotFound()
+       case 500:   // Server error
            handleServerError()
        default:
            handleUnknown()
+   }
+   ```
+
+5. **Each case must have its own body**: Unlike some languages, Xxlang does not support multiple case values falling through to shared code. Each case executes independently.
+
+   ```xxl
+   // NOT supported - multiple cases to same block
+   // switch (x) {
+   //     case 1:
+   //     case 2:
+   //     case 3:
+   //         handleSmall()  // This does NOT work!
+   // }
+
+   // Correct approach - use conditional switch pattern instead
+   switch (true) {
+       case x == 1 || x == 2 || x == 3:
+           handleSmall()
+       case x >= 10:
+           handleLarge()
+       default:
+           handleOther()
    }
    ```
 
