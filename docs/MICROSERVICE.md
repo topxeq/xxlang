@@ -244,6 +244,117 @@ writeResp(responseG, `
 return "TX_END_RESPONSE_XT"
 ```
 
+## XHP Dynamic Pages
+
+XHP files (`.xhp`) are HTML files with embedded Xxlang code blocks, similar to PHP. Code is embedded using `<?xhp ... ?>` tags.
+
+### Basic Syntax
+
+```html
+<html>
+<head><title>XHP Page</title></head>
+<body>
+<p>The result is: <?xhp return "1" + "2" ?></p>
+</body>
+</html>
+```
+
+### Code Blocks
+
+Each `<?xhp ... ?>` block contains Xxlang code. The `return` statement outputs the result:
+
+```html
+<?xhp return toStr(10 * 5) ?>  <!-- Output: 50 -->
+```
+
+### Accessing Request Data
+
+All standard global variables are available:
+
+| Variable | Description |
+|----------|-------------|
+| `requestG` | HTTP request object |
+| `responseG` | HTTP response writer |
+| `paraMapG` | Request parameters (query + form) |
+| `methodG` | HTTP method |
+| `reqUriG` | Request URI |
+
+```html
+<p>Hello, <?xhp return paraMapG["name"] || "Guest" ?>!</p>
+```
+
+### Complete Example
+
+`www/demo.xhp`:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>XHP Demo</title>
+    <meta charset="utf-8">
+</head>
+<body>
+    <h1>XHP Dynamic Page</h1>
+
+    <h2>Simple Expression</h2>
+    <p>1 + 2 = <?xhp return "1" + "2" ?></p>
+
+    <h2>Arithmetic</h2>
+    <p>10 * 5 = <?xhp return toStr(10 * 5) ?></p>
+
+    <h2>Current Time</h2>
+    <p>Server time: <?xhp return now() ?></p>
+
+    <h2>Parameter Access</h2>
+    <p>Hello, <?xhp return paraMapG["name"] || "Guest" ?>!</p>
+
+    <h2>Multiple Code Blocks</h2>
+    <?xhp
+        var a = 10
+        var b = 20
+        return toStr(a) + " + " + toStr(b) + " = " + toStr(a + b)
+    ?>
+
+    <h2>Conditional Output</h2>
+    <?xhp
+        if (paraMapG["show"] == "yes") {
+            return "<p style='color:green'>Secret content!</p>"
+        }
+        return "<p>Add ?show=yes to see content</p>"
+    ?>
+
+    <h2>Loop Example</h2>
+    <ul>
+    <?xhp
+        var items = ["Apple", "Banana", "Cherry"]
+        var result = ""
+        for (var i = 0; i < len(items); i = i + 1) {
+            result = result + "<li>" + items[i] + "</li>"
+        }
+        return result
+    ?>
+    </ul>
+</body>
+</html>
+```
+
+### XHP vs XXL Dynamic Pages
+
+| Feature | `.xhp` (Embedded) | `.xxl` (Script) |
+|---------|------------------|-----------------|
+| Primary use | HTML with embedded code | Full script control |
+| Code style | Inline expressions | Full program |
+| Output | Replace tags with return value | `writeResp()` for output |
+| Best for | Templates, simple pages | Complex logic, APIs |
+
+### Notes
+
+- Each `<?xhp ... ?>` block is executed independently
+- Use `return` to output content; without `return`, empty string is output
+- Code blocks share the same context (variables defined in one block are not available in others)
+- For complex logic, use `.xxl` scripts instead
+
 ## Built-in HTTP Functions
 
 ### Request Functions

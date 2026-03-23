@@ -1,0 +1,9 @@
+<html>
+<head><title>Simple XHP</title></head>
+<body>
+<h1>Simple XHP Test</h1>
+<p>The result of 1 + 2 is: <?xhp return "1" + "2" ?></p>
+<p>Current time: <?xhp return now() ?></p>
+<p>Hello, <?xhp return paraMapG["name"] || "World" ?>!</p>
+</body>
+</html>

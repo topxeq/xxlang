@@ -244,6 +244,117 @@ writeResp(responseG, `
 return "TX_END_RESPONSE_XT"
 ```
 
+## XHP 动态网页
+
+XHP 文件（`.xhp`）是嵌入 Xxlang 代码的 HTML 文件，类似于 PHP。代码使用 `<?xhp ... ?>` 标签嵌入。
+
+### 基本语法
+
+```html
+<html>
+<head><title>XHP 页面</title></head>
+<body>
+<p>结果是：<?xhp return "1" + "2" ?></p>
+</body>
+</html>
+```
+
+### 代码块
+
+每个 `<?xhp ... ?>` 块包含 Xxlang 代码。`return` 语句输出结果：
+
+```html
+<?xhp return toStr(10 * 5) ?>  <!-- 输出：50 -->
+```
+
+### 访问请求数据
+
+所有标准全局变量都可用：
+
+| 变量 | 描述 |
+|------|------|
+| `requestG` | HTTP 请求对象 |
+| `responseG` | HTTP 响应写入器 |
+| `paraMapG` | 请求参数（查询 + 表单） |
+| `methodG` | HTTP 方法 |
+| `reqUriG` | 请求 URI |
+
+```html
+<p>你好，<?xhp return paraMapG["name"] || "访客" ?>！</p>
+```
+
+### 完整示例
+
+`www/demo.xhp`:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>XHP 演示</title>
+    <meta charset="utf-8">
+</head>
+<body>
+    <h1>XHP 动态网页</h1>
+
+    <h2>简单表达式</h2>
+    <p>1 + 2 = <?xhp return "1" + "2" ?></p>
+
+    <h2>算术运算</h2>
+    <p>10 * 5 = <?xhp return toStr(10 * 5) ?></p>
+
+    <h2>当前时间</h2>
+    <p>服务器时间：<?xhp return now() ?></p>
+
+    <h2>参数访问</h2>
+    <p>你好，<?xhp return paraMapG["name"] || "访客" ?>！</p>
+
+    <h2>多个代码块</h2>
+    <?xhp
+        var a = 10
+        var b = 20
+        return toStr(a) + " + " + toStr(b) + " = " + toStr(a + b)
+    ?>
+
+    <h2>条件输出</h2>
+    <?xhp
+        if (paraMapG["show"] == "yes") {
+            return "<p style='color:green'>秘密内容！</p>"
+        }
+        return "<p>添加 ?show=yes 查看内容</p>"
+    ?>
+
+    <h2>循环示例</h2>
+    <ul>
+    <?xhp
+        var items = ["苹果", "香蕉", "樱桃"]
+        var result = ""
+        for (var i = 0; i < len(items); i = i + 1) {
+            result = result + "<li>" + items[i] + "</li>"
+        }
+        return result
+    ?>
+    </ul>
+</body>
+</html>
+```
+
+### XHP 与 XXL 动态页面对比
+
+| 特性 | `.xhp`（嵌入式） | `.xxl`（脚本） |
+|------|-----------------|----------------|
+| 主要用途 | HTML 内嵌代码 | 完整脚本控制 |
+| 代码风格 | 内联表达式 | 完整程序 |
+| 输出方式 | return 替换标签 | `writeResp()` 输出 |
+| 适用场景 | 模板、简单页面 | 复杂逻辑、API |
+
+### 注意事项
+
+- 每个 `<?xhp ... ?>` 块独立执行
+- 使用 `return` 输出内容；无 `return` 则输出空字符串
+- 代码块之间不共享上下文（一个块定义的变量在另一个块中不可用）
+- 复杂逻辑建议使用 `.xxl` 脚本
+
 ## 内置 HTTP 函数
 
 ### 请求函数
