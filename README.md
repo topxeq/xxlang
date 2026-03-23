@@ -16,8 +16,10 @@ Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language impleme
 - **Method TCO** - Tail call optimization for both functions and methods, enabling efficient recursion
 - **Closures** - First-class functions with proper closure support
 - **Classes & OOP** - Object-oriented programming with inheritance and multi-level super calls
+- **Concurrency** - Go-style goroutines, tubes (channels), select, context for timeout/cancellation, sync primitives
 - **Exception Handling** - Full try/catch/finally/throw support
 - **Module System** - Import/export with standard library
+- **Microservice Mode** - Built-in HTTP/HTTPS server, REST API support, WebSocket
 - **Plugin System** - WASM plugins for high-performance operations (Windows compatible, no CGO required)
 - **Rich Built-ins** - 60+ built-in functions for string, math, array, and map operations
 - **REPL** - Interactive REPL with multi-line support and persistent state
@@ -30,6 +32,8 @@ Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language impleme
 - [Language Reference](docs/LANGUAGE.md) - Complete language syntax and features
 - [Built-in Functions](docs/BUILTINS.md) - Global built-in functions
 - [Standard Library](docs/STDLIB.md) - Standard library modules (os, json, math, etc.)
+- [Concurrency Programming](docs/CONCURRENCY.md) - Goroutines, tubes (channels), select, context, sync primitives
+- [Microservice Mode](docs/MICROSERVICE.md) - HTTP/HTTPS server, REST API, WebSocket
 - [Code Examples](docs/EXAMPLES.md) - Common scenarios code examples
 - [Variable Scope](docs/SCOPE.md) - Variable scope and closure behavior
 - [Embedding Guide](docs/EMBEDDING.md) - Using Xxlang in Go applications
