@@ -16,6 +16,7 @@ io.println("Hello, World!")
 - [string](#string) - String utilities
 - [chars](#chars) - Unicode character handling
 - [stringbuilder](#stringbuilder) - Efficient string concatenation
+- [bytesbuffer](#bytesbuffer) - Efficient byte buffer operations
 - [math](#math) - Mathematical functions
 - [array](#array) - Array utilities
 - [json](#json) - JSON encoding/decoding
@@ -619,6 +620,243 @@ for (var i = 0; i < 1000; i = i + 1) {
 }
 var result = sb.toString()
 pln("Total lines:", result.len())
+```
+
+---
+
+## bytesbuffer
+
+Efficient byte buffer operations for working with binary data. BytesBuffer provides a mutable buffer for reading and writing bytes, similar to Go's `bytes.Buffer`.
+
+**Note:** BytesBuffer is NOT thread-safe. For concurrent access, use external synchronization with `Mutex` or `RWMutex` from the `sync` module.
+
+### Module Functions
+
+#### create(capacity?)
+Creates a new BytesBuffer instance. Optional capacity parameter pre-allocates buffer size.
+
+```xxl
+import "bytesbuffer"
+
+// Create empty buffer
+var buf = bytesbuffer.create()
+
+// Create with initial capacity
+var buf2 = bytesbuffer.create(1024)
+```
+
+#### fromBytes(arr)
+Creates a BytesBuffer from an array of integers (0-255).
+
+```xxl
+var buf = bytesbuffer.fromBytes([72, 101, 108, 108, 111])  // "Hello"
+```
+
+#### fromString(str)
+Creates a BytesBuffer from a string.
+
+```xxl
+var buf = bytesbuffer.fromString("Hello World")
+```
+
+#### isBytesBuffer(obj)
+Returns true if the object is a BytesBuffer.
+
+```xxl
+var buf = bytesbuffer.create()
+bytesbuffer.isBytesBuffer(buf)   // true
+bytesbuffer.isBytesBuffer(42)    // false
+```
+
+### BytesBuffer Methods
+
+#### write(data)
+Writes a string or byte array to the buffer. Returns the number of bytes written.
+
+```xxl
+var buf = bytesbuffer.create()
+buf.write("Hello")
+buf.write([32, 87, 111, 114, 108, 100])  // " World"
+pln(buf.toString())  // "Hello World"
+```
+
+#### writeByte(b)
+Writes a single byte (0-255).
+
+```xxl
+var buf = bytesbuffer.create()
+buf.writeByte(72)   // 'H'
+buf.writeByte(105)  // 'i'
+pln(buf.toString())  // "Hi"
+```
+
+#### writeInt16(n), writeInt32(n), writeInt64(n)
+Writes integers in little-endian format.
+
+```xxl
+var buf = bytesbuffer.create()
+buf.writeInt32(123456)
+buf.writeInt64(9876543210)
+```
+
+#### writeFloat32(n), writeFloat64(n)
+Writes floats in little-endian format.
+
+```xxl
+var buf = bytesbuffer.create()
+buf.writeFloat32(3.14)
+buf.writeFloat64(2.718281828)
+```
+
+#### bytes()
+Returns buffer contents as an array of integers (0-255).
+
+```xxl
+var buf = bytesbuffer.fromString("Hi")
+var arr = buf.bytes()  // [72, 105]
+```
+
+#### toString()
+Returns buffer contents as a string.
+
+```xxl
+var buf = bytesbuffer.create()
+buf.write("Hello")
+pln(buf.toString())  // "Hello"
+```
+
+#### len()
+Returns the current length of the buffer.
+
+```xxl
+var buf = bytesbuffer.fromString("Hello")
+pln(buf.len())  // 5
+```
+
+#### cap()
+Returns the current capacity of the buffer.
+
+```xxl
+var buf = bytesbuffer.create(100)
+pln(buf.cap())  // >= 100
+```
+
+#### readByte()
+Reads and returns a single byte, or null if buffer is empty.
+
+```xxl
+var buf = bytesbuffer.fromString("Hi")
+var b1 = buf.readByte()  // 72 ('H')
+var b2 = buf.readByte()  // 105 ('i')
+var b3 = buf.readByte()  // null (empty)
+```
+
+#### readInt16(), readInt32(), readInt64()
+Reads integers in little-endian format. Returns null on error.
+
+```xxl
+var buf = bytesbuffer.create()
+buf.writeInt32(12345)
+var n = buf.readInt32()  // 12345
+```
+
+#### readFloat32(), readFloat64()
+Reads floats in little-endian format. Returns null on error.
+
+```xxl
+var buf = bytesbuffer.create()
+buf.writeFloat64(3.14159)
+var f = buf.readFloat64()  // 3.14159
+```
+
+#### peek(n)
+Returns the next n bytes without advancing the read position.
+
+```xxl
+var buf = bytesbuffer.fromString("Hello")
+var preview = buf.peek(3)  // [72, 101, 108] ("Hel")
+pln(buf.len())  // 5 (unchanged)
+```
+
+#### clear()
+Clears all content from the buffer.
+
+```xxl
+var buf = bytesbuffer.fromString("Hello")
+buf.clear()
+pln(buf.len())  // 0
+```
+
+#### reset()
+Alias for `clear()`. Resets the buffer to empty state.
+
+#### grow(n)
+Pre-allocates buffer capacity for better performance.
+
+```xxl
+var buf = bytesbuffer.create()
+buf.grow(1024)  // Pre-allocate 1KB
+```
+
+#### truncate(n)
+Discards all but the first n bytes.
+
+```xxl
+var buf = bytesbuffer.fromString("Hello World")
+buf.truncate(5)
+pln(buf.toString())  // "Hello"
+```
+
+#### isEmpty()
+Returns true if the buffer is empty.
+
+```xxl
+var buf = bytesbuffer.create()
+pln(buf.isEmpty())  // true
+buf.write("test")
+pln(buf.isEmpty())  // false
+```
+
+### Binary Protocol Example
+
+```xxl
+import "bytesbuffer"
+
+// Build a simple binary message
+var buf = bytesbuffer.create()
+
+// Message header: magic number (4 bytes) + version (2 bytes) + length (4 bytes)
+buf.writeInt32(0x4D455353)  // "MESS" magic number
+buf.writeInt16(1)           // version 1
+buf.writeInt32(12)          // payload length
+
+// Payload
+buf.write("Hello World!")
+
+pln("Total bytes:", buf.len())  // 22 bytes
+```
+
+### Thread Safety Example
+
+```xxl
+import "bytesbuffer"
+load "sync"
+
+var buf = bytesbuffer.create()
+var mu = sync.createMutex()
+
+// Safe concurrent writes
+spawn {
+    mu.lock()
+    buf.write("thread1")
+    mu.unlock()
+}
+
+spawn {
+    mu.lock()
+    buf.write("thread2")
+    mu.unlock()
+}
 ```
 
 ---

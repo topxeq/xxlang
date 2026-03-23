@@ -16,6 +16,7 @@ io.println("你好，世界！")
 - [string](#string) - 字符串工具
 - [chars](#chars) - Unicode 字符处理
 - [stringbuilder](#stringbuilder) - 高效字符串拼接
+- [bytesbuffer](#bytesbuffer) - 高效字节缓冲区操作
 - [math](#math) - 数学函数
 - [array](#array) - 数组工具
 - [json](#json) - JSON 编解码
@@ -812,6 +813,243 @@ for (var i = 0; i < 1000; i = i + 1) {
 }
 var result = sb.toString()
 pln("总字符数:", result.len())
+```
+
+---
+
+## bytesbuffer
+
+高效字节缓冲区操作，用于处理二进制数据。BytesBuffer 提供可变缓冲区用于读写字节，类似于 Go 的 `bytes.Buffer`。
+
+**注意：** BytesBuffer 不是线程安全的。如需并发访问，请使用 `sync` 模块的 `Mutex` 或 `RWMutex` 进行外部同步。
+
+### 模块函数
+
+#### create(capacity?)
+创建新的 BytesBuffer 实例。可选的 capacity 参数用于预分配缓冲区大小。
+
+```xxl
+import "bytesbuffer"
+
+// 创建空缓冲区
+var buf = bytesbuffer.create()
+
+// 创建指定容量的缓冲区
+var buf2 = bytesbuffer.create(1024)
+```
+
+#### fromBytes(arr)
+从整数数组（0-255）创建 BytesBuffer。
+
+```xxl
+var buf = bytesbuffer.fromBytes([72, 101, 108, 108, 111])  // "Hello"
+```
+
+#### fromString(str)
+从字符串创建 BytesBuffer。
+
+```xxl
+var buf = bytesbuffer.fromString("Hello World")
+```
+
+#### isBytesBuffer(obj)
+检查对象是否为 BytesBuffer。
+
+```xxl
+var buf = bytesbuffer.create()
+bytesbuffer.isBytesBuffer(buf)   // true
+bytesbuffer.isBytesBuffer(42)    // false
+```
+
+### BytesBuffer 方法
+
+#### write(data)
+写入字符串或字节数组到缓冲区。返回写入的字节数。
+
+```xxl
+var buf = bytesbuffer.create()
+buf.write("Hello")
+buf.write([32, 87, 111, 114, 108, 100])  // " World"
+pln(buf.toString())  // "Hello World"
+```
+
+#### writeByte(b)
+写入单个字节（0-255）。
+
+```xxl
+var buf = bytesbuffer.create()
+buf.writeByte(72)   // 'H'
+buf.writeByte(105)  // 'i'
+pln(buf.toString())  // "Hi"
+```
+
+#### writeInt16(n), writeInt32(n), writeInt64(n)
+以小端序写入整数。
+
+```xxl
+var buf = bytesbuffer.create()
+buf.writeInt32(123456)
+buf.writeInt64(9876543210)
+```
+
+#### writeFloat32(n), writeFloat64(n)
+以小端序写入浮点数。
+
+```xxl
+var buf = bytesbuffer.create()
+buf.writeFloat32(3.14)
+buf.writeFloat64(2.718281828)
+```
+
+#### bytes()
+返回缓冲区内容为整数数组（0-255）。
+
+```xxl
+var buf = bytesbuffer.fromString("Hi")
+var arr = buf.bytes()  // [72, 105]
+```
+
+#### toString()
+返回缓冲区内容为字符串。
+
+```xxl
+var buf = bytesbuffer.create()
+buf.write("Hello")
+pln(buf.toString())  // "Hello"
+```
+
+#### len()
+返回缓冲区当前长度。
+
+```xxl
+var buf = bytesbuffer.fromString("Hello")
+pln(buf.len())  // 5
+```
+
+#### cap()
+返回缓冲区当前容量。
+
+```xxl
+var buf = bytesbuffer.create(100)
+pln(buf.cap())  // >= 100
+```
+
+#### readByte()
+读取并返回单个字节，缓冲区为空时返回 null。
+
+```xxl
+var buf = bytesbuffer.fromString("Hi")
+var b1 = buf.readByte()  // 72 ('H')
+var b2 = buf.readByte()  // 105 ('i')
+var b3 = buf.readByte()  // null (空)
+```
+
+#### readInt16(), readInt32(), readInt64()
+以小端序读取整数。出错时返回 null。
+
+```xxl
+var buf = bytesbuffer.create()
+buf.writeInt32(12345)
+var n = buf.readInt32()  // 12345
+```
+
+#### readFloat32(), readFloat64()
+以小端序读取浮点数。出错时返回 null。
+
+```xxl
+var buf = bytesbuffer.create()
+buf.writeFloat64(3.14159)
+var f = buf.readFloat64()  // 3.14159
+```
+
+#### peek(n)
+返回接下来的 n 个字节，但不移动读取位置。
+
+```xxl
+var buf = bytesbuffer.fromString("Hello")
+var preview = buf.peek(3)  // [72, 101, 108] ("Hel")
+pln(buf.len())  // 5 (不变)
+```
+
+#### clear()
+清空缓冲区中的所有内容。
+
+```xxl
+var buf = bytesbuffer.fromString("Hello")
+buf.clear()
+pln(buf.len())  // 0
+```
+
+#### reset()
+`clear()` 的别名。重置缓冲区为空状态。
+
+#### grow(n)
+预分配缓冲区容量以提高性能。
+
+```xxl
+var buf = bytesbuffer.create()
+buf.grow(1024)  // 预分配 1KB
+```
+
+#### truncate(n)
+丢弃前 n 个字节之外的所有内容。
+
+```xxl
+var buf = bytesbuffer.fromString("Hello World")
+buf.truncate(5)
+pln(buf.toString())  // "Hello"
+```
+
+#### isEmpty()
+检查缓冲区是否为空。
+
+```xxl
+var buf = bytesbuffer.create()
+pln(buf.isEmpty())  // true
+buf.write("test")
+pln(buf.isEmpty())  // false
+```
+
+### 二进制协议示例
+
+```xxl
+import "bytesbuffer"
+
+// 构建简单的二进制消息
+var buf = bytesbuffer.create()
+
+// 消息头：魔数（4字节）+ 版本（2字节）+ 长度（4字节）
+buf.writeInt32(0x4D455353)  // "MESS" 魔数
+buf.writeInt16(1)           // 版本 1
+buf.writeInt32(12)          // 负载长度
+
+// 负载数据
+buf.write("Hello World!")
+
+pln("总字节数:", buf.len())  // 22 字节
+```
+
+### 线程安全示例
+
+```xxl
+import "bytesbuffer"
+load "sync"
+
+var buf = bytesbuffer.create()
+var mu = sync.createMutex()
+
+// 安全的并发写入
+spawn {
+    mu.lock()
+    buf.write("thread1")
+    mu.unlock()
+}
+
+spawn {
+    mu.lock()
+    buf.write("thread2")
+    mu.unlock()
+}
 ```
 
 ---
