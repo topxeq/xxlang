@@ -259,12 +259,53 @@ XHP 文件（`.xhp`）是嵌入 Xxlang 代码的 HTML 文件，类似于 PHP。�
 </html>
 ```
 
-### 代码块
+### 输出方式
 
-每个 `<?xhp ... ?>` 块包含 Xxlang 代码。`return` 语句输出结果：
+有两种方式从代码块输出内容：
+
+#### 1. 使用 `return`
+
+`return` 语句输出其值并退出当前代码块：
 
 ```html
-<?xhp return toStr(10 * 5) ?>  <!-- 输出：50 -->
+<p><?xhp return "你好，世界！" ?></p>
+```
+
+#### 2. 使用 `echo()`
+
+`echo()` 函数输出内容而不退出代码块：
+
+```html
+<?xhp echo("你好，") ?><?xhp echo("世界！") ?>
+```
+
+### 共享上下文（变量）
+
+**同一 XHP 文件内的所有代码块共享相同的上下文。** 在一个代码块中定义的变量可以在后续代码块中使用：
+
+```html
+<?xhp var greeting = "你好" ?>
+<?xhp var name = "世界" ?>
+<p><?xhp echo(greeting) ?>，<?xhp echo(name) ?>！</p>
+<!-- 输出：<p>你好，世界！</p> -->
+```
+
+变量可以在不同代码块之间修改：
+
+```html
+<?xhp var counter = 0 ?>
+<?xhp counter = counter + 1 ?>
+<?xhp counter = counter + 1 ?>
+<p>计数器：<?xhp echo(counter) ?></p>
+<!-- 输出：<p>计数器：2</p> -->
+```
+
+复杂数据也可以共享：
+
+```html
+<?xhp var user = {"name": "Alice", "age": 30} ?>
+<p>姓名：<?xhp echo(user.name) ?></p>
+<p>年龄：<?xhp echo(user.age) ?></p>
 ```
 
 ### 访问请求数据
@@ -280,7 +321,7 @@ XHP 文件（`.xhp`）是嵌入 Xxlang 代码的 HTML 文件，类似于 PHP。�
 | `reqUriG` | 请求 URI |
 
 ```html
-<p>你好，<?xhp return paraMapG["name"] || "访客" ?>！</p>
+<p>你好，<?xhp echo(paraMapG["name"] || "访客") ?>！</p>
 ```
 
 ### 完整示例
@@ -297,6 +338,9 @@ XHP 文件（`.xhp`）是嵌入 Xxlang 代码的 HTML 文件，类似于 PHP。�
 <body>
     <h1>XHP 动态网页</h1>
 
+    <?xhp var title = "共享变量演示" ?>
+    <h2><?xhp echo(title) ?></h2>
+
     <h2>简单表达式</h2>
     <p>1 + 2 = <?xhp return "1" + "2" ?></p>
 
@@ -307,34 +351,32 @@ XHP 文件（`.xhp`）是嵌入 Xxlang 代码的 HTML 文件，类似于 PHP。�
     <p>服务器时间：<?xhp return now() ?></p>
 
     <h2>参数访问</h2>
-    <p>你好，<?xhp return paraMapG["name"] || "访客" ?>！</p>
+    <p>你好，<?xhp echo(paraMapG["name"] || "访客") ?>！</p>
 
-    <h2>多个代码块</h2>
+    <h2>共享上下文</h2>
+    <?xhp var a = 10 ?>
+    <?xhp var b = 20 ?>
+    <p>a = <?xhp echo(a) ?>, b = <?xhp echo(b) ?></p>
+    <p>a + b = <?xhp echo(a + b) ?></p>
+
+    <h2>使用 echo() 的循环</h2>
+    <ul>
     <?xhp
-        var a = 10
-        var b = 20
-        return toStr(a) + " + " + toStr(b) + " = " + toStr(a + b)
+        var items = ["苹果", "香蕉", "樱桃"]
+        for (var i = 0; i < len(items); i = i + 1) {
+            echo("<li>" + items[i] + "</li>")
+        }
     ?>
+    </ul>
 
     <h2>条件输出</h2>
     <?xhp
         if (paraMapG["show"] == "yes") {
-            return "<p style='color:green'>秘密内容！</p>"
+            echo("<p style='color:green'>秘密内容！</p>")
+        } else {
+            echo("<p>添加 ?show=yes 查看内容</p>")
         }
-        return "<p>添加 ?show=yes 查看内容</p>"
     ?>
-
-    <h2>循环示例</h2>
-    <ul>
-    <?xhp
-        var items = ["苹果", "香蕉", "樱桃"]
-        var result = ""
-        for (var i = 0; i < len(items); i = i + 1) {
-            result = result + "<li>" + items[i] + "</li>"
-        }
-        return result
-    ?>
-    </ul>
 </body>
 </html>
 ```
@@ -345,14 +387,15 @@ XHP 文件（`.xhp`）是嵌入 Xxlang 代码的 HTML 文件，类似于 PHP。�
 |------|-----------------|----------------|
 | 主要用途 | HTML 内嵌代码 | 完整脚本控制 |
 | 代码风格 | 内联表达式 | 完整程序 |
-| 输出方式 | return 替换标签 | `writeResp()` 输出 |
+| 输出方式 | `return` 或 `echo()` | `writeResp()` 输出 |
+| 共享上下文 | 是（所有代码块共享变量） | 不适用 |
 | 适用场景 | 模板、简单页面 | 复杂逻辑、API |
 
 ### 注意事项
 
-- 每个 `<?xhp ... ?>` 块独立执行
-- 使用 `return` 输出内容；无 `return` 则输出空字符串
-- 代码块之间不共享上下文（一个块定义的变量在另一个块中不可用）
+- 同一文件内的所有 `<?xhp ... ?>` 代码块共享相同的上下文（变量）
+- 使用 `return` 输出内容并退出代码块
+- 使用 `echo()` 输出内容而不退出
 - 复杂逻辑建议使用 `.xxl` 脚本
 
 ## 内置 HTTP 函数

@@ -259,12 +259,53 @@ XHP files (`.xhp`) are HTML files with embedded Xxlang code blocks, similar to P
 </html>
 ```
 
-### Code Blocks
+### Output Methods
 
-Each `<?xhp ... ?>` block contains Xxlang code. The `return` statement outputs the result:
+There are two ways to output content from code blocks:
+
+#### 1. Using `return`
+
+The `return` statement outputs its value and exits the current block:
 
 ```html
-<?xhp return toStr(10 * 5) ?>  <!-- Output: 50 -->
+<p><?xhp return "Hello, World!" ?></p>
+```
+
+#### 2. Using `echo()`
+
+The `echo()` function outputs content without exiting the block:
+
+```html
+<?xhp echo("Hello, ") ?><?xhp echo("World!") ?>
+```
+
+### Shared Context (Variables)
+
+**All code blocks in the same XHP file share the same context.** Variables defined in one block are available in subsequent blocks:
+
+```html
+<?xhp var greeting = "Hello" ?>
+<?xhp var name = "World" ?>
+<p><?xhp echo(greeting) ?>, <?xhp echo(name) ?>!</p>
+<!-- Output: <p>Hello, World!</p> -->
+```
+
+Variables can be modified across blocks:
+
+```html
+<?xhp var counter = 0 ?>
+<?xhp counter = counter + 1 ?>
+<?xhp counter = counter + 1 ?>
+<p>Counter: <?xhp echo(counter) ?></p>
+<!-- Output: <p>Counter: 2</p> -->
+```
+
+Complex data can also be shared:
+
+```html
+<?xhp var user = {"name": "Alice", "age": 30} ?>
+<p>Name: <?xhp echo(user.name) ?></p>
+<p>Age: <?xhp echo(user.age) ?></p>
 ```
 
 ### Accessing Request Data
@@ -280,7 +321,7 @@ All standard global variables are available:
 | `reqUriG` | Request URI |
 
 ```html
-<p>Hello, <?xhp return paraMapG["name"] || "Guest" ?>!</p>
+<p>Hello, <?xhp echo(paraMapG["name"] || "Guest") ?>!</p>
 ```
 
 ### Complete Example
@@ -297,6 +338,9 @@ All standard global variables are available:
 <body>
     <h1>XHP Dynamic Page</h1>
 
+    <?xhp var title = "Shared Variables Demo" ?>
+    <h2><?xhp echo(title) ?></h2>
+
     <h2>Simple Expression</h2>
     <p>1 + 2 = <?xhp return "1" + "2" ?></p>
 
@@ -307,34 +351,32 @@ All standard global variables are available:
     <p>Server time: <?xhp return now() ?></p>
 
     <h2>Parameter Access</h2>
-    <p>Hello, <?xhp return paraMapG["name"] || "Guest" ?>!</p>
+    <p>Hello, <?xhp echo(paraMapG["name"] || "Guest") ?>!</p>
 
-    <h2>Multiple Code Blocks</h2>
+    <h2>Shared Context</h2>
+    <?xhp var a = 10 ?>
+    <?xhp var b = 20 ?>
+    <p>a = <?xhp echo(a) ?>, b = <?xhp echo(b) ?></p>
+    <p>a + b = <?xhp echo(a + b) ?></p>
+
+    <h2>Loop with echo()</h2>
+    <ul>
     <?xhp
-        var a = 10
-        var b = 20
-        return toStr(a) + " + " + toStr(b) + " = " + toStr(a + b)
+        var items = ["Apple", "Banana", "Cherry"]
+        for (var i = 0; i < len(items); i = i + 1) {
+            echo("<li>" + items[i] + "</li>")
+        }
     ?>
+    </ul>
 
     <h2>Conditional Output</h2>
     <?xhp
         if (paraMapG["show"] == "yes") {
-            return "<p style='color:green'>Secret content!</p>"
+            echo("<p style='color:green'>Secret content!</p>")
+        } else {
+            echo("<p>Add ?show=yes to see content</p>")
         }
-        return "<p>Add ?show=yes to see content</p>"
     ?>
-
-    <h2>Loop Example</h2>
-    <ul>
-    <?xhp
-        var items = ["Apple", "Banana", "Cherry"]
-        var result = ""
-        for (var i = 0; i < len(items); i = i + 1) {
-            result = result + "<li>" + items[i] + "</li>"
-        }
-        return result
-    ?>
-    </ul>
 </body>
 </html>
 ```
@@ -345,14 +387,15 @@ All standard global variables are available:
 |---------|------------------|-----------------|
 | Primary use | HTML with embedded code | Full script control |
 | Code style | Inline expressions | Full program |
-| Output | Replace tags with return value | `writeResp()` for output |
+| Output | `return` or `echo()` | `writeResp()` for output |
+| Shared context | Yes (all blocks share variables) | N/A |
 | Best for | Templates, simple pages | Complex logic, APIs |
 
 ### Notes
 
-- Each `<?xhp ... ?>` block is executed independently
-- Use `return` to output content; without `return`, empty string is output
-- Code blocks share the same context (variables defined in one block are not available in others)
+- All `<?xhp ... ?>` blocks in the same file share the same context (variables)
+- Use `return` to output content and exit the block
+- Use `echo()` to output content without exiting
 - For complex logic, use `.xxl` scripts instead
 
 ## Built-in HTTP Functions

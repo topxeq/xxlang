@@ -17,34 +17,41 @@
     <p>Server time: <?xhp return now() ?></p>
 
     <h2>Parameter Access</h2>
-    <p>Hello, <?xhp return paraMapG["name"] || "Guest" ?>!</p>
+    <p>Hello, <?xhp echo(paraMapG["name"] || "Guest") ?>!</p>
 
-    <h2>Multiple Code Blocks</h2>
-    <?xhp
-        var a = 10
-        var b = 20
-        return toStr(a) + " + " + toStr(b) + " = " + toStr(a + b)
-    ?>
+    <h2>Shared Context (Variables)</h2>
+    <?xhp var message = "Hello from Xxlang!" ?>
+    <?xhp var count = 5 ?>
+    <p>Message: <?xhp echo(message) ?></p>
+    <p>Count: <?xhp echo(count) ?></p>
+    <?xhp count = count + 10 ?>
+    <p>Updated count: <?xhp echo(count) ?></p>
 
-    <h2>Conditional Output</h2>
-    <?xhp
-        if (paraMapG["show"] == "yes") {
-            return "<p style='color:green'>Secret content shown!</p>"
-        }
-        return "<p style='color:gray'>Add ?show=yes to see secret content</p>"
-    ?>
+    <h2>Mixed Output (return and echo)</h2>
+    <?xhp echo("Using echo: ") ?><?xhp return "Hello!" ?>
 
     <h2>Loop Example</h2>
     <ul>
     <?xhp
         var items = ["Apple", "Banana", "Cherry"]
-        var result = ""
         for (var i = 0; i < len(items); i = i + 1) {
-            result = result + "<li>" + items[i] + "</li>"
+            echo("<li>" + items[i] + "</li>")
         }
-        return result
     ?>
     </ul>
+
+    <h2>Conditional Output</h2>
+    <?xhp
+        if (paraMapG["show"] == "yes") {
+            echo("<p style='color:green'>Secret content shown!</p>")
+        } else {
+            echo("<p style='color:gray'>Add ?show=yes to see secret content</p>")
+        }
+    ?>
+
+    <h2>Complex Shared Data</h2>
+    <?xhp var user = {"name": "Alice", "age": 30, "city": "Beijing"} ?>
+    <p>User: <?xhp echo(user.name) ?>, Age: <?xhp echo(user.age) ?>, City: <?xhp echo(user.city) ?></p>
 
     <footer>
         <hr>

@@ -102,3 +102,79 @@ func TestProcessXHP_ComplexCode(t *testing.T) {
 		t.Errorf("Expected %q, got %q", expected, result)
 	}
 }
+
+func TestProcessXHP_SharedContext(t *testing.T) {
+	// Test that variables defined in one block are available in another
+	// Variables are shared because all code blocks run in the same scope
+	content := `<?xhp var greeting = "Hello" ?><?xhp echo(greeting) ?>, World!`
+	expected := `Hello, World!`
+
+	result, err := ProcessXHP(content, "test.xhp", nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("ProcessXHP failed: %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Expected %q, got %q", expected, result)
+	}
+}
+
+func TestProcessXHP_SharedContextCounter(t *testing.T) {
+	// Test that variables can be modified across blocks
+	content := `<?xhp var counter = 0 ?><?xhp counter = counter + 1 ?><?xhp echo(counter) ?>`
+	expected := `1`
+
+	result, err := ProcessXHP(content, "test.xhp", nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("ProcessXHP failed: %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Expected %q, got %q", expected, result)
+	}
+}
+
+func TestProcessXHP_ComplexSharedContext(t *testing.T) {
+	// Test complex data sharing between blocks
+	content := `Start:<?xhp var data = {"name": "Alice", "age": 30} ?>Name: <?xhp echo(data.name) ?>, Age: <?xhp echo(data.age) ?>:End`
+	expected := `Start:Name: Alice, Age: 30:End`
+
+	result, err := ProcessXHP(content, "test.xhp", nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("ProcessXHP failed: %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Expected %q, got %q", expected, result)
+	}
+}
+
+func TestProcessXHP_EchoFunction(t *testing.T) {
+	// Test echo function for output
+	content := `<?xhp echo("Hello") ?> <?xhp echo("World") ?>`
+	expected := `Hello World`
+
+	result, err := ProcessXHP(content, "test.xhp", nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("ProcessXHP failed: %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Expected %q, got %q", expected, result)
+	}
+}
+
+func TestProcessXHP_ReturnAndEcho(t *testing.T) {
+	// Test mixing return and echo
+	content := `<?xhp echo("A") ?><?xhp return "B" ?><?xhp echo("C") ?>`
+	expected := `ABC`
+
+	result, err := ProcessXHP(content, "test.xhp", nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("ProcessXHP failed: %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Expected %q, got %q", expected, result)
+	}
+}
