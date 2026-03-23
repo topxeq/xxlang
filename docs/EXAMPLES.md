@@ -1319,6 +1319,249 @@ for (sale in sorted) {
 
 ---
 
+## BigInt and BigFloat
+
+### Arbitrary Precision Integers
+
+```xxl
+// Regular int has limits (64-bit)
+var maxInt64 = 9223372036854775807
+
+// BigInt has no practical limit - use 'n' suffix
+var huge = 1234567890123456789012345678901234567890n
+pln("Huge BigInt:", huge)
+
+// BigInt arithmetic
+var a = 1000000000000000000n
+var b = 2000000000000000000n
+pln("a + b =", a + b)
+pln("a * b =", a * b)
+
+// Factorial with BigInt
+func factorialBig(n) {
+    var result = 1n
+    for (var i = 2; i <= n; i++) {
+        result = result * toBigInt(i)
+    }
+    return result
+}
+
+pln("100! =", factorialBig(100))
+```
+
+### Arbitrary Precision Floats
+
+```xxl
+// Regular float has precision issues
+var regular = 0.1 + 0.2
+pln("Regular 0.1 + 0.2:", regular)  // May show precision error
+
+// BigFloat maintains exact precision - use 'm' suffix
+var precise = 0.1m + 0.2m
+pln("BigFloat 0.1m + 0.2m:", precise)  // Exactly 0.3
+
+// High precision calculations
+var pi = 3.14159265358979323846264338327950288419716939937510m
+pln("Pi with high precision:", pi)
+
+// Financial calculation example
+var price = 19.99m
+var tax = price * 0.08m
+var total = price + tax
+pln("Price:", price)
+pln("Tax (8%):", tax)
+pln("Total:", total)
+```
+
+---
+
+## Chars Type (Unicode Handling)
+
+### Character-Based Operations
+
+```xxl
+// String is byte-oriented
+var s = "中文测试"
+pln("String length (bytes):", len(s))  // 12 bytes
+
+// Chars is character-oriented
+var c = toChars(s)
+pln("Chars length (characters):", len(c))  // 4 characters
+
+// Character access
+pln("c[0]:", c[0])  // 中
+pln("c[1]:", c[1])  // 文
+
+// Mixed content with emoji
+var mixed = toChars("Hello世界🎉")
+pln("Length:", len(mixed))
+for (ch in mixed) {
+    pln(" -", ch)
+}
+```
+
+### Chars Methods
+
+```xxl
+var text = toChars("Hello World 世界")
+
+// Substring by character positions
+pln("subStr(0, 5):", text.subStr(0, 5).toStr())  // Hello
+
+// Case conversion (works with Unicode)
+pln("upper():", text.upper().toStr())
+pln("lower():", text.lower().toStr())
+
+// Reverse
+pln("reverse():", text.reverse().toStr())
+
+// Contains
+pln("contains('世界'):", text.contains("世界"))
+```
+
+---
+
+## Ternary Operator and Variadic Functions
+
+### Ternary Operator
+
+```xxl
+// Basic ternary
+var age = 20
+var status = age >= 18 ? "adult" : "minor"
+pln("Status:", status)
+
+// In expressions
+var a = 10
+var b = 20
+var max = a > b ? a : b
+pln("Max:", max)
+
+// With function calls
+func getName(isAdmin) {
+    return isAdmin ? "Administrator" : "User"
+}
+pln("Name:", getName(true))
+```
+
+### Variadic Functions
+
+```xxl
+// Basic variadic function
+func sum(...args) {
+    var total = 0
+    for (x in args) {
+        total = total + x
+    }
+    return total
+}
+
+pln("sum():", sum())
+pln("sum(1, 2, 3):", sum(1, 2, 3))
+pln("sum(1, 2, 3, 4, 5):", sum(1, 2, 3, 4, 5))
+
+// Mixed parameters - required + variadic
+func formatList(prefix, ...items) {
+    var result = prefix + ": "
+    for (i, item in items) {
+        if (i > 0) {
+            result = result + ", "
+        }
+        result = result + toStr(item)
+    }
+    return result
+}
+
+pln(formatList("Fruits", "apple", "banana", "orange"))
+```
+
+---
+
+## Concurrency
+
+### Tubes (Channels)
+
+```xxl
+// Create a buffered tube
+var tube = makeTube(2)
+
+// Send values
+tube <- 10
+tube <- 20
+
+// Receive values
+pln("Received:", <- tube)
+pln("Received:", <- tube)
+
+// Check capacity and length
+pln("Tube capacity:", tubeCap(tube))
+pln("Tube length:", tubeLen(tube))
+```
+
+### Select
+
+```xxl
+var ch1 = makeTube(1)
+var ch2 = makeTube(1)
+
+ch1 <- "from ch1"
+ch2 <- "from ch2"
+
+// Select receives from whichever is ready first
+for (var i = 0; i < 2; i++) {
+    select {
+        case var v = <- ch1:
+            pln("Got from ch1:", v)
+        case var v = <- ch2:
+            pln("Got from ch2:", v)
+    }
+}
+```
+
+### Context for Timeout
+
+```xxl
+// Context with timeout
+var ctx = contextWithTimeout(100)  // 100ms timeout
+
+pln("Context done initially:", contextDone(ctx))
+
+sleep(50)
+pln("Context done after 50ms:", contextDone(ctx))
+
+sleep(100)
+pln("Context done after 150ms:", contextDone(ctx))
+```
+
+### Concurrent Execution
+
+```xxl
+var results = makeTube(3)
+
+// Run multiple tasks concurrently
+run(func() {
+    sleep(30)
+    results <- "Task 1 done"
+})
+
+run(func() {
+    sleep(20)
+    results <- "Task 2 done"
+})
+
+run(func() {
+    sleep(10)
+    results <- "Task 3 done"
+})
+
+// Collect results (may come in any order)
+for (var i = 0; i < 3; i++) {
+    pln(<- results)
+}
+```
+
+---
+
 ## Tips and Best Practices
 
 ### Code Organization

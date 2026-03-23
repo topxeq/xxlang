@@ -1,0 +1,90 @@
+// 18_chars_unicode.xxl
+// Chars type for Unicode character handling
+
+// ============================================
+// String vs Chars
+// ============================================
+
+// String is byte-oriented
+var s = "中文测试"
+pln("String length (bytes):", len(s))  // 12 bytes (3 bytes per Chinese char)
+
+// Chars is character-oriented
+var c = toChars(s)
+pln("Chars length (characters):", len(c))  // 4 characters
+
+// ============================================
+// Character access
+// ============================================
+
+pln("\nCharacter access:")
+pln("c[0]:", c[0])  // 中
+pln("c[1]:", c[1])  // 文
+pln("c[2]:", c[2])  // 测
+pln("c[3]:", c[3])  // 试
+
+// Mixed content
+var mixed = toChars("Hello世界🎉")
+pln("\nMixed content:")
+pln("Length:", len(mixed))
+for (ch in mixed) {
+    pln(" -", ch)
+}
+
+// ============================================
+// Chars methods
+// ============================================
+
+pln("\nChars methods:")
+var text = toChars("Hello World 世界")
+
+// Substring by character positions
+pln("subStr(0, 5):", text.subStr(0, 5).toStr())  // Hello
+pln("subStr(6, 11):", text.subStr(6, 11).toStr())  // World
+
+// Case conversion (works with Unicode)
+pln("upper():", text.upper().toStr())
+pln("lower():", text.lower().toStr())
+
+// Reverse
+pln("reverse():", text.reverse().toStr())
+
+// Contains
+pln("contains('World'):", text.contains("World"))
+pln("contains('世界'):", text.contains("世界"))
+
+// ============================================
+// Processing Chinese text
+// ============================================
+
+pln("\nChinese text processing:")
+var poem = toChars("床前明月光，疑是地上霜。")
+
+// Count Chinese characters
+var chineseCount = 0
+for (ch in poem) {
+    // Simple check for Chinese characters
+    var code = charCodeAt(ch, 0)
+    if (code >= 0x4E00 && code <= 0x9FFF) {
+        chineseCount = chineseCount + 1
+    }
+}
+pln("Chinese characters:", chineseCount)
+
+// ============================================
+// Practical example: Word frequency
+// ============================================
+
+pln("\nWord frequency example:")
+var sentence = toChars("The quick brown fox jumps over the lazy dog")
+var words = sentence.toStr().split(" ")
+
+var freq = {}
+for (word in words) {
+    var lower = toChars(word).lower().toStr()
+    freq[lower] = freq.get(lower, 0) + 1
+}
+
+for (k, v in freq) {
+    pln(k + ":", v)
+}

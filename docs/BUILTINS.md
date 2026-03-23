@@ -535,6 +535,40 @@ Returns a sorted copy of the array.
 sort([3, 1, 2])  // [1, 2, 3]
 ```
 
+### sortByFunc(array, comparator)
+
+Sorts an array in-place using a custom comparator function. The comparator receives two indices (idx1, idx2) and returns true if the element at idx1 should come before idx2.
+
+```xxl
+// Sort by custom criteria
+var users = [
+    {"name": "Bob", "age": 30},
+    {"name": "Alice", "age": 25},
+    {"name": "Charlie", "age": 35}
+]
+
+// Sort by age (ascending)
+users.sortByFunc(func(i, j) {
+    return users[i]["age"] < users[j]["age"]
+})
+// Result: [{"name": "Alice", "age": 25}, {"name": "Bob", "age": 30}, {"name": "Charlie", "age": 35}]
+
+// Sort by name (alphabetically)
+users.sortByFunc(func(i, j) {
+    return users[i]["name"] < users[j]["name"]
+})
+// Result: [{"name": "Alice", "age": 25}, {"name": "Bob", "age": 30}, {"name": "Charlie", "age": 35}]
+
+// Sort numbers by absolute value
+var nums = [-5, 2, -1, 8, -3]
+nums.sortByFunc(func(i, j) {
+    return abs(nums[i]) < abs(nums[j])
+})
+// Result: [-1, 2, -3, -5, 8]
+```
+
+**Note:** Unlike `sort()`, `sortByFunc` sorts the array in-place and returns the same array.
+
 ### sum(array)
 
 Returns the sum of numeric elements in an array.
@@ -808,6 +842,21 @@ Loads a native Go plugin from the specified path.
 ```xxl
 loadPlugin("./myplugin.so")
 ```
+
+### delegate(code)
+
+Delegates code execution to the VM context. This is primarily used internally for embedded execution scenarios where the host application needs to execute Xxlang code within a controlled context.
+
+```xxl
+// Execute code in the delegated context
+var result = delegate("2 + 2")
+pln(result)  // 4
+
+// Can be used for sandboxed execution
+delegate("import 'math'; math.sqrt(16)")  // 4
+```
+
+**Note:** The `delegate` function is primarily intended for advanced use cases and embedding scenarios. For most dynamic code execution needs, use `runCode()` instead.
 
 ### copy(obj)
 

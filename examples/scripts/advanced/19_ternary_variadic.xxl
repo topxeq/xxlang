@@ -1,0 +1,129 @@
+// 19_ternary_variadic.xxl
+// Ternary operator and variadic functions
+
+// ============================================
+// Ternary Operator
+// ============================================
+
+pln("=== Ternary Operator ===\n")
+
+// Basic ternary
+var age = 20
+var status = age >= 18 ? "adult" : "minor"
+pln("Age:", age, "Status:", status)
+
+// In expressions
+var a = 10
+var b = 20
+var max = a > b ? a : b
+pln("Max of", a, "and", b, "is", max)
+
+// With function calls
+func getName(isAdmin) {
+    return isAdmin ? "Administrator" : "User"
+}
+pln("Name:", getName(true))
+pln("Name:", getName(false))
+
+// String interpolation
+var count = 1
+var msg = count == 1 ? "1 item" : count + " items"
+pln(msg)
+
+// ============================================
+// Variadic Functions
+// ============================================
+
+pln("\n=== Variadic Functions ===\n")
+
+// Basic variadic function
+func sum(...args) {
+    var total = 0
+    for (x in args) {
+        total = total + x
+    }
+    return total
+}
+
+pln("sum():", sum())
+pln("sum(1):", sum(1))
+pln("sum(1, 2, 3):", sum(1, 2, 3))
+pln("sum(1, 2, 3, 4, 5):", sum(1, 2, 3, 4, 5))
+
+// Mixed parameters - required + variadic
+func formatList(prefix, ...items) {
+    var result = prefix + ": "
+    for (i, item in items) {
+        if (i > 0) {
+            result = result + ", "
+        }
+        result = result + toStr(item)
+    }
+    return result
+}
+
+pln(formatList("Fruits", "apple", "banana", "orange"))
+pln(formatList("Numbers", 1, 2, 3, 4, 5))
+
+// Max function using variadic
+func max(...nums) {
+    if (len(nums) == 0) {
+        return null
+    }
+    var result = nums[0]
+    for (num in nums) {
+        if (num > result) {
+            result = num
+        }
+    }
+    return result
+}
+
+pln("max(3, 1, 4, 1, 5, 9, 2, 6):", max(3, 1, 4, 1, 5, 9, 2, 6))
+
+// Variadic with any type
+func logAll(...messages) {
+    pln("=== Log ===")
+    for (i, msg in messages) {
+        pln("[" + i + "]", msg)
+    }
+}
+
+logAll("Hello", "World", 42, true, [1, 2, 3])
+
+// ============================================
+// Combining ternary and variadic
+// ============================================
+
+pln("\n=== Combined Examples ===\n")
+
+// Printf-style function
+func sprintf(format, ...args) {
+    var result = format
+    for (arg in args) {
+        result = replaceFirst(result, "{}", toStr(arg))
+    }
+    return result
+}
+
+var name = "Alice"
+var score = 95
+var grade = score >= 90 ? "A" : score >= 80 ? "B" : "C"
+pln(sprintf("Student: {}, Score: {}, Grade: {}", name, score, grade))
+
+// Build a list
+func list(...items) {
+    return items
+}
+
+var myList = list(1, 2, 3, 4, 5)
+pln("Built list:", myList)
+
+// Average with empty check
+func average(...nums) {
+    var n = len(nums)
+    return n == 0 ? 0 : sum(nums) / n
+}
+
+pln("average(1, 2, 3, 4, 5):", average(1, 2, 3, 4, 5))
+pln("average():", average())

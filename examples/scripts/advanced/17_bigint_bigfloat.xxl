@@ -1,0 +1,73 @@
+// 17_bigint_bigfloat.xxl
+// BigInt and BigFloat - Arbitrary precision numbers
+
+// ============================================
+// BigInt - Arbitrary precision integers
+// ============================================
+
+// Regular int has limits (64-bit)
+var maxInt64 = 9223372036854775807
+pln("Max int64:", maxInt64)
+
+// BigInt has no practical limit - use 'n' suffix
+var huge = 1234567890123456789012345678901234567890n
+pln("Huge BigInt:", huge)
+
+// BigInt arithmetic
+var a = 1000000000000000000n
+var b = 2000000000000000000n
+pln("a + b =", a + b)
+pln("a * b =", a * b)
+
+// Factorial with BigInt
+func factorialBig(n) {
+    var result = 1n
+    for (var i = 2; i <= n; i++) {
+        result = result * toBigInt(i)
+    }
+    return result
+}
+
+pln("20! =", factorialBig(20))
+pln("100! =", factorialBig(100))
+
+// ============================================
+// BigFloat - Arbitrary precision floats
+// ============================================
+
+// Regular float has precision issues
+var regular = 0.1 + 0.2
+pln("Regular 0.1 + 0.2:", regular)  // May show precision error
+
+// BigFloat maintains exact precision - use 'm' suffix
+var precise = 0.1m + 0.2m
+pln("BigFloat 0.1m + 0.2m:", precise)  // Exactly 0.3
+
+// High precision calculations
+var pi = 3.14159265358979323846264338327950288419716939937510m
+pln("Pi with high precision:", pi)
+
+// Financial calculation example
+var price = 19.99m
+var tax = price * 0.08m
+var total = price + tax
+pln("Price:", price)
+pln("Tax (8%):", tax)
+pln("Total:", total)
+
+// ============================================
+// Type checking and conversion
+// ============================================
+
+pln("\nType checking:")
+pln("typeOf(42):", typeOf(42))
+pln("typeOf(42n):", typeOf(42n))
+pln("typeOf(3.14):", typeOf(3.14))
+pln("typeOf(3.14m):", typeOf(3.14m))
+
+// Conversion methods
+pln("\nConversions:")
+pln("42.toBigInt():", 42.toBigInt())
+pln("3.14.toBigFloat():", 3.14.toBigFloat())
+pln("(42n).toInt():", 42n.toInt())
+pln("(3.14m).toFloat():", 3.14m.toFloat())
