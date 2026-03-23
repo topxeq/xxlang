@@ -1,17 +1,20 @@
 // pkg/objects/stringbuilder.go
+// StringBuilder is a mutable string builder for efficient string concatenation.
+// Unlike regular string concatenation which creates a new string each time,
+// StringBuilder uses an internal buffer to accumulate strings efficiently.
+// NOTE: This type is NOT thread-safe. Users must handle concurrency themselves
+// using Mutex or RWMutex if shared across goroutines.
 package objects
 
 import (
+	"strconv"
 	"strings"
-	"sync"
 	"unsafe"
 )
 
 // StringBuilder is a mutable string builder for efficient string concatenation.
-// Unlike regular string concatenation which creates a new string each time,
-// StringBuilder uses an internal buffer to accumulate strings efficiently.
+// Not thread-safe - use external synchronization if needed.
 type StringBuilder struct {
-	mu     sync.Mutex
 	builder strings.Builder
 }
 
@@ -30,9 +33,7 @@ func (sb *StringBuilder) TypeTag() TypeTag { return TagStringBuilder }
 
 // Inspect returns a string representation.
 func (sb *StringBuilder) Inspect() string {
-	sb.mu.Lock()
-	defer sb.mu.Unlock()
-	return "StringBuilder(len=" + intToStr(len(sb.builder.String())) + ")"
+	return "StringBuilder(len=" + strconv.Itoa(sb.builder.Len()) + ")"
 }
 
 // ToBool returns true (StringBuilder is always truthy).
@@ -48,16 +49,12 @@ func (sb *StringBuilder) HashKey() HashKey {
 
 // Write appends a string to the builder.
 func (sb *StringBuilder) Write(s string) int {
-	sb.mu.Lock()
-	defer sb.mu.Unlock()
 	n, _ := sb.builder.WriteString(s)
 	return n
 }
 
 // WriteLine appends a string followed by a newline to the builder.
 func (sb *StringBuilder) WriteLine(s string) int {
-	sb.mu.Lock()
-	defer sb.mu.Unlock()
 	n, _ := sb.builder.WriteString(s)
 	sb.builder.WriteByte('\n')
 	return n + 1
@@ -65,67 +62,30 @@ func (sb *StringBuilder) WriteLine(s string) int {
 
 // String returns the accumulated string.
 func (sb *StringBuilder) String() string {
-	sb.mu.Lock()
-	defer sb.mu.Unlock()
 	return sb.builder.String()
 }
 
 // Len returns the current length of the accumulated string.
 func (sb *StringBuilder) Len() int {
-	sb.mu.Lock()
-	defer sb.mu.Unlock()
 	return sb.builder.Len()
+}
+
+// Cap returns the current capacity of the builder's internal buffer.
+func (sb *StringBuilder) Cap() int {
+	return sb.builder.Cap()
 }
 
 // Clear resets the builder, removing all content.
 func (sb *StringBuilder) Clear() {
-	sb.mu.Lock()
-	defer sb.mu.Unlock()
 	sb.builder.Reset()
 }
 
 // Reset is an alias for Clear.
 func (sb *StringBuilder) Reset() {
-	sb.Clear()
+	sb.builder.Reset()
 }
 
 // Grow grows the builder's capacity to hold at least n more bytes.
 func (sb *StringBuilder) Grow(n int) {
-	sb.mu.Lock()
-	defer sb.mu.Unlock()
 	sb.builder.Grow(n)
-}
-
-// Cap returns the current capacity of the builder's internal buffer.
-func (sb *StringBuilder) Cap() int {
-	sb.mu.Lock()
-	defer sb.mu.Unlock()
-	// strings.Builder doesn't expose Cap directly, but we can check Len
-	// after growing. For now, return Len as approximation.
-	return sb.builder.Len()
-}
-
-// helper for int to string without fmt
-func intToStr(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var negative bool
-	if n < 0 {
-		negative = true
-		n = -n
-	}
-	var digits []byte
-	for n > 0 {
-		digits = append(digits, byte('0'+n%10))
-		n /= 10
-	}
-	if negative {
-		digits = append(digits, '-')
-	}
-	// reverse
-	for i, j := 0, len(digits)-1; i < j; i, j = i+1, j-1 {
-		digits[i], digits[j] = digits[j], digits[i]
-	}
-	return string(digits)
 }

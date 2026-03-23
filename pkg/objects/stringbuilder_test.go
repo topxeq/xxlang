@@ -324,11 +324,11 @@ func TestStringBuilder_Methods(t *testing.T) {
 func TestStringBuilder_Cap(t *testing.T) {
 	sb := NewStringBuilder()
 	sb.Write("Hello")
-	// Cap returns the current length of the builder's content
-	// since strings.Builder doesn't expose Cap directly
+	// Cap returns the actual capacity of the builder's internal buffer
+	// Capacity may be larger than length due to internal growth
 	cap := sb.Cap()
-	if cap != 5 {
-		t.Errorf("expected cap 5, got %d", cap)
+	if cap < 5 {
+		t.Errorf("expected cap >= 5, got %d", cap)
 	}
 }
 
