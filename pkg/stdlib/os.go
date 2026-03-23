@@ -104,6 +104,175 @@ func init() {
 				return Bool(filepath.IsAbs(s.Value))
 			}),
 
+			// glob returns files matching a pattern.
+			"glob": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("glob() takes exactly 1 argument")
+				}
+				pattern, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("glob() requires a string pattern")
+				}
+
+				matches, err := filepath.Glob(pattern.Value)
+				if err != nil {
+					return Error(err.Error())
+				}
+
+				result := make([]objects.Object, len(matches))
+				for i, m := range matches {
+					result[i] = String(m)
+				}
+				return Array(result...)
+			}),
+
+			// split splits a path into directory and file components.
+			"split": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("split() takes exactly 1 argument")
+				}
+				s, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("split() requires a string argument")
+				}
+				dir, file := filepath.Split(s.Value)
+				return Array(String(dir), String(file))
+			}),
+
+			// relative returns a relative path from base to target.
+			"relative": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 2 {
+					return Error("relative() takes exactly 2 arguments")
+				}
+				base, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("relative() requires string arguments")
+				}
+				target, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("relative() requires string arguments")
+				}
+
+				rel, err := filepath.Rel(base.Value, target.Value)
+				if err != nil {
+					return Error(err.Error())
+				}
+				return String(rel)
+			}),
+
+			// volumeName returns the leading volume name (Windows only).
+			"volumeName": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("volumeName() takes exactly 1 argument")
+				}
+				s, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("volumeName() requires a string argument")
+				}
+				return String(filepath.VolumeName(s.Value))
+			}),
+
+			// walkDir walks a directory tree and returns all file paths.
+			"walkDir": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("walkDir() takes exactly 1 argument")
+				}
+				root, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("walkDir() requires a string argument")
+				}
+
+				var files []objects.Object
+				err := filepath.WalkDir(root.Value, func(path string, d os.DirEntry, err error) error {
+					if err != nil {
+						return nil
+					}
+					files = append(files, String(path))
+					return nil
+				})
+				if err != nil {
+					return Error(err.Error())
+				}
+				return Array(files...)
+			}),
+
+			// symlink creates a symbolic link.
+			"symlink": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 2 {
+					return Error("symlink() takes exactly 2 arguments")
+				}
+				oldname, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("symlink() requires string arguments")
+				}
+				newname, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("symlink() requires string arguments")
+				}
+
+				err := os.Symlink(oldname.Value, newname.Value)
+				if err != nil {
+					return Error(err.Error())
+				}
+				return Null()
+			}),
+
+			// readlink reads the target of a symbolic link.
+			"readlink": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("readlink() takes exactly 1 argument")
+				}
+				path, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("readlink() requires a string argument")
+				}
+
+				target, err := os.Readlink(path.Value)
+				if err != nil {
+					return Error(err.Error())
+				}
+				return String(target)
+			}),
+
+			// isLink checks if path is a symbolic link.
+			"isLink": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("isLink() takes exactly 1 argument")
+				}
+				path, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("isLink() requires a string argument")
+				}
+
+				info, err := os.Lstat(path.Value)
+				if err != nil {
+					return Bool(false)
+				}
+				return Bool(info.Mode()&os.ModeSymlink != 0)
+			}),
+
+			// lstat returns file info without following symlinks.
+			"lstat": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("lstat() takes exactly 1 argument")
+				}
+				s, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("lstat() requires a string argument")
+				}
+				info, err := os.Lstat(s.Value)
+				if err != nil {
+					return Error(err.Error())
+				}
+				return Array(
+					String(info.Name()),
+					Int(info.Size()),
+					Bool(info.IsDir()),
+					String(info.ModTime().Format("2006-01-02 15:04:05")),
+					Bool(info.Mode()&os.ModeSymlink != 0),
+				)
+			}),
+
 			// File info
 			"stat": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				if len(args) != 1 {

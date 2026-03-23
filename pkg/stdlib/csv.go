@@ -5,6 +5,7 @@ package stdlib
 import (
 	"encoding/csv"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/topxeq/xxlang/pkg/objects"
@@ -452,6 +453,322 @@ func init() {
 				result[0] = row
 				copy(result[1:], arr.Elements)
 				return Array(result...)
+			}),
+
+			// ============================================================
+			// File-based CSV operations
+			// ============================================================
+
+			// read reads a CSV file and returns an array of arrays.
+			// Usage: data = csv.read(path, [delimiter])
+			"read": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 1 || len(args) > 2 {
+					return Error("read() takes 1 or 2 arguments")
+				}
+				path, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("read() requires a string path")
+				}
+
+				comma := ','
+				if len(args) == 2 {
+					c, ok := args[1].(*objects.String)
+					if ok && len(c.Value) > 0 {
+						comma = rune(c.Value[0])
+					}
+				}
+
+				file, err := os.Open(path.Value)
+				if err != nil {
+					return Error(err.Error())
+				}
+				defer file.Close()
+
+				reader := csv.NewReader(file)
+				reader.Comma = comma
+				reader.LazyQuotes = true
+
+				var result []objects.Object
+				for {
+					record, err := reader.Read()
+					if err == io.EOF {
+						break
+					}
+					if err != nil {
+						return Error(err.Error())
+					}
+
+					row := make([]objects.Object, len(record))
+					for i, field := range record {
+						row[i] = String(field)
+					}
+					result = append(result, Array(row...))
+				}
+
+				return Array(result...)
+			}),
+
+			// readWithHeader reads a CSV file with header and returns array of maps.
+			// Usage: data = csv.readWithHeader(path, [delimiter])
+			"readWithHeader": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 1 || len(args) > 2 {
+					return Error("readWithHeader() takes 1 or 2 arguments")
+				}
+				path, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("readWithHeader() requires a string path")
+				}
+
+				comma := ','
+				if len(args) == 2 {
+					c, ok := args[1].(*objects.String)
+					if ok && len(c.Value) > 0 {
+						comma = rune(c.Value[0])
+					}
+				}
+
+				file, err := os.Open(path.Value)
+				if err != nil {
+					return Error(err.Error())
+				}
+				defer file.Close()
+
+				reader := csv.NewReader(file)
+				reader.Comma = comma
+				reader.LazyQuotes = true
+
+				// Read header
+				header, err := reader.Read()
+				if err != nil {
+					return Error(err.Error())
+				}
+
+				var result []objects.Object
+				for {
+					record, err := reader.Read()
+					if err == io.EOF {
+						break
+					}
+					if err != nil {
+						return Error(err.Error())
+					}
+
+					pairs := make(map[objects.HashKey]objects.MapPair)
+					for i, field := range record {
+						if i < len(header) {
+							key := String(header[i])
+							pairs[key.HashKey()] = objects.MapPair{
+								Key:   key,
+								Value: String(field),
+							}
+						}
+					}
+					result = append(result, &objects.Map{Pairs: pairs})
+				}
+
+				return Array(result...)
+			}),
+
+			// write writes array of arrays to a CSV file.
+			// Usage: csv.write(path, data, [delimiter])
+			"write": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 2 || len(args) > 3 {
+					return Error("write() takes 2 or 3 arguments")
+				}
+				path, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("write() requires a string path")
+				}
+				arr, ok := args[1].(*objects.Array)
+				if !ok {
+					return Error("write() requires an array argument")
+				}
+
+				comma := ','
+				if len(args) == 3 {
+					c, ok := args[2].(*objects.String)
+					if ok && len(c.Value) > 0 {
+						comma = rune(c.Value[0])
+					}
+				}
+
+				file, err := os.Create(path.Value)
+				if err != nil {
+					return Error(err.Error())
+				}
+				defer file.Close()
+
+				writer := csv.NewWriter(file)
+				writer.Comma = comma
+
+				for _, row := range arr.Elements {
+					rowArr, ok := row.(*objects.Array)
+					if !ok {
+						return Error("write() requires array of arrays")
+					}
+					record := make([]string, len(rowArr.Elements))
+					for i, field := range rowArr.Elements {
+						switch v := field.(type) {
+						case *objects.String:
+							record[i] = v.Value
+						default:
+							record[i] = field.Inspect()
+						}
+					}
+					if err := writer.Write(record); err != nil {
+						return Error(err.Error())
+					}
+				}
+
+				writer.Flush()
+				if err := writer.Error(); err != nil {
+					return Error(err.Error())
+				}
+
+				return Null()
+			}),
+
+			// writeWithHeader writes array of maps to CSV with header.
+			// Usage: csv.writeWithHeader(path, data, headers, [delimiter])
+			"writeWithHeader": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 3 || len(args) > 4 {
+					return Error("writeWithHeader() takes 3 or 4 arguments")
+				}
+				path, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("writeWithHeader() requires a string path")
+				}
+				arr, ok := args[1].(*objects.Array)
+				if !ok {
+					return Error("writeWithHeader() requires an array argument")
+				}
+				headers, ok := args[2].(*objects.Array)
+				if !ok {
+					return Error("writeWithHeader() requires headers array")
+				}
+
+				comma := ','
+				if len(args) == 4 {
+					c, ok := args[3].(*objects.String)
+					if ok && len(c.Value) > 0 {
+						comma = rune(c.Value[0])
+					}
+				}
+
+				file, err := os.Create(path.Value)
+				if err != nil {
+					return Error(err.Error())
+				}
+				defer file.Close()
+
+				writer := csv.NewWriter(file)
+				writer.Comma = comma
+
+				// Write header
+				headerRecord := make([]string, len(headers.Elements))
+				for i, h := range headers.Elements {
+					s, ok := h.(*objects.String)
+					if !ok {
+						return Error("headers must be strings")
+					}
+					headerRecord[i] = s.Value
+				}
+				if err := writer.Write(headerRecord); err != nil {
+					return Error(err.Error())
+				}
+
+				// Write data rows
+				for _, row := range arr.Elements {
+					m, ok := row.(*objects.Map)
+					if !ok {
+						return Error("writeWithHeader() requires array of maps")
+					}
+
+					record := make([]string, len(headers.Elements))
+					for i, h := range headers.Elements {
+						key, ok := h.(*objects.String)
+						if !ok {
+							continue
+						}
+						if pair, exists := m.Pairs[key.HashKey()]; exists {
+							switch v := pair.Value.(type) {
+							case *objects.String:
+								record[i] = v.Value
+							default:
+								record[i] = pair.Value.Inspect()
+							}
+						}
+					}
+					if err := writer.Write(record); err != nil {
+						return Error(err.Error())
+					}
+				}
+
+				writer.Flush()
+				if err := writer.Error(); err != nil {
+					return Error(err.Error())
+				}
+
+				return Null()
+			}),
+
+			// append appends rows to an existing CSV file.
+			// Usage: csv.append(path, data, [delimiter])
+			"append": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 2 || len(args) > 3 {
+					return Error("append() takes 2 or 3 arguments")
+				}
+				path, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("append() requires a string path")
+				}
+				arr, ok := args[1].(*objects.Array)
+				if !ok {
+					return Error("append() requires an array argument")
+				}
+
+				comma := ','
+				if len(args) == 3 {
+					c, ok := args[2].(*objects.String)
+					if ok && len(c.Value) > 0 {
+						comma = rune(c.Value[0])
+					}
+				}
+
+				file, err := os.OpenFile(path.Value, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+				if err != nil {
+					return Error(err.Error())
+				}
+				defer file.Close()
+
+				writer := csv.NewWriter(file)
+				writer.Comma = comma
+
+				for _, row := range arr.Elements {
+					rowArr, ok := row.(*objects.Array)
+					if !ok {
+						return Error("append() requires array of arrays")
+					}
+					record := make([]string, len(rowArr.Elements))
+					for i, field := range rowArr.Elements {
+						switch v := field.(type) {
+						case *objects.String:
+							record[i] = v.Value
+						default:
+							record[i] = field.Inspect()
+						}
+					}
+					if err := writer.Write(record); err != nil {
+						return Error(err.Error())
+					}
+				}
+
+				writer.Flush()
+				if err := writer.Error(); err != nil {
+					return Error(err.Error())
+				}
+
+				return Null()
 			}),
 		},
 	})

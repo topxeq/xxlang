@@ -3,6 +3,7 @@ package objects
 
 import (
 	"math"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,6 +22,7 @@ var TypeMethods = map[ObjectType]map[string]*Builtin{
 	BoolType:          boolMethods,
 	NullType:          nullMethods,
 	StringBuilderType: stringBuilderMethods,
+	BytesBufferType:   bytesBufferMethods,
 	WebSocketType:     webSocketMethods,
 	// Concurrency types
 	MutexType:      mutexMethods,
@@ -31,6 +33,12 @@ var TypeMethods = map[ObjectType]map[string]*Builtin{
 	OnceType:       onceMethods,
 	CondType:       condMethods,
 	ContextType:    contextMethods,
+	// File upload types
+	FileUploadType:      fileUploadMethods,
+	FileUploadResultType: fileUploadResultMethods,
+	// File types
+	FileType:     fileMethods,
+	FileInfoType: fileInfoMethods,
 }
 
 // GetMethod returns the builtin method for the given object type and method name
@@ -1271,6 +1279,367 @@ var stringBuilderMethods = map[string]*Builtin{
 }
 
 // ============================================================
+// BytesBuffer Methods
+// ============================================================
+
+var bytesBufferMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"len": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for len. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BytesBuffer)
+		if !ok {
+			return newError("receiver for len must be BYTES_BUFFER, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.Len()))
+	}},
+	"cap": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for cap. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BytesBuffer)
+		if !ok {
+			return newError("receiver for cap must be BYTES_BUFFER, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.Cap()))
+	}},
+	"write": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for write. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*BytesBuffer)
+		if !ok {
+			return newError("receiver for write must be BYTES_BUFFER, got %s", args[0].Type())
+		}
+		switch v := args[1].(type) {
+		case *String:
+			n := self.WriteString(v.Value)
+			return NewInt(int64(n))
+		case *Array:
+			// Convert array of ints to bytes
+			data := make([]byte, len(v.Elements))
+			for i, elem := range v.Elements {
+				b, ok := elem.(*Int)
+				if !ok {
+					return newError("array elements must be INT for write, got %s", elem.Type())
+				}
+				if b.Value < 0 || b.Value > 255 {
+					return newError("array element %d out of byte range: %d", i, b.Value)
+				}
+				data[i] = byte(b.Value)
+			}
+			n := self.Write(data)
+			return NewInt(int64(n))
+		default:
+			return newError("argument for write must be STRING or ARRAY, got %s", args[1].Type())
+		}
+	}},
+	"writeByte": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for writeByte. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*BytesBuffer)
+		if !ok {
+			return newError("receiver for writeByte must be BYTES_BUFFER, got %s", args[0].Type())
+		}
+		b, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for writeByte must be INT, got %s", args[1].Type())
+		}
+		if b.Value < 0 || b.Value > 255 {
+			return newError("byte value out of range: %d", b.Value)
+		}
+		err := self.WriteByte(byte(b.Value))
+		if err != nil {
+			return newError("writeByte error: %s", err.Error())
+		}
+		return NULL
+	}},
+	"writeInt16": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for writeInt16. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*BytesBuffer)
+		if !ok {
+			return newError("receiver for writeInt16 must be BYTES_BUFFER, got %s", args[0].Type())
+		}
+		v, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for writeInt16 must be INT, got %s", args[1].Type())
+		}
+		err := self.WriteInt16(int16(v.Value))
+		if err != nil {
+			return newError("writeInt16 error: %s", err.Error())
+		}
+		return NULL
+	}},
+	"writeInt32": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for writeInt32. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*BytesBuffer)
+		if !ok {
+			return newError("receiver for writeInt32 must be BYTES_BUFFER, got %s", args[0].Type())
+		}
+		v, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for writeInt32 must be INT, got %s", args[1].Type())
+		}
+		err := self.WriteInt32(int32(v.Value))
+		if err != nil {
+			return newError("writeInt32 error: %s", err.Error())
+		}
+		return NULL
+	}},
+	"writeInt64": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for writeInt64. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*BytesBuffer)
+		if !ok {
+			return newError("receiver for writeInt64 must be BYTES_BUFFER, got %s", args[0].Type())
+		}
+		v, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for writeInt64 must be INT, got %s", args[1].Type())
+		}
+		err := self.WriteInt64(v.Value)
+		if err != nil {
+			return newError("writeInt64 error: %s", err.Error())
+		}
+		return NULL
+	}},
+	"writeFloat32": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for writeFloat32. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*BytesBuffer)
+		if !ok {
+			return newError("receiver for writeFloat32 must be BYTES_BUFFER, got %s", args[0].Type())
+		}
+		v, ok := args[1].(*Float)
+		if !ok {
+			return newError("argument for writeFloat32 must be FLOAT, got %s", args[1].Type())
+		}
+		err := self.WriteFloat32(float32(v.Value))
+		if err != nil {
+			return newError("writeFloat32 error: %s", err.Error())
+		}
+		return NULL
+	}},
+	"writeFloat64": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for writeFloat64. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*BytesBuffer)
+		if !ok {
+			return newError("receiver for writeFloat64 must be BYTES_BUFFER, got %s", args[0].Type())
+		}
+		v, ok := args[1].(*Float)
+		if !ok {
+			return newError("argument for writeFloat64 must be FLOAT, got %s", args[1].Type())
+		}
+		err := self.WriteFloat64(v.Value)
+		if err != nil {
+			return newError("writeFloat64 error: %s", err.Error())
+		}
+		return NULL
+	}},
+	"bytes": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for bytes. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BytesBuffer)
+		if !ok {
+			return newError("receiver for bytes must be BYTES_BUFFER, got %s", args[0].Type())
+		}
+		data := self.Bytes()
+		elements := make([]Object, len(data))
+		for i, b := range data {
+			elements[i] = NewInt(int64(b))
+		}
+		return &Array{Elements: elements}
+	}},
+	"toString": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toString. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BytesBuffer)
+		if !ok {
+			return newError("receiver for toString must be BYTES_BUFFER, got %s", args[0].Type())
+		}
+		return NewString(self.String())
+	}},
+	"clear": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for clear. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BytesBuffer)
+		if !ok {
+			return newError("receiver for clear must be BYTES_BUFFER, got %s", args[0].Type())
+		}
+		self.Clear()
+		return NULL
+	}},
+	"reset": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for reset. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BytesBuffer)
+		if !ok {
+			return newError("receiver for reset must be BYTES_BUFFER, got %s", args[0].Type())
+		}
+		self.Reset()
+		return NULL
+	}},
+	"grow": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for grow. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*BytesBuffer)
+		if !ok {
+			return newError("receiver for grow must be BYTES_BUFFER, got %s", args[0].Type())
+		}
+		n, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for grow must be INT, got %s", args[1].Type())
+		}
+		self.Grow(int(n.Value))
+		return NULL
+	}},
+	"truncate": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for truncate. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*BytesBuffer)
+		if !ok {
+			return newError("receiver for truncate must be BYTES_BUFFER, got %s", args[0].Type())
+		}
+		n, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for truncate must be INT, got %s", args[1].Type())
+		}
+		self.Truncate(int(n.Value))
+		return NULL
+	}},
+	"readByte": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for readByte. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BytesBuffer)
+		if !ok {
+			return newError("receiver for readByte must be BYTES_BUFFER, got %s", args[0].Type())
+		}
+		b, err := self.ReadByte()
+		if err != nil {
+			return NULL
+		}
+		return NewInt(int64(b))
+	}},
+	"readInt16": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for readInt16. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BytesBuffer)
+		if !ok {
+			return newError("receiver for readInt16 must be BYTES_BUFFER, got %s", args[0].Type())
+		}
+		v, err := self.ReadInt16()
+		if err != nil {
+			return NULL
+		}
+		return NewInt(int64(v))
+	}},
+	"readInt32": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for readInt32. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BytesBuffer)
+		if !ok {
+			return newError("receiver for readInt32 must be BYTES_BUFFER, got %s", args[0].Type())
+		}
+		v, err := self.ReadInt32()
+		if err != nil {
+			return NULL
+		}
+		return NewInt(int64(v))
+	}},
+	"readInt64": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for readInt64. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BytesBuffer)
+		if !ok {
+			return newError("receiver for readInt64 must be BYTES_BUFFER, got %s", args[0].Type())
+		}
+		v, err := self.ReadInt64()
+		if err != nil {
+			return NULL
+		}
+		return NewInt(v)
+	}},
+	"readFloat32": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for readFloat32. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BytesBuffer)
+		if !ok {
+			return newError("receiver for readFloat32 must be BYTES_BUFFER, got %s", args[0].Type())
+		}
+		v, err := self.ReadFloat32()
+		if err != nil {
+			return NULL
+		}
+		return NewFloat(float64(v))
+	}},
+	"readFloat64": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for readFloat64. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BytesBuffer)
+		if !ok {
+			return newError("receiver for readFloat64 must be BYTES_BUFFER, got %s", args[0].Type())
+		}
+		v, err := self.ReadFloat64()
+		if err != nil {
+			return NULL
+		}
+		return NewFloat(v)
+	}},
+	"peek": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for peek. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*BytesBuffer)
+		if !ok {
+			return newError("receiver for peek must be BYTES_BUFFER, got %s", args[0].Type())
+		}
+		n, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for peek must be INT, got %s", args[1].Type())
+		}
+		data := self.Peek(int(n.Value))
+		elements := make([]Object, len(data))
+		for i, b := range data {
+			elements[i] = NewInt(int64(b))
+		}
+		return &Array{Elements: elements}
+	}},
+	"isEmpty": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for isEmpty. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BytesBuffer)
+		if !ok {
+			return newError("receiver for isEmpty must be BYTES_BUFFER, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.Len() == 0}
+	}},
+}
+
+// ============================================================
 // WebSocket Methods
 // ============================================================
 
@@ -1858,5 +2227,629 @@ var contextMethods = map[string]*Builtin{
 			return NULL
 		}
 		return NewString(dlStr)
+	}},
+}
+
+// ============================================================
+// FileUpload Methods
+// ============================================================
+
+var fileUploadMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"filename": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for filename. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileUpload)
+		if !ok {
+			return newError("receiver for filename must be FILE_UPLOAD, got %s", args[0].Type())
+		}
+		if self.Header == nil {
+			return NULL
+		}
+		return NewString(self.Header.Filename)
+	}},
+	"size": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for size. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileUpload)
+		if !ok {
+			return newError("receiver for size must be FILE_UPLOAD, got %s", args[0].Type())
+		}
+		if self.Header == nil {
+			return NewInt(0)
+		}
+		return NewInt(self.Header.Size)
+	}},
+	"extension": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for extension. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileUpload)
+		if !ok {
+			return newError("receiver for extension must be FILE_UPLOAD, got %s", args[0].Type())
+		}
+		if self.Header == nil {
+			return NULL
+		}
+		return NewString(strings.TrimPrefix(filepath.Ext(self.Header.Filename), "."))
+	}},
+	"contentType": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for contentType. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileUpload)
+		if !ok {
+			return newError("receiver for contentType must be FILE_UPLOAD, got %s", args[0].Type())
+		}
+		if self.Header == nil {
+			return NULL
+		}
+		return NewString(self.Header.Header.Get("Content-Type"))
+	}},
+	"save": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for save. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*FileUpload)
+		if !ok {
+			return newError("receiver for save must be FILE_UPLOAD, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("argument to save must be STRING, got %s", args[1].Type())
+		}
+		savedPath, err := self.Save(path.Value)
+		if err != nil {
+			return newError("save failed: %v", err)
+		}
+		return NewString(savedPath)
+	}},
+	"saveToDir": {Fn: func(args ...Object) Object {
+		if len(args) < 2 || len(args) > 3 {
+			return newError("wrong number of arguments for saveToDir. got=%d, want=2 or 3", len(args))
+		}
+		self, ok := args[0].(*FileUpload)
+		if !ok {
+			return newError("receiver for saveToDir must be FILE_UPLOAD, got %s", args[0].Type())
+		}
+		dir, ok := args[1].(*String)
+		if !ok {
+			return newError("first argument to saveToDir must be STRING, got %s", args[1].Type())
+		}
+		autoRename := false
+		if len(args) == 3 {
+			ar, ok := args[2].(*Bool)
+			if !ok {
+				return newError("second argument to saveToDir must be BOOL, got %s", args[2].Type())
+			}
+			autoRename = ar.Value
+		}
+		savedPath, err := self.SaveToDir(dir.Value, autoRename)
+		if err != nil {
+			return newError("saveToDir failed: %v", err)
+		}
+		return NewString(savedPath)
+	}},
+	"read": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for read. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileUpload)
+		if !ok {
+			return newError("receiver for read must be FILE_UPLOAD, got %s", args[0].Type())
+		}
+		content, err := self.ReadAsString()
+		if err != nil {
+			return newError("read failed: %v", err)
+		}
+		return NewString(content)
+	}},
+	"readBytes": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for readBytes. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileUpload)
+		if !ok {
+			return newError("receiver for readBytes must be FILE_UPLOAD, got %s", args[0].Type())
+		}
+		data, err := self.ReadAll()
+		if err != nil {
+			return newError("readBytes failed: %v", err)
+		}
+		return NewBytesBufferFromBytes(data)
+	}},
+	"hashSHA256": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for hashSHA256. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileUpload)
+		if !ok {
+			return newError("receiver for hashSHA256 must be FILE_UPLOAD, got %s", args[0].Type())
+		}
+		hash, err := self.HashSHA256()
+		if err != nil {
+			return newError("hashSHA256 failed: %v", err)
+		}
+		return NewString(hash)
+	}},
+}
+
+// ============================================================
+// FileUploadResult Methods
+// ============================================================
+
+var fileUploadResultMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"success": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for success. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileUploadResult)
+		if !ok {
+			return newError("receiver for success must be FILE_UPLOAD_RESULT, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.Success}
+	}},
+	"message": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for message. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileUploadResult)
+		if !ok {
+			return newError("receiver for message must be FILE_UPLOAD_RESULT, got %s", args[0].Type())
+		}
+		return NewString(self.Message)
+	}},
+	"path": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for path. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileUploadResult)
+		if !ok {
+			return newError("receiver for path must be FILE_UPLOAD_RESULT, got %s", args[0].Type())
+		}
+		return NewString(self.FilePath)
+	}},
+	"originalName": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for originalName. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileUploadResult)
+		if !ok {
+			return newError("receiver for originalName must be FILE_UPLOAD_RESULT, got %s", args[0].Type())
+		}
+		return NewString(self.OriginalName)
+	}},
+	"size": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for size. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileUploadResult)
+		if !ok {
+			return newError("receiver for size must be FILE_UPLOAD_RESULT, got %s", args[0].Type())
+		}
+		return NewInt(self.Size)
+	}},
+}
+
+// ============================================================
+// File Methods
+// ============================================================
+
+var fileMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	// close closes the file handle.
+	"close": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for close. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*File)
+		if !ok {
+			return newError("receiver for close must be FILE, got %s", args[0].Type())
+		}
+		err := self.Close()
+		if err != nil {
+			return newError("close failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	// read reads up to n bytes from the file and returns as string.
+	"read": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for read. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*File)
+		if !ok {
+			return newError("receiver for read must be FILE, got %s", args[0].Type())
+		}
+		n, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for read must be INT, got %s", args[1].Type())
+		}
+		data, err := self.Read(int(n.Value))
+		if err != nil {
+			return newError("read failed: %s", err.Error())
+		}
+		return NewString(string(data))
+	}},
+	// readBytes reads up to n bytes from the file and returns as array of integers.
+	"readBytes": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for readBytes. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*File)
+		if !ok {
+			return newError("receiver for readBytes must be FILE, got %s", args[0].Type())
+		}
+		n, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for readBytes must be INT, got %s", args[1].Type())
+		}
+		data, err := self.Read(int(n.Value))
+		if err != nil {
+			return newError("readBytes failed: %s", err.Error())
+		}
+		elements := make([]Object, len(data))
+		for i, b := range data {
+			elements[i] = NewInt(int64(b))
+		}
+		return NewArray(elements)
+	}},
+	// readLine reads a single line from the file.
+	"readLine": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for readLine. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*File)
+		if !ok {
+			return newError("receiver for readLine must be FILE, got %s", args[0].Type())
+		}
+		line, err := self.ReadLine()
+		if err != nil {
+			if err.Error() == "EOF" {
+				return NULL
+			}
+			return newError("readLine failed: %s", err.Error())
+		}
+		return NewString(line)
+	}},
+	// readAll reads all remaining content from the file.
+	"readAll": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for readAll. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*File)
+		if !ok {
+			return newError("receiver for readAll must be FILE, got %s", args[0].Type())
+		}
+		data, err := self.ReadAll()
+		if err != nil {
+			return newError("readAll failed: %s", err.Error())
+		}
+		return NewString(string(data))
+	}},
+	// write writes a string to the file.
+	"write": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for write. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*File)
+		if !ok {
+			return newError("receiver for write must be FILE, got %s", args[0].Type())
+		}
+		s, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for write must be STRING, got %s", args[1].Type())
+		}
+		n, err := self.WriteString(s.Value)
+		if err != nil {
+			return newError("write failed: %s", err.Error())
+		}
+		return NewInt(int64(n))
+	}},
+	// writeLine writes a string with newline to the file.
+	"writeLine": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for writeLine. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*File)
+		if !ok {
+			return newError("receiver for writeLine must be FILE, got %s", args[0].Type())
+		}
+		s, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for writeLine must be STRING, got %s", args[1].Type())
+		}
+		n, err := self.WriteString(s.Value + "\n")
+		if err != nil {
+			return newError("writeLine failed: %s", err.Error())
+		}
+		return NewInt(int64(n))
+	}},
+	// seek sets the file position.
+	"seek": {Fn: func(args ...Object) Object {
+		if len(args) < 2 || len(args) > 3 {
+			return newError("wrong number of arguments for seek. got=%d, want=2 or 3", len(args))
+		}
+		self, ok := args[0].(*File)
+		if !ok {
+			return newError("receiver for seek must be FILE, got %s", args[0].Type())
+		}
+		offset, ok := args[1].(*Int)
+		if !ok {
+			return newError("offset for seek must be INT, got %s", args[1].Type())
+		}
+		whence := 0 // default: seek from start
+		if len(args) == 3 {
+			w, ok := args[2].(*Int)
+			if !ok {
+				return newError("whence for seek must be INT, got %s", args[2].Type())
+			}
+			whence = int(w.Value)
+		}
+		pos, err := self.Seek(offset.Value, whence)
+		if err != nil {
+			return newError("seek failed: %s", err.Error())
+		}
+		return NewInt(pos)
+	}},
+	// tell returns the current file position.
+	"tell": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for tell. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*File)
+		if !ok {
+			return newError("receiver for tell must be FILE, got %s", args[0].Type())
+		}
+		return NewInt(self.Tell())
+	}},
+	// flush flushes buffered data to disk.
+	"flush": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for flush. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*File)
+		if !ok {
+			return newError("receiver for flush must be FILE, got %s", args[0].Type())
+		}
+		err := self.Flush()
+		if err != nil {
+			return newError("flush failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	// isOpen returns whether the file is open.
+	"isOpen": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for isOpen. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*File)
+		if !ok {
+			return newError("receiver for isOpen must be FILE, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.IsOpen()}
+	}},
+	// name returns the file path.
+	"name": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for name. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*File)
+		if !ok {
+			return newError("receiver for name must be FILE, got %s", args[0].Type())
+		}
+		return NewString(self.GetName())
+	}},
+	// mode returns the file open mode.
+	"mode": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for mode. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*File)
+		if !ok {
+			return newError("receiver for mode must be FILE, got %s", args[0].Type())
+		}
+		return NewString(string(self.GetMode()))
+	}},
+	// lock places a lock on the file.
+	"lock": {Fn: func(args ...Object) Object {
+		if len(args) < 2 || len(args) > 3 {
+			return newError("wrong number of arguments for lock. got=%d, want=2 or 3", len(args))
+		}
+		self, ok := args[0].(*File)
+		if !ok {
+			return newError("receiver for lock must be FILE, got %s", args[0].Type())
+		}
+		lockType, ok := args[1].(*Int)
+		if !ok {
+			return newError("lockType for lock must be INT, got %s", args[1].Type())
+		}
+		blocking := true
+		if len(args) == 3 {
+			b, ok := args[2].(*Bool)
+			if !ok {
+				return newError("blocking for lock must be BOOL, got %s", args[2].Type())
+			}
+			blocking = b.Value
+		}
+		err := self.Lock(FileLockType(lockType.Value), blocking)
+		if err != nil {
+			return newError("lock failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	// unlock releases the file lock.
+	"unlock": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for unlock. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*File)
+		if !ok {
+			return newError("receiver for unlock must be FILE, got %s", args[0].Type())
+		}
+		err := self.Unlock()
+		if err != nil {
+			return newError("unlock failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	// truncate truncates the file to the specified size.
+	"truncate": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for truncate. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*File)
+		if !ok {
+			return newError("receiver for truncate must be FILE, got %s", args[0].Type())
+		}
+		size, ok := args[1].(*Int)
+		if !ok {
+			return newError("size for truncate must be INT, got %s", args[1].Type())
+		}
+		err := self.Truncate(size.Value)
+		if err != nil {
+			return newError("truncate failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	// stat returns file information.
+	"stat": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for stat. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*File)
+		if !ok {
+			return newError("receiver for stat must be FILE, got %s", args[0].Type())
+		}
+		info, err := self.Stat()
+		if err != nil {
+			return newError("stat failed: %s", err.Error())
+		}
+		return NewFileInfo(info, self.Path)
+	}},
+}
+
+// ============================================================
+// FileInfo Methods
+// ============================================================
+
+var fileInfoMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	// name returns the file name.
+	"name": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for name. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileInfo)
+		if !ok {
+			return newError("receiver for name must be FILE_INFO, got %s", args[0].Type())
+		}
+		return NewString(self.Name)
+	}},
+	// size returns the file size in bytes.
+	"size": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for size. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileInfo)
+		if !ok {
+			return newError("receiver for size must be FILE_INFO, got %s", args[0].Type())
+		}
+		return NewInt(self.Size)
+	}},
+	// mode returns the file mode as an integer.
+	"mode": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for mode. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileInfo)
+		if !ok {
+			return newError("receiver for mode must be FILE_INFO, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.Mode))
+	}},
+	// modeStr returns the file mode as an octal string.
+	"modeStr": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for modeStr. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileInfo)
+		if !ok {
+			return newError("receiver for modeStr must be FILE_INFO, got %s", args[0].Type())
+		}
+		return NewString(self.GetModeString())
+	}},
+	// modTime returns the modification time as a formatted string.
+	"modTime": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for modTime. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileInfo)
+		if !ok {
+			return newError("receiver for modTime must be FILE_INFO, got %s", args[0].Type())
+		}
+		return NewString(self.GetModTimeString())
+	}},
+	// modTimeUnix returns the modification time as Unix timestamp in milliseconds.
+	"modTimeUnix": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for modTimeUnix. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileInfo)
+		if !ok {
+			return newError("receiver for modTimeUnix must be FILE_INFO, got %s", args[0].Type())
+		}
+		return NewInt(self.GetModTimeUnix())
+	}},
+	// isDir returns whether the file is a directory.
+	"isDir": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for isDir. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileInfo)
+		if !ok {
+			return newError("receiver for isDir must be FILE_INFO, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.IsDir}
+	}},
+	// isFile returns whether this is a regular file.
+	"isFile": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for isFile. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileInfo)
+		if !ok {
+			return newError("receiver for isFile must be FILE_INFO, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.IsRegular()}
+	}},
+	// isSymlink returns whether this is a symbolic link.
+	"isSymlink": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for isSymlink. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileInfo)
+		if !ok {
+			return newError("receiver for isSymlink must be FILE_INFO, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.IsSymlink()}
+	}},
+	// path returns the full path to the file.
+	"path": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for path. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileInfo)
+		if !ok {
+			return newError("receiver for path must be FILE_INFO, got %s", args[0].Type())
+		}
+		return NewString(self.FullPath)
 	}},
 }

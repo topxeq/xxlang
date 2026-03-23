@@ -26,6 +26,7 @@ const (
 	ClosureType      ObjectType = "CLOSURE"
 	ModuleType       ObjectType = "MODULE"
 	StringBuilderType ObjectType = "STRING_BUILDER"
+	BytesBufferType  ObjectType = "BYTES_BUFFER"
 	BigIntType       ObjectType = "BIGINT"
 	BigFloatType     ObjectType = "BIGFLOAT"
 	HttpReqType      ObjectType = "HTTP_REQ"
@@ -40,7 +41,11 @@ const (
 	CondType         ObjectType = "COND"
 	AtomicIntType    ObjectType = "ATOMICINT"
 	GoroutineType    ObjectType = "GOROUTINE"
-	ContextType      ObjectType = "CONTEXT"
+	ContextType         ObjectType = "CONTEXT"
+	FileUploadType      ObjectType = "FILE_UPLOAD"
+	FileUploadResultType ObjectType = "FILE_UPLOAD_RESULT"
+	FileType            ObjectType = "FILE"
+	FileInfoType        ObjectType = "FILE_INFO"
 )
 
 // TypeTag is a fast integer type identifier for hot path checks
@@ -66,6 +71,7 @@ const (
 	TagClosure
 	TagModule
 	TagStringBuilder
+	TagBytesBuffer
 	TagBigInt
 	TagBigFloat
 	TagHttpReq
@@ -81,6 +87,10 @@ const (
 	TagAtomicInt
 	TagGoroutine
 	TagContext
+	TagFileUpload
+	TagFileUploadResult
+	TagFile
+	TagFileInfo
 	TagUnknown
 )
 

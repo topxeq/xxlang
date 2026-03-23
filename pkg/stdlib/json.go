@@ -5,6 +5,7 @@ package stdlib
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/topxeq/xxlang/pkg/objects"
 )
@@ -106,6 +107,220 @@ func init() {
 				}
 
 				return jsonToXxlang(value)
+			}),
+
+			// ============================================================
+			// File-based JSON operations
+			// ============================================================
+
+			// readFile reads a JSON file and parses it.
+			// Usage: data = json.readFile(path)
+			"readFile": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("readFile() takes exactly 1 argument")
+				}
+				path, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("readFile() requires a string path")
+				}
+
+				content, err := os.ReadFile(path.Value)
+				if err != nil {
+					return Error(fmt.Sprintf("readFile() failed: %s", err.Error()))
+				}
+
+				var value interface{}
+				if err := json.Unmarshal(content, &value); err != nil {
+					return Error(fmt.Sprintf("readFile() parse failed: %s", err.Error()))
+				}
+
+				return jsonToXxlang(value)
+			}),
+
+			// writeFile writes an object to a JSON file.
+			// Usage: json.writeFile(path, data)
+			"writeFile": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 2 || len(args) > 3 {
+					return Error("writeFile() takes 2 or 3 arguments")
+				}
+				path, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("writeFile() requires a string path")
+				}
+
+				goValue, err := xxlangToJSON(args[1])
+				if err != nil {
+					return err
+				}
+
+				var bytes []byte
+				var marshalErr error
+				if len(args) == 3 {
+					// Pretty print with indent
+					indent := "  "
+					if indentStr, ok := args[2].(*objects.String); ok {
+						indent = indentStr.Value
+					} else if indentInt, ok := args[2].(*objects.Int); ok {
+						indent = ""
+						for i := int64(0); i < indentInt.Value; i++ {
+							indent += " "
+						}
+					}
+					bytes, marshalErr = json.MarshalIndent(goValue, "", indent)
+				} else {
+					bytes, marshalErr = json.Marshal(goValue)
+				}
+
+				if marshalErr != nil {
+					return Error(fmt.Sprintf("writeFile() failed: %s", marshalErr.Error()))
+				}
+
+				if err := os.WriteFile(path.Value, bytes, 0644); err != nil {
+					return Error(fmt.Sprintf("writeFile() failed: %s", err.Error()))
+				}
+
+				return Null()
+			}),
+
+			// writeFilePretty writes an object to a JSON file with pretty formatting.
+			// Usage: json.writeFilePretty(path, data, [indent])
+			"writeFilePretty": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 2 || len(args) > 3 {
+					return Error("writeFilePretty() takes 2 or 3 arguments")
+				}
+				path, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("writeFilePretty() requires a string path")
+				}
+
+				goValue, err := xxlangToJSON(args[1])
+				if err != nil {
+					return err
+				}
+
+				indent := "  "
+				if len(args) == 3 {
+					if indentStr, ok := args[2].(*objects.String); ok {
+						indent = indentStr.Value
+					}
+				}
+
+				bytes, marshalErr := json.MarshalIndent(goValue, "", indent)
+				if marshalErr != nil {
+					return Error(fmt.Sprintf("writeFilePretty() failed: %s", marshalErr.Error()))
+				}
+
+				if err := os.WriteFile(path.Value, bytes, 0644); err != nil {
+					return Error(fmt.Sprintf("writeFilePretty() failed: %s", err.Error()))
+				}
+
+				return Null()
+			}),
+
+			// updateFile reads a JSON file, updates it with new values, and writes it back.
+			// Usage: json.updateFile(path, updates)
+			"updateFile": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 2 {
+					return Error("updateFile() takes exactly 2 arguments")
+				}
+				path, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("updateFile() requires a string path")
+				}
+				updates, ok := args[1].(*objects.Map)
+				if !ok {
+					return Error("updateFile() requires a map for updates")
+				}
+
+				// Read existing file
+				content, err := os.ReadFile(path.Value)
+				if err != nil {
+					return Error(fmt.Sprintf("updateFile() read failed: %s", err.Error()))
+				}
+
+				// Parse existing content
+				var existing map[string]interface{}
+				if err := json.Unmarshal(content, &existing); err != nil {
+					// If file is empty or invalid, start with empty map
+					existing = make(map[string]interface{})
+				}
+
+				// Apply updates
+				for _, pair := range updates.Pairs {
+					key, ok := pair.Key.(*objects.String)
+					if !ok {
+						continue
+					}
+					goVal, err := xxlangToJSON(pair.Value)
+					if err != nil {
+						continue
+					}
+					existing[key.Value] = goVal
+				}
+
+				// Write back
+				bytes, marshalErr := json.MarshalIndent(existing, "", "  ")
+				if marshalErr != nil {
+					return Error(fmt.Sprintf("updateFile() marshal failed: %s", marshalErr.Error()))
+				}
+
+				if err := os.WriteFile(path.Value, bytes, 0644); err != nil {
+					return Error(fmt.Sprintf("updateFile() write failed: %s", err.Error()))
+				}
+
+				return Null()
+			}),
+
+			// appendToArrayFile appends an element to a JSON array file.
+			// Usage: json.appendToArrayFile(path, element)
+			"appendToArrayFile": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 2 {
+					return Error("appendToArrayFile() takes exactly 2 arguments")
+				}
+				path, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("appendToArrayFile() requires a string path")
+				}
+
+				// Read existing file
+				content, err := os.ReadFile(path.Value)
+				var existing []interface{}
+				if err != nil {
+					// File doesn't exist, start with empty array
+					existing = []interface{}{}
+				} else {
+					// Parse existing content
+					if err := json.Unmarshal(content, &existing); err != nil {
+						// If file doesn't contain an array, wrap it in an array
+						var singleValue interface{}
+						if unmarshalErr := json.Unmarshal(content, &singleValue); unmarshalErr == nil {
+							existing = []interface{}{singleValue}
+						} else {
+							existing = []interface{}{}
+						}
+					}
+				}
+
+				// Convert new element
+				newElem, convErr := xxlangToJSON(args[1])
+				if convErr != nil {
+					return convErr
+				}
+
+				// Append
+				existing = append(existing, newElem)
+
+				// Write back
+				bytes, marshalErr := json.MarshalIndent(existing, "", "  ")
+				if marshalErr != nil {
+					return Error(fmt.Sprintf("appendToArrayFile() marshal failed: %s", marshalErr.Error()))
+				}
+
+				if err := os.WriteFile(path.Value, bytes, 0644); err != nil {
+					return Error(fmt.Sprintf("appendToArrayFile() write failed: %s", err.Error()))
+				}
+
+				return Null()
 			}),
 		},
 	})
