@@ -301,7 +301,7 @@ class DataProcessor {
         return data
     }
 
-    func run(data) {
+    func execute(data) {
         pln("Running ", this.name, "...")
         var result = this.process(data)
         pln("Done. Result: ", result)
@@ -339,5 +339,5 @@ var processors = [
 ]
 
 for (proc in processors) {
-    proc.run("hello world")
+    proc.execute("hello world")
 }

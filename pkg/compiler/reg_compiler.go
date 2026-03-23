@@ -3032,6 +3032,13 @@ func (c *RegCompiler) freeTempReg(reg int) {
 		return // Don't free reserved registers
 	}
 
+	// Check if register is already in free list (prevent double-free)
+	for _, r := range c.freeRegs {
+		if r == reg {
+			return // Already freed, skip
+		}
+	}
+
 	// If this is the last allocated register, decrement the counter
 	if reg == c.nextTempReg-1 {
 		c.nextTempReg--
