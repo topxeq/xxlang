@@ -43,11 +43,11 @@ pln("result =", result)
 
 // With built-in functions
 numbers := [1, 2, 3, 4, 5]
-sum := 0
+total := 0
 for (n in numbers) {
-    sum = sum + n
+    total = total + n
 }
-pln("sum =", sum)
+pln("total =", total)
 
 // ============================================
 // In loops
@@ -55,7 +55,7 @@ pln("sum =", sum)
 
 // Short declaration in for loop
 total := 0
-for (i := 1; i <= 10; i++) {
+for (var i = 1; i <= 10; i++) {
     total = total + i
 }
 pln("Sum 1-10:", total)
@@ -67,8 +67,8 @@ pln("Sum 1-10:", total)
 data := [10, 20, 30, 40, 50]
 
 // Calculate average
-len := len(data)
-avg := sum(data) / len
+dataLen := len(data)
+avg := sum(data) / dataLen
 pln("Average:", avg)
 
 // Conditional assignment

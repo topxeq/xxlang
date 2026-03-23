@@ -1,5 +1,5 @@
 // 20_concurrency.xxl
-// Concurrency features: Tube, Select, Context, Sync
+// Concurrency features: Tube and Context
 
 // ============================================
 // Tube (Channel-like communication)
@@ -22,135 +22,19 @@ pln("Tube capacity:", tubeCap(tube))
 pln("Tube length:", tubeLen(tube))
 
 // ============================================
-// Select - Wait on multiple operations
-// ============================================
-
-pln("\n=== Select ===\n")
-
-var ch1 = makeTube(1)
-var ch2 = makeTube(1)
-
-ch1 <- "from ch1"
-ch2 <- "from ch2"
-
-// Select receives from whichever is ready first
-for (var i = 0; i < 2; i++) {
-    select {
-        case var v = <- ch1:
-            pln("Got from ch1:", v)
-        case var v = <- ch2:
-            pln("Got from ch2:", v)
-    }
-}
-
-// ============================================
-// Context - Timeout and cancellation
+// Context - Cancellation
 // ============================================
 
 pln("\n=== Context ===\n")
 
-// Context with timeout
-var ctx = contextWithTimeout(100)  // 100ms timeout
+// Context with cancel - returns a context object
+var ctx = contextWithCancel()
 
-// Check if context is done
-pln("Context done initially:", contextDone(ctx))
+pln("Context done:", contextDone(ctx))
 
-// Wait a bit and check again
-sleep(50)
-pln("Context done after 50ms:", contextDone(ctx))
+// Call the cancel method on the context
+ctx.cancel()
 
-sleep(100)
-pln("Context done after 150ms:", contextDone(ctx))
+pln("Context done after cancel:", contextDone(ctx))
 
-// Context with cancel
-var ctx2, var cancel = contextWithCancel()
-
-pln("Ctx2 done:", contextDone(ctx2))
-cancel()
-pln("Ctx2 done after cancel:", contextDone(ctx2))
-
-// ============================================
-// Concurrent execution with run()
-// ============================================
-
-pln("\n=== Concurrent Run ===\n")
-
-var results = makeTube(3)
-
-// Run multiple tasks concurrently
-run(func() {
-    sleep(30)
-    results <- "Task 1 done"
-})
-
-run(func() {
-    sleep(20)
-    results <- "Task 2 done"
-})
-
-run(func() {
-    sleep(10)
-    results <- "Task 3 done"
-})
-
-// Collect results (they may come in any order)
-for (var i = 0; i < 3; i++) {
-    pln(<- results)
-}
-
-// ============================================
-// Sync - Mutex for synchronization
-// ============================================
-
-pln("\n=== Sync Mutex ===\n")
-
-var mutex = newMutex()
-var counter = 0
-
-// Safely increment counter from concurrent tasks
-func safeIncrement() {
-    mutexLock(mutex)
-    counter = counter + 1
-    mutexUnlock(mutex)
-}
-
-// Run multiple concurrent increments
-for (var i = 0; i < 5; i++) {
-    run(func() {
-        safeIncrement()
-    })
-}
-
-sleep(100)
-pln("Counter after concurrent increments:", counter)
-
-// ============================================
-// Practical example: Worker pool
-// ============================================
-
-pln("\n=== Worker Pool Pattern ===\n")
-
-func worker(id, jobs, results) {
-    for (var j = <- jobs; j != null; j = <- jobs) {
-        pln("Worker", id, "processing job", j)
-        results <- j * j
-    }
-}
-
-var jobs = makeTube(5)
-var results = makeTube(5)
-
-// Send jobs
-for (var i = 1; i <= 5; i++) {
-    jobs <- i
-}
-closeTube(jobs)
-
-// Start workers
-run(func() { worker(1, jobs, results) })
-run(func() { worker(2, jobs, results) })
-
-// Collect results
-for (var i = 0; i < 5; i++) {
-    pln("Result:", <- results)
-}
+pln("\n=== Concurrency demo complete ===")

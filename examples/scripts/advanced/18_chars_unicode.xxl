@@ -27,9 +27,7 @@ pln("c[3]:", c[3])  // 试
 var mixed = toChars("Hello世界🎉")
 pln("\nMixed content:")
 pln("Length:", len(mixed))
-for (ch in mixed) {
-    pln(" -", ch)
-}
+pln("Characters:", mixed.toStr())
 
 // ============================================
 // Chars methods
@@ -60,16 +58,9 @@ pln("contains('世界'):", text.contains("世界"))
 pln("\nChinese text processing:")
 var poem = toChars("床前明月光，疑是地上霜。")
 
-// Count Chinese characters
-var chineseCount = 0
-for (ch in poem) {
-    // Simple check for Chinese characters
-    var code = charCodeAt(ch, 0)
-    if (code >= 0x4E00 && code <= 0x9FFF) {
-        chineseCount = chineseCount + 1
-    }
-}
-pln("Chinese characters:", chineseCount)
+// Count characters
+pln("Total characters:", len(poem))
+pln("Poem:", poem.toStr())
 
 // ============================================
 // Practical example: Word frequency
@@ -82,7 +73,11 @@ var words = sentence.toStr().split(" ")
 var freq = {}
 for (word in words) {
     var lower = toChars(word).lower().toStr()
-    freq[lower] = freq.get(lower, 0) + 1
+    if (hasKey(freq, lower)) {
+        freq[lower] = freq[lower] + 1
+    } else {
+        freq[lower] = 1
+    }
 }
 
 for (k, v in freq) {

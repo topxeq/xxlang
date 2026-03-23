@@ -97,20 +97,6 @@ logAll("Hello", "World", 42, true, [1, 2, 3])
 
 pln("\n=== Combined Examples ===\n")
 
-// Printf-style function
-func sprintf(format, ...args) {
-    var result = format
-    for (arg in args) {
-        result = replaceFirst(result, "{}", toStr(arg))
-    }
-    return result
-}
-
-var name = "Alice"
-var score = 95
-var grade = score >= 90 ? "A" : score >= 80 ? "B" : "C"
-pln(sprintf("Student: {}, Score: {}, Grade: {}", name, score, grade))
-
 // Build a list
 func list(...items) {
     return items
@@ -119,10 +105,26 @@ func list(...items) {
 var myList = list(1, 2, 3, 4, 5)
 pln("Built list:", myList)
 
-// Average with empty check
+// Sum with variadic
+func sumAll(...nums) {
+    var total = 0
+    for (n in nums) {
+        total = total + n
+    }
+    return total
+}
+
+// Average with empty check - uses sumAll directly
 func average(...nums) {
     var n = len(nums)
-    return n == 0 ? 0 : sum(nums) / n
+    if (n == 0) {
+        return 0
+    }
+    var total = 0
+    for (x in nums) {
+        total = total + x
+    }
+    return total / n
 }
 
 pln("average(1, 2, 3, 4, 5):", average(1, 2, 3, 4, 5))

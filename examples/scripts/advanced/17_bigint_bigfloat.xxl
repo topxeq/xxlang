@@ -23,7 +23,7 @@ pln("a * b =", a * b)
 func factorialBig(n) {
     var result = 1n
     for (var i = 2; i <= n; i++) {
-        result = result * toBigInt(i)
+        result = result * i.toBigInt()
     }
     return result
 }
@@ -68,6 +68,6 @@ pln("typeOf(3.14m):", typeOf(3.14m))
 // Conversion methods
 pln("\nConversions:")
 pln("42.toBigInt():", 42.toBigInt())
-pln("3.14.toBigFloat():", 3.14.toBigFloat())
+pln("(42n).toBigFloat():", 42n.toBigFloat())
 pln("(42n).toInt():", 42n.toInt())
 pln("(3.14m).toFloat():", 3.14m.toFloat())
