@@ -233,7 +233,7 @@ pln(cfg["cloudUrlBase"])
 
 // Example config file (~/.xxl/settings.json):
 // {
-//   "cloudUrlBase": "https://script.topget.org/",
+//   "cloudUrlBase": "https://example.com/",
 //   "timeout": 30,
 //   "debug": true
 // }

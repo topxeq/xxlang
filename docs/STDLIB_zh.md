@@ -182,7 +182,7 @@ pln(cfg["cloudUrlBase"])
 
 // 示例配置文件 (~/.xxl/settings.json):
 // {
-//   "cloudUrlBase": "https://script.topget.org/",
+//   "cloudUrlBase": "https://example.com/",
 //   "timeout": 30,
 //   "debug": true
 // }
