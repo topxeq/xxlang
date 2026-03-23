@@ -12,6 +12,7 @@ io.println("Hello, World!")
 ## Table of Contents
 
 - [io](#io) - Input/output operations
+- [file](#file) - Streaming file operations with File object
 - [os](#os) - Operating system utilities and configuration
 - [string](#string) - String utilities
 - [chars](#chars) - Unicode character handling
@@ -20,6 +21,7 @@ io.println("Hello, World!")
 - [math](#math) - Mathematical functions
 - [array](#array) - Array utilities
 - [json](#json) - JSON encoding/decoding
+- [csv](#csv) - CSV file reading and writing
 - [regex](#regex) - Regular expressions
 - [crypto](#crypto) - Cryptographic functions
 - [time](#time) - Time and date functions
@@ -27,6 +29,8 @@ io.println("Hello, World!")
 - [encoding](#encoding) - Base64 and hex encoding/decoding
 - [uuid](#uuid) - UUID generation
 - [debug](#debug) - Debugging utilities
+
+> **See also:** [File Operations Guide](FILE.md) for comprehensive file handling documentation.
 
 ---
 
@@ -157,6 +161,53 @@ Returns command-line arguments as array.
 var args = io.args()
 io.println(args[0])  // Program name
 ```
+
+---
+
+## file
+
+Streaming file operations with File object for read/write/seek/lock operations.
+
+> **See [File Operations Guide](FILE.md) for complete documentation.**
+
+### Quick Start
+
+```xxl
+import * as file from "file"
+
+// Simple read/write
+var content = file.readAll("data.txt")
+file.writeAll("output.txt", "Hello!")
+
+// Streaming operations
+var f = file.openWrite("log.txt")
+f.writeLine("Log entry 1")
+f.writeLine("Log entry 2")
+f.close()
+
+// File information
+var info = file.stat("data.txt")
+io.println("Size: " + info.size().toStr())
+io.println("Modified: " + info.modTime())
+```
+
+### Key Functions
+
+| Function | Description |
+|----------|-------------|
+| `open(path, mode)` | Open file with mode ("r", "w", "a", "rw") |
+| `openRead(path)` | Open for reading |
+| `openWrite(path)` | Open for writing (truncates) |
+| `openAppend(path)` | Open for appending |
+| `create(path)` | Create new file |
+| `readAll(path)` | Read entire file as string |
+| `writeAll(path, content)` | Write string to file |
+| `readLines(path)` | Read lines into array |
+| `copy(src, dst)` | Copy file |
+| `move(src, dst)` | Move/rename file |
+| `exists(path)` | Check if file exists |
+| `stat(path)` | Get FileInfo object |
+| `glob(pattern)` | Match files by pattern |
 
 ---
 
@@ -1299,6 +1350,69 @@ Alias for parse.
 ```xxl
 decode('{"x": 10}')["x"]  // 10
 ```
+
+#### readFile(path)
+Reads and parses a JSON file.
+
+```xxl
+var config = json.readFile("config.json")
+io.println(config["server"])
+```
+
+#### writeFile(path, obj)
+Writes object to JSON file.
+
+```xxl
+var data = {"name": "test", "values": [1, 2, 3]}
+json.writeFile("output.json", data)
+```
+
+#### writeFilePretty(path, obj, indent)
+Writes formatted JSON to file.
+
+```xxl
+json.writeFilePretty("output.json", data, "  ")
+```
+
+---
+
+## csv
+
+CSV file reading and writing operations.
+
+> **See [File Operations Guide](FILE.md) for complete CSV documentation.**
+
+### Quick Start
+
+```xxl
+import * as csv from "csv"
+
+// Read CSV file
+var data = csv.read("data.csv")
+
+// Read with header row (returns array of maps)
+var records = csv.readWithHeader("users.csv")
+io.println(records[0]["name"])
+
+// Write CSV file
+var rows = [
+    ["name", "age"],
+    ["Alice", "30"],
+    ["Bob", "25"]
+]
+csv.write("output.csv", rows)
+```
+
+### Key Functions
+
+| Function | Description |
+|----------|-------------|
+| `read(path)` | Read CSV as array of arrays |
+| `readWithHeader(path)` | Read CSV with header as array of maps |
+| `write(path, data)` | Write array of arrays to CSV |
+| `writeWithHeader(path, data, headers)` | Write array of maps with header |
+| `parse(str)` | Parse CSV string |
+| `stringify(data)` | Convert to CSV string |
 
 ---
 
