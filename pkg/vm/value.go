@@ -178,7 +178,14 @@ func NewObject(obj objects.Object) Value {
 	// Fast path for common types - unbox them
 	switch o := obj.(type) {
 	case *objects.Int:
-		return NewInt(o.Value)
+		// Check if the integer fits in 48 bits (signed)
+		// Range: -2^47 to 2^47-1
+		const maxInt48 = int64(1<<47 - 1)
+		const minInt48 = int64(-1 << 47)
+		if o.Value >= minInt48 && o.Value <= maxInt48 {
+			return NewInt(o.Value)
+		}
+		// Large integers are stored as objects to avoid truncation
 	case *objects.Float:
 		return NewFloat(o.Value)
 	case *objects.Bool:
@@ -235,6 +242,35 @@ func (v Value) ToObject() objects.Object {
 // IsInt returns true if the value is a tagged integer
 func (v Value) IsInt() bool {
 	return (uint64(v) >> 48) == tagInt
+}
+
+// IsIntValue returns true if the value is an integer (tagged or Int object)
+func (v Value) IsIntValue() bool {
+	if v.IsInt() {
+		return true
+	}
+	if v.IsObject() {
+		if obj := v.GetObject(); obj != nil {
+			_, ok := obj.(*objects.Int)
+			return ok
+		}
+	}
+	return false
+}
+
+// GetIntValue returns the integer value for both tagged ints and Int objects
+func (v Value) GetIntValue() (int64, bool) {
+	if v.IsInt() {
+		return v.GetInt(), true
+	}
+	if v.IsObject() {
+		if obj := v.GetObject(); obj != nil {
+			if intObj, ok := obj.(*objects.Int); ok {
+				return intObj.Value, true
+			}
+		}
+	}
+	return 0, false
 }
 
 // IsFloat returns true if the value is a native float
@@ -419,6 +455,14 @@ func (v Value) ToFloat() (float64, bool) {
 	if v.IsInt() {
 		return float64(v.GetInt()), true
 	}
+	// Handle Int objects stored in registry (large integers)
+	if v.IsObject() {
+		if obj := v.GetObject(); obj != nil {
+			if intObj, ok := obj.(*objects.Int); ok {
+				return float64(intObj.Value), true
+			}
+		}
+	}
 	return 0, false
 }
 
@@ -433,7 +477,7 @@ func (v Value) Add(other Value) (Value, bool) {
 	vTag := vBits >> 48
 	otherTag := otherBits >> 48
 
-	// Both integers - direct add without type method calls
+	// Both tagged integers - direct add without type method calls
 	if vTag == tagInt && otherTag == tagInt {
 		vPayload := int64(vBits & payloadMask)
 		otherPayload := int64(otherBits & payloadMask)
@@ -445,6 +489,23 @@ func (v Value) Add(other Value) (Value, bool) {
 			otherPayload -= (1 << 48)
 		}
 		return NewInt(vPayload + otherPayload), true
+	}
+
+	// Handle Int values (tagged or object-stored) - preserve precision
+	vIsInt := v.IsIntValue()
+	otherIsInt := other.IsIntValue()
+	if vIsInt && otherIsInt {
+		vInt, _ := v.GetIntValue()
+		otherInt, _ := other.GetIntValue()
+		result := vInt + otherInt
+		// Check if result fits in 48 bits
+		const maxInt48 = int64(1<<47 - 1)
+		const minInt48 = int64(-1 << 47)
+		if result >= minInt48 && result <= maxInt48 {
+			return NewInt(result), true
+		}
+		// Result is large - store as Int object
+		return NewObject(objects.NewInt(result)), true
 	}
 
 	// Check for string concatenation only if at least one is an object
@@ -518,8 +579,8 @@ func (v Value) addBigInt(other Value) (Value, bool) {
 	// Convert left operand to BigInt
 	if v.IsBigInt() {
 		leftBigInt = v.GetObject().(*objects.BigInt)
-	} else if v.IsInt() {
-		leftBigInt = objects.NewBigIntFromInt64(v.GetInt())
+	} else if vInt, ok := v.GetIntValue(); ok {
+		leftBigInt = objects.NewBigIntFromInt64(vInt)
 	} else if v.IsFloat() {
 		// Promote float to BigFloat first, then to BigInt (truncates)
 		leftBigInt = objects.NewBigFloatFromFloat64(v.GetFloat()).ToBigInt()
@@ -531,8 +592,8 @@ func (v Value) addBigInt(other Value) (Value, bool) {
 	var rightBigInt *objects.BigInt
 	if other.IsBigInt() {
 		rightBigInt = other.GetObject().(*objects.BigInt)
-	} else if other.IsInt() {
-		rightBigInt = objects.NewBigIntFromInt64(other.GetInt())
+	} else if otherInt, ok := other.GetIntValue(); ok {
+		rightBigInt = objects.NewBigIntFromInt64(otherInt)
 	} else if other.IsFloat() {
 		rightBigInt = objects.NewBigFloatFromFloat64(other.GetFloat()).ToBigInt()
 	} else {
@@ -552,8 +613,8 @@ func (v Value) addBigFloat(other Value) (Value, bool) {
 		leftBigFloat = v.GetObject().(*objects.BigFloat)
 	} else if v.IsBigInt() {
 		leftBigFloat = v.GetObject().(*objects.BigInt).ToBigFloat()
-	} else if v.IsInt() {
-		leftBigFloat = objects.NewBigFloatFromInt64(v.GetInt())
+	} else if vInt, ok := v.GetIntValue(); ok {
+		leftBigFloat = objects.NewBigFloatFromInt64(vInt)
 	} else if v.IsFloat() {
 		leftBigFloat = objects.NewBigFloatFromFloat64(v.GetFloat())
 	} else {
@@ -566,8 +627,8 @@ func (v Value) addBigFloat(other Value) (Value, bool) {
 		rightBigFloat = other.GetObject().(*objects.BigFloat)
 	} else if other.IsBigInt() {
 		rightBigFloat = other.GetObject().(*objects.BigInt).ToBigFloat()
-	} else if other.IsInt() {
-		rightBigFloat = objects.NewBigFloatFromInt64(other.GetInt())
+	} else if otherInt, ok := other.GetIntValue(); ok {
+		rightBigFloat = objects.NewBigFloatFromInt64(otherInt)
 	} else if other.IsFloat() {
 		rightBigFloat = objects.NewBigFloatFromFloat64(other.GetFloat())
 	} else {
@@ -584,8 +645,8 @@ func (v Value) subBigInt(other Value) (Value, bool) {
 
 	if v.IsBigInt() {
 		leftBigInt = v.GetObject().(*objects.BigInt)
-	} else if v.IsInt() {
-		leftBigInt = objects.NewBigIntFromInt64(v.GetInt())
+	} else if vInt, ok := v.GetIntValue(); ok {
+		leftBigInt = objects.NewBigIntFromInt64(vInt)
 	} else if v.IsFloat() {
 		leftBigInt = objects.NewBigFloatFromFloat64(v.GetFloat()).ToBigInt()
 	} else {
@@ -595,8 +656,8 @@ func (v Value) subBigInt(other Value) (Value, bool) {
 	var rightBigInt *objects.BigInt
 	if other.IsBigInt() {
 		rightBigInt = other.GetObject().(*objects.BigInt)
-	} else if other.IsInt() {
-		rightBigInt = objects.NewBigIntFromInt64(other.GetInt())
+	} else if otherInt, ok := other.GetIntValue(); ok {
+		rightBigInt = objects.NewBigIntFromInt64(otherInt)
 	} else if other.IsFloat() {
 		rightBigInt = objects.NewBigFloatFromFloat64(other.GetFloat()).ToBigInt()
 	} else {
@@ -615,8 +676,8 @@ func (v Value) subBigFloat(other Value) (Value, bool) {
 		leftBigFloat = v.GetObject().(*objects.BigFloat)
 	} else if v.IsBigInt() {
 		leftBigFloat = v.GetObject().(*objects.BigInt).ToBigFloat()
-	} else if v.IsInt() {
-		leftBigFloat = objects.NewBigFloatFromInt64(v.GetInt())
+	} else if vInt, ok := v.GetIntValue(); ok {
+		leftBigFloat = objects.NewBigFloatFromInt64(vInt)
 	} else if v.IsFloat() {
 		leftBigFloat = objects.NewBigFloatFromFloat64(v.GetFloat())
 	} else {
@@ -628,8 +689,8 @@ func (v Value) subBigFloat(other Value) (Value, bool) {
 		rightBigFloat = other.GetObject().(*objects.BigFloat)
 	} else if other.IsBigInt() {
 		rightBigFloat = other.GetObject().(*objects.BigInt).ToBigFloat()
-	} else if other.IsInt() {
-		rightBigFloat = objects.NewBigFloatFromInt64(other.GetInt())
+	} else if otherInt, ok := other.GetIntValue(); ok {
+		rightBigFloat = objects.NewBigFloatFromInt64(otherInt)
 	} else if other.IsFloat() {
 		rightBigFloat = objects.NewBigFloatFromFloat64(other.GetFloat())
 	} else {
@@ -646,8 +707,8 @@ func (v Value) mulBigInt(other Value) (Value, bool) {
 
 	if v.IsBigInt() {
 		leftBigInt = v.GetObject().(*objects.BigInt)
-	} else if v.IsInt() {
-		leftBigInt = objects.NewBigIntFromInt64(v.GetInt())
+	} else if vInt, ok := v.GetIntValue(); ok {
+		leftBigInt = objects.NewBigIntFromInt64(vInt)
 	} else if v.IsFloat() {
 		leftBigInt = objects.NewBigFloatFromFloat64(v.GetFloat()).ToBigInt()
 	} else {
@@ -657,8 +718,8 @@ func (v Value) mulBigInt(other Value) (Value, bool) {
 	var rightBigInt *objects.BigInt
 	if other.IsBigInt() {
 		rightBigInt = other.GetObject().(*objects.BigInt)
-	} else if other.IsInt() {
-		rightBigInt = objects.NewBigIntFromInt64(other.GetInt())
+	} else if otherInt, ok := other.GetIntValue(); ok {
+		rightBigInt = objects.NewBigIntFromInt64(otherInt)
 	} else if other.IsFloat() {
 		rightBigInt = objects.NewBigFloatFromFloat64(other.GetFloat()).ToBigInt()
 	} else {
@@ -677,8 +738,8 @@ func (v Value) mulBigFloat(other Value) (Value, bool) {
 		leftBigFloat = v.GetObject().(*objects.BigFloat)
 	} else if v.IsBigInt() {
 		leftBigFloat = v.GetObject().(*objects.BigInt).ToBigFloat()
-	} else if v.IsInt() {
-		leftBigFloat = objects.NewBigFloatFromInt64(v.GetInt())
+	} else if vInt, ok := v.GetIntValue(); ok {
+		leftBigFloat = objects.NewBigFloatFromInt64(vInt)
 	} else if v.IsFloat() {
 		leftBigFloat = objects.NewBigFloatFromFloat64(v.GetFloat())
 	} else {
@@ -690,8 +751,8 @@ func (v Value) mulBigFloat(other Value) (Value, bool) {
 		rightBigFloat = other.GetObject().(*objects.BigFloat)
 	} else if other.IsBigInt() {
 		rightBigFloat = other.GetObject().(*objects.BigInt).ToBigFloat()
-	} else if other.IsInt() {
-		rightBigFloat = objects.NewBigFloatFromInt64(other.GetInt())
+	} else if otherInt, ok := other.GetIntValue(); ok {
+		rightBigFloat = objects.NewBigFloatFromInt64(otherInt)
 	} else if other.IsFloat() {
 		rightBigFloat = objects.NewBigFloatFromFloat64(other.GetFloat())
 	} else {
@@ -708,8 +769,8 @@ func (v Value) divBigInt(other Value) (Value, bool) {
 
 	if v.IsBigInt() {
 		leftBigInt = v.GetObject().(*objects.BigInt)
-	} else if v.IsInt() {
-		leftBigInt = objects.NewBigIntFromInt64(v.GetInt())
+	} else if vInt, ok := v.GetIntValue(); ok {
+		leftBigInt = objects.NewBigIntFromInt64(vInt)
 	} else if v.IsFloat() {
 		leftBigInt = objects.NewBigFloatFromFloat64(v.GetFloat()).ToBigInt()
 	} else {
@@ -719,8 +780,8 @@ func (v Value) divBigInt(other Value) (Value, bool) {
 	var rightBigInt *objects.BigInt
 	if other.IsBigInt() {
 		rightBigInt = other.GetObject().(*objects.BigInt)
-	} else if other.IsInt() {
-		rightBigInt = objects.NewBigIntFromInt64(other.GetInt())
+	} else if otherInt, ok := other.GetIntValue(); ok {
+		rightBigInt = objects.NewBigIntFromInt64(otherInt)
 	} else if other.IsFloat() {
 		rightBigInt = objects.NewBigFloatFromFloat64(other.GetFloat()).ToBigInt()
 	} else {
@@ -742,8 +803,8 @@ func (v Value) divBigFloat(other Value) (Value, bool) {
 		leftBigFloat = v.GetObject().(*objects.BigFloat)
 	} else if v.IsBigInt() {
 		leftBigFloat = v.GetObject().(*objects.BigInt).ToBigFloat()
-	} else if v.IsInt() {
-		leftBigFloat = objects.NewBigFloatFromInt64(v.GetInt())
+	} else if vInt, ok := v.GetIntValue(); ok {
+		leftBigFloat = objects.NewBigFloatFromInt64(vInt)
 	} else if v.IsFloat() {
 		leftBigFloat = objects.NewBigFloatFromFloat64(v.GetFloat())
 	} else {
@@ -755,8 +816,8 @@ func (v Value) divBigFloat(other Value) (Value, bool) {
 		rightBigFloat = other.GetObject().(*objects.BigFloat)
 	} else if other.IsBigInt() {
 		rightBigFloat = other.GetObject().(*objects.BigInt).ToBigFloat()
-	} else if other.IsInt() {
-		rightBigFloat = objects.NewBigFloatFromInt64(other.GetInt())
+	} else if otherInt, ok := other.GetIntValue(); ok {
+		rightBigFloat = objects.NewBigFloatFromInt64(otherInt)
 	} else if other.IsFloat() {
 		rightBigFloat = objects.NewBigFloatFromFloat64(other.GetFloat())
 	} else {
@@ -776,8 +837,8 @@ func (v Value) modBigInt(other Value) (Value, bool) {
 
 	if v.IsBigInt() {
 		leftBigInt = v.GetObject().(*objects.BigInt)
-	} else if v.IsInt() {
-		leftBigInt = objects.NewBigIntFromInt64(v.GetInt())
+	} else if vInt, ok := v.GetIntValue(); ok {
+		leftBigInt = objects.NewBigIntFromInt64(vInt)
 	} else {
 		return ValueNull, false
 	}
@@ -785,8 +846,8 @@ func (v Value) modBigInt(other Value) (Value, bool) {
 	var rightBigInt *objects.BigInt
 	if other.IsBigInt() {
 		rightBigInt = other.GetObject().(*objects.BigInt)
-	} else if other.IsInt() {
-		rightBigInt = objects.NewBigIntFromInt64(other.GetInt())
+	} else if otherInt, ok := other.GetIntValue(); ok {
+		rightBigInt = objects.NewBigIntFromInt64(otherInt)
 	} else {
 		return ValueNull, false
 	}
@@ -829,6 +890,7 @@ func (v Value) Sub(other Value) (Value, bool) {
 	vTag := vBits >> 48
 	otherTag := otherBits >> 48
 
+	// Fast path: both tagged integers
 	if vTag == tagInt && otherTag == tagInt {
 		vPayload := int64(vBits & payloadMask)
 		otherPayload := int64(otherBits & payloadMask)
@@ -839,6 +901,23 @@ func (v Value) Sub(other Value) (Value, bool) {
 			otherPayload -= (1 << 48)
 		}
 		return NewInt(vPayload - otherPayload), true
+	}
+
+	// Handle Int values (tagged or object-stored) - preserve precision
+	vIsInt := v.IsIntValue()
+	otherIsInt := other.IsIntValue()
+	if vIsInt && otherIsInt {
+		vInt, _ := v.GetIntValue()
+		otherInt, _ := other.GetIntValue()
+		result := vInt - otherInt
+		// Check if result fits in 48 bits
+		const maxInt48 = int64(1<<47 - 1)
+		const minInt48 = int64(-1 << 47)
+		if result >= minInt48 && result <= maxInt48 {
+			return NewInt(result), true
+		}
+		// Result is large - store as Int object
+		return NewObject(objects.NewInt(result)), true
 	}
 
 	// Handle BigInt/BigFloat operations
@@ -867,6 +946,7 @@ func (v Value) Mul(other Value) (Value, bool) {
 	vTag := vBits >> 48
 	otherTag := otherBits >> 48
 
+	// Fast path: both tagged integers
 	if vTag == tagInt && otherTag == tagInt {
 		vPayload := int64(vBits & payloadMask)
 		otherPayload := int64(otherBits & payloadMask)
@@ -877,6 +957,23 @@ func (v Value) Mul(other Value) (Value, bool) {
 			otherPayload -= (1 << 48)
 		}
 		return NewInt(vPayload * otherPayload), true
+	}
+
+	// Handle Int values (tagged or object-stored) - preserve precision
+	vIsInt := v.IsIntValue()
+	otherIsInt := other.IsIntValue()
+	if vIsInt && otherIsInt {
+		vInt, _ := v.GetIntValue()
+		otherInt, _ := other.GetIntValue()
+		result := vInt * otherInt
+		// Check if result fits in 48 bits
+		const maxInt48 = int64(1<<47 - 1)
+		const minInt48 = int64(-1 << 47)
+		if result >= minInt48 && result <= maxInt48 {
+			return NewInt(result), true
+		}
+		// Result is large - store as Int object
+		return NewObject(objects.NewInt(result)), true
 	}
 
 	// Handle BigInt/BigFloat operations
@@ -933,6 +1030,7 @@ func (v Value) Mod(other Value) (Value, bool) {
 	vTag := vBits >> 48
 	otherTag := otherBits >> 48
 
+	// Fast path: both tagged integers
 	if vTag == tagInt && otherTag == tagInt {
 		vPayload := int64(vBits & payloadMask)
 		otherPayload := int64(otherBits & payloadMask)
@@ -946,6 +1044,26 @@ func (v Value) Mod(other Value) (Value, bool) {
 			return ValueNull, false
 		}
 		return NewInt(vPayload % otherPayload), true
+	}
+
+	// Handle Int values (tagged or object-stored) - preserve precision
+	vIsInt := v.IsIntValue()
+	otherIsInt := other.IsIntValue()
+	if vIsInt && otherIsInt {
+		vInt, _ := v.GetIntValue()
+		otherInt, _ := other.GetIntValue()
+		if otherInt == 0 {
+			return ValueNull, false
+		}
+		result := vInt % otherInt
+		// Check if result fits in 48 bits
+		const maxInt48 = int64(1<<47 - 1)
+		const minInt48 = int64(-1 << 47)
+		if result >= minInt48 && result <= maxInt48 {
+			return NewInt(result), true
+		}
+		// Result is large - store as Int object
+		return NewObject(objects.NewInt(result)), true
 	}
 
 	// Handle BigInt operations (modulo only makes sense for integers)
@@ -995,6 +1113,7 @@ func (v Value) Less(other Value) (bool, bool) {
 	vTag := vBits >> 48
 	otherTag := otherBits >> 48
 
+	// Fast path: both tagged integers
 	if vTag == tagInt && otherTag == tagInt {
 		vPayload := int64(vBits & payloadMask)
 		otherPayload := int64(otherBits & payloadMask)
@@ -1005,6 +1124,15 @@ func (v Value) Less(other Value) (bool, bool) {
 			otherPayload -= (1 << 48)
 		}
 		return vPayload < otherPayload, true
+	}
+
+	// Handle Int values (tagged or object-stored) - preserve precision for large ints
+	vIsInt := v.IsIntValue()
+	otherIsInt := other.IsIntValue()
+	if vIsInt && otherIsInt {
+		vInt, _ := v.GetIntValue()
+		otherInt, _ := other.GetIntValue()
+		return vInt < otherInt, true
 	}
 
 	// Handle BigInt/BigFloat comparison
@@ -1111,6 +1239,15 @@ func (v Value) Equal(other Value) (bool, bool) {
 		return false, true // Already checked v == other above
 	}
 
+	// Handle Int values (tagged or object-stored)
+	vIsInt := v.IsIntValue()
+	otherIsInt := other.IsIntValue()
+	if vIsInt && otherIsInt {
+		vInt, _ := v.GetIntValue()
+		otherInt, _ := other.GetIntValue()
+		return vInt == otherInt, true
+	}
+
 	// Both floats - compare values
 	if v.IsFloat() && other.IsFloat() {
 		return v.GetFloat() == other.GetFloat(), true
@@ -1149,8 +1286,8 @@ func (v Value) Equal(other Value) (bool, bool) {
 		return obj1 == obj2, true
 	}
 
-	// Mixed int/float
-	if (vTag == tagInt || v.IsFloat()) && (otherTag == tagInt || other.IsFloat()) {
+	// Mixed int/float or int (object) with float
+	if (vIsInt || v.IsFloat()) && (otherIsInt || other.IsFloat()) {
 		f1, ok1 := v.ToFloat()
 		f2, ok2 := other.ToFloat()
 		if ok1 && ok2 {
