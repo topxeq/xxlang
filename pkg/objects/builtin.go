@@ -12,8 +12,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
+	"net/http"
 	"os"
 	"sort"
 	"strconv"
@@ -3340,6 +3342,348 @@ var Builtins = map[string]*Builtin{
 				return NULL
 			}
 			return NewInt(dl.UnixMilli())
+		},
+	},
+
+	// ============================================================
+	// HTTP Client Functions (getWeb family)
+	// ============================================================
+
+	// getWeb - fetch URL content and return as string
+	// Usage: getWeb(url) or getWeb(url, "-object") for JSON parsing
+	// Returns: string content, or parsed JSON object with "-object" flag
+	"getWeb": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("wrong number of arguments for getWeb. got=%d, want>=1", len(args))
+			}
+
+			urlObj, ok := args[0].(*String)
+			if !ok {
+				return newError("first argument to 'getWeb' must be STRING, got %s", args[0].Type())
+			}
+
+			// Parse options
+			parseJSON := false
+			timeout := 30 * time.Second
+
+			for i := 1; i < len(args); i++ {
+				switch opt := args[i].(type) {
+				case *String:
+					switch opt.Value {
+					case "-object", "-json":
+						parseJSON = true
+					case "-bytes":
+						// Handled by getWebBytes
+						return newError("use getWebBytes() for byte output")
+					}
+				case *Int:
+					timeout = time.Duration(opt.Value) * time.Second
+				}
+			}
+
+			// Create HTTP client with timeout
+			client := &http.Client{Timeout: timeout}
+			resp, err := client.Get(urlObj.Value)
+			if err != nil {
+				return newError("getWeb request failed: %v", err)
+			}
+			defer resp.Body.Close()
+
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return newError("getWeb read response failed: %v", err)
+			}
+
+			if resp.StatusCode >= 400 {
+				return newError("getWeb HTTP error: %d %s", resp.StatusCode, resp.Status)
+			}
+
+			if parseJSON {
+				// Parse JSON response
+				var data interface{}
+				if err := json.Unmarshal(body, &data); err != nil {
+					return newError("getWeb JSON parse failed: %v", err)
+				}
+				return goValueToObject(data)
+			}
+
+			return NewString(string(body))
+		},
+	},
+
+	// getWebBytes - fetch URL content and return as byte array
+	// Usage: getWebBytes(url)
+	// Returns: array of integers (bytes)
+	"getWebBytes": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("wrong number of arguments for getWebBytes. got=%d, want>=1", len(args))
+			}
+
+			urlObj, ok := args[0].(*String)
+			if !ok {
+				return newError("first argument to 'getWebBytes' must be STRING, got %s", args[0].Type())
+			}
+
+			// Parse timeout option
+			timeout := 30 * time.Second
+			if len(args) > 1 {
+				if t, ok := args[1].(*Int); ok {
+					timeout = time.Duration(t.Value) * time.Second
+				}
+			}
+
+			client := &http.Client{Timeout: timeout}
+			resp, err := client.Get(urlObj.Value)
+			if err != nil {
+				return newError("getWebBytes request failed: %v", err)
+			}
+			defer resp.Body.Close()
+
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return newError("getWebBytes read response failed: %v", err)
+			}
+
+			if resp.StatusCode >= 400 {
+				return newError("getWebBytes HTTP error: %d %s", resp.StatusCode, resp.Status)
+			}
+
+			// Return as array of integers (bytes)
+			elements := make([]Object, len(body))
+			for i, b := range body {
+				elements[i] = NewInt(int64(b))
+			}
+			return NewArray(elements)
+		},
+	},
+
+	// getWebObject - fetch URL content and parse as JSON object
+	// Usage: getWebObject(url)
+	// Returns: parsed JSON object (map or array)
+	"getWebObject": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("wrong number of arguments for getWebObject. got=%d, want>=1", len(args))
+			}
+
+			urlObj, ok := args[0].(*String)
+			if !ok {
+				return newError("first argument to 'getWebObject' must be STRING, got %s", args[0].Type())
+			}
+
+			// Parse timeout option
+			timeout := 30 * time.Second
+			if len(args) > 1 {
+				if t, ok := args[1].(*Int); ok {
+					timeout = time.Duration(t.Value) * time.Second
+				}
+			}
+
+			client := &http.Client{Timeout: timeout}
+			resp, err := client.Get(urlObj.Value)
+			if err != nil {
+				return newError("getWebObject request failed: %v", err)
+			}
+			defer resp.Body.Close()
+
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return newError("getWebObject read response failed: %v", err)
+			}
+
+			if resp.StatusCode >= 400 {
+				return newError("getWebObject HTTP error: %d %s", resp.StatusCode, resp.Status)
+			}
+
+			// Parse JSON response
+			var data interface{}
+			if err := json.Unmarshal(body, &data); err != nil {
+				return newError("getWebObject JSON parse failed: %v", err)
+			}
+			return goValueToObject(data)
+		},
+	},
+
+	// postWeb - POST data to URL and return response
+	// Usage: postWeb(url, body) or postWeb(url, body, contentType)
+	// Returns: string content
+	"postWeb": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 2 {
+				return newError("wrong number of arguments for postWeb. got=%d, want>=2", len(args))
+			}
+
+			urlObj, ok := args[0].(*String)
+			if !ok {
+				return newError("first argument to 'postWeb' must be STRING, got %s", args[0].Type())
+			}
+
+			bodyObj, ok := args[1].(*String)
+			if !ok {
+				return newError("second argument to 'postWeb' must be STRING, got %s", args[1].Type())
+			}
+
+			contentType := "application/json"
+			if len(args) > 2 {
+				if ct, ok := args[2].(*String); ok {
+					contentType = ct.Value
+				}
+			}
+
+			// Parse timeout option
+			timeout := 30 * time.Second
+			if len(args) > 3 {
+				if t, ok := args[3].(*Int); ok {
+					timeout = time.Duration(t.Value) * time.Second
+				}
+			}
+
+			client := &http.Client{Timeout: timeout}
+			resp, err := client.Post(urlObj.Value, contentType, strings.NewReader(bodyObj.Value))
+			if err != nil {
+				return newError("postWeb request failed: %v", err)
+			}
+			defer resp.Body.Close()
+
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return newError("postWeb read response failed: %v", err)
+			}
+
+			return NewString(string(body))
+		},
+	},
+
+	// postWebObject - POST data to URL and parse JSON response
+	// Usage: postWebObject(url, body) or postWebObject(url, body, contentType)
+	// Returns: parsed JSON object
+	"postWebObject": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 2 {
+				return newError("wrong number of arguments for postWebObject. got=%d, want>=2", len(args))
+			}
+
+			urlObj, ok := args[0].(*String)
+			if !ok {
+				return newError("first argument to 'postWebObject' must be STRING, got %s", args[0].Type())
+			}
+
+			bodyObj, ok := args[1].(*String)
+			if !ok {
+				return newError("second argument to 'postWebObject' must be STRING, got %s", args[1].Type())
+			}
+
+			contentType := "application/json"
+			if len(args) > 2 {
+				if ct, ok := args[2].(*String); ok {
+					contentType = ct.Value
+				}
+			}
+
+			// Parse timeout option
+			timeout := 30 * time.Second
+			if len(args) > 3 {
+				if t, ok := args[3].(*Int); ok {
+					timeout = time.Duration(t.Value) * time.Second
+				}
+			}
+
+			client := &http.Client{Timeout: timeout}
+			resp, err := client.Post(urlObj.Value, contentType, strings.NewReader(bodyObj.Value))
+			if err != nil {
+				return newError("postWebObject request failed: %v", err)
+			}
+			defer resp.Body.Close()
+
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return newError("postWebObject read response failed: %v", err)
+			}
+
+			// Parse JSON response
+			var data interface{}
+			if err := json.Unmarshal(body, &data); err != nil {
+				return newError("postWebObject JSON parse failed: %v", err)
+			}
+			return goValueToObject(data)
+		},
+	},
+
+	// urlExists - check if URL exists (HTTP HEAD request)
+	// Usage: urlExists(url)
+	// Returns: boolean
+	"urlExists": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for urlExists. got=%d, want=1", len(args))
+			}
+
+			urlObj, ok := args[0].(*String)
+			if !ok {
+				return newError("argument to 'urlExists' must be STRING, got %s", args[0].Type())
+			}
+
+			client := &http.Client{Timeout: 10 * time.Second}
+			resp, err := client.Head(urlObj.Value)
+			if err != nil {
+				return FALSE
+			}
+			defer resp.Body.Close()
+
+			return &Bool{Value: resp.StatusCode < 400}
+		},
+	},
+
+	// httpStatus - get HTTP status code and headers for a URL
+	// Usage: httpStatus(url)
+	// Returns: map with statusCode, status, headers
+	"httpStatus": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for httpStatus. got=%d, want=1", len(args))
+			}
+
+			urlObj, ok := args[0].(*String)
+			if !ok {
+				return newError("argument to 'httpStatus' must be STRING, got %s", args[0].Type())
+			}
+
+			client := &http.Client{Timeout: 10 * time.Second}
+			resp, err := client.Head(urlObj.Value)
+			if err != nil {
+				return newError("httpStatus request failed: %v", err)
+			}
+			defer resp.Body.Close()
+
+			// Build result map
+			pairs := make(map[HashKey]MapPair)
+
+			pairs[NewString("statusCode").HashKey()] = MapPair{
+				Key:   NewString("statusCode"),
+				Value: NewInt(int64(resp.StatusCode)),
+			}
+
+			pairs[NewString("status").HashKey()] = MapPair{
+				Key:   NewString("status"),
+				Value: NewString(resp.Status),
+			}
+
+			// Build headers map
+			headerPairs := make(map[HashKey]MapPair)
+			for k, v := range resp.Header {
+				headerPairs[NewString(k).HashKey()] = MapPair{
+					Key:   NewString(k),
+					Value: NewString(strings.Join(v, ", ")),
+				}
+			}
+			pairs[NewString("headers").HashKey()] = MapPair{
+				Key:   NewString("headers"),
+				Value: NewMap(headerPairs),
+			}
+
+			return NewMap(pairs)
 		},
 	},
 }

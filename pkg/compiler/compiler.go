@@ -244,6 +244,14 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(175, "contextErr")
 	s.DefineBuiltin(176, "contextIsDone")
 	s.DefineBuiltin(177, "contextDeadline")
+	// HTTP Client built-in functions (getWeb family)
+	s.DefineBuiltin(178, "getWeb")
+	s.DefineBuiltin(179, "getWebBytes")
+	s.DefineBuiltin(180, "getWebObject")
+	s.DefineBuiltin(181, "postWeb")
+	s.DefineBuiltin(182, "postWebObject")
+	s.DefineBuiltin(183, "urlExists")
+	s.DefineBuiltin(184, "httpStatus")
 	return s
 }
 

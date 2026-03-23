@@ -211,6 +211,14 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["contextErr"],        // 175
 		objects.Builtins["contextIsDone"],     // 176
 		objects.Builtins["contextDeadline"],   // 177
+		// HTTP Client built-in functions (getWeb family)
+		objects.Builtins["getWeb"],       // 178
+		objects.Builtins["getWebBytes"],  // 179
+		objects.Builtins["getWebObject"], // 180
+		objects.Builtins["postWeb"],      // 181
+		objects.Builtins["postWebObject"], // 182
+		objects.Builtins["urlExists"],    // 183
+		objects.Builtins["httpStatus"],   // 184
 	}
 
 	if index < 0 || index >= len(builtins) {
