@@ -1,0 +1,351 @@
+// JSONPath Demo Script
+// This script demonstrates all JSONPath features in Xxlang
+
+import "json"
+import "io"
+
+// ============================================================
+// Test Data
+// ============================================================
+
+var jsonStr = `
+{
+  "store": {
+    "book": [
+      {
+        "category": "fiction",
+        "title": "The Great Gatsby",
+        "author": "F. Scott Fitzgerald",
+        "price": 12.99
+      },
+      {
+        "category": "fiction",
+        "title": "1984",
+        "author": "George Orwell",
+        "price": 8.99
+      },
+      {
+        "category": "non-fiction",
+        "title": "A Brief History of Time",
+        "author": "Stephen Hawking",
+        "price": 15.99
+      },
+      {
+        "category": "fiction",
+        "title": "To Kill a Mockingbird",
+        "author": "Harper Lee",
+        "price": 10.50
+      }
+    ],
+    "name": "My Bookstore",
+    "location": {
+      "city": "New York",
+      "country": "USA"
+    }
+  },
+  "users": [
+    {"id": 1, "name": "Alice", "active": true},
+    {"id": 2, "name": "Bob", "active": false},
+    {"id": 3, "name": "Charlie", "active": true}
+  ],
+  "settings": {
+    "theme": "dark",
+    "notifications": true,
+    "language": "en"
+  }
+}
+`
+
+var data = json.parse(jsonStr)
+
+io.println("========================================")
+io.println("      JSONPath Demonstration Script")
+io.println("========================================")
+io.println("")
+
+// ============================================================
+// Basic Field Access
+// ============================================================
+io.println("--- Basic Field Access ---")
+
+var storeName = json.get("$.store.name", data)
+io.println("Store name: " + storeName)
+
+var theme = json.get("$.settings.theme", data)
+io.println("Theme: " + theme)
+
+var city = json.get("$.store.location.city", data)
+io.println("City: " + city)
+
+io.println("")
+
+// ============================================================
+// Array Indexing
+// ============================================================
+io.println("--- Array Indexing ---")
+
+var firstBook = json.get("$.store.book[0]", data)
+io.println("First book title: " + firstBook["title"])
+
+var lastBook = json.get("$.store.book[-1]", data)
+io.println("Last book title: " + lastBook["title"])
+
+var secondBook = json.get("$.store.book[1].author", data)
+io.println("Second book author: " + secondBook)
+
+io.println("")
+
+// ============================================================
+// Wildcard Operations
+// ============================================================
+io.println("--- Wildcard Operations ---")
+
+var allBooks = json.getAll("$.store.book[*].title", data)
+io.println("All book titles: " + json.stringify(allBooks))
+
+var allPrices = json.getAll("$.store.book[*].price", data)
+io.println("All prices: " + json.stringify(allPrices))
+
+var allUserNames = json.getAll("$.users[*].name", data)
+io.println("All user names: " + json.stringify(allUserNames))
+
+io.println("")
+
+// ============================================================
+// Recursive Descent
+// ============================================================
+io.println("--- Recursive Descent ---")
+
+var allTitles = json.getAll("$..title", data)
+io.println("All titles (recursive): " + json.stringify(allTitles))
+
+var allAuthors = json.getAll("$..author", data)
+io.println("All authors (recursive): " + json.stringify(allAuthors))
+
+io.println("")
+
+// ============================================================
+// Array Slicing
+// ============================================================
+io.println("--- Array Slicing ---")
+
+var firstTwo = json.getAll("$.store.book[0:2].title", data)
+io.println("First two books: " + json.stringify(firstTwo))
+
+var lastTwo = json.getAll("$.store.book[-2:].title", data)
+io.println("Last two books: " + json.stringify(lastTwo))
+
+io.println("")
+
+// ============================================================
+// Multiple Indices
+// ============================================================
+io.println("--- Multiple Indices ---")
+
+var selected = json.getAll("$.store.book[0,2].title", data)
+io.println("Books at index 0 and 2: " + json.stringify(selected))
+
+var users = json.getAll("$.users[0,2].name", data)
+io.println("Users at index 0 and 2: " + json.stringify(users))
+
+io.println("")
+
+// ============================================================
+// Filter Expressions
+// ============================================================
+io.println("--- Filter Expressions ---")
+
+var cheapBooks = json.getAll("$.store.book[?(@.price < 10)].title", data)
+io.println("Books under $10: " + json.stringify(cheapBooks))
+
+var expensiveBooks = json.getAll("$.store.book[?(@.price > 12)].title", data)
+io.println("Books over $12: " + json.stringify(expensiveBooks))
+
+var fictionBooks = json.getAll("$.store.book[?(@.category == \"fiction\")].title", data)
+io.println("Fiction books: " + json.stringify(fictionBooks))
+
+var activeUsers = json.getAll("$.users[?(@.active == true)].name", data)
+io.println("Active users: " + json.stringify(activeUsers))
+
+io.println("")
+
+// ============================================================
+// Utility Functions
+// ============================================================
+io.println("--- Utility Functions ---")
+
+var hasStore = json.has("$.store", data)
+io.println("Has store: " + hasStore.toStr())
+
+var hasOwner = json.has("$.store.owner", data)
+io.println("Has owner: " + hasOwner.toStr())
+
+var bookCount = json.count("$.store.book[*]", data)
+io.println("Number of books: " + bookCount.toStr())
+
+var userCount = json.count("$.users[*]", data)
+io.println("Number of users: " + userCount.toStr())
+
+io.println("")
+
+// ============================================================
+// Get With Path
+// ============================================================
+io.println("--- Get With Path ---")
+
+var settingsPaths = json.getWithPath("$.settings.*", data)
+io.println("Settings with paths:")
+for (k in keys(settingsPaths)) {
+    io.println("  " + k + " = " + json.stringify(settingsPaths[k]))
+}
+
+io.println("")
+
+// ============================================================
+// All Paths
+// ============================================================
+io.println("--- All Paths in Settings ---")
+
+var settingsPaths2 = json.paths(data["settings"])
+io.println("Paths in settings: " + json.stringify(settingsPaths2))
+
+io.println("")
+
+// ============================================================
+// Set Operations (Immutable)
+// ============================================================
+io.println("--- Set Operations ---")
+
+io.println("Original first book price: " + data["store"]["book"][0]["price"].toStr())
+
+var updatedData = json.set("$.store.book[0].price", data, 19.99)
+io.println("After set - new price: " + updatedData["store"]["book"][0]["price"].toStr())
+io.println("Original unchanged: " + data["store"]["book"][0]["price"].toStr())
+
+// Set nested value
+var updatedLocation = json.set("$.store.location.city", data, "Los Angeles")
+io.println("Updated city: " + updatedLocation["store"]["location"]["city"])
+
+io.println("")
+
+// ============================================================
+// Delete Operations (Immutable)
+// ============================================================
+io.println("--- Delete Operations ---")
+
+io.println("Original number of books: " + data["store"]["book"].len().toStr())
+
+var fewerBooks = json.delete("$.store.book[2]", data)
+io.println("After delete - number of books: " + fewerBooks["store"]["book"].len().toStr())
+io.println("Original unchanged: " + data["store"]["book"].len().toStr())
+
+// Delete nested field
+var simplified = json.delete("$.settings.notifications", data)
+io.println("After delete - has notifications: " + json.has("$.settings.notifications", simplified).toStr())
+
+io.println("")
+
+// ============================================================
+// Query Functions (Parse + Query)
+// ============================================================
+io.println("--- Query Functions ---")
+
+var quickTitle = json.query("$.store.name", jsonStr)
+io.println("Quick query - store name: " + quickTitle)
+
+var quickTitles = json.queryAll("$..author", jsonStr)
+io.println("Quick query all - authors: " + json.stringify(quickTitles))
+
+io.println("")
+
+// ============================================================
+// Validation Functions
+// ============================================================
+io.println("--- Validation Functions ---")
+
+var validJson = json.isValid("{\"a\": 1}")
+io.println("Valid JSON: " + validJson.toStr())
+
+var invalidJson = json.isValid("{broken}")
+io.println("Invalid JSON: " + invalidJson.toStr())
+
+var objType = json.getType("{\"a\": 1}")
+io.println("Type of object: " + objType)
+
+var arrType = json.getType("[1, 2, 3]")
+io.println("Type of array: " + arrType)
+
+var strType = json.getType("\"hello\"")
+io.println("Type of string: " + strType)
+
+var numType = json.getType("42")
+io.println("Type of number: " + numType)
+
+var boolType = json.getType("true")
+io.println("Type of boolean: " + boolType)
+
+var nullType = json.getType("null")
+io.println("Type of null: " + nullType)
+
+io.println("")
+
+// ============================================================
+// File Operations Demo (using temp file)
+// ============================================================
+io.println("--- File Operations ---")
+
+var tempPath = io.cwd() + "/temp_jsonpath_test.json"
+
+// Write JSON file
+var testData = {"name": "Test", "values": [1, 2, 3], "nested": {"key": "value"}}
+json.writeFile(tempPath, testData)
+io.println("Written to: " + tempPath)
+
+// Read JSON file
+var readData = json.readFile(tempPath)
+io.println("Read back: " + json.stringify(readData))
+
+// Query from file
+var valueFromQuery = json.get("$.nested.key", readData)
+io.println("Query from file: " + valueFromQuery)
+
+// Update file
+json.updateFile(tempPath, {"added": "new value"})
+var updatedRead = json.readFile(tempPath)
+io.println("After update: " + json.stringify(updatedRead))
+
+// Append to array file
+var arrPath = io.cwd() + "/temp_jsonpath_array.json"
+json.writeFile(arrPath, [])
+json.appendToArrayFile(arrPath, {"id": 1, "name": "First"})
+json.appendToArrayFile(arrPath, {"id": 2, "name": "Second"})
+var arrData = json.readFile(arrPath)
+io.println("Array after appends: " + json.stringify(arrData))
+
+// Cleanup
+io.remove(tempPath)
+io.remove(arrPath)
+io.println("Temp files cleaned up")
+
+io.println("")
+
+// ============================================================
+// Summary
+// ============================================================
+io.println("========================================")
+io.println("    JSONPath Demo Complete!")
+io.println("========================================")
+io.println("")
+io.println("Features demonstrated:")
+io.println("  - Basic field access ($..field)")
+io.println("  - Array indexing ([0], [-1])")
+io.println("  - Wildcards ([*])")
+io.println("  - Recursive descent (..)")
+io.println("  - Array slicing ([start:end])")
+io.println("  - Multiple indices ([0,2,4])")
+io.println("  - Filter expressions ([?(@.price < 10)])")
+io.println("  - Set and delete operations")
+io.println("  - Utility functions (has, count, paths)")
+io.println("  - Query functions (query, queryAll)")
+io.println("  - Validation functions (isValid, getType)")
+io.println("  - File operations (readFile, writeFile, etc.)")
