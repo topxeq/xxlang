@@ -1,0 +1,23 @@
+// examples/scripts/stdlib/24_decrypt_stdin.xxl
+// Decryption pipeline example - decrypt TXDEF encrypted stdin
+// Usage: echo "//TXDEF#<hex>" | xxl 24_decrypt_stdin.xxl -code=mykey
+// Output: original plaintext
+
+import "io"
+
+// Read all content from stdin
+var strT = io.readStdin()
+
+// Get encryption code from command line args (default: "char")
+var codeT = trim(getSwitch(argsG, "-code=", "char"))
+
+// Remove TXDEF prefix if present
+if (startsWith(strT, "//TXDEF#")) {
+    strT = substr(strT, 8)
+}
+
+// Decrypt
+var decrypted = decryptText(strT, codeT)
+
+// Write to stdout
+io.writeStdout(decrypted)

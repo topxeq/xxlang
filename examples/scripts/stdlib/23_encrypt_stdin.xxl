@@ -1,0 +1,18 @@
+// examples/scripts/stdlib/23_encrypt_stdin.xxl
+// Encryption pipeline example - encrypt stdin with TXDEF
+// Usage: echo "Hello World" | xxl 23_encrypt_stdin.xxl -code=mykey
+// Output: //TXDEF#<hex encrypted content>
+
+import "io"
+
+// Read all content from stdin
+var strT = io.readStdin()
+
+// Get encryption code from command line args (default: "char")
+var codeT = trim(getSwitch(argsG, "-code=", "char"))
+
+// Encrypt with TXDEF prefix
+strT = "//TXDEF#" + encryptText(strT, codeT)
+
+// Write to stdout (no trailing newline)
+io.writeStdout(strT)
