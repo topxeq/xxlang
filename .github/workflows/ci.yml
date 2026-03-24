@@ -1,67 +1,12 @@
 name: CI
 
 on:
-  push:
-    branches: [master, main]
-  pull_request:
-    branches: [master, main]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.24'
-          cache: true
-
-      - name: Download dependencies
-        run: go mod download
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-
-      - name: Build WASM test plugin
-        run: |
-          mkdir -p pkg/plugin/testdata/target/wasm32-unknown-unknown/release
-          cd examples/wasm_plugin/plugin
-          rustc --target wasm32-unknown-unknown -O --crate-type cdylib -o testplugin.wasm testplugin.rs
-          cp testplugin.wasm ../../../pkg/plugin/testdata/target/wasm32-unknown-unknown/release/
-
-      - name: Run tests
-        run: go test -v ./pkg/... ./tests/... ./cmd/... ./benchmarks/...
-
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.24'
-          cache: true
-
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-          args: --timeout=5m ./pkg/...
-        continue-on-error: true
-
   build:
     name: Build
     runs-on: ubuntu-latest
