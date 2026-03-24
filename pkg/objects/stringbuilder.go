@@ -89,3 +89,18 @@ func (sb *StringBuilder) Reset() {
 func (sb *StringBuilder) Grow(n int) {
 	sb.builder.Grow(n)
 }
+
+// GetIOWriter returns the builder as an io.Writer interface.
+// This allows the StringBuilder to be used with Writer objects.
+func (sb *StringBuilder) GetIOWriter() *stringBuilderWriter {
+	return &stringBuilderWriter{builder: &sb.builder}
+}
+
+// stringBuilderWriter wraps a *strings.Builder to implement io.Writer.
+type stringBuilderWriter struct {
+	builder *strings.Builder
+}
+
+func (w *stringBuilderWriter) Write(p []byte) (n int, err error) {
+	return w.builder.Write(p)
+}

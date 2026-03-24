@@ -22,6 +22,7 @@ var TypeMethods = map[ObjectType]map[string]*Builtin{
 	BoolType:          boolMethods,
 	NullType:          nullMethods,
 	StringBuilderType: stringBuilderMethods,
+	BytesType:         bytesMethods,
 	BytesBufferType:   bytesBufferMethods,
 	WebSocketType:     webSocketMethods,
 	// Concurrency types
@@ -39,6 +40,10 @@ var TypeMethods = map[ObjectType]map[string]*Builtin{
 	// File types
 	FileType:     fileMethods,
 	FileInfoType: fileInfoMethods,
+	// I/O types
+	ReaderType:  readerMethods,
+	WriterType:  writerMethods,
+	ScannerType: scannerMethods,
 }
 
 // GetMethod returns the builtin method for the given object type and method name
@@ -1276,6 +1281,222 @@ var stringBuilderMethods = map[string]*Builtin{
 		}
 		return &Bool{Value: self.Len() == 0}
 	}},
+	// getWriter returns a Writer for the StringBuilder.
+	"getWriter": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getWriter. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*StringBuilder)
+		if !ok {
+			return newError("receiver for getWriter must be STRING_BUILDER, got %s", args[0].Type())
+		}
+		return NewWriter(self.GetIOWriter())
+	}},
+}
+
+// ============================================================
+// Bytes Methods
+// ============================================================
+
+var bytesMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"len": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for len. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Bytes)
+		if !ok {
+			return newError("receiver for len must be BYTES, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.Len()))
+	}},
+	"at": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for at. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Bytes)
+		if !ok {
+			return newError("receiver for at must be BYTES, got %s", args[0].Type())
+		}
+		idx, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for at must be INT, got %s", args[1].Type())
+		}
+		val, ok := self.At(int(idx.Value))
+		if !ok {
+			return newError("index out of range")
+		}
+		return NewInt(val)
+	}},
+	"slice": {Fn: func(args ...Object) Object {
+		if len(args) < 2 || len(args) > 3 {
+			return newError("wrong number of arguments for slice. got=%d, want=2 or 3", len(args))
+		}
+		self, ok := args[0].(*Bytes)
+		if !ok {
+			return newError("receiver for slice must be BYTES, got %s", args[0].Type())
+		}
+		start, ok := args[1].(*Int)
+		if !ok {
+			return newError("start index must be INT, got %s", args[1].Type())
+		}
+		end := len(self.Value)
+		if len(args) == 3 {
+			endVal, ok := args[2].(*Int)
+			if !ok {
+				return newError("end index must be INT, got %s", args[2].Type())
+			}
+			end = int(endVal.Value)
+		}
+		return self.Slice(int(start.Value), end)
+	}},
+	"toArray": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toArray. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Bytes)
+		if !ok {
+			return newError("receiver for toArray must be BYTES, got %s", args[0].Type())
+		}
+		return self.ToArray()
+	}},
+	"toString": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toString. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Bytes)
+		if !ok {
+			return newError("receiver for toString must be BYTES, got %s", args[0].Type())
+		}
+		return NewString(self.String())
+	}},
+	"getReader": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getReader. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Bytes)
+		if !ok {
+			return newError("receiver for getReader must be BYTES, got %s", args[0].Type())
+		}
+		return NewReader(self.GetIOReader())
+	}},
+	"hasPrefix": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for hasPrefix. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Bytes)
+		if !ok {
+			return newError("receiver for hasPrefix must be BYTES, got %s", args[0].Type())
+		}
+		other, ok := args[1].(*Bytes)
+		if !ok {
+			return newError("argument for hasPrefix must be BYTES, got %s", args[1].Type())
+		}
+		return &Bool{Value: self.HasPrefix(other)}
+	}},
+	"hasSuffix": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for hasSuffix. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Bytes)
+		if !ok {
+			return newError("receiver for hasSuffix must be BYTES, got %s", args[0].Type())
+		}
+		other, ok := args[1].(*Bytes)
+		if !ok {
+			return newError("argument for hasSuffix must be BYTES, got %s", args[1].Type())
+		}
+		return &Bool{Value: self.HasSuffix(other)}
+	}},
+	"contains": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for contains. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Bytes)
+		if !ok {
+			return newError("receiver for contains must be BYTES, got %s", args[0].Type())
+		}
+		other, ok := args[1].(*Bytes)
+		if !ok {
+			return newError("argument for contains must be BYTES, got %s", args[1].Type())
+		}
+		return &Bool{Value: self.Contains(other)}
+	}},
+	"index": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for index. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Bytes)
+		if !ok {
+			return newError("receiver for index must be BYTES, got %s", args[0].Type())
+		}
+		other, ok := args[1].(*Bytes)
+		if !ok {
+			return newError("argument for index must be BYTES, got %s", args[1].Type())
+		}
+		return NewInt(int64(self.Index(other)))
+	}},
+	"count": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for count. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Bytes)
+		if !ok {
+			return newError("receiver for count must be BYTES, got %s", args[0].Type())
+		}
+		other, ok := args[1].(*Bytes)
+		if !ok {
+			return newError("argument for count must be BYTES, got %s", args[1].Type())
+		}
+		return NewInt(int64(self.Count(other)))
+	}},
+	"repeat": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for repeat. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Bytes)
+		if !ok {
+			return newError("receiver for repeat must be BYTES, got %s", args[0].Type())
+		}
+		n, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for repeat must be INT, got %s", args[1].Type())
+		}
+		return self.Repeat(int(n.Value))
+	}},
+	"concat": {Fn: func(args ...Object) Object {
+		if len(args) < 2 {
+			return newError("wrong number of arguments for concat. got=%d, want>=2", len(args))
+		}
+		self, ok := args[0].(*Bytes)
+		if !ok {
+			return newError("receiver for concat must be BYTES, got %s", args[0].Type())
+		}
+		others := make([]*Bytes, len(args)-1)
+		for i, arg := range args[1:] {
+			other, ok := arg.(*Bytes)
+			if !ok {
+				return newError("argument %d for concat must be BYTES, got %s", i+2, arg.Type())
+			}
+			others[i] = other
+		}
+		return self.Concat(others...)
+	}},
+	"equal": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for equal. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Bytes)
+		if !ok {
+			return newError("receiver for equal must be BYTES, got %s", args[0].Type())
+		}
+		other, ok := args[1].(*Bytes)
+		if !ok {
+			return newError("argument for equal must be BYTES, got %s", args[1].Type())
+		}
+		return &Bool{Value: self.Equal(other)}
+	}},
 }
 
 // ============================================================
@@ -2375,6 +2596,37 @@ var fileUploadMethods = map[string]*Builtin{
 		}
 		return NewString(hash)
 	}},
+	// getReader opens the uploaded file and returns a Reader for streaming access.
+	// The returned Reader supports Close method.
+	"getReader": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getReader. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileUpload)
+		if !ok {
+			return newError("receiver for getReader must be FILE_UPLOAD, got %s", args[0].Type())
+		}
+		file, err := self.Open()
+		if err != nil {
+			return newError("getReader failed: %v", err)
+		}
+		return NewReader(file)
+	}},
+	// open opens the uploaded file and returns a Reader (alias for getReader).
+	"open": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for open. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FileUpload)
+		if !ok {
+			return newError("receiver for open must be FILE_UPLOAD, got %s", args[0].Type())
+		}
+		file, err := self.Open()
+		if err != nil {
+			return newError("open failed: %v", err)
+		}
+		return NewReader(file)
+	}},
 }
 
 // ============================================================
@@ -2851,5 +3103,250 @@ var fileInfoMethods = map[string]*Builtin{
 			return newError("receiver for path must be FILE_INFO, got %s", args[0].Type())
 		}
 		return NewString(self.FullPath)
+	}},
+}
+
+// ============================================================
+// Reader Methods
+// ============================================================
+
+var readerMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	// read reads up to n bytes and returns as array of integers.
+	"read": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for read. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Reader)
+		if !ok {
+			return newError("receiver for read must be READER, got %s", args[0].Type())
+		}
+		n, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for read must be INT, got %s", args[1].Type())
+		}
+		return self.Read(int(n.Value))
+	}},
+	// readStr reads up to n bytes and returns as string.
+	"readStr": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for readStr. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Reader)
+		if !ok {
+			return newError("receiver for readStr must be READER, got %s", args[0].Type())
+		}
+		n, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for readStr must be INT, got %s", args[1].Type())
+		}
+		return self.ReadStr(int(n.Value))
+	}},
+	// readAllStr reads all remaining content as string.
+	"readAllStr": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for readAllStr. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Reader)
+		if !ok {
+			return newError("receiver for readAllStr must be READER, got %s", args[0].Type())
+		}
+		return self.ReadAllStr()
+	}},
+	// readAllBytes reads all remaining content as byte array.
+	"readAllBytes": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for readAllBytes. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Reader)
+		if !ok {
+			return newError("receiver for readAllBytes must be READER, got %s", args[0].Type())
+		}
+		return self.ReadAllBytes()
+	}},
+	// readLine reads a single line from the reader.
+	"readLine": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for readLine. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Reader)
+		if !ok {
+			return newError("receiver for readLine must be READER, got %s", args[0].Type())
+		}
+		return self.ReadLine()
+	}},
+	// close closes the reader if it implements io.Closer.
+	"close": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for close. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Reader)
+		if !ok {
+			return newError("receiver for close must be READER, got %s", args[0].Type())
+		}
+		return self.Close()
+	}},
+}
+
+// ============================================================
+// Writer Methods
+// ============================================================
+
+var writerMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	// write writes a byte array to the writer.
+	"write": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for write. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Writer)
+		if !ok {
+			return newError("receiver for write must be WRITER, got %s", args[0].Type())
+		}
+		arr, ok := args[1].(*Array)
+		if !ok {
+			return newError("argument for write must be ARRAY, got %s", args[1].Type())
+		}
+		return self.WriteBytes(arr)
+	}},
+	// writeStr writes a string to the writer.
+	"writeStr": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for writeStr. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Writer)
+		if !ok {
+			return newError("receiver for writeStr must be WRITER, got %s", args[0].Type())
+		}
+		s, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for writeStr must be STRING, got %s", args[1].Type())
+		}
+		return self.WriteStr(s.Value)
+	}},
+	// writeBytes writes a byte array to the writer.
+	"writeBytes": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for writeBytes. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Writer)
+		if !ok {
+			return newError("receiver for writeBytes must be WRITER, got %s", args[0].Type())
+		}
+		arr, ok := args[1].(*Array)
+		if !ok {
+			return newError("argument for writeBytes must be ARRAY, got %s", args[1].Type())
+		}
+		return self.WriteBytes(arr)
+	}},
+	// close closes the writer if it implements io.Closer.
+	"close": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for close. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Writer)
+		if !ok {
+			return newError("receiver for close must be WRITER, got %s", args[0].Type())
+		}
+		return self.Close()
+	}},
+}
+
+// ============================================================
+// Scanner Methods
+// ============================================================
+
+var scannerMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	// next reads the next whitespace-delimited token.
+	"next": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for next. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Scanner)
+		if !ok {
+			return newError("receiver for next must be SCANNER, got %s", args[0].Type())
+		}
+		return self.next()
+	}},
+	// nextLine reads the next line.
+	"nextLine": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for nextLine. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Scanner)
+		if !ok {
+			return newError("receiver for nextLine must be SCANNER, got %s", args[0].Type())
+		}
+		return self.nextLine()
+	}},
+	// nextInt reads the next token as an integer.
+	"nextInt": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for nextInt. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Scanner)
+		if !ok {
+			return newError("receiver for nextInt must be SCANNER, got %s", args[0].Type())
+		}
+		return self.nextInt()
+	}},
+	// nextFloat reads the next token as a float.
+	"nextFloat": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for nextFloat. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Scanner)
+		if !ok {
+			return newError("receiver for nextFloat must be SCANNER, got %s", args[0].Type())
+		}
+		return self.nextFloat()
+	}},
+	// nextBool reads the next token as a boolean.
+	"nextBool": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for nextBool. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Scanner)
+		if !ok {
+			return newError("receiver for nextBool must be SCANNER, got %s", args[0].Type())
+		}
+		return self.nextBool()
+	}},
+	// hasNext checks if there is more input.
+	"hasNext": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for hasNext. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Scanner)
+		if !ok {
+			return newError("receiver for hasNext must be SCANNER, got %s", args[0].Type())
+		}
+		return self.hasNext()
+	}},
+	// skipLine skips the current line.
+	"skipLine": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for skipLine. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Scanner)
+		if !ok {
+			return newError("receiver for skipLine must be SCANNER, got %s", args[0].Type())
+		}
+		return self.skipLine()
+	}},
+	// close closes the scanner.
+	"close": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for close. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Scanner)
+		if !ok {
+			return newError("receiver for close must be SCANNER, got %s", args[0].Type())
+		}
+		return self.close()
 	}},
 }

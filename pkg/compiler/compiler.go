@@ -252,6 +252,13 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(182, "postWebObject")
 	s.DefineBuiltin(183, "urlExists")
 	s.DefineBuiltin(184, "httpStatus")
+	// Reader/Writer built-in functions
+	s.DefineBuiltin(185, "getWebReader")
+	s.DefineBuiltin(186, "ioCopy")
+	s.DefineBuiltin(187, "isReader")
+	s.DefineBuiltin(188, "isWriter")
+	s.DefineBuiltin(189, "newBytesReader")
+	s.DefineBuiltin(190, "newStringReader")
 	return s
 }
 

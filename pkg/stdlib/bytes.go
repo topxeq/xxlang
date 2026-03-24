@@ -322,6 +322,67 @@ func init() {
 				}
 				return Int(-1)
 			}),
+
+			// ========== Bytes Object Functions ==========
+
+			// createBytes creates a new immutable Bytes object from an array of integers (0-255)
+			// Usage: b = bytes.createBytes([72, 101, 108, 108, 111])
+			"createBytes": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("createBytes() takes exactly 1 argument")
+				}
+				arr, ok := args[0].(*objects.Array)
+				if !ok {
+					return Error("createBytes() requires an array of integers (0-255)")
+				}
+				result := objects.NewBytesFromArray(arr.Elements)
+				if result == nil {
+					return Error("array must contain only integers in range 0-255")
+				}
+				return result
+			}),
+
+			// bytesFromString creates a new immutable Bytes object from a string
+			// Usage: b = bytes.bytesFromString("hello")
+			"bytesFromString": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("bytesFromString() takes exactly 1 argument")
+				}
+				str, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("bytesFromString() requires a string argument")
+				}
+				return objects.NewBytes([]byte(str.Value))
+			}),
+
+			// bytesFromBuffer creates a new immutable Bytes object from a BytesBuffer
+			// Usage: b = bytes.bytesFromBuffer(buffer)
+			"bytesFromBuffer": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("bytesFromBuffer() takes exactly 1 argument")
+				}
+				bb, ok := args[0].(*objects.BytesBuffer)
+				if !ok {
+					return Error("bytesFromBuffer() requires a BYTES_BUFFER argument")
+				}
+				return objects.NewBytes(bb.Bytes())
+			}),
+
+			// isBytes checks if an object is a Bytes type
+			// Usage: if bytes.isBytes(obj) { ... }
+			"isBytes": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("isBytes() takes exactly 1 argument")
+				}
+				_, ok := args[0].(*objects.Bytes)
+				return Bool(ok)
+			}),
+
+			// emptyBytes returns an empty Bytes object
+			// Usage: b = bytes.emptyBytes()
+			"emptyBytes": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				return objects.BYTES_EMPTY
+			}),
 		},
 	})
 }

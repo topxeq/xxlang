@@ -1,5 +1,5 @@
 # Xxlang
-![Coverage](https://img.shields.io/badge/Coverage-47.8%25-yellow)
+![Coverage](https://img.shields.io/badge/Coverage-81.8%25-brightgreen)
 
 [中文文档](README_zh.md)
 
@@ -39,7 +39,7 @@ Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language impleme
 - [Embedding Guide](docs/EMBEDDING.md) - Using Xxlang in Go applications
 - [JIT Compilation](docs/JIT.md) - JIT compiler documentation
 - [Plugin System](docs/PLUGIN.md) - Writing native Go plugins for high performance
-- [Performance Benchmarks](benchmarks/RESULTS.md) - Performance analysis
+- [Performance Benchmarks](tests/benchmark_results.md) - Performance analysis
 
 ## Installation
 
@@ -531,7 +531,7 @@ func fibNaive(n) {
 }
 ```
 
-See [benchmarks/FIB35_FINAL_REPORT.md](benchmarks/FIB35_FINAL_REPORT.md) for detailed analysis.
+See [docs/fib35_benchmark_report.md](docs/fib35_benchmark_report.md) for detailed analysis.
 
 ### High Performance via Go Functions
 

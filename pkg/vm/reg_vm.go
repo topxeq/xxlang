@@ -45,6 +45,12 @@ type RegVM struct {
 	// When set, the VM will call this hook before executing a CompiledFunction
 	// If the hook returns true, it handled the call and the VM should skip normal execution
 	nativeCallHook func(fn *compiler.CompiledFunction, args []Value, frame *RegFrame) (Value, bool)
+
+	// Symbol table for continuous code execution (Eval)
+	symbolTable *compiler.SymbolTable
+
+	// Next global index for new global variables in Eval
+	nextGlobalIndex int
 }
 
 // NewRegVM creates a new register-based VM
@@ -77,6 +83,8 @@ func NewRegVM(bytecode *compiler.Bytecode) *RegVM {
 		sourceMap:        bytecode.SourceMap,
 		tempStack:        NewValueStack(),
 		pendingException: ValueNull,
+		symbolTable:      compiler.NewSymbolTable(),
+		nextGlobalIndex:  0,
 	}
 }
 
@@ -109,6 +117,46 @@ func NewRegVMWithGlobals(bytecode *compiler.Bytecode, globals []Value) *RegVM {
 		sourceMap:        bytecode.SourceMap,
 		tempStack:        NewValueStack(),
 		pendingException: ValueNull,
+		symbolTable:      compiler.NewSymbolTable(),
+		nextGlobalIndex:  0,
+	}
+}
+
+// NewRegVMWithSymbolTable creates a register VM with a shared symbol table
+// This is used for continuous code execution where variables should persist
+func NewRegVMWithSymbolTable(bytecode *compiler.Bytecode, symbolTable *compiler.SymbolTable) *RegVM {
+	constants := make([]Value, len(bytecode.Constants))
+	for i, c := range bytecode.Constants {
+		constants[i] = NewObject(c)
+	}
+
+	// Create a single globals array to be shared between VM and main frame
+	globals := make([]Value, GlobalsSize)
+
+	mainFn := &compiler.CompiledFunction{
+		Instructions:  bytecode.Instructions,
+		NumLocals:     0,
+		NumParameters: 0,
+	}
+	mainFrame := NewRegFrame(mainFn)
+	mainFrame.Constants = constants
+	mainFrame.Globals = globals // Share the same globals array
+
+	frames := make([]*RegFrame, MaxFrames)
+	frames[0] = mainFrame
+
+	return &RegVM{
+		constants:        constants,
+		objConstants:     bytecode.Constants,
+		frames:           frames,
+		frameIndex:       1,
+		globals:          globals, // Share the same globals array
+		loader:           module.NewLoader(),
+		sourceMap:        bytecode.SourceMap,
+		tempStack:        NewValueStack(),
+		pendingException: ValueNull,
+		symbolTable:      symbolTable,
+		nextGlobalIndex:  symbolTable.NumDefinitions,
 	}
 }
 
@@ -1134,6 +1182,13 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 					}
 				}
 			}
+		} else if mod, ok := obj.(*objects.Module); ok {
+			// Handle Module objects - check early before primitive type check
+			if val, ok := mod.Exports[name.Value]; ok {
+				result = val
+			} else {
+				return fmt.Errorf("export '%s' not found in module %s", name.Value, mod.Name)
+			}
 		} else if obj.TypeTag() <= objects.TagBigFloat {
 			// Handle primitive type methods with inline caching
 			typeTag := obj.TypeTag()
@@ -1152,13 +1207,6 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 				} else {
 					return fmt.Errorf("cannot access property '%s' on type %s", name.Value, obj.Type())
 				}
-			}
-		} else if mod, ok := obj.(*objects.Module); ok {
-			// Handle Module objects
-			if val, ok := mod.Exports[name.Value]; ok {
-				result = val
-			} else {
-				return fmt.Errorf("export '%s' not found in module %s", name.Value, mod.Name)
 			}
 		} else if ws, ok := obj.(*objects.WebSocket); ok {
 			// Handle WebSocket objects with inline caching
@@ -1288,6 +1336,15 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 				}
 			}
 			_ = mapObj // avoid unused variable error
+		} else if mod, ok := obj.(*objects.Module); ok {
+			// Handle Module objects - check early before primitive type check
+			export, found := mod.Exports[name.Value]
+			if !found {
+				return fmt.Errorf("export '%s' not found in module '%s'", name.Value, mod.Name)
+			}
+			method = export
+			isMapFunctionValue = true // Module exports are called without receiver
+			_ = mod // avoid unused variable error
 		} else if obj.TypeTag() <= objects.TagBigFloat {
 			// Handle primitive type methods with inline caching
 			typeTag := obj.TypeTag()
@@ -4091,4 +4148,131 @@ func (vm *RegVM) runFunctionWithClosure(fn *compiler.CompiledFunction, closure *
 
 	// Run the function
 	_ = vm.Run()
+}
+
+// Eval executes additional code in the current VM context
+// Variables defined in previous Eval calls are available
+// Returns the last evaluated expression
+func (vm *RegVM) Eval(code string) (objects.Object, error) {
+	// Lexical analysis
+	l := lexer.New(code)
+
+	// Parsing
+	p := parser.New(l)
+	program := p.ParseProgram()
+
+	// Check for parser errors
+	if len(p.Errors()) > 0 {
+		return nil, fmt.Errorf("parse error: %s", p.Errors()[0])
+	}
+
+	// Create a new compiler with the existing symbol table
+	c := compiler.NewRegCompiler()
+	c.SetSymbolTable(vm.symbolTable)
+	c.SetConstants(vm.objConstants)
+
+	// Compile the program
+	if _, err := c.Compile(program); err != nil {
+		return nil, fmt.Errorf("compile error: %v", err)
+	}
+
+	// Get the bytecode
+	bytecode := c.Bytecode()
+
+	// Extend constants if needed
+	newConstants := make([]Value, len(bytecode.Constants))
+	for i, c := range bytecode.Constants {
+		newConstants[i] = NewObject(c)
+	}
+
+	// Create main function from new bytecode
+	mainFn := &compiler.CompiledFunction{
+		Instructions:  bytecode.Instructions,
+		NumLocals:     0,
+		NumParameters: 0,
+	}
+
+	// Create new frame with current globals
+	frame := NewRegFrame(mainFn)
+	frame.Constants = newConstants
+	frame.Globals = vm.globals
+
+	// Save current frame state
+	oldFrame := vm.frames[0]
+	oldFrameIndex := vm.frameIndex
+
+	// Set new frame
+	vm.frames[0] = frame
+	vm.frameIndex = 1
+	vm.constants = newConstants
+	vm.objConstants = bytecode.Constants
+	vm.sourceMap = bytecode.SourceMap
+
+	// Run the code
+	err := vm.Run()
+
+	// Get the result before restoring frame state
+	var result Value
+	if err == nil {
+		result = vm.LastResult()
+	}
+
+	// Restore frame state (keep globals changes)
+	vm.frames[0] = oldFrame
+	vm.frameIndex = oldFrameIndex
+
+	if err != nil {
+		return nil, fmt.Errorf("runtime error: %v", err)
+	}
+
+	// Return the last result
+	if result == ValueNull || result.ToObject() == objects.NULL {
+		return objects.NULL, nil
+	}
+
+	return result.ToObject(), nil
+}
+
+// GetGlobal returns a global variable by name
+func (vm *RegVM) GetGlobal(name string) (objects.Object, bool) {
+	sym, ok := vm.symbolTable.Resolve(name)
+	if !ok {
+		return nil, false
+	}
+	if sym.Scope != compiler.GlobalScope {
+		return nil, false
+	}
+	if sym.Index >= len(vm.globals) {
+		return nil, false
+	}
+	val := vm.globals[sym.Index]
+	if val == ValueNull || val.ToObject() == objects.NULL {
+		return nil, false
+	}
+	return val.ToObject(), true
+}
+
+// SetGlobal sets a global variable by name
+func (vm *RegVM) SetGlobal(name string, value objects.Object) {
+	// Check if symbol already exists
+	sym, ok := vm.symbolTable.Resolve(name)
+	if !ok {
+		// Define new symbol
+		sym = vm.symbolTable.Define(name)
+	}
+
+	if sym.Index < len(vm.globals) {
+		vm.globals[sym.Index] = NewObject(value)
+	}
+}
+
+// DefinedGlobals returns the names of all defined global variables
+func (vm *RegVM) DefinedGlobals() []string {
+	names := make([]string, 0, len(vm.symbolTable.Store))
+	for name, sym := range vm.symbolTable.Store {
+		if sym.Scope == compiler.GlobalScope {
+			names = append(names, name)
+		}
+	}
+	return names
 }

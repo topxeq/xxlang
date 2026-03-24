@@ -254,3 +254,33 @@ func (bb *BytesBuffer) WriteTo(other *BytesBuffer) (int64, error) {
 func (bb *BytesBuffer) Equals(other *BytesBuffer) bool {
 	return bytes.Equal(bb.buffer.Bytes(), other.buffer.Bytes())
 }
+
+// GetIOReader returns the buffer as an io.Reader interface.
+// This allows the BytesBuffer to be used with Reader objects.
+func (bb *BytesBuffer) GetIOReader() *bytesBufferReader {
+	return &bytesBufferReader{buffer: &bb.buffer}
+}
+
+// GetIOWriter returns the buffer as an io.Writer interface.
+// This allows the BytesBuffer to be used with Writer objects.
+func (bb *BytesBuffer) GetIOWriter() *bytesBufferWriter {
+	return &bytesBufferWriter{buffer: &bb.buffer}
+}
+
+// bytesBufferReader wraps a *bytes.Buffer to implement io.Reader.
+type bytesBufferReader struct {
+	buffer *bytes.Buffer
+}
+
+func (r *bytesBufferReader) Read(p []byte) (n int, err error) {
+	return r.buffer.Read(p)
+}
+
+// bytesBufferWriter wraps a *bytes.Buffer to implement io.Writer.
+type bytesBufferWriter struct {
+	buffer *bytes.Buffer
+}
+
+func (w *bytesBufferWriter) Write(p []byte) (n int, err error) {
+	return w.buffer.Write(p)
+}

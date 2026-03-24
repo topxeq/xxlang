@@ -46,6 +46,9 @@ const (
 	FileUploadResultType ObjectType = "FILE_UPLOAD_RESULT"
 	FileType            ObjectType = "FILE"
 	FileInfoType        ObjectType = "FILE_INFO"
+	ReaderType          ObjectType = "READER"
+	WriterType          ObjectType = "WRITER"
+	ScannerType         ObjectType = "SCANNER"
 )
 
 // TypeTag is a fast integer type identifier for hot path checks
@@ -91,6 +94,9 @@ const (
 	TagFileUploadResult
 	TagFile
 	TagFileInfo
+	TagReader
+	TagWriter
+	TagScanner
 	TagUnknown
 )
 

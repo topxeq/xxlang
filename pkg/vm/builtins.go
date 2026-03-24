@@ -219,6 +219,13 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["postWebObject"], // 182
 		objects.Builtins["urlExists"],    // 183
 		objects.Builtins["httpStatus"],   // 184
+		// Reader/Writer built-in functions
+		objects.Builtins["getWebReader"],   // 185
+		objects.Builtins["ioCopy"],         // 186
+		objects.Builtins["isReader"],       // 187
+		objects.Builtins["isWriter"],       // 188
+		objects.Builtins["newBytesReader"], // 189
+		objects.Builtins["newStringReader"], // 190
 	}
 
 	if index < 0 || index >= len(builtins) {
