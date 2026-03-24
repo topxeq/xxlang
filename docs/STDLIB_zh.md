@@ -73,6 +73,34 @@ var name = io.readLine()
 io.println("你好, " + name)
 ```
 
+#### readStdin()
+读取标准输入的所有内容并返回字符串。适用于管道处理。
+
+```xxl
+var content = io.readStdin()
+```
+
+#### readStdinBytes()
+读取标准输入的所有内容并返回字节数组。
+
+```xxl
+var bytes = io.readStdinBytes()
+```
+
+#### writeStdout(content)
+向标准输出写入字符串（不添加换行）。
+
+```xxl
+io.writeStdout("你好，世界！")
+```
+
+#### writeStderr(content)
+向标准错误输出写入字符串（不添加换行）。
+
+```xxl
+io.writeStderr("错误信息")
+```
+
 ### 文件函数
 
 #### readFile(path)

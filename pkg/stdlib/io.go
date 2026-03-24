@@ -77,6 +77,64 @@ func init() {
 				return String(line)
 			}),
 
+			// readStdin reads all content from stdin and returns as string.
+			// Usage: content = io.readStdin()
+			"readStdin": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				content, err := io.ReadAll(os.Stdin)
+				if err != nil {
+					return Error(err.Error())
+				}
+				return String(string(content))
+			}),
+
+			// readStdinBytes reads all content from stdin and returns as byte array.
+			// Usage: bytes = io.readStdinBytes()
+			"readStdinBytes": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				content, err := io.ReadAll(os.Stdin)
+				if err != nil {
+					return Error(err.Error())
+				}
+				result := make([]objects.Object, len(content))
+				for i, b := range content {
+					result[i] = Int(int64(b))
+				}
+				return Array(result...)
+			}),
+
+			// writeStdout writes a string to stdout.
+			// Usage: io.writeStdout(content)
+			"writeStdout": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("writeStdout() takes exactly 1 argument")
+				}
+				content, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("writeStdout() requires a string argument")
+				}
+				_, err := os.Stdout.Write([]byte(content.Value))
+				if err != nil {
+					return Error(err.Error())
+				}
+				return Null()
+			}),
+
+			// writeStderr writes a string to stderr.
+			// Usage: io.writeStderr(content)
+			"writeStderr": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("writeStderr() takes exactly 1 argument")
+				}
+				content, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("writeStderr() requires a string argument")
+				}
+				_, err := os.Stderr.Write([]byte(content.Value))
+				if err != nil {
+					return Error(err.Error())
+				}
+				return Null()
+			}),
+
 			"readFile": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				if len(args) != 1 {
 					return Error("readFile() takes exactly 1 argument")

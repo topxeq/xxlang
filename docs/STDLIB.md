@@ -77,6 +77,34 @@ var name = io.readLine()
 io.println("Hello, " + name)
 ```
 
+#### readStdin()
+Reads all content from stdin and returns as string. Useful for pipe processing.
+
+```xxl
+var content = io.readStdin()
+```
+
+#### readStdinBytes()
+Reads all content from stdin and returns as byte array.
+
+```xxl
+var bytes = io.readStdinBytes()
+```
+
+#### writeStdout(content)
+Writes a string to stdout without adding newline.
+
+```xxl
+io.writeStdout("Hello, World!")
+```
+
+#### writeStderr(content)
+Writes a string to stderr without adding newline.
+
+```xxl
+io.writeStderr("Error message")
+```
+
 ### File Functions
 
 #### readFile(path)
