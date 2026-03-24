@@ -131,6 +131,12 @@ func main() {
 		return
 	}
 
+	// Check for -e/--eval flag to execute code directly
+	if len(interpreterArgs) >= 2 && (interpreterArgs[0] == "-e" || interpreterArgs[0] == "--eval") {
+		executeCode(interpreterArgs[1], "<eval>")
+		return
+	}
+
 	switch interpreterArgs[0] {
 	case "compile":
 		if err := compileCmd(interpreterArgs[1:]); err != nil {
@@ -208,6 +214,7 @@ func printUsage() {
 	fmt.Println("Usage:")
 	fmt.Println("  xxl                         Start interactive REPL")
 	fmt.Println("  xxl <file|url> [-- args...] Execute a .xxl file or script from URL")
+	fmt.Println("  xxl -e <code>               Execute code directly from command line")
 	fmt.Println("  xxl run <file|url> [-- args...]")
 	fmt.Println("                              Execute a .xxl file or script from URL")
 	fmt.Println("  xxl serve [options]         Start HTTP/HTTPS server")
@@ -230,6 +237,7 @@ func printUsage() {
 	fmt.Println("      --target os/arch  Cross-compile for target OS/architecture")
 	fmt.Println("      --bytecode        Output as bytecode (.xxb) instead of executable")
 	fmt.Println("  -cloud <script>       Execute script from configured cloudUrlBase")
+	fmt.Println("  -e, --eval <code>     Execute code directly from command line")
 	fmt.Println("  -view, --view         View script content without executing")
 	fmt.Println("      --jit             Enable JIT compilation for hot paths (experimental)")
 	fmt.Println("      --jit-threshold=N Set JIT hot path threshold (default: 100)")
@@ -243,6 +251,8 @@ func printUsage() {
 	fmt.Println("Examples:")
 	fmt.Println("  xxl")
 	fmt.Println("  xxl script.xxl")
+	fmt.Println("  xxl -e 'pln(\"Hello, World!\")'    Execute code directly")
+	fmt.Println("  xxl -e '1 + 2 + 3'                Execute expression")
 	fmt.Println("  xxl -view script.xxl              View script content without executing")
 	fmt.Println("  xxl -view https://example.com/script.xxl")
 	fmt.Println("  xxl script.xxl -- arg1 arg2 --help")
