@@ -226,6 +226,25 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["isWriter"],       // 188
 		objects.Builtins["newBytesReader"], // 189
 		objects.Builtins["newStringReader"], // 190
+		// Encryption built-in functions (Charlang compatible)
+		objects.Builtins["encryptTextByTXTE"], // 191
+		objects.Builtins["decryptTextByTXTE"], // 192
+		objects.Builtins["encryptDataByTXDEE"], // 193
+		objects.Builtins["decryptDataByTXDEE"], // 194
+		objects.Builtins["encryptTextByTXDEE"], // 195
+		objects.Builtins["decryptTextByTXDEE"], // 196
+		objects.Builtins["encryptData"],   // 197
+		objects.Builtins["encryptBytes"],  // 198
+		objects.Builtins["decryptData"],   // 199
+		objects.Builtins["decryptBytes"],  // 200
+		objects.Builtins["encryptText"],   // 201
+		objects.Builtins["encryptStr"],    // 202
+		objects.Builtins["decryptText"],   // 203
+		objects.Builtins["decryptStr"],    // 204
+		objects.Builtins["encryptStream"], // 205
+		objects.Builtins["decryptStream"], // 206
+		objects.Builtins["aesEncrypt"],    // 207
+		objects.Builtins["aesDecrypt"],    // 208
 	}
 
 	if index < 0 || index >= len(builtins) {

@@ -3821,6 +3821,374 @@ var Builtins = map[string]*Builtin{
 			return NewReader(strings.NewReader(s.Value))
 		},
 	},
+
+	// ============================================================
+	// Encryption Functions (Charlang compatible)
+	// ============================================================
+
+	// encryptTextByTXTE - simple text encryption
+	"encryptTextByTXTE": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("encryptTextByTXTE requires at least 1 argument")
+			}
+			text := args[0].Inspect()
+			code := ""
+			if len(args) > 1 {
+				code = args[1].Inspect()
+			}
+			return NewString(encryptStringByTXTE(text, code))
+		},
+	},
+	"decryptTextByTXTE": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("decryptTextByTXTE requires at least 1 argument")
+			}
+			hexStr := args[0].Inspect()
+			code := ""
+			if len(args) > 1 {
+				code = args[1].Inspect()
+			}
+			return NewString(decryptStringByTXTE(hexStr, code))
+		},
+	},
+
+	// encryptDataByTXDEE - enhanced data encryption
+	"encryptDataByTXDEE": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("encryptDataByTXDEE requires at least 1 argument")
+			}
+			var data []byte
+			switch v := args[0].(type) {
+			case *Bytes:
+				data = v.Value
+			default:
+				data = []byte(args[0].Inspect())
+			}
+			code := ""
+			if len(args) > 1 {
+				code = args[1].Inspect()
+			}
+			result := encryptDataByTXDEE(data, code)
+			if result == nil {
+				return newError("encryption failed")
+			}
+			return NewBytes(result)
+		},
+	},
+	"decryptDataByTXDEE": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("decryptDataByTXDEE requires at least 1 argument")
+			}
+			var data []byte
+			switch v := args[0].(type) {
+			case *Bytes:
+				data = v.Value
+			default:
+				data = []byte(args[0].Inspect())
+			}
+			code := ""
+			if len(args) > 1 {
+				code = args[1].Inspect()
+			}
+			result := decryptDataByTXDEE(data, code)
+			if result == nil {
+				return newError("decryption failed")
+			}
+			return NewBytes(result)
+		},
+	},
+	"encryptTextByTXDEE": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("encryptTextByTXDEE requires at least 1 argument")
+			}
+			text := args[0].Inspect()
+			code := ""
+			if len(args) > 1 {
+				code = args[1].Inspect()
+			}
+			return NewString(encryptStringByTXDEE(text, code))
+		},
+	},
+	"decryptTextByTXDEE": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("decryptTextByTXDEE requires at least 1 argument")
+			}
+			hexStr := args[0].Inspect()
+			code := ""
+			if len(args) > 1 {
+				code = args[1].Inspect()
+			}
+			return NewString(decryptStringByTXDEE(hexStr, code))
+		},
+	},
+
+	// encryptData/encryptBytes/decryptData/decryptBytes - TXDEF encryption
+	"encryptData": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("encryptData requires at least 1 argument")
+			}
+			var data []byte
+			switch v := args[0].(type) {
+			case *Bytes:
+				data = v.Value
+			default:
+				data = []byte(args[0].Inspect())
+			}
+			code := ""
+			if len(args) > 1 {
+				code = args[1].Inspect()
+			}
+			result := encryptDataByTXDEF(data, code)
+			if result == nil {
+				return newError("encryption failed")
+			}
+			return NewBytes(result)
+		},
+	},
+	"encryptBytes": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("encryptBytes requires at least 1 argument")
+			}
+			var data []byte
+			switch v := args[0].(type) {
+			case *Bytes:
+				data = v.Value
+			default:
+				data = []byte(args[0].Inspect())
+			}
+			code := ""
+			if len(args) > 1 {
+				code = args[1].Inspect()
+			}
+			result := encryptDataByTXDEF(data, code)
+			if result == nil {
+				return newError("encryption failed")
+			}
+			return NewBytes(result)
+		},
+	},
+	"decryptData": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("decryptData requires at least 1 argument")
+			}
+			var data []byte
+			switch v := args[0].(type) {
+			case *Bytes:
+				data = v.Value
+			default:
+				data = []byte(args[0].Inspect())
+			}
+			code := ""
+			if len(args) > 1 {
+				code = args[1].Inspect()
+			}
+			result := decryptDataByTXDEF(data, code)
+			if result == nil {
+				return newError("decryption failed")
+			}
+			return NewBytes(result)
+		},
+	},
+	"decryptBytes": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("decryptBytes requires at least 1 argument")
+			}
+			var data []byte
+			switch v := args[0].(type) {
+			case *Bytes:
+				data = v.Value
+			default:
+				data = []byte(args[0].Inspect())
+			}
+			code := ""
+			if len(args) > 1 {
+				code = args[1].Inspect()
+			}
+			result := decryptDataByTXDEF(data, code)
+			if result == nil {
+				return newError("decryption failed")
+			}
+			return NewBytes(result)
+		},
+	},
+
+	// encryptText/encryptStr/decryptText/decryptStr - TXDEF text encryption
+	"encryptText": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("encryptText requires at least 1 argument")
+			}
+			text := args[0].Inspect()
+			code := ""
+			if len(args) > 1 {
+				code = args[1].Inspect()
+			}
+			return NewString(encryptStringByTXDEF(text, code))
+		},
+	},
+	"encryptStr": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("encryptStr requires at least 1 argument")
+			}
+			text := args[0].Inspect()
+			code := ""
+			if len(args) > 1 {
+				code = args[1].Inspect()
+			}
+			return NewString(encryptStringByTXDEF(text, code))
+		},
+	},
+	"decryptText": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("decryptText requires at least 1 argument")
+			}
+			hexStr := args[0].Inspect()
+			code := ""
+			if len(args) > 1 {
+				code = args[1].Inspect()
+			}
+			return NewString(decryptStringByTXDEF(hexStr, code))
+		},
+	},
+	"decryptStr": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("decryptStr requires at least 1 argument")
+			}
+			hexStr := args[0].Inspect()
+			code := ""
+			if len(args) > 1 {
+				code = args[1].Inspect()
+			}
+			return NewString(decryptStringByTXDEF(hexStr, code))
+		},
+	},
+
+	// encryptStream/decryptStream - stream encryption
+	"encryptStream": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 3 {
+				return newError("encryptStream requires 3 arguments: reader, code, writer")
+			}
+			reader, ok := args[0].(io.Reader)
+			if !ok {
+				return newError("first argument must be a reader")
+			}
+			code := args[1].Inspect()
+			writer, ok := args[2].(io.Writer)
+			if !ok {
+				return newError("third argument must be a writer")
+			}
+			err := encryptStreamByTXDEF(reader, code, writer)
+			if err != nil {
+				return newError("encryption failed: %v", err)
+			}
+			return NULL
+		},
+	},
+	"decryptStream": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 3 {
+				return newError("decryptStream requires 3 arguments: reader, code, writer")
+			}
+			reader, ok := args[0].(io.Reader)
+			if !ok {
+				return newError("first argument must be a reader")
+			}
+			code := args[1].Inspect()
+			writer, ok := args[2].(io.Writer)
+			if !ok {
+				return newError("third argument must be a writer")
+			}
+			err := decryptStreamByTXDEF(reader, code, writer)
+			if err != nil {
+				return newError("decryption failed: %v", err)
+			}
+			return NULL
+		},
+	},
+
+	// aesEncrypt/aesDecrypt - AES encryption
+	"aesEncrypt": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 2 {
+				return newError("aesEncrypt requires at least 2 arguments: data, key")
+			}
+			var data []byte
+			switch v := args[0].(type) {
+			case *Bytes:
+				data = v.Value
+			default:
+				data = []byte(args[0].Inspect())
+			}
+			key := []byte(args[1].Inspect())
+
+			mode := ""
+			if len(args) > 2 {
+				mode = args[2].Inspect()
+			}
+
+			var result []byte
+			var err error
+
+			if strings.Contains(mode, "cbc") || strings.Contains(mode, "-cbc") {
+				result, err = aesEncryptCBC(data, key)
+			} else {
+				result, err = aesEncryptECB(data, key)
+			}
+
+			if err != nil {
+				return newError("AES encryption failed: %v", err)
+			}
+			return NewString(string(result))
+		},
+	},
+	"aesDecrypt": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 2 {
+				return newError("aesDecrypt requires at least 2 arguments: data, key")
+			}
+			var data []byte
+			switch v := args[0].(type) {
+			case *Bytes:
+				data = v.Value
+			default:
+				data = []byte(args[0].Inspect())
+			}
+			key := []byte(args[1].Inspect())
+
+			mode := ""
+			if len(args) > 2 {
+				mode = args[2].Inspect()
+			}
+
+			var result []byte
+			var err error
+
+			if strings.Contains(mode, "cbc") || strings.Contains(mode, "-cbc") {
+				result, err = aesDecryptCBC(data, key)
+			} else {
+				result, err = aesDecryptECB(data, key)
+			}
+
+			if err != nil {
+				return newError("AES decryption failed: %v", err)
+			}
+			return NewString(string(result))
+		},
+	},
 }
 
 // RunCodeImpl is the implementation function for runCode, set by the VM
