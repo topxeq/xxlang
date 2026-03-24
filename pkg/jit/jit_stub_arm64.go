@@ -12,14 +12,6 @@ import (
 	"github.com/topxeq/xxlang/pkg/vm"
 )
 
-// JITStats tracks JIT compilation statistics (stub)
-type JITStats struct {
-	CompiledFunctions int64
-	CacheHits         int64
-	CacheMisses       int64
-	TotalCodeSize     int64
-}
-
 // CompiledFunc represents a JIT-compiled function (stub)
 type CompiledFunc struct {
 	Entry     uintptr

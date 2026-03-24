@@ -13,6 +13,14 @@ type JITConfig struct {
 	Debug bool
 }
 
+// JITStats tracks JIT compilation statistics
+type JITStats struct {
+	CompiledFunctions int64
+	CacheHits         int64
+	CacheMisses       int64
+	TotalCodeSize     int64
+}
+
 // DefaultJITConfig returns default JIT configuration
 func DefaultJITConfig() JITConfig {
 	return JITConfig{

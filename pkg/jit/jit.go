@@ -33,14 +33,6 @@ type JITCompiler struct {
 	stats JITStats
 }
 
-// JITStats tracks JIT compilation statistics
-type JITStats struct {
-	CompiledFunctions int64
-	CacheHits         int64
-	CacheMisses       int64
-	TotalCodeSize     int64
-}
-
 // CompiledFunc represents a JIT-compiled function
 type CompiledFunc struct {
 	// Entry point to the compiled code
