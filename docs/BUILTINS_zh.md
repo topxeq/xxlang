@@ -14,6 +14,7 @@
 - [映射函数](#映射函数)
 - [命令行参数函数](#命令行参数函数)
 - [工具函数](#工具函数)
+- [加密函数](#加密函数)
 - [动态代码执行](#动态代码执行)
 - [类型方法](#类型方法)
 - [标准库模块](#标准库模块)
@@ -1030,6 +1031,172 @@ chunk([1, 2, 3, 4, 5], 2)     // [[1, 2], [3, 4], [5]]
 
 ---
 
+## 加密函数
+
+Xxlang 提供与 Charlang 兼容的加密/解密函数。这些函数不依赖第三方库实现，并保持与 Charlang 的完全交叉兼容。
+
+### encryptTextByTXTE(text, code)
+
+使用 TXTE（简单文本加密）算法加密文本。返回十六进制字符串。这是确定性加密 - 相同的输入总是产生相同的输出。
+
+```xxl
+var encrypted = encryptTextByTXTE("Hello", "mykey")
+// "8F9FA29CA39E"（确定性输出）
+```
+
+### decryptTextByTXTE(hexStr, code)
+
+解密由 TXTE 加密的十六进制字符串。
+
+```xxl
+var decrypted = decryptTextByTXTE("8F9FA29CA39E", "mykey")
+// "Hello"
+```
+
+### encryptDataByTXDEE(data, code)
+
+使用 TXDEE（增强数据加密）算法加密字节数据，带有随机前缀/后缀字节。返回字节数组。
+
+```xxl
+var data = [72, 101, 108, 108, 111]  // "Hello" 字节
+var encrypted = encryptDataByTXDEE(data, "mykey")
+// 返回带随机填充的字节数组
+```
+
+### decryptDataByTXDEE(data, code)
+
+解密由 TXDEE 加密的字节数据。
+
+```xxl
+var decrypted = decryptDataByTXDEE(encrypted, "mykey")
+// 返回原始字节数组
+```
+
+### encryptTextByTXDEE(text, code)
+
+使用 TXDEE 加密文本并返回十六进制字符串。
+
+```xxl
+var encrypted = encryptTextByTXDEE("Hello", "mykey")
+// 由于随机字节，每次输出不同
+```
+
+### decryptTextByTXDEE(hexStr, code)
+
+解密由 TXDEE 加密的十六进制字符串。
+
+```xxl
+var decrypted = decryptTextByTXDEE(encrypted, "mykey")
+// "Hello"
+```
+
+### encryptDataByTXDEF(data, code)
+
+使用 TXDEF（灵活数据加密）算法加密字节数据，根据密钥动态填充。返回字节数组。
+
+```xxl
+var data = [72, 101, 108, 108, 111]
+var encrypted = encryptDataByTXDEF(data, "mykey")
+```
+
+### decryptDataByTXDEF(data, code)
+
+解密由 TXDEF 加密的字节数据。
+
+```xxl
+var decrypted = decryptDataByTXDEF(encrypted, "mykey")
+```
+
+### encryptTextByTXDEF(text, code)
+
+使用 TXDEF 加密文本并返回十六进制字符串。
+
+```xxl
+var encrypted = encryptTextByTXDEF("Hello", "mykey")
+```
+
+### decryptTextByTXDEF(hexStr, code)
+
+解密由 TXDEF 加密的十六进制字符串。
+
+```xxl
+var decrypted = decryptTextByTXDEF(encrypted, "mykey")
+// "Hello"
+```
+
+### encryptData(data, code) / decryptData(data, code)
+
+使用 TXDEF 算法的默认数据加密。
+
+```xxl
+var encrypted = encryptData([1, 2, 3], "secret")
+var decrypted = decryptData(encrypted, "secret")
+```
+
+### encryptBytes(data, code) / decryptBytes(data, code)
+
+字节数组加密别名。
+
+```xxl
+var encrypted = encryptBytes([72, 101, 108, 108, 111], "key")
+var decrypted = decryptBytes(encrypted, "key")
+```
+
+### encryptText(text, code) / decryptText(hexStr, code)
+
+使用 TXDEF 的默认文本加密。
+
+```xxl
+var encrypted = encryptText("Hello World", "mykey")
+var decrypted = decryptText(encrypted, "mykey")
+// "Hello World"
+```
+
+### encryptStr(text, code) / decryptStr(hexStr, code)
+
+字符串加密别名（与 encryptText/decryptText 相同）。
+
+```xxl
+var encrypted = encryptStr("secret message", "password")
+var decrypted = decryptStr(encrypted, "password")
+```
+
+### encryptStream(reader, code, writer) / decryptStream(reader, code, writer)
+
+用于大数据的流式加密/解密。
+
+```xxl
+import "io"
+
+var reader = io.newReader("large content to encrypt")
+var writer = io.newBytesWriter()
+encryptStream(reader, "mykey", writer)
+var encrypted = writer.bytes()
+
+// 解密
+var reader2 = io.newReader(encrypted)
+var writer2 = io.newBytesWriter()
+decryptStream(reader2, "mykey", writer2)
+```
+
+### aesEncrypt(data, key, mode?) / aesDecrypt(data, key, mode?)
+
+AES 加密/解密。支持 ECB-like 模式（CBC 配合零 IV）和 CBC 模式。
+
+```xxl
+// ECB-like 模式（默认）
+var encrypted = aesEncrypt([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16], "16bytekey1234567")
+var decrypted = aesDecrypt(encrypted, "16bytekey1234567")
+
+// CBC 模式
+var encryptedCBC = aesEncrypt(data, "16bytekey1234567", "cbc")
+var decryptedCBC = aesDecrypt(encryptedCBC, "16bytekey1234567", "cbc")
+```
+
+**注意：** 密钥如果超过 16 字节会被截断。CBC 模式下，密钥前缀用作 IV。
+
+---
+
 ## 类型方法
 
 所有类型都有以下通用方法：
@@ -1379,7 +1546,9 @@ JSON 编解码。
 
 ### crypto
 
-加密函数。
+加密函数，包括哈希、编码和加密。
+
+**哈希函数：**
 
 | 函数 | 说明 | 示例 |
 |------|------|------|
@@ -1387,10 +1556,32 @@ JSON 编解码。
 | `sha1(s)` | SHA1 哈希 | `crypto.sha1("hello")` |
 | `sha256(s)` | SHA256 哈希 | `crypto.sha256("hello")` |
 | `sha512(s)` | SHA512 哈希 | `crypto.sha512("hello")` |
+
+**编码函数：**
+
+| 函数 | 说明 | 示例 |
+|------|------|------|
 | `base64Encode(s)` | Base64 编码 | `crypto.base64Encode("hello")` |
 | `base64Decode(s)` | Base64 解码 | `crypto.base64Decode("aGVsbG8=")` |
 | `hexEncode(s)` | 十六进制编码 | `crypto.hexEncode("hello")` |
 | `hexDecode(s)` | 十六进制解码 | `crypto.hexDecode("68656c6c6f")` |
+
+**加密函数（Charlang 兼容）：**
+
+| 函数 | 说明 | 示例 |
+|------|------|------|
+| `encryptTextByTXTE(text, code)` | TXTE 文本加密 | `crypto.encryptTextByTXTE("hello", "key")` |
+| `decryptTextByTXTE(hexStr, code)` | TXTE 文本解密 | `crypto.decryptTextByTXTE("...", "key")` |
+| `encryptTextByTXDEE(text, code)` | TXDEE 文本加密 | `crypto.encryptTextByTXDEE("hello", "key")` |
+| `decryptTextByTXDEE(hexStr, code)` | TXDEE 文本解密 | `crypto.decryptTextByTXDEE("...", "key")` |
+| `encryptTextByTXDEF(text, code)` | TXDEF 文本加密 | `crypto.encryptTextByTXDEF("hello", "key")` |
+| `decryptTextByTXDEF(hexStr, code)` | TXDEF 文本解密 | `crypto.decryptTextByTXDEF("...", "key")` |
+| `encryptText(text, code)` | 默认文本加密 | `crypto.encryptText("hello", "key")` |
+| `decryptText(hexStr, code)` | 默认文本解密 | `crypto.decryptText("...", "key")` |
+| `encryptData(data, code)` | 默认数据加密 | `crypto.encryptData([1,2,3], "key")` |
+| `decryptData(data, code)` | 默认数据解密 | `crypto.decryptData(encData, "key")` |
+| `aesEncrypt(data, key, mode?)` | AES 加密 | `crypto.aesEncrypt(data, "16bytekey1234567")` |
+| `aesDecrypt(data, key, mode?)` | AES 解密 | `crypto.aesDecrypt(encData, "16bytekey1234567")` |
 
 ### fmt
 

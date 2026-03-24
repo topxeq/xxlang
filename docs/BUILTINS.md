@@ -13,6 +13,7 @@ This document provides a comprehensive reference for all built-in functions in X
 - [Map Functions](#map-functions)
 - [Command Line Argument Functions](#command-line-argument-functions)
 - [Utility Functions](#utility-functions)
+- [Encryption Functions](#encryption-functions)
 - [Type Checking Functions](#type-checking-functions)
 - [Formatting Functions](#formatting-functions)
 - [Dynamic Code Execution](#dynamic-code-execution)
@@ -1090,6 +1091,172 @@ chunk([1, 2, 3, 4, 5], 2)     // [[1, 2], [3, 4], [5]]
 
 ---
 
+## Encryption Functions
+
+Xxlang provides Charlang-compatible encryption/decryption functions. These are implemented without third-party dependencies and maintain full cross-compatibility with Charlang.
+
+### encryptTextByTXTE(text, code)
+
+Encrypts text using the TXTE (simple text encryption) algorithm. Returns a hex string. This is a deterministic encryption - same inputs always produce same output.
+
+```xxl
+var encrypted = encryptTextByTXTE("Hello", "mykey")
+// "8F9FA29CA39E" (deterministic output)
+```
+
+### decryptTextByTXTE(hexStr, code)
+
+Decrypts a hex string encrypted by TXTE.
+
+```xxl
+var decrypted = decryptTextByTXTE("8F9FA29CA39E", "mykey")
+// "Hello"
+```
+
+### encryptDataByTXDEE(data, code)
+
+Encrypts byte data using TXDEE (enhanced data encryption) with random prefix/suffix bytes. Returns a byte array.
+
+```xxl
+var data = [72, 101, 108, 108, 111]  // "Hello" bytes
+var encrypted = encryptDataByTXDEE(data, "mykey")
+// Returns byte array with random padding
+```
+
+### decryptDataByTXDEE(data, code)
+
+Decrypts byte data encrypted by TXDEE.
+
+```xxl
+var decrypted = decryptDataByTXDEE(encrypted, "mykey")
+// Returns original byte array
+```
+
+### encryptTextByTXDEE(text, code)
+
+Encrypts text using TXDEE and returns a hex string.
+
+```xxl
+var encrypted = encryptTextByTXDEE("Hello", "mykey")
+// Different output each time due to random bytes
+```
+
+### decryptTextByTXDEE(hexStr, code)
+
+Decrypts a hex string encrypted by TXDEE.
+
+```xxl
+var decrypted = decryptTextByTXDEE(encrypted, "mykey")
+// "Hello"
+```
+
+### encryptDataByTXDEF(data, code)
+
+Encrypts byte data using TXDEF (flexible data encryption) with dynamic padding based on code. Returns a byte array.
+
+```xxl
+var data = [72, 101, 108, 108, 111]
+var encrypted = encryptDataByTXDEF(data, "mykey")
+```
+
+### decryptDataByTXDEF(data, code)
+
+Decrypts byte data encrypted by TXDEF.
+
+```xxl
+var decrypted = decryptDataByTXDEF(encrypted, "mykey")
+```
+
+### encryptTextByTXDEF(text, code)
+
+Encrypts text using TXDEF and returns a hex string.
+
+```xxl
+var encrypted = encryptTextByTXDEF("Hello", "mykey")
+```
+
+### decryptTextByTXDEF(hexStr, code)
+
+Decrypts a hex string encrypted by TXDEF.
+
+```xxl
+var decrypted = decryptTextByTXDEF(encrypted, "mykey")
+// "Hello"
+```
+
+### encryptData(data, code) / decryptData(data, code)
+
+Default data encryption using TXDEF algorithm.
+
+```xxl
+var encrypted = encryptData([1, 2, 3], "secret")
+var decrypted = decryptData(encrypted, "secret")
+```
+
+### encryptBytes(data, code) / decryptBytes(data, code)
+
+Byte array encryption aliases.
+
+```xxl
+var encrypted = encryptBytes([72, 101, 108, 108, 111], "key")
+var decrypted = decryptBytes(encrypted, "key")
+```
+
+### encryptText(text, code) / decryptText(hexStr, code)
+
+Default text encryption using TXDEF.
+
+```xxl
+var encrypted = encryptText("Hello World", "mykey")
+var decrypted = decryptText(encrypted, "mykey")
+// "Hello World"
+```
+
+### encryptStr(text, code) / decryptStr(hexStr, code)
+
+String encryption aliases (same as encryptText/decryptText).
+
+```xxl
+var encrypted = encryptStr("secret message", "password")
+var decrypted = decryptStr(encrypted, "password")
+```
+
+### encryptStream(reader, code, writer) / decryptStream(reader, code, writer)
+
+Stream-based encryption/decryption for large data.
+
+```xxl
+import "io"
+
+var reader = io.newReader("large content to encrypt")
+var writer = io.newBytesWriter()
+encryptStream(reader, "mykey", writer)
+var encrypted = writer.bytes()
+
+// Decrypt
+var reader2 = io.newReader(encrypted)
+var writer2 = io.newBytesWriter()
+decryptStream(reader2, "mykey", writer2)
+```
+
+### aesEncrypt(data, key, mode?) / aesDecrypt(data, key, mode?)
+
+AES encryption/decryption. Supports ECB-like mode (CBC with zero IV) and CBC mode.
+
+```xxl
+// ECB-like mode (default)
+var encrypted = aesEncrypt([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16], "16bytekey1234567")
+var decrypted = aesDecrypt(encrypted, "16bytekey1234567")
+
+// CBC mode
+var encryptedCBC = aesEncrypt(data, "16bytekey1234567", "cbc")
+var decryptedCBC = aesDecrypt(encryptedCBC, "16bytekey1234567", "cbc")
+```
+
+**Note:** Key is truncated to 16 bytes if longer. For CBC mode, the key prefix is used as IV.
+
+---
+
 ## Type Checking Functions
 
 ### isEmpty(value)
@@ -1550,7 +1717,9 @@ String utilities module.
 
 ### crypto
 
-Cryptographic functions.
+Cryptographic functions including hashing, encoding, and encryption.
+
+**Hash Functions:**
 
 | Function | Description | Example |
 |----------|-------------|---------|
@@ -1558,10 +1727,32 @@ Cryptographic functions.
 | `sha1(s)` | SHA1 hash | `crypto.sha1("hello")` |
 | `sha256(s)` | SHA256 hash | `crypto.sha256("hello")` |
 | `sha512(s)` | SHA512 hash | `crypto.sha512("hello")` |
+
+**Encoding Functions:**
+
+| Function | Description | Example |
+|----------|-------------|---------|
 | `base64Encode(s)` | Base64 encode | `crypto.base64Encode("hello")` |
 | `base64Decode(s)` | Base64 decode | `crypto.base64Decode("aGVsbG8=")` |
 | `hexEncode(s)` | Hex encode | `crypto.hexEncode("hello")` |
 | `hexDecode(s)` | Hex decode | `crypto.hexDecode("68656c6c6f")` |
+
+**Encryption Functions (Charlang compatible):**
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `encryptTextByTXTE(text, code)` | TXTE text encryption | `crypto.encryptTextByTXTE("hello", "key")` |
+| `decryptTextByTXTE(hexStr, code)` | TXTE text decryption | `crypto.decryptTextByTXTE("...", "key")` |
+| `encryptTextByTXDEE(text, code)` | TXDEE text encryption | `crypto.encryptTextByTXDEE("hello", "key")` |
+| `decryptTextByTXDEE(hexStr, code)` | TXDEE text decryption | `crypto.decryptTextByTXDEE("...", "key")` |
+| `encryptTextByTXDEF(text, code)` | TXDEF text encryption | `crypto.encryptTextByTXDEF("hello", "key")` |
+| `decryptTextByTXDEF(hexStr, code)` | TXDEF text decryption | `crypto.decryptTextByTXDEF("...", "key")` |
+| `encryptText(text, code)` | Default text encryption | `crypto.encryptText("hello", "key")` |
+| `decryptText(hexStr, code)` | Default text decryption | `crypto.decryptText("...", "key")` |
+| `encryptData(data, code)` | Default data encryption | `crypto.encryptData([1,2,3], "key")` |
+| `decryptData(data, code)` | Default data decryption | `crypto.decryptData(encData, "key")` |
+| `aesEncrypt(data, key, mode?)` | AES encryption | `crypto.aesEncrypt(data, "16bytekey1234567")` |
+| `aesDecrypt(data, key, mode?)` | AES decryption | `crypto.aesDecrypt(encData, "16bytekey1234567")` |
 
 ### fmt
 
