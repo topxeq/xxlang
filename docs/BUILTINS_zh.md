@@ -1176,6 +1176,92 @@ import "io" { readFile, writeFile }
 | `env(key)` | 获取环境变量 | `io.env("HOME")` |
 | `setEnv(key, value)` | 设置环境变量 | `io.setEnv("DEBUG", "1")` |
 | `args()` | 获取命令行参数 | `io.args()` |
+| `scan(prompt?)` | 读取一行输入 | `io.scan("请输入姓名: ")` |
+| `scanInt(prompt?)` | 读取整数 | `io.scanInt("请输入年龄: ")` |
+| `scanFloat(prompt?)` | 读取浮点数 | `io.scanFloat("请输入价格: ")` |
+| `scanBool(prompt?)` | 读取布尔值 | `io.scanBool("继续吗? ")` |
+| `scanN(n)` | 读取n个token | `io.scanN(3)` |
+| `scanSplit(sep)` | 读取并分割 | `io.scanSplit(",")` |
+| `scan2()` | 读取两个值 | `a, b = io.scan2()` |
+| `scan3()` | 读取三个值 | `a, b, c = io.scan3()` |
+| `scanf(format)` | 格式化读取 | `io.scanf("{} {}")` |
+| `newScanner(reader?)` | 创建Scanner对象 | `io.newScanner()` |
+
+#### 输入/扫描函数
+
+Xxlang提供了便捷的函数用于从标准输入读取用户输入：
+
+```xxl
+import "io"
+
+// 基本用法 - 读取一行
+var name = io.scan("请输入姓名: ")
+pln("你好, " + name + "!")
+
+// 读取特定类型
+var age = io.scanInt("请输入年龄: ")
+var price = io.scanFloat("请输入价格: ")
+var confirmed = io.scanBool("继续吗? (true/false): ")
+
+// 读取多个值
+var a, b = io.scan2()  // 读取两个空白分隔的token
+var x, y, z = io.scan3()  // 读取三个token
+
+// 读取n个值到数组
+var tokens = io.scanN(3)  // 返回 ["token1", "token2", "token3"]
+
+// 读取并按分隔符分割
+var parts = io.scanSplit(",")  // 读取一行，按逗号分割
+
+// 格式化读取
+var values = io.scanf("{} {} {}")  // 读取三个空格分隔的值
+```
+
+#### Scanner对象
+
+如果需要更多控制，可以使用Scanner对象：
+
+```xxl
+import "io"
+
+// 从标准输入创建扫描器
+var scanner = io.newScanner()
+
+// 或从reader创建
+var reader = io.newReader("hello world\n42\n3.14")
+var scanner2 = io.newScanner(reader)
+
+// 读取token
+var token = scanner.next()       // 读取空白分隔的token
+var line = scanner.nextLine()    // 读取整行
+var num = scanner.nextInt()      // 读取整数
+var f = scanner.nextFloat()      // 读取浮点数
+var b = scanner.nextBool()       // 读取布尔值
+
+// 检查是否还有输入
+if (scanner.hasNext()) {
+    pln("还有更多输入")
+}
+
+// 跳过当前行
+scanner.skipLine()
+
+// 完成后关闭
+scanner.close()
+```
+
+**Scanner对象方法：**
+
+| 方法 | 说明 | 返回类型 |
+|------|------|----------|
+| `next()` | 读取下一个空白分隔的token | STRING 或 NULL |
+| `nextLine()` | 读取下一行 | STRING 或 NULL |
+| `nextInt()` | 读取下一个整数 | INT 或 ERROR |
+| `nextFloat()` | 读取下一个浮点数 | FLOAT 或 ERROR |
+| `nextBool()` | 读取下一个布尔值 | BOOL 或 ERROR |
+| `hasNext()` | 检查是否还有输入 | BOOL |
+| `skipLine()` | 跳过当前行 | NULL |
+| `close()` | 关闭扫描器 | NULL |
 
 ### os
 
@@ -1379,5 +1465,5 @@ UUID 生成。
 ## 另见
 
 - [语言参考](LANGUAGE.md) - 完整语言语法
-- [标准库](STDLIB.md) - 标准库概述
+- [标准库](STDLIB_zh.md) - 标准库概述
 - [嵌入指南](EMBEDDING.md) - 在 Go 应用中使用 Xxlang

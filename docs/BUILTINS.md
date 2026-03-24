@@ -1347,6 +1347,92 @@ Input/output operations.
 | `env(key)` | Get environment variable | `io.env("HOME")` |
 | `setEnv(key, value)` | Set environment variable | `io.setEnv("DEBUG", "1")` |
 | `args()` | Get command line arguments | `io.args()` |
+| `scan(prompt?)` | Read a line from stdin | `io.scan("Enter name: ")` |
+| `scanInt(prompt?)` | Read an integer from stdin | `io.scanInt("Enter age: ")` |
+| `scanFloat(prompt?)` | Read a float from stdin | `io.scanFloat("Enter price: ")` |
+| `scanBool(prompt?)` | Read a boolean from stdin | `io.scanBool("Continue? ")` |
+| `scanN(n)` | Read n tokens from stdin | `io.scanN(3)` |
+| `scanSplit(sep)` | Read line and split | `io.scanSplit(",")` |
+| `scan2()` | Read two tokens | `a, b = io.scan2()` |
+| `scan3()` | Read three tokens | `a, b, c = io.scan3()` |
+| `scanf(format)` | Read with format | `io.scanf("{} {}")` |
+| `newScanner(reader?)` | Create Scanner object | `io.newScanner()` |
+
+#### Input/Scan Functions
+
+Xxlang provides convenient functions for reading user input from stdin:
+
+```xxl
+import "io"
+
+// Basic usage - read a line
+var name = io.scan("Enter your name: ")
+pln("Hello, " + name + "!")
+
+// Read specific types
+var age = io.scanInt("Enter your age: ")
+var price = io.scanFloat("Enter price: ")
+var confirmed = io.scanBool("Continue? (true/false): ")
+
+// Read multiple values
+var a, b = io.scan2()  // Read two whitespace-delimited tokens
+var x, y, z = io.scan3()  // Read three tokens
+
+// Read n values into array
+var tokens = io.scanN(3)  // Returns ["token1", "token2", "token3"]
+
+// Read and split by delimiter
+var parts = io.scanSplit(",")  // Read line, split by comma
+
+// Format-based reading
+var values = io.scanf("{} {} {}")  // Read three space-separated values
+```
+
+#### Scanner Object
+
+For more control over input reading, use the Scanner object:
+
+```xxl
+import "io"
+
+// Create scanner from stdin
+var scanner = io.newScanner()
+
+// Or create from a reader
+var reader = io.newReader("hello world\n42\n3.14")
+var scanner2 = io.newScanner(reader)
+
+// Read tokens
+var token = scanner.next()       // Read whitespace-delimited token
+var line = scanner.nextLine()    // Read entire line
+var num = scanner.nextInt()      // Read integer
+var f = scanner.nextFloat()      // Read float
+var b = scanner.nextBool()       // Read boolean
+
+// Check for more input
+if (scanner.hasNext()) {
+    pln("More input available")
+}
+
+// Skip current line
+scanner.skipLine()
+
+// Close when done
+scanner.close()
+```
+
+**Scanner Methods:**
+
+| Method | Description | Return Type |
+|--------|-------------|-------------|
+| `next()` | Read next whitespace-delimited token | STRING or NULL |
+| `nextLine()` | Read next line | STRING or NULL |
+| `nextInt()` | Read next token as integer | INT or ERROR |
+| `nextFloat()` | Read next token as float | FLOAT or ERROR |
+| `nextBool()` | Read next token as boolean | BOOL or ERROR |
+| `hasNext()` | Check if more input available | BOOL |
+| `skipLine()` | Skip current line | NULL |
+| `close()` | Close the scanner | NULL |
 
 ### os
 
