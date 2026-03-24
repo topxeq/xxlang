@@ -21,6 +21,7 @@ io.println("Hello, World!")
 - [math](#math) - Mathematical functions
 - [array](#array) - Array utilities
 - [json](#json) - JSON encoding/decoding
+- [xml](#xml) - XML encoding/decoding
 - [csv](#csv) - CSV file reading and writing
 - [regex](#regex) - Regular expressions
 - [crypto](#crypto) - Cryptographic functions
@@ -1628,6 +1629,181 @@ var updated = json.set("$.store.book[0].price", data, 12.99)
 
 // Delete a book
 var fewer = json.delete("$.store.book[1]", data)
+```
+
+---
+
+## xml
+
+XML encoding, decoding, and manipulation utilities.
+
+### Core Functions
+
+#### parse(xmlStr)
+Parses an XML string and returns an Xxlang object (map).
+
+```xxl
+import "xml"
+
+var xmlStr = `<book id="123">
+    <title>Learning Xxlang</title>
+    <author>John Doe</author>
+</book>`
+
+var data = xml.parse(xmlStr)
+// data is: {"book": {"@attributes": {"id": "123"}, "title": {"@text": "Learning Xxlang"}, ...}}
+```
+
+#### stringify(rootName, obj, indent?)
+Converts an Xxlang object to an XML string.
+
+```xxl
+var obj = {
+    "@attributes": {"version": "1.0"},
+    "@text": "Some content",
+    "name": {"@text": "Test"}
+}
+var xmlStr = xml.stringify("root", obj, 2)  // 2-space indent
+```
+
+#### encode(rootName, obj)
+Converts an Xxlang object to a compact XML string (no indentation).
+
+```xxl
+var xmlStr = xml.encode("root", {"@text": "Hello"})
+// <root>Hello</root>
+```
+
+#### decode(xmlStr)
+Alias for `parse()`. Parses an XML string.
+
+### File Operations
+
+#### readFile(path)
+Reads an XML file and parses it.
+
+```xxl
+var data = xml.readFile("config.xml")
+pln(data["config"]["setting"]["@text"])
+```
+
+#### writeFile(path, rootName, obj, indent?)
+Writes an Xxlang object to an XML file with XML declaration.
+
+```xxl
+xml.writeFile("output.xml", "config", data, 2)
+```
+
+### Element Extraction
+
+#### getAttr(element, attrName)
+Gets an attribute value from an XML element.
+
+```xxl
+var book = xml.getElement(data, "book")
+var id = xml.getAttr(book, "id")  // "123"
+```
+
+#### getText(element)
+Gets the text content from an XML element.
+
+```xxl
+var title = xml.getElement(book, "title")
+var text = xml.getText(title)  // "Learning Xxlang"
+```
+
+#### getElement(element, name)
+Gets a child element by name. Returns null if not found.
+
+```xxl
+var author = xml.getElement(book, "author")
+```
+
+#### getElements(element, name)
+Gets all child elements with a given name (for repeated elements). Always returns an array.
+
+```xxl
+var chapters = xml.getElements(book, "chapter")
+for (ch in chapters) {
+    pln(xml.getText(ch))
+}
+```
+
+### Element Modification
+
+#### setAttr(element, name, value)
+Sets an attribute on an XML element. Returns a new element with the attribute.
+
+```xxl
+var updated = xml.setAttr(book, "lang", "en")
+```
+
+#### setText(element, text)
+Sets the text content of an XML element. Returns a new element.
+
+```xxl
+var updated = xml.setText(title, "New Title")
+```
+
+#### addElement(parent, name, child)
+Adds a child element to an XML element. Returns a new element.
+
+```xxl
+var updated = xml.addElement(book, "publisher", {"@text": "Tech Books"})
+```
+
+#### newElement(name, text?, attributes?)
+Creates a new XML element.
+
+```xxl
+var elem = xml.newElement("item", "Hello", {"type": "greeting"})
+```
+
+### Utilities
+
+#### isValid(xmlStr)
+Checks if a string is valid XML. Returns boolean.
+
+```xxl
+if (xml.isValid(xmlStr)) {
+    var data = xml.parse(xmlStr)
+}
+```
+
+#### escape(str)
+Escapes special XML characters (<, >, &, ", ').
+
+```xxl
+var escaped = xml.escape("<tag>text & more</tag>")
+// "&lt;tag&gt;text &amp; more&lt;/tag&gt;"
+```
+
+#### unescape(str)
+Unescapes XML entities.
+
+```xxl
+var text = xml.unescape("&lt;tag&gt;")
+// "<tag>"
+```
+
+### XML Structure
+
+Parsed XML is represented as maps with special keys:
+
+- `@attributes` - Map of element attributes
+- `@text` - Text content of the element
+- `@declaration` - XML declaration (if present)
+- Child elements are stored by their tag names as keys
+
+```xxl
+// XML: <book id="123" lang="en"><title>Hello</title></book>
+// Becomes:
+{
+    "book": {
+        "@attributes": {"id": "123", "lang": "en"},
+        "title": {"@text": "Hello"}
+    }
+}
 ```
 
 ---

@@ -21,6 +21,7 @@ io.println("你好，世界！")
 - [math](#math) - 数学函数
 - [array](#array) - 数组工具
 - [json](#json) - JSON 编解码
+- [xml](#xml) - XML 编解码
 - [regex](#regex) - 正则表达式
 - [crypto](#crypto) - 加密函数
 - [time](#time) - 时间日期函数
@@ -1577,6 +1578,181 @@ var updated = json.set("$.store.book[0].price", data, 12.99)
 
 // 删除一本书
 var fewer = json.delete("$.store.book[1]", data)
+```
+
+---
+
+## xml
+
+XML 编解码和操作工具。
+
+### 核心函数
+
+#### parse(xmlStr)
+解析 XML 字符串并返回 Xxlang 对象（映射）。
+
+```xxl
+import "xml"
+
+var xmlStr = `<book id="123">
+    <title>学习 Xxlang</title>
+    <author>张三</author>
+</book>`
+
+var data = xml.parse(xmlStr)
+// data 为: {"book": {"@attributes": {"id": "123"}, "title": {"@text": "学习 Xxlang"}, ...}}
+```
+
+#### stringify(rootName, obj, indent?)
+将 Xxlang 对象转换为 XML 字符串。
+
+```xxl
+var obj = {
+    "@attributes": {"version": "1.0"},
+    "@text": "一些内容",
+    "name": {"@text": "测试"}
+}
+var xmlStr = xml.stringify("root", obj, 2)  // 2空格缩进
+```
+
+#### encode(rootName, obj)
+将 Xxlang 对象转换为紧凑的 XML 字符串（无缩进）。
+
+```xxl
+var xmlStr = xml.encode("root", {"@text": "你好"})
+// <root>你好</root>
+```
+
+#### decode(xmlStr)
+`parse()` 的别名。解析 XML 字符串。
+
+### 文件操作
+
+#### readFile(path)
+读取 XML 文件并解析。
+
+```xxl
+var data = xml.readFile("config.xml")
+pln(data["config"]["setting"]["@text"])
+```
+
+#### writeFile(path, rootName, obj, indent?)
+将 Xxlang 对象写入 XML 文件（包含 XML 声明）。
+
+```xxl
+xml.writeFile("output.xml", "config", data, 2)
+```
+
+### 元素提取
+
+#### getAttr(element, attrName)
+从 XML 元素获取属性值。
+
+```xxl
+var book = xml.getElement(data, "book")
+var id = xml.getAttr(book, "id")  // "123"
+```
+
+#### getText(element)
+从 XML 元素获取文本内容。
+
+```xxl
+var title = xml.getElement(book, "title")
+var text = xml.getText(title)  // "学习 Xxlang"
+```
+
+#### getElement(element, name)
+按名称获取子元素。未找到返回 null。
+
+```xxl
+var author = xml.getElement(book, "author")
+```
+
+#### getElements(element, name)
+获取所有指定名称的子元素（用于重复元素）。始终返回数组。
+
+```xxl
+var chapters = xml.getElements(book, "chapter")
+for (ch in chapters) {
+    pln(xml.getText(ch))
+}
+```
+
+### 元素修改
+
+#### setAttr(element, name, value)
+设置 XML 元素的属性。返回带有新属性的元素。
+
+```xxl
+var updated = xml.setAttr(book, "lang", "zh")
+```
+
+#### setText(element, text)
+设置 XML 元素的文本内容。返回新元素。
+
+```xxl
+var updated = xml.setText(title, "新标题")
+```
+
+#### addElement(parent, name, child)
+向 XML 元素添加子元素。返回新元素。
+
+```xxl
+var updated = xml.addElement(book, "publisher", {"@text": "科技出版社"})
+```
+
+#### newElement(name, text?, attributes?)
+创建新的 XML 元素。
+
+```xxl
+var elem = xml.newElement("item", "你好", {"type": "greeting"})
+```
+
+### 工具函数
+
+#### isValid(xmlStr)
+检查字符串是否为有效的 XML。返回布尔值。
+
+```xxl
+if (xml.isValid(xmlStr)) {
+    var data = xml.parse(xmlStr)
+}
+```
+
+#### escape(str)
+转义特殊 XML 字符（<, >, &, ", '）。
+
+```xxl
+var escaped = xml.escape("<tag>文本 & 更多</tag>")
+// "&lt;tag&gt;文本 &amp; 更多&lt;/tag&gt;"
+```
+
+#### unescape(str)
+反转义 XML 实体。
+
+```xxl
+var text = xml.unescape("&lt;tag&gt;")
+// "<tag>"
+```
+
+### XML 结构
+
+解析后的 XML 表示为带有特殊键的映射：
+
+- `@attributes` - 元素属性映射
+- `@text` - 元素的文本内容
+- `@declaration` - XML 声明（如果存在）
+- 子元素以其标签名作为键存储
+
+```xxl
+// XML: <book id="123" lang="zh"><title>你好</title></book>
+// 变为:
+{
+    "book": {
+        "@attributes": {"id": "123", "lang": "zh"},
+        "title": {"@text": "你好"}
+    }
+}
 ```
 
 ---
