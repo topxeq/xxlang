@@ -264,6 +264,389 @@ func TestJSONPathFilter(t *testing.T) {
 	}
 }
 
+// TestJSONPathFilterAdvanced tests advanced filter operators
+func TestJSONPathFilterAdvanced(t *testing.T) {
+	// Create test data with various fields
+	items := objects.NewArray([]objects.Object{
+		objects.NewMap(map[objects.HashKey]objects.MapPair{
+			objects.NewString("name").HashKey():    {Key: objects.NewString("name"), Value: objects.NewString("Alice")},
+			objects.NewString("age").HashKey():     {Key: objects.NewString("age"), Value: objects.NewInt(25)},
+			objects.NewString("category").HashKey(): {Key: objects.NewString("category"), Value: objects.NewString("fiction")},
+			objects.NewString("active").HashKey():  {Key: objects.NewString("active"), Value: objects.TRUE},
+			objects.NewString("tags").HashKey():    {Key: objects.NewString("tags"), Value: objects.NewArray([]objects.Object{objects.NewString("tag1"), objects.NewString("tag2")})},
+		}),
+		objects.NewMap(map[objects.HashKey]objects.MapPair{
+			objects.NewString("name").HashKey():     {Key: objects.NewString("name"), Value: objects.NewString("Bob")},
+			objects.NewString("age").HashKey():      {Key: objects.NewString("age"), Value: objects.NewInt(30)},
+			objects.NewString("category").HashKey(): {Key: objects.NewString("category"), Value: objects.NewString("drama")},
+			objects.NewString("active").HashKey():   {Key: objects.NewString("active"), Value: objects.FALSE},
+			objects.NewString("tags").HashKey():     {Key: objects.NewString("tags"), Value: objects.NewArray([]objects.Object{objects.NewString("tag2"), objects.NewString("tag3")})},
+		}),
+		objects.NewMap(map[objects.HashKey]objects.MapPair{
+			objects.NewString("name").HashKey():     {Key: objects.NewString("name"), Value: objects.NewString("Charlie")},
+			objects.NewString("age").HashKey():      {Key: objects.NewString("age"), Value: objects.NewInt(35)},
+			objects.NewString("category").HashKey(): {Key: objects.NewString("category"), Value: objects.NewString("fiction")},
+			objects.NewString("active").HashKey():   {Key: objects.NewString("active"), Value: objects.TRUE},
+			objects.NewString("tags").HashKey():     {Key: objects.NewString("tags"), Value: objects.NewArray([]objects.Object{objects.NewString("tag1")})},
+		}),
+	})
+
+	testCases := []struct {
+		path     string
+		expected int
+		desc     string
+	}{
+		// Logical AND
+		{"$[?(@.age > 20 && @.age < 30)]", 1, "AND: age between 20 and 30"},
+		{"$[?(@.category == \"fiction\" && @.active == true)]", 2, "AND: fiction AND active"},
+
+		// Logical OR
+		{"$[?(@.age < 26 || @.age > 31)]", 2, "OR: age < 26 or age > 31"},
+
+		// Logical NOT
+		{"$[?(!@.active)]", 1, "NOT: not active"},
+
+		// Combined AND/OR
+		{"$[?(@.category == \"fiction\" && (@.age < 30 || @.active == true))]", 2, "Combined: fiction AND (age<30 OR active)"},
+
+		// In operator
+		{"$[?(@.category in [\"fiction\", \"drama\"])]", 3, "IN: category in fiction or drama"},
+		{"$[?(@.age in [25, 35])]", 2, "IN: age is 25 or 35"},
+
+		// Not in operator
+		{"$[?(@.category nin [\"fiction\"])]", 1, "NIN: category not fiction"},
+
+		// Contains for string
+		{"$[?(@.name contains \"a\")]", 1, "Contains: name contains 'a' (only Charlie, case-sensitive)"},
+		{"$[?(@.name contains \"li\")]", 2, "Contains: name contains 'li'"},
+
+		// Contains for array
+		{"$[?(@.tags contains \"tag1\")]", 2, "Contains: tags contains tag1"},
+
+		// StartsWith
+		{"$[?(@.name startsWith \"A\")]", 1, "StartsWith: name starts with 'A'"},
+		{"$[?(@.name startsWith \"B\")]", 1, "StartsWith: name starts with 'B'"},
+
+		// EndsWith
+		{"$[?(@.name endsWith \"e\")]", 2, "EndsWith: name ends with 'e'"},
+
+		// Regex match
+		{"$[?(@.name =~ \"^[AB].*\")]", 2, "Regex: name starts with A or B"},
+		{"$[?(@.name =~ \".*ie.*\")]", 1, "Regex: name contains 'ie'"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			jp, err := ParseJSONPath(tc.path)
+			if err != nil {
+				t.Errorf("Failed to parse path %s: %v", tc.path, err)
+				return
+			}
+
+			results := jp.Get(items)
+			if len(results) != tc.expected {
+				t.Errorf("Path %s: expected %d results, got %d", tc.path, tc.expected, len(results))
+			}
+		})
+	}
+}
+
+// TestJSONPathFilterEmpty tests the empty() function
+func TestJSONPathFilterEmpty(t *testing.T) {
+	items := objects.NewArray([]objects.Object{
+		objects.NewMap(map[objects.HashKey]objects.MapPair{
+			objects.NewString("name").HashKey(): {Key: objects.NewString("name"), Value: objects.NewString("Alice")},
+			objects.NewString("items").HashKey(): {Key: objects.NewString("items"), Value: objects.NewArray([]objects.Object{})},
+		}),
+		objects.NewMap(map[objects.HashKey]objects.MapPair{
+			objects.NewString("name").HashKey(): {Key: objects.NewString("name"), Value: objects.NewString("Bob")},
+			objects.NewString("items").HashKey(): {Key: objects.NewString("items"), Value: objects.NewArray([]objects.Object{objects.NewInt(1)})},
+		}),
+		objects.NewMap(map[objects.HashKey]objects.MapPair{
+			objects.NewString("name").HashKey(): {Key: objects.NewString("name"), Value: objects.NewString("")},
+		}),
+	})
+
+	testCases := []struct {
+		path     string
+		expected int
+	}{
+		{"$[?(empty(@.items))]", 2},  // Alice has empty items, third item has no items field (null is empty)
+		{"$[?(empty(@.name))]", 1},   // Empty name
+		{"$[?(!empty(@.items))]", 1}, // Bob has non-empty items
+	}
+
+	for _, tc := range testCases {
+		jp, err := ParseJSONPath(tc.path)
+		if err != nil {
+			t.Errorf("Failed to parse path %s: %v", tc.path, err)
+			continue
+		}
+
+		results := jp.Get(items)
+		if len(results) != tc.expected {
+			t.Errorf("Path %s: expected %d results, got %d", tc.path, tc.expected, len(results))
+		}
+	}
+}
+
+// TestJSONPathFilterLength tests the length() function
+func TestJSONPathFilterLength(t *testing.T) {
+	items := objects.NewArray([]objects.Object{
+		objects.NewMap(map[objects.HashKey]objects.MapPair{
+			objects.NewString("name").HashKey(): {Key: objects.NewString("name"), Value: objects.NewString("Alice")},
+			objects.NewString("tags").HashKey(): {Key: objects.NewString("tags"), Value: objects.NewArray([]objects.Object{objects.NewInt(1), objects.NewInt(2)})},
+		}),
+		objects.NewMap(map[objects.HashKey]objects.MapPair{
+			objects.NewString("name").HashKey(): {Key: objects.NewString("name"), Value: objects.NewString("Bob")},
+			objects.NewString("tags").HashKey(): {Key: objects.NewString("tags"), Value: objects.NewArray([]objects.Object{objects.NewInt(1)})},
+		}),
+	})
+
+	testCases := []struct {
+		path     string
+		expected int
+	}{
+		{"$[?(length(@.name) > 3)]", 1},     // Alice has 5 chars
+		{"$[?(length(@.tags) == 2)]", 1},    // Alice has 2 tags
+		{"$[?(@.tags.length() == 1)]", 1},   // Bob has 1 tag (alternative syntax)
+	}
+
+	for _, tc := range testCases {
+		jp, err := ParseJSONPath(tc.path)
+		if err != nil {
+			t.Errorf("Failed to parse path %s: %v", tc.path, err)
+			continue
+		}
+
+		results := jp.Get(items)
+		if len(results) != tc.expected {
+			t.Errorf("Path %s: expected %d results, got %d", tc.path, tc.expected, len(results))
+		}
+	}
+}
+
+// TestJSONPathFilterExistence tests existence checks
+func TestJSONPathFilterExistence(t *testing.T) {
+	items := objects.NewArray([]objects.Object{
+		objects.NewMap(map[objects.HashKey]objects.MapPair{
+			objects.NewString("name").HashKey(): {Key: objects.NewString("name"), Value: objects.NewString("Alice")},
+			objects.NewString("email").HashKey(): {Key: objects.NewString("email"), Value: objects.NewString("alice@example.com")},
+		}),
+		objects.NewMap(map[objects.HashKey]objects.MapPair{
+			objects.NewString("name").HashKey(): {Key: objects.NewString("name"), Value: objects.NewString("Bob")},
+		}),
+		objects.NewMap(map[objects.HashKey]objects.MapPair{
+			objects.NewString("name").HashKey(): {Key: objects.NewString("name"), Value: objects.NewString("Charlie")},
+			objects.NewString("email").HashKey(): {Key: objects.NewString("email"), Value: objects.NULL},
+		}),
+	})
+
+	testCases := []struct {
+		path     string
+		expected int
+	}{
+		{"$[?(@.email)]", 1},              // Only Alice has non-null email
+		{"$[?(@.name)]", 3},               // All have name
+		{"$[?(@.missing == null)]", 3},    // All have missing field which is null
+	}
+
+	for _, tc := range testCases {
+		jp, err := ParseJSONPath(tc.path)
+		if err != nil {
+			t.Errorf("Failed to parse path %s: %v", tc.path, err)
+			continue
+		}
+
+		results := jp.Get(items)
+		if len(results) != tc.expected {
+			t.Errorf("Path %s: expected %d results, got %d", tc.path, tc.expected, len(results))
+		}
+	}
+}
+
+// TestJSONPathFilterBetween tests the "between" operator
+func TestJSONPathFilterBetween(t *testing.T) {
+	items := objects.NewArray([]objects.Object{
+		objects.NewMap(map[objects.HashKey]objects.MapPair{
+			objects.NewString("name").HashKey(): {Key: objects.NewString("name"), Value: objects.NewString("Alice")},
+			objects.NewString("price").HashKey(): {Key: objects.NewString("price"), Value: objects.NewInt(10)},
+		}),
+		objects.NewMap(map[objects.HashKey]objects.MapPair{
+			objects.NewString("name").HashKey(): {Key: objects.NewString("name"), Value: objects.NewString("Bob")},
+			objects.NewString("price").HashKey(): {Key: objects.NewString("price"), Value: objects.NewInt(50)},
+		}),
+		objects.NewMap(map[objects.HashKey]objects.MapPair{
+			objects.NewString("name").HashKey(): {Key: objects.NewString("name"), Value: objects.NewString("Charlie")},
+			objects.NewString("price").HashKey(): {Key: objects.NewString("price"), Value: objects.NewInt(100)},
+		}),
+		objects.NewMap(map[objects.HashKey]objects.MapPair{
+			objects.NewString("name").HashKey(): {Key: objects.NewString("name"), Value: objects.NewString("David")},
+			objects.NewString("price").HashKey(): {Key: objects.NewString("price"), Value: objects.NewInt(150)},
+		}),
+	})
+
+	testCases := []struct {
+		path     string
+		expected int
+		desc     string
+	}{
+		{"$[?(@.price between [20, 100])]", 2, "price between 20 and 100 (Bob=50, Charlie=100)"},
+		{"$[?(@.price between [10, 50])]", 2, "price between 10 and 50 (Alice=10, Bob=50)"},
+		{"$[?(@.price between [0, 200])]", 4, "price between 0 and 200 (all items)"},
+		{"$[?(@.price between [60, 90])]", 0, "price between 60 and 90 (none)"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			jp, err := ParseJSONPath(tc.path)
+			if err != nil {
+				t.Errorf("Failed to parse path %s: %v", tc.path, err)
+				return
+			}
+
+			results := jp.Get(items)
+			if len(results) != tc.expected {
+				t.Errorf("Path %s: expected %d results, got %d", tc.path, tc.expected, len(results))
+			}
+		})
+	}
+}
+
+// TestJSONPathFilterIsNull tests the "isNull" and "isNotNull" operators
+func TestJSONPathFilterIsNull(t *testing.T) {
+	items := objects.NewArray([]objects.Object{
+		objects.NewMap(map[objects.HashKey]objects.MapPair{
+			objects.NewString("name").HashKey(): {Key: objects.NewString("name"), Value: objects.NewString("Alice")},
+			objects.NewString("email").HashKey(): {Key: objects.NewString("email"), Value: objects.NewString("alice@example.com")},
+		}),
+		objects.NewMap(map[objects.HashKey]objects.MapPair{
+			objects.NewString("name").HashKey(): {Key: objects.NewString("name"), Value: objects.NewString("Bob")},
+			objects.NewString("email").HashKey(): {Key: objects.NewString("email"), Value: objects.NULL},
+		}),
+		objects.NewMap(map[objects.HashKey]objects.MapPair{
+			objects.NewString("name").HashKey(): {Key: objects.NewString("name"), Value: objects.NewString("Charlie")},
+		}),
+	})
+
+	testCases := []struct {
+		path     string
+		expected int
+		desc     string
+	}{
+		{"$[?(@.email isNull)]", 2, "email is null (Bob has null, Charlie has missing)"},
+		{"$[?(@.email isNotNull)]", 1, "email is not null (only Alice)"},
+		{"$[?(@.name isNotNull)]", 3, "name is not null (all have name)"},
+		{"$[?(@.missing isNull)]", 3, "missing field is null (all)"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			jp, err := ParseJSONPath(tc.path)
+			if err != nil {
+				t.Errorf("Failed to parse path %s: %v", tc.path, err)
+				return
+			}
+
+			results := jp.Get(items)
+			if len(results) != tc.expected {
+				t.Errorf("Path %s: expected %d results, got %d", tc.path, tc.expected, len(results))
+			}
+		})
+	}
+}
+
+// TestJSONPathFilterIsType tests the "isType" operator
+func TestJSONPathFilterIsType(t *testing.T) {
+	items := objects.NewArray([]objects.Object{
+		objects.NewMap(map[objects.HashKey]objects.MapPair{
+			objects.NewString("name").HashKey():   {Key: objects.NewString("name"), Value: objects.NewString("Alice")},
+			objects.NewString("age").HashKey():    {Key: objects.NewString("age"), Value: objects.NewInt(25)},
+			objects.NewString("score").HashKey():  {Key: objects.NewString("score"), Value: objects.NewFloat(95.5)},
+			objects.NewString("active").HashKey(): {Key: objects.NewString("active"), Value: objects.TRUE},
+			objects.NewString("tags").HashKey():   {Key: objects.NewString("tags"), Value: objects.NewArray([]objects.Object{})},
+			objects.NewString("meta").HashKey():   {Key: objects.NewString("meta"), Value: objects.NewMap(map[objects.HashKey]objects.MapPair{})},
+		}),
+		objects.NewMap(map[objects.HashKey]objects.MapPair{
+			objects.NewString("name").HashKey():   {Key: objects.NewString("name"), Value: objects.NewString("Bob")},
+			objects.NewString("age").HashKey():    {Key: objects.NewString("age"), Value: objects.NewFloat(30.5)},
+			objects.NewString("active").HashKey(): {Key: objects.NewString("active"), Value: objects.FALSE},
+		}),
+	})
+
+	testCases := []struct {
+		path     string
+		expected int
+		desc     string
+	}{
+		{"$[?(@.age isType \"int\")]", 1, "age is int (Alice)"},
+		{"$[?(@.age isType \"float\")]", 1, "age is float (Bob)"},
+		{"$[?(@.age isType \"number\")]", 2, "age is number (both)"},
+		{"$[?(@.name isType \"string\")]", 2, "name is string (both)"},
+		{"$[?(@.active isType \"boolean\")]", 2, "active is boolean (both)"},
+		{"$[?(@.tags isType \"array\")]", 1, "tags is array (Alice)"},
+		{"$[?(@.meta isType \"object\")]", 1, "meta is object (Alice)"},
+		{"$[?(@.missing isType \"null\")]", 2, "missing is null (both)"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			jp, err := ParseJSONPath(tc.path)
+			if err != nil {
+				t.Errorf("Failed to parse path %s: %v", tc.path, err)
+				return
+			}
+
+			results := jp.Get(items)
+			if len(results) != tc.expected {
+				t.Errorf("Path %s: expected %d results, got %d", tc.path, tc.expected, len(results))
+			}
+		})
+	}
+}
+
+// TestJSONPathFilterAbsent tests the "absent" operator
+func TestJSONPathFilterAbsent(t *testing.T) {
+	items := objects.NewArray([]objects.Object{
+		objects.NewMap(map[objects.HashKey]objects.MapPair{
+			objects.NewString("name").HashKey(): {Key: objects.NewString("name"), Value: objects.NewString("Alice")},
+			objects.NewString("email").HashKey(): {Key: objects.NewString("email"), Value: objects.NewString("alice@example.com")},
+		}),
+		objects.NewMap(map[objects.HashKey]objects.MapPair{
+			objects.NewString("name").HashKey(): {Key: objects.NewString("name"), Value: objects.NewString("Bob")},
+			objects.NewString("email").HashKey(): {Key: objects.NewString("email"), Value: objects.NULL},
+		}),
+		objects.NewMap(map[objects.HashKey]objects.MapPair{
+			objects.NewString("name").HashKey(): {Key: objects.NewString("name"), Value: objects.NewString("Charlie")},
+		}),
+	})
+
+	testCases := []struct {
+		path     string
+		expected int
+		desc     string
+	}{
+		{"$[?(@.email absent)]", 1, "email absent (only Charlie)"},
+		{"$[?(@.name absent)]", 0, "name absent (none)"},
+		{"$[?(@.phone absent)]", 3, "phone absent (all)"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			jp, err := ParseJSONPath(tc.path)
+			if err != nil {
+				t.Errorf("Failed to parse path %s: %v", tc.path, err)
+				return
+			}
+
+			results := jp.Get(items)
+			if len(results) != tc.expected {
+				t.Errorf("Path %s: expected %d results, got %d", tc.path, tc.expected, len(results))
+			}
+		})
+	}
+}
+
 // TestJSONPaths tests the Paths function
 func TestJSONPaths(t *testing.T) {
 	// Create simple object: {"a": {"b": 1}}

@@ -132,8 +132,23 @@ func parseBracketSegment(s string) (*pathSegment, string, error) {
 		return nil, "", fmt.Errorf("expected '['")
 	}
 
-	// Find matching ]
-	end := strings.Index(s, "]")
+	// Find matching ] by tracking bracket depth
+	depth := 0
+	end := -1
+	for i, c := range s {
+		switch c {
+		case '[', '(':
+			depth++
+		case ']', ')':
+			depth--
+			if depth == 0 && c == ']' {
+				end = i
+			}
+		}
+		if end >= 0 {
+			break
+		}
+	}
 	if end == -1 {
 		return nil, "", fmt.Errorf("unmatched '['")
 	}
@@ -500,9 +515,143 @@ func (jp *JSONPath) getFilter(obj objects.Object, expr string) []objects.Object 
 }
 
 // matchesFilter checks if an element matches a filter expression
-// Supports simple expressions like: @.price < 10, @.name == "test"
+// Supports:
+// - Comparison: @.price < 10, @.name == "test"
+// - Logical: @.price > 5 && @.price < 20, @.active || @.pending
+// - Regex: @.name =~ "pattern"
+// - Contains: @.name contains "test", @.tags contains "tag1"
+// - In: @.category in ["fiction", "drama"]
+// - Not in: @.category nin ["fiction", "drama"]
+// - Starts with: @.name startsWith "The"
+// - Ends with: @.name endsWith "ing"
+// - Exists: @.field (checks if field exists and is not null)
+// - Empty: empty(@.field)
+// - Between: @.price between [10, 100]
+// - Is null: @.field isNull
+// - Is not null: @.field isNotNull
+// - Is type: @.value isType "number"
+// - Absent: @.optional absent
 func (jp *JSONPath) matchesFilter(obj objects.Object, expr string) bool {
 	expr = strings.TrimSpace(expr)
+
+	// Handle logical OR (lower precedence than AND)
+	if orIdx := findLogicalOp(expr, "||"); orIdx >= 0 {
+		left := strings.TrimSpace(expr[:orIdx])
+		right := strings.TrimSpace(expr[orIdx+2:])
+		return jp.matchesFilter(obj, left) || jp.matchesFilter(obj, right)
+	}
+
+	// Handle logical AND
+	if andIdx := findLogicalOp(expr, "&&"); andIdx >= 0 {
+		left := strings.TrimSpace(expr[:andIdx])
+		right := strings.TrimSpace(expr[andIdx+2:])
+		return jp.matchesFilter(obj, left) && jp.matchesFilter(obj, right)
+	}
+
+	// Handle NOT
+	if strings.HasPrefix(expr, "!") {
+		inner := strings.TrimSpace(expr[1:])
+		// Special handling for !@.field - check if field is falsy
+		if strings.HasPrefix(inner, "@") && !strings.ContainsAny(inner, " \t") {
+			// This is a simple field reference - check if it's falsy
+			val := jp.evalFilterExpr(obj, inner)
+			return isFalsy(val)
+		}
+		return !jp.matchesFilter(obj, inner)
+	}
+
+	// Handle parentheses
+	if strings.HasPrefix(expr, "(") && strings.HasSuffix(expr, ")") {
+		return jp.matchesFilter(obj, expr[1:len(expr)-1])
+	}
+
+	// Handle "in" operator: @.category in ["a", "b"]
+	if idx := findKeywordOpCase(expr, " in "); idx >= 0 {
+		left := strings.TrimSpace(expr[:idx])
+		right := strings.TrimSpace(expr[idx+4:])
+		return jp.evalInOperator(obj, left, right, false)
+	}
+
+	// Handle "nin" (not in) operator: @.category nin ["a", "b"]
+	if idx := findKeywordOpCase(expr, " nin "); idx >= 0 {
+		left := strings.TrimSpace(expr[:idx])
+		right := strings.TrimSpace(expr[idx+5:])
+		return jp.evalInOperator(obj, left, right, true)
+	}
+
+	// Handle "contains" operator: @.name contains "test"
+	if idx := findKeywordOpCase(expr, " contains "); idx >= 0 {
+		left := strings.TrimSpace(expr[:idx])
+		right := strings.TrimSpace(expr[idx+10:])
+		return jp.evalContainsOperator(obj, left, right)
+	}
+
+	// Handle "startsWith" operator: @.name startsWith "The"
+	if idx := findKeywordOpCase(expr, " startsWith "); idx >= 0 {
+		left := strings.TrimSpace(expr[:idx])
+		right := strings.TrimSpace(expr[idx+12:])
+		return jp.evalStartsWithOperator(obj, left, right)
+	}
+
+	// Handle "endsWith" operator: @.name endsWith "ing"
+	if idx := findKeywordOpCase(expr, " endsWith "); idx >= 0 {
+		left := strings.TrimSpace(expr[:idx])
+		right := strings.TrimSpace(expr[idx+10:])
+		return jp.evalEndsWithOperator(obj, left, right)
+	}
+
+	// Handle "matches" or "=~" operator (regex): @.name =~ "pattern"
+	if strings.Contains(expr, "=~") {
+		parts := strings.SplitN(expr, "=~", 2)
+		if len(parts) == 2 {
+			left := strings.TrimSpace(parts[0])
+			right := strings.TrimSpace(parts[1])
+			return jp.evalRegexOperator(obj, left, right)
+		}
+	}
+
+	// Handle "empty" function: empty(@.field)
+	if strings.HasPrefix(expr, "empty(") && strings.HasSuffix(expr, ")") {
+		inner := expr[6 : len(expr)-1]
+		return jp.evalEmptyFunction(obj, inner)
+	}
+
+	// Handle "length" or "size" function: length(@.field) > 0
+	if strings.HasPrefix(expr, "length(") || strings.HasPrefix(expr, "size(") {
+		return jp.evalLengthFunction(obj, expr)
+	}
+
+	// Handle "between" operator: @.price between [10, 100]
+	if idx := findKeywordOpCase(expr, " between "); idx >= 0 {
+		left := strings.TrimSpace(expr[:idx])
+		right := strings.TrimSpace(expr[idx+9:])
+		return jp.evalBetweenOperator(obj, left, right)
+	}
+
+	// Handle "isNotNull" operator: @.field isNotNull
+	if idx := findKeywordOpCase(expr, " isNotNull"); idx >= 0 {
+		left := strings.TrimSpace(expr[:idx])
+		return jp.evalIsNotNullOperator(obj, left)
+	}
+
+	// Handle "isNull" operator: @.field isNull
+	if idx := findKeywordOpCase(expr, " isNull"); idx >= 0 {
+		left := strings.TrimSpace(expr[:idx])
+		return jp.evalIsNullOperator(obj, left)
+	}
+
+	// Handle "isType" operator: @.value isType "number"
+	if idx := findKeywordOpCase(expr, " isType "); idx >= 0 {
+		left := strings.TrimSpace(expr[:idx])
+		right := strings.TrimSpace(expr[idx+8:])
+		return jp.evalIsTypeOperator(obj, left, right)
+	}
+
+	// Handle "absent" operator: @.optional absent
+	if idx := findKeywordOpCase(expr, " absent"); idx >= 0 {
+		left := strings.TrimSpace(expr[:idx])
+		return jp.evalAbsentOperator(obj, left)
+	}
 
 	// Handle comparison expressions
 	comparisonOps := []string{"==", "!=", "<=", ">=", "<", ">"}
@@ -523,11 +672,560 @@ func (jp *JSONPath) matchesFilter(obj objects.Object, expr string) bool {
 		}
 	}
 
+	// Handle existence check: @.field (returns true if field exists and is not null)
+	if strings.HasPrefix(expr, "@") {
+		val := jp.evalFilterExpr(obj, expr)
+		_, isNull := val.(*objects.Null)
+		return val != nil && !isNull
+	}
+
+	return false
+}
+
+// isFalsy checks if a value is falsy (null, false, 0, empty string, empty array, empty map)
+func isFalsy(obj objects.Object) bool {
+	if obj == nil {
+		return true
+	}
+	switch v := obj.(type) {
+	case *objects.Null:
+		return true
+	case *objects.Bool:
+		return !v.Value
+	case *objects.Int:
+		return v.Value == 0
+	case *objects.Float:
+		return v.Value == 0.0
+	case *objects.String:
+		return v.Value == ""
+	case *objects.Array:
+		return len(v.Elements) == 0
+	case *objects.Map:
+		return len(v.Pairs) == 0
+	default:
+		return false
+	}
+}
+
+// findKeywordOpCase finds a keyword operator (case-insensitive after @)
+func findKeywordOpCase(expr string, op string) int {
+	lowerExpr := strings.ToLower(expr)
+	lowerOp := strings.ToLower(op)
+
+	depth := 0
+	inString := false
+	stringChar := byte(0)
+
+	for i := 0; i <= len(lowerExpr)-len(lowerOp); i++ {
+		c := lowerExpr[i]
+
+		if inString {
+			if c == stringChar && (i == 0 || expr[i-1] != '\\') {
+				inString = false
+			}
+			continue
+		}
+
+		switch c {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			depth--
+		case '"', '\'':
+			inString = true
+			stringChar = c
+		}
+
+		if depth == 0 && lowerExpr[i:i+len(lowerOp)] == lowerOp {
+			return i
+		}
+	}
+
+	return -1
+}
+
+// findLogicalOp finds a logical operator (&& or ||) at the top level (not inside parentheses or strings)
+func findLogicalOp(expr string, op string) int {
+	depth := 0
+	inString := false
+	stringChar := byte(0)
+
+	for i := 0; i < len(expr)-1; i++ {
+		c := expr[i]
+
+		if inString {
+			if c == stringChar && (i == 0 || expr[i-1] != '\\') {
+				inString = false
+			}
+			continue
+		}
+
+		switch c {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			depth--
+		case '"', '\'':
+			inString = true
+			stringChar = c
+		}
+
+		if depth == 0 && expr[i:i+len(op)] == op {
+			return i
+		}
+	}
+
+	return -1
+}
+
+// findKeywordOp finds a keyword operator at the top level
+func findKeywordOp(expr string, op string) int {
+	depth := 0
+	inString := false
+	stringChar := byte(0)
+
+	for i := 0; i <= len(expr)-len(op); i++ {
+		c := expr[i]
+
+		if inString {
+			if c == stringChar && (i == 0 || expr[i-1] != '\\') {
+				inString = false
+			}
+			continue
+		}
+
+		switch c {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			depth--
+		case '"', '\'':
+			inString = true
+			stringChar = c
+		}
+
+		if depth == 0 && expr[i:i+len(op)] == op {
+			return i
+		}
+	}
+
+	return -1
+}
+
+// evalInOperator evaluates the "in" and "nin" operators
+func (jp *JSONPath) evalInOperator(obj objects.Object, left string, right string, negate bool) bool {
+	leftVal := jp.evalFilterExpr(obj, left)
+	rightVal := jp.evalFilterValue(right)
+
+	arr, ok := rightVal.(*objects.Array)
+	if !ok {
+		return false
+	}
+
+	found := false
+	for _, elem := range arr.Elements {
+		if objectsEqual(leftVal, elem) {
+			found = true
+			break
+		}
+	}
+
+	if negate {
+		return !found
+	}
+	return found
+}
+
+// evalContainsOperator evaluates the "contains" operator
+func (jp *JSONPath) evalContainsOperator(obj objects.Object, left string, right string) bool {
+	leftVal := jp.evalFilterExpr(obj, left)
+	rightVal := jp.evalFilterValue(right)
+
+	// For strings: check substring
+	if leftStr, ok := leftVal.(*objects.String); ok {
+		if rightStr, ok := rightVal.(*objects.String); ok {
+			return strings.Contains(leftStr.Value, rightStr.Value)
+		}
+	}
+
+	// For arrays: check if element exists
+	if leftArr, ok := leftVal.(*objects.Array); ok {
+		for _, elem := range leftArr.Elements {
+			if objectsEqual(elem, rightVal) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// evalStartsWithOperator evaluates the "startsWith" operator
+func (jp *JSONPath) evalStartsWithOperator(obj objects.Object, left string, right string) bool {
+	leftVal := jp.evalFilterExpr(obj, left)
+	rightVal := jp.evalFilterValue(right)
+
+	leftStr, ok1 := leftVal.(*objects.String)
+	rightStr, ok2 := rightVal.(*objects.String)
+	if !ok1 || !ok2 {
+		return false
+	}
+
+	return strings.HasPrefix(leftStr.Value, rightStr.Value)
+}
+
+// evalEndsWithOperator evaluates the "endsWith" operator
+func (jp *JSONPath) evalEndsWithOperator(obj objects.Object, left string, right string) bool {
+	leftVal := jp.evalFilterExpr(obj, left)
+	rightVal := jp.evalFilterValue(right)
+
+	leftStr, ok1 := leftVal.(*objects.String)
+	rightStr, ok2 := rightVal.(*objects.String)
+	if !ok1 || !ok2 {
+		return false
+	}
+
+	return strings.HasSuffix(leftStr.Value, rightStr.Value)
+}
+
+// evalRegexOperator evaluates the "=~" regex operator
+func (jp *JSONPath) evalRegexOperator(obj objects.Object, left string, right string) bool {
+	leftVal := jp.evalFilterExpr(obj, left)
+	rightVal := jp.evalFilterValue(right)
+
+	leftStr, ok1 := leftVal.(*objects.String)
+	rightStr, ok2 := rightVal.(*objects.String)
+	if !ok1 || !ok2 {
+		return false
+	}
+
+	matched, err := regexp.MatchString(rightStr.Value, leftStr.Value)
+	if err != nil {
+		return false
+	}
+	return matched
+}
+
+// evalBetweenOperator evaluates the "between" operator
+// Syntax: @.price between [10, 100] - checks if value is >= 10 and <= 100
+func (jp *JSONPath) evalBetweenOperator(obj objects.Object, left string, right string) bool {
+	leftVal := jp.evalFilterExpr(obj, left)
+	rightVal := jp.evalFilterValue(right)
+
+	// right should be an array with exactly 2 elements [min, max]
+	arr, ok := rightVal.(*objects.Array)
+	if !ok || len(arr.Elements) != 2 {
+		return false
+	}
+
+	minVal := arr.Elements[0]
+	maxVal := arr.Elements[1]
+
+	// Check if leftVal >= minVal && leftVal <= maxVal
+	cmpMin := compareNumbersForFilter(leftVal, minVal)
+	cmpMax := compareNumbersForFilter(leftVal, maxVal)
+
+	return cmpMin >= 0 && cmpMax <= 0
+}
+
+// evalIsNullOperator evaluates the "isNull" operator
+// Syntax: @.field isNull - checks if field exists and its value is null
+func (jp *JSONPath) evalIsNullOperator(obj objects.Object, left string) bool {
+	leftVal := jp.evalFilterExpr(obj, left)
+
+	if leftVal == nil {
+		return true
+	}
+
+	_, isNull := leftVal.(*objects.Null)
+	return isNull
+}
+
+// evalIsNotNullOperator evaluates the "isNotNull" operator
+// Syntax: @.field isNotNull - checks if field exists and its value is not null
+func (jp *JSONPath) evalIsNotNullOperator(obj objects.Object, left string) bool {
+	leftVal := jp.evalFilterExpr(obj, left)
+
+	if leftVal == nil {
+		return false
+	}
+
+	_, isNull := leftVal.(*objects.Null)
+	return !isNull
+}
+
+// evalIsTypeOperator evaluates the "isType" operator
+// Syntax: @.value isType "number" - checks if value is of the specified type
+// Supported types: "number", "string", "boolean", "array", "object", "null", "int", "float"
+func (jp *JSONPath) evalIsTypeOperator(obj objects.Object, left string, right string) bool {
+	leftVal := jp.evalFilterExpr(obj, left)
+	rightVal := jp.evalFilterValue(right)
+
+	typeName, ok := rightVal.(*objects.String)
+	if !ok {
+		return false
+	}
+
+	if leftVal == nil {
+		return typeName.Value == "null"
+	}
+
+	switch strings.ToLower(typeName.Value) {
+	case "number":
+		_, isInt := leftVal.(*objects.Int)
+		_, isFloat := leftVal.(*objects.Float)
+		return isInt || isFloat
+	case "int", "integer":
+		_, isInt := leftVal.(*objects.Int)
+		return isInt
+	case "float":
+		_, isFloat := leftVal.(*objects.Float)
+		return isFloat
+	case "string":
+		_, isString := leftVal.(*objects.String)
+		return isString
+	case "boolean", "bool":
+		_, isBool := leftVal.(*objects.Bool)
+		return isBool
+	case "array":
+		_, isArray := leftVal.(*objects.Array)
+		return isArray
+	case "object", "map":
+		_, isMap := leftVal.(*objects.Map)
+		return isMap
+	case "null":
+		_, isNull := leftVal.(*objects.Null)
+		return isNull
+	default:
+		return false
+	}
+}
+
+// evalAbsentOperator evaluates the "absent" operator
+// Syntax: @.optional absent - checks if field does not exist (different from null)
+func (jp *JSONPath) evalAbsentOperator(obj objects.Object, left string) bool {
+	// Check if the field path is valid and starts with @
+	if !strings.HasPrefix(left, "@") {
+		return false
+	}
+
+	// Parse the path after @
+	pathStr := "$" + left[1:]
+	path, err := ParseJSONPath(pathStr)
+	if err != nil {
+		return true // Invalid path is considered absent
+	}
+
+	// Check if the path exists in the object
+	// We need to check if the field actually exists, not just its value
+	segments := path.segments
+	if len(segments) < 2 {
+		return false
+	}
+
+	// Navigate through all but the last segment
+	current := obj
+	for i := 1; i < len(segments)-1; i++ {
+		seg := segments[i]
+		next := jp.navigateSegment(current, seg)
+		if next == nil {
+			return true // Parent path doesn't exist, so field is absent
+		}
+		current = next
+	}
+
+	// Check if the final field exists
+	lastSeg := segments[len(segments)-1]
+	return !jp.fieldExists(current, lastSeg)
+}
+
+// navigateSegment navigates to a single segment, returning nil if not found
+func (jp *JSONPath) navigateSegment(obj objects.Object, seg pathSegment) objects.Object {
+	switch seg.typ {
+	case "field":
+		m, ok := obj.(*objects.Map)
+		if !ok {
+			return nil
+		}
+		key := objects.NewString(seg.fieldName)
+		hashKey := key.HashKey()
+		if pair, exists := m.Pairs[hashKey]; exists {
+			return pair.Value
+		}
+		return nil
+	case "index":
+		arr, ok := obj.(*objects.Array)
+		if !ok {
+			return nil
+		}
+		idx := seg.index
+		if idx < 0 {
+			idx = len(arr.Elements) + idx
+		}
+		if idx < 0 || idx >= len(arr.Elements) {
+			return nil
+		}
+		return arr.Elements[idx]
+	default:
+		return nil
+	}
+}
+
+// fieldExists checks if a field exists in an object
+func (jp *JSONPath) fieldExists(obj objects.Object, seg pathSegment) bool {
+	switch seg.typ {
+	case "field":
+		m, ok := obj.(*objects.Map)
+		if !ok {
+			return false
+		}
+		key := objects.NewString(seg.fieldName)
+		hashKey := key.HashKey()
+		_, exists := m.Pairs[hashKey]
+		return exists
+	case "index":
+		arr, ok := obj.(*objects.Array)
+		if !ok {
+			return false
+		}
+		idx := seg.index
+		if idx < 0 {
+			idx = len(arr.Elements) + idx
+		}
+		return idx >= 0 && idx < len(arr.Elements)
+	default:
+		return false
+	}
+}
+
+// evalEmptyFunction evaluates the "empty()" function
+func (jp *JSONPath) evalEmptyFunction(obj objects.Object, inner string) bool {
+	val := jp.evalFilterExpr(obj, inner)
+
+	if val == nil {
+		return true
+	}
+
+	switch v := val.(type) {
+	case *objects.Null:
+		return true
+	case *objects.String:
+		return v.Value == ""
+	case *objects.Array:
+		return len(v.Elements) == 0
+	case *objects.Map:
+		return len(v.Pairs) == 0
+	default:
+		return false
+	}
+}
+
+// evalLengthFunction evaluates length() or size() functions
+func (jp *JSONPath) evalLengthFunction(obj objects.Object, expr string) bool {
+	// Parse the function call
+	var inner string
+	var rest string
+
+	if strings.HasPrefix(expr, "length(") {
+		// Find the matching closing paren
+		depth := 1
+		start := 7
+		for i := start; i < len(expr); i++ {
+			if expr[i] == '(' {
+				depth++
+			} else if expr[i] == ')' {
+				depth--
+				if depth == 0 {
+					inner = expr[start:i]
+					rest = strings.TrimSpace(expr[i+1:])
+					break
+				}
+			}
+		}
+	} else if strings.HasPrefix(expr, "size(") {
+		depth := 1
+		start := 5
+		for i := start; i < len(expr); i++ {
+			if expr[i] == '(' {
+				depth++
+			} else if expr[i] == ')' {
+				depth--
+				if depth == 0 {
+					inner = expr[start:i]
+					rest = strings.TrimSpace(expr[i+1:])
+					break
+				}
+			}
+		}
+	}
+
+	if inner == "" || rest == "" {
+		return false
+	}
+
+	val := jp.evalFilterExpr(obj, inner)
+
+	var length int64
+	switch v := val.(type) {
+	case *objects.String:
+		length = int64(len(v.Value))
+	case *objects.Array:
+		length = int64(len(v.Elements))
+	case *objects.Map:
+		length = int64(len(v.Pairs))
+	default:
+		return false
+	}
+
+	// Evaluate the comparison
+	rest = strings.TrimSpace(rest)
+	comparisonOps := []string{"==", "!=", "<=", ">=", "<", ">"}
+	for _, op := range comparisonOps {
+		if strings.HasPrefix(rest, op) {
+			right := strings.TrimSpace(rest[len(op):])
+			rightVal := jp.evalFilterValue(right)
+			return compareObjectsForFilter(objects.NewInt(length), rightVal, op)
+		}
+	}
+
 	return false
 }
 
 // evalFilterExpr evaluates a filter expression like @.field
 func (jp *JSONPath) evalFilterExpr(obj objects.Object, expr string) objects.Object {
+	expr = strings.TrimSpace(expr)
+
+	// Handle nested function calls on fields: @.field.length()
+	if idx := strings.Index(expr, ".length()"); idx > 0 && strings.HasSuffix(expr, ".length()") {
+		fieldPath := expr[:idx]
+		fieldVal := jp.evalFilterExpr(obj, fieldPath)
+		switch v := fieldVal.(type) {
+		case *objects.String:
+			return objects.NewInt(int64(len(v.Value)))
+		case *objects.Array:
+			return objects.NewInt(int64(len(v.Elements)))
+		case *objects.Map:
+			return objects.NewInt(int64(len(v.Pairs)))
+		default:
+			return objects.NULL
+		}
+	}
+
+	if idx := strings.Index(expr, ".size()"); idx > 0 && strings.HasSuffix(expr, ".size()") {
+		fieldPath := expr[:idx]
+		fieldVal := jp.evalFilterExpr(obj, fieldPath)
+		switch v := fieldVal.(type) {
+		case *objects.String:
+			return objects.NewInt(int64(len(v.Value)))
+		case *objects.Array:
+			return objects.NewInt(int64(len(v.Elements)))
+		case *objects.Map:
+			return objects.NewInt(int64(len(v.Pairs)))
+		default:
+			return objects.NULL
+		}
+	}
+
 	if !strings.HasPrefix(expr, "@") {
 		return objects.NULL
 	}
@@ -549,6 +1247,11 @@ func (jp *JSONPath) evalFilterExpr(obj objects.Object, expr string) objects.Obje
 // evalFilterValue evaluates a literal value in a filter expression
 func (jp *JSONPath) evalFilterValue(s string) objects.Object {
 	s = strings.TrimSpace(s)
+
+	// Check for array literal: [1, 2, 3] or ["a", "b"]
+	if strings.HasPrefix(s, "[") && strings.HasSuffix(s, "]") {
+		return jp.parseArrayLiteral(s)
+	}
 
 	// Check for string literal
 	if (len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"') ||
@@ -576,6 +1279,54 @@ func (jp *JSONPath) evalFilterValue(s string) objects.Object {
 	}
 
 	return objects.NULL
+}
+
+// parseArrayLiteral parses an array literal like [1, 2, 3] or ["a", "b"]
+func (jp *JSONPath) parseArrayLiteral(s string) objects.Object {
+	s = strings.TrimSpace(s[1 : len(s)-1]) // Remove brackets
+	if s == "" {
+		return objects.NewArray([]objects.Object{})
+	}
+
+	var elements []objects.Object
+	depth := 0
+	inString := false
+	stringChar := byte(0)
+	start := 0
+
+	for i := 0; i <= len(s); i++ {
+		var c byte
+		if i < len(s) {
+			c = s[i]
+		}
+
+		if inString {
+			if c == stringChar && (i == 0 || s[i-1] != '\\') {
+				inString = false
+			}
+			continue
+		}
+
+		switch c {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			depth--
+		case '"', '\'':
+			inString = true
+			stringChar = c
+		}
+
+		if (c == ',' && depth == 0) || i == len(s) {
+			part := strings.TrimSpace(s[start:i])
+			if part != "" {
+				elements = append(elements, jp.evalFilterValue(part))
+			}
+			start = i + 1
+		}
+	}
+
+	return objects.NewArray(elements)
 }
 
 // compareObjectsForFilter compares two objects with an operator

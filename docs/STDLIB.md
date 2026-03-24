@@ -1446,6 +1446,41 @@ JSONPath is a query language for JSON, similar to XPath for XML. It allows you t
 | `[a,b,c]` | Multiple indices | `$[0,2,4]` |
 | `[?(expr)]` | Filter expression | `$[?(@.price < 10)]` |
 
+#### Filter Expression Operators
+
+Filter expressions support the following operators:
+
+| Operator | Description | Example |
+|----------|-------------|---------|
+| `==`, `!=` | Equality comparison | `@.name == "Alice"` |
+| `<`, `>`, `<=`, `>=` | Numeric comparison | `@.price < 10` |
+| `&&` | Logical AND | `@.price > 5 && @.price < 20` |
+| `\|\|` | Logical OR | `@.active \|\| @.pending` |
+| `!` | Logical NOT | `!@.disabled` |
+| `=~` | Regex match | `@.name =~ "^[A-Z]"` |
+| `in` | Value in array | `@.category in ["fiction", "drama"]` |
+| `nin` | Value not in array | `@.category nin ["fiction"]` |
+| `contains` | String/array contains | `@.name contains "a"` |
+| `startsWith` | String starts with | `@.name startsWith "The"` |
+| `endsWith` | String ends with | `@.name endsWith "ing"` |
+| `between` | Value in range (inclusive) | `@.price between [10, 100]` |
+| `isNull` | Value is null | `@.email isNull` |
+| `isNotNull` | Value is not null | `@.email isNotNull` |
+| `isType` | Check value type | `@.age isType "number"` |
+| `absent` | Field does not exist | `@.optional absent` |
+| `empty()` | Check if empty | `empty(@.items)` |
+| `length()` | Get length | `length(@.name) > 3` |
+
+**Supported types for `isType`:** `number`, `int`, `float`, `string`, `boolean`, `array`, `object`, `null`
+
+```xxl
+// Filter examples
+var books = json.getAll("$.store.book[?(@.price between [10, 20])]", data)
+var withEmail = json.getAll("$.users[?(@.email isNotNull)]", data)
+var numbers = json.getAll("$.items[?(@.value isType \"number\")]", data)
+var missing = json.getAll("$.users[?(@.phone absent)]", data)
+```
+
 #### get(path, obj)
 Gets the first value matching a JSONPath. Returns null if not found.
 

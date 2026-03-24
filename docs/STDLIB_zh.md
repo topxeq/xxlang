@@ -1395,6 +1395,41 @@ JSONPath 是一种 JSON 查询语言，类似于 XML 的 XPath。它允许您从
 | `[a,b,c]` | 多个索引 | `$[0,2,4]` |
 | `[?(expr)]` | 过滤表达式 | `$[?(@.price < 10)]` |
 
+#### 过滤表达式操作符
+
+过滤表达式支持以下操作符：
+
+| 操作符 | 说明 | 示例 |
+|--------|------|------|
+| `==`, `!=` | 相等比较 | `@.name == "Alice"` |
+| `<`, `>`, `<=`, `>=` | 数值比较 | `@.price < 10` |
+| `&&` | 逻辑与 | `@.price > 5 && @.price < 20` |
+| `\|\|` | 逻辑或 | `@.active \|\| @.pending` |
+| `!` | 逻辑非 | `!@.disabled` |
+| `=~` | 正则匹配 | `@.name =~ "^[A-Z]"` |
+| `in` | 值在数组中 | `@.category in ["fiction", "drama"]` |
+| `nin` | 值不在数组中 | `@.category nin ["fiction"]` |
+| `contains` | 字符串/数组包含 | `@.name contains "a"` |
+| `startsWith` | 字符串以...开头 | `@.name startsWith "The"` |
+| `endsWith` | 字符串以...结尾 | `@.name endsWith "ing"` |
+| `between` | 值在范围内（包含边界） | `@.price between [10, 100]` |
+| `isNull` | 值为 null | `@.email isNull` |
+| `isNotNull` | 值不为 null | `@.email isNotNull` |
+| `isType` | 检查值类型 | `@.age isType "number"` |
+| `absent` | 字段不存在 | `@.optional absent` |
+| `empty()` | 检查是否为空 | `empty(@.items)` |
+| `length()` | 获取长度 | `length(@.name) > 3` |
+
+**`isType` 支持的类型：** `number`、`int`、`float`、`string`、`boolean`、`array`、`object`、`null`
+
+```xxl
+// 过滤示例
+var books = json.getAll("$.store.book[?(@.price between [10, 20])]", data)
+var withEmail = json.getAll("$.users[?(@.email isNotNull)]", data)
+var numbers = json.getAll("$.items[?(@.value isType \"number\")]", data)
+var missing = json.getAll("$.users[?(@.phone absent)]", data)
+```
+
 #### get(path, obj)
 获取匹配 JSONPath 的第一个值。未找到返回 null。
 
