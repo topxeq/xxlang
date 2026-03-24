@@ -66,58 +66,76 @@ var (
 	createEnvWithOps uintptr
 	getInstalledVersion uintptr
 	compareVersions  uintptr
-	dllPath          string
 )
 
 // initLoader initializes the WebView2Loader from embedded DLL.
+// It tries memory loading first, falls back to temp file if needed.
 func initLoader() error {
 	loaderOnce.Do(func() {
-		// Write DLL to temp file and load with system LoadLibrary
-		// This is more reliable than memory loading
-		tempDir := LPCWSTRToString(getTempPath())
-		if tempDir == "" {
-			tempDir = "C:\\Windows\\Temp"
+		// Try memory loading first
+		var err error
+		loaderModule, err = loadFromMemory(webview2LoaderDLL)
+		if err == nil {
+			// Memory loading succeeded, get procedure addresses
+			createEnvWithOps, err = loaderModule.GetProc("CreateCoreWebView2EnvironmentWithOptions")
+			if err == nil {
+				getInstalledVersion, err = loaderModule.GetProc("GetAvailableCoreWebView2BrowserVersionString")
+			}
+			if err == nil {
+				compareVersions, _ = loaderModule.GetProc("CompareBrowserVersions")
+			}
 		}
 
-		dllPath = tempDir + "\\WebView2Loader_xxl.dll"
-
-		// Write DLL to temp file
-		if err := writeDLLToFile(dllPath); err != nil {
-			loaderErr = fmt.Errorf("failed to write DLL to temp file: %w", err)
-			return
+		if err != nil {
+			// Memory loading failed, fall back to temp file
+			loaderModule = nil
+			if loadErr := loadFromTempFile(); loadErr != nil {
+				loaderErr = fmt.Errorf("memory loading failed: %w, temp file loading failed: %v", err, loadErr)
+				return
+			}
 		}
-
-		// Load with system LoadLibrary
-		dllNamePtr, _ := syscall.UTF16PtrFromString(dllPath)
-		handle, _, err := loadLibraryW.Call(uintptr(unsafe.Pointer(dllNamePtr)))
-		if handle == 0 {
-			loaderErr = fmt.Errorf("failed to load DLL: %w", err)
-			return
-		}
-
-		// Get procedure addresses
-		createEnvWithOps = getProcAddr(handle, "CreateCoreWebView2EnvironmentWithOptions")
-		if createEnvWithOps == 0 {
-			loaderErr = fmt.Errorf("failed to get CreateCoreWebView2EnvironmentWithOptions")
-			return
-		}
-
-		getInstalledVersion = getProcAddr(handle, "GetAvailableCoreWebView2BrowserVersionString")
-		if getInstalledVersion == 0 {
-			loaderErr = fmt.Errorf("failed to get GetAvailableCoreWebView2BrowserVersionString")
-			return
-		}
-
-		compareVersions = getProcAddr(handle, "CompareBrowserVersions")
 	})
 	return loaderErr
 }
 
-// getProcAddr gets a procedure address from a module handle.
-func getProcAddr(handle uintptr, name string) uintptr {
-	namePtr, _ := syscall.BytePtrFromString(name)
-	addr, _, _ := getProcAddress.Call(handle, uintptr(unsafe.Pointer(namePtr)))
-	return addr
+// loadFromTempFile loads the DLL from a temporary file.
+func loadFromTempFile() error {
+	tempDir := LPCWSTRToString(getTempPath())
+	if tempDir == "" {
+		tempDir = "C:\\Windows\\Temp"
+	}
+
+	dllPath := tempDir + "\\WebView2Loader_xxl.dll"
+
+	// Write DLL to temp file
+	if err := writeDLLToFile(dllPath); err != nil {
+		return fmt.Errorf("failed to write DLL to temp file: %w", err)
+	}
+
+	// Load with system LoadLibrary
+	dllNamePtr, _ := syscall.UTF16PtrFromString(dllPath)
+	handle, _, err := loadLibraryW.Call(uintptr(unsafe.Pointer(dllNamePtr)))
+	if handle == 0 {
+		return fmt.Errorf("failed to load DLL: %w", err)
+	}
+
+	// Get procedure addresses
+	namePtr, _ := syscall.BytePtrFromString("CreateCoreWebView2EnvironmentWithOptions")
+	createEnvWithOps, _, _ = getProcAddress.Call(handle, uintptr(unsafe.Pointer(namePtr)))
+	if createEnvWithOps == 0 {
+		return fmt.Errorf("failed to get CreateCoreWebView2EnvironmentWithOptions")
+	}
+
+	namePtr, _ = syscall.BytePtrFromString("GetAvailableCoreWebView2BrowserVersionString")
+	getInstalledVersion, _, _ = getProcAddress.Call(handle, uintptr(unsafe.Pointer(namePtr)))
+	if getInstalledVersion == 0 {
+		return fmt.Errorf("failed to get GetAvailableCoreWebView2BrowserVersionString")
+	}
+
+	namePtr, _ = syscall.BytePtrFromString("CompareBrowserVersions")
+	compareVersions, _, _ = getProcAddress.Call(handle, uintptr(unsafe.Pointer(namePtr)))
+
+	return nil
 }
 
 // writeDLLToFile writes the embedded DLL to a file.
@@ -148,8 +166,7 @@ func writeDLLToFile(path string) error {
 // getTempPath gets the system temp directory.
 func getTempPath() *uint16 {
 	var path [syscall.MAX_PATH + 1]uint16
-	kernel32 := syscall.NewLazyDLL("kernel32.dll")
-	getTempPathProc := kernel32.NewProc("GetTempPathW")
+	getTempPathProc := kernel32DLL.NewProc("GetTempPathW")
 	getTempPathProc.Call(uintptr(len(path)), uintptr(unsafe.Pointer(&path[0])))
 	return &path[0]
 }

@@ -20,7 +20,8 @@ var (
 	getProcAddress   = kernel32DLL.NewProc("GetProcAddress")
 	loadLibraryW     = kernel32DLL.NewProc("LoadLibraryW")
 	getModuleHandleW = kernel32DLL.NewProc("GetModuleHandleW")
-	rtlMoveMemory    = kernel32DLL.NewProc("RtlMoveMemory")
+	flushInstructionCache = kernel32DLL.NewProc("FlushInstructionCache")
+	getCurrentProcess = kernel32DLL.NewProc("GetCurrentProcess")
 )
 
 // Memory allocation constants
@@ -42,11 +43,9 @@ const (
 
 // MemoryModule represents a module loaded in memory.
 type MemoryModule struct {
-	handle     uintptr
-	baseAddr   uintptr
-	size       uint32
-	exports    map[string]uintptr
-	ordinalMap map[uint16]uintptr
+	baseAddr uintptr
+	size     uint32
+	exports  map[string]uintptr
 }
 
 var (
@@ -54,127 +53,196 @@ var (
 	moduleCacheLock sync.RWMutex
 )
 
+// memory represents a block of allocated memory with ReadWriteSeeker interface.
+type memory struct {
+	base uintptr
+	pos  int64
+	size uint32
+}
+
+// newMemory creates a memory wrapper around allocated memory.
+func newMemory(base uintptr, size uint32) *memory {
+	return &memory{base: base, size: size}
+}
+
+// Read implements io.Reader.
+func (m *memory) Read(b []byte) (n int, err error) {
+	if m.pos >= int64(m.size) {
+		return 0, nil
+	}
+	available := int64(m.size) - m.pos
+	if available < int64(len(b)) {
+		b = b[:available]
+	}
+	for i := range b {
+		b[i] = *(*byte)(unsafe.Pointer(m.base + uintptr(m.pos + int64(i))))
+	}
+	m.pos += int64(len(b))
+	return len(b), nil
+}
+
+// Write implements io.Writer.
+func (m *memory) Write(b []byte) (n int, err error) {
+	if m.pos >= int64(m.size) {
+		return 0, nil
+	}
+	available := int64(m.size) - m.pos
+	if available < int64(len(b)) {
+		b = b[:available]
+	}
+	for i, v := range b {
+		*(*byte)(unsafe.Pointer(m.base + uintptr(m.pos + int64(i)))) = v
+	}
+	// Flush instruction cache for code sections
+	proc, _, _ := getCurrentProcess.Call()
+	flushInstructionCache.Call(
+		proc,
+		m.base+uintptr(m.pos),
+		uintptr(len(b)),
+	)
+	m.pos += int64(len(b))
+	return len(b), nil
+}
+
+// Seek implements io.Seeker.
+func (m *memory) Seek(offset int64, whence int) (int64, error) {
+	switch whence {
+	case 0: // io.SeekStart
+		m.pos = offset
+	case 1: // io.SeekCurrent
+		m.pos += offset
+	case 2: // io.SeekEnd
+		m.pos = int64(m.size) + offset
+	}
+	if m.pos < 0 {
+		m.pos = 0
+	}
+	return m.pos, nil
+}
+
+// Addr returns the base address.
+func (m *memory) Addr() uintptr {
+	return m.base
+}
+
 // loadFromMemory loads a DLL from memory data.
-// It returns a MemoryModule that can be used to get procedure addresses.
 func loadFromMemory(data []byte) (*MemoryModule, error) {
 	// Parse DOS header
 	if len(data) < 64 {
 		return nil, fmt.Errorf("data too small for DOS header")
 	}
 
-	dosHeader := (*ImageDOSHeader)(unsafe.Pointer(&data[0]))
-	if binary.LittleEndian.Uint16(data[0:2]) != MZSignature {
+	// Check MZ signature
+	if data[0] != 'M' || data[1] != 'Z' {
 		return nil, fmt.Errorf("invalid DOS signature")
 	}
 
+	dosHeader := (*ImageDOSHeader)(unsafe.Pointer(&data[0]))
+
 	// Parse PE header
 	peOffset := dosHeader.NewHeaderAddr
-	if int(peOffset)+4 > len(data) {
+	if int(peOffset)+264 > len(data) {
 		return nil, fmt.Errorf("PE header offset out of bounds")
 	}
 
 	// Check PE signature
-	peSig := binary.LittleEndian.Uint32(data[peOffset : peOffset+4])
-	if peSig != PESignature {
+	if data[peOffset] != 'P' || data[peOffset+1] != 'E' || data[peOffset+2] != 0 || data[peOffset+3] != 0 {
 		return nil, fmt.Errorf("invalid PE signature")
 	}
 
 	// Parse file header
-	fileHeaderOffset := peOffset + 4
-	fileHeader := (*ImageFileHeader)(unsafe.Pointer(&data[fileHeaderOffset]))
+	fileHeader := (*ImageFileHeader)(unsafe.Pointer(&data[peOffset+4]))
 
 	// Determine if 32-bit or 64-bit
-	optHeaderOffset := fileHeaderOffset + 20
+	optHeaderOffset := peOffset + 24
 	magic := binary.LittleEndian.Uint16(data[optHeaderOffset : optHeaderOffset+2])
 
 	var imageBase uint64
 	var sizeOfImage uint32
 	var entryPoint uint32
-	var numSections uint16
-	var sectionsOffset uintptr
 	var is64Bit bool
+	var optHeader interface{}
 
 	switch magic {
 	case ImageNTOptionalHeader64Magic:
 		is64Bit = true
-		optHeader := (*ImageOptionalHeader64)(unsafe.Pointer(&data[optHeaderOffset]))
-		imageBase = optHeader.ImageBase
-		sizeOfImage = optHeader.SizeOfImage
-		entryPoint = optHeader.AddressOfEntryPoint
-		numSections = fileHeader.NumberOfSections
-		sectionsOffset = uintptr(optHeaderOffset + uint32(fileHeader.SizeOfOptionalHeader))
+		opt := (*ImageOptionalHeader64)(unsafe.Pointer(&data[optHeaderOffset]))
+		optHeader = opt
+		imageBase = opt.ImageBase
+		sizeOfImage = opt.SizeOfImage
+		entryPoint = opt.AddressOfEntryPoint
 	case ImageNTOptionalHeader32Magic:
 		is64Bit = false
-		optHeader := (*ImageOptionalHeader32)(unsafe.Pointer(&data[optHeaderOffset]))
-		imageBase = uint64(optHeader.ImageBase)
-		sizeOfImage = optHeader.SizeOfImage
-		entryPoint = optHeader.AddressOfEntryPoint
-		numSections = fileHeader.NumberOfSections
-		sectionsOffset = uintptr(optHeaderOffset + uint32(fileHeader.SizeOfOptionalHeader))
+		opt := (*ImageOptionalHeader32)(unsafe.Pointer(&data[optHeaderOffset]))
+		optHeader = opt
+		imageBase = uint64(opt.ImageBase)
+		sizeOfImage = opt.SizeOfImage
+		entryPoint = opt.AddressOfEntryPoint
 	default:
 		return nil, fmt.Errorf("unknown PE magic: 0x%x", magic)
 	}
 
 	// Allocate memory for the image
-	// Try to allocate at preferred base first
-	baseAddr, _, err := virtualAlloc.Call(
+	baseAddr, _, _ := virtualAlloc.Call(
 		uintptr(imageBase),
 		uintptr(sizeOfImage),
 		uintptr(MEM_COMMIT|MEM_RESERVE),
 		uintptr(PAGE_EXECUTE_READWRITE),
 	)
 	if baseAddr == 0 {
-		// Allocate at any address
-		baseAddr, _, err = virtualAlloc.Call(
+		baseAddr, _, _ = virtualAlloc.Call(
 			0,
 			uintptr(sizeOfImage),
 			uintptr(MEM_COMMIT|MEM_RESERVE),
 			uintptr(PAGE_EXECUTE_READWRITE),
 		)
 		if baseAddr == 0 {
-			return nil, fmt.Errorf("failed to allocate memory: %v", err)
+			return nil, fmt.Errorf("failed to allocate memory")
 		}
 	}
 
 	delta := uint64(baseAddr) - imageBase
+	mem := newMemory(baseAddr, sizeOfImage)
+
+	// Get section info
+	numSections := fileHeader.NumberOfSections
+	sectionsOffset := int(optHeaderOffset) + int(fileHeader.SizeOfOptionalHeader)
 
 	// Copy headers
-	rtlMoveMemory.Call(
-		baseAddr,
-		uintptr(unsafe.Pointer(&data[0])),
-		uintptr(binary.LittleEndian.Uint32(data[optHeaderOffset+56:optHeaderOffset+60])), // SizeOfHeaders
-	)
+	var sizeOfHeaders uint32
+	switch h := optHeader.(type) {
+	case *ImageOptionalHeader64:
+		sizeOfHeaders = h.SizeOfHeaders
+	case *ImageOptionalHeader32:
+		sizeOfHeaders = h.SizeOfHeaders
+	}
+	mem.Write(data[:sizeOfHeaders])
 
 	// Map sections
 	for i := uint16(0); i < numSections; i++ {
-		section := (*ImageSectionHeader)(unsafe.Pointer(&data[sectionsOffset + uintptr(i)*40]))
+		section := (*ImageSectionHeader)(unsafe.Pointer(&data[sectionsOffset + int(i)*40]))
 		if section.SizeOfRawData == 0 {
 			continue
 		}
-
 		destAddr := baseAddr + uintptr(section.VirtualAddress)
-		srcAddr := uintptr(unsafe.Pointer(&data[section.PointerToRawData]))
-
-		rtlMoveMemory.Call(
-			destAddr,
-			srcAddr,
-			uintptr(section.SizeOfRawData),
-		)
+		srcData := data[section.PointerToRawData : section.PointerToRawData+section.SizeOfRawData]
+		for j, b := range srcData {
+			*(*byte)(unsafe.Pointer(destAddr + uintptr(j))) = b
+		}
 	}
 
 	// Process relocations if needed
 	if delta != 0 {
 		var relocDir ImageDataDirectory
-		if is64Bit {
-			optHeader := (*ImageOptionalHeader64)(unsafe.Pointer(&data[optHeaderOffset]))
-			relocDir = optHeader.DataDirectory[ImageDirectoryEntryBaseReloc]
-		} else {
-			optHeader := (*ImageOptionalHeader32)(unsafe.Pointer(&data[optHeaderOffset]))
-			relocDir = optHeader.DataDirectory[ImageDirectoryEntryBaseReloc]
+		switch h := optHeader.(type) {
+		case *ImageOptionalHeader64:
+			relocDir = h.DataDirectory[ImageDirectoryEntryBaseReloc]
+		case *ImageOptionalHeader32:
+			relocDir = h.DataDirectory[ImageDirectoryEntryBaseReloc]
 		}
 
 		if relocDir.Size > 0 {
-			if err := processRelocations(baseAddr, delta, data, relocDir.VirtualAddress, relocDir.Size, is64Bit); err != nil {
+			if err := processRelocations(mem, relocDir.VirtualAddress, relocDir.Size, delta, is64Bit); err != nil {
 				virtualFree.Call(baseAddr, 0, uintptr(MEM_RELEASE))
 				return nil, fmt.Errorf("relocation failed: %w", err)
 			}
@@ -183,18 +251,15 @@ func loadFromMemory(data []byte) (*MemoryModule, error) {
 
 	// Process imports
 	var importDir ImageDataDirectory
-	if is64Bit {
-		optHeader := (*ImageOptionalHeader64)(unsafe.Pointer(&data[optHeaderOffset]))
-		importDir = optHeader.DataDirectory[ImageDirectoryEntryImport]
-	} else {
-		optHeader := (*ImageOptionalHeader32)(unsafe.Pointer(&data[optHeaderOffset]))
-		importDir = optHeader.DataDirectory[ImageDirectoryEntryImport]
+	switch h := optHeader.(type) {
+	case *ImageOptionalHeader64:
+		importDir = h.DataDirectory[ImageDirectoryEntryImport]
+	case *ImageOptionalHeader32:
+		importDir = h.DataDirectory[ImageDirectoryEntryImport]
 	}
 
 	if importDir.Size > 0 {
-		// Need to read from allocated memory, not from original data
-		importData := (*[0]byte)(unsafe.Pointer(baseAddr + uintptr(importDir.VirtualAddress)))
-		if err := processImports(baseAddr, importData, is64Bit); err != nil {
+		if err := processImports(mem, importDir.VirtualAddress, importDir.Size, is64Bit); err != nil {
 			virtualFree.Call(baseAddr, 0, uintptr(MEM_RELEASE))
 			return nil, fmt.Errorf("import processing failed: %w", err)
 		}
@@ -202,106 +267,107 @@ func loadFromMemory(data []byte) (*MemoryModule, error) {
 
 	// Process exports
 	exports := make(map[string]uintptr)
-	ordinalMap := make(map[uint16]uintptr)
-
 	var exportDir ImageDataDirectory
-	if is64Bit {
-		optHeader := (*ImageOptionalHeader64)(unsafe.Pointer(&data[optHeaderOffset]))
-		exportDir = optHeader.DataDirectory[ImageDirectoryEntryExport]
-	} else {
-		optHeader := (*ImageOptionalHeader32)(unsafe.Pointer(&data[optHeaderOffset]))
-		exportDir = optHeader.DataDirectory[ImageDirectoryEntryExport]
+	switch h := optHeader.(type) {
+	case *ImageOptionalHeader64:
+		exportDir = h.DataDirectory[ImageDirectoryEntryExport]
+	case *ImageOptionalHeader32:
+		exportDir = h.DataDirectory[ImageDirectoryEntryExport]
 	}
 
 	if exportDir.Size > 0 {
-		exportData := (*ImageExportDirectory)(unsafe.Pointer(baseAddr + uintptr(exportDir.VirtualAddress)))
-		loadExports(baseAddr, exportData, exports, ordinalMap)
-	}
-
-	module := &MemoryModule{
-		handle:     baseAddr,
-		baseAddr:   baseAddr,
-		size:       sizeOfImage,
-		exports:    exports,
-		ordinalMap: ordinalMap,
+		if err := loadExports(mem, exportDir.VirtualAddress, exports); err != nil {
+			virtualFree.Call(baseAddr, 0, uintptr(MEM_RELEASE))
+			return nil, fmt.Errorf("export loading failed: %w", err)
+		}
 	}
 
 	// Call DllMain with DLL_PROCESS_ATTACH
 	if entryPoint != 0 {
 		dllMain := baseAddr + uintptr(entryPoint)
-		callDllMain(dllMain, baseAddr, 1) // DLL_PROCESS_ATTACH = 1
+		syscall.Syscall(dllMain, 3, baseAddr, 1, 0) // DLL_PROCESS_ATTACH = 1
 	}
 
-	return module, nil
+	return &MemoryModule{
+		baseAddr: baseAddr,
+		size:     sizeOfImage,
+		exports:  exports,
+	}, nil
 }
 
 // processRelocations handles base relocations.
-func processRelocations(baseAddr uintptr, delta uint64, data []byte, relocVA, relocSize uint32, is64Bit bool) error {
-	offset := uintptr(0)
-	for offset < uintptr(relocSize) {
-		// Read relocation block header from the allocated memory
-		block := (*ImageBaseRelocation)(unsafe.Pointer(baseAddr + uintptr(relocVA) + offset))
-		if block.SizeOfBlock == 0 {
+func processRelocations(mem *memory, relocVA, relocSize uint32, delta uint64, is64Bit bool) error {
+	offset := uint32(0)
+	for offset < relocSize {
+		// Read relocation block header
+		mem.Seek(int64(relocVA+offset), 0)
+		var blockVA, blockSize uint32
+		binary.Read(mem, binary.LittleEndian, &blockVA)
+		binary.Read(mem, binary.LittleEndian, &blockSize)
+
+		if blockSize == 0 {
 			break
 		}
 
-		numEntries := (block.SizeOfBlock - 8) / 2
-		entries := (*[0]uint16)(unsafe.Pointer(baseAddr + uintptr(relocVA) + offset + 8))
+		numEntries := (blockSize - 8) / 2
+		for i := uint32(0); i < numEntries; i++ {
+			var entry uint16
+			binary.Read(mem, binary.LittleEndian, &entry)
 
-		for i := uint32(0); i < uint32(numEntries); i++ {
-			entry := entries[i]
 			relType := entry >> 12
-			relOffset := uintptr(entry & 0xFFF)
+			relOffset := uint32(entry & 0xFFF)
 
-			targetAddr := baseAddr + uintptr(block.VirtualAddress) + relOffset
+			targetAddr := mem.Addr() + uintptr(blockVA) + uintptr(relOffset)
 
 			switch relType {
-			case ImageRelBasedAbsolute:
-				// No relocation needed
 			case ImageRelBasedHighLow:
-				// 32-bit relocation
 				val := *(*uint32)(unsafe.Pointer(targetAddr))
 				val += uint32(delta)
 				*(*uint32)(unsafe.Pointer(targetAddr)) = val
 			case ImageRelBasedDir64:
-				// 64-bit relocation
 				val := *(*uint64)(unsafe.Pointer(targetAddr))
 				val += delta
 				*(*uint64)(unsafe.Pointer(targetAddr)) = val
 			}
 		}
 
-		offset += uintptr(block.SizeOfBlock)
+		offset += blockSize
 	}
 	return nil
 }
 
 // processImports resolves import addresses.
-func processImports(baseAddr uintptr, importData *[0]byte, is64Bit bool) error {
-	offset := uintptr(0)
+func processImports(mem *memory, importVA, importSize uint32, is64Bit bool) error {
 	ptrSize := 4
 	if is64Bit {
 		ptrSize = 8
 	}
 
-	for {
-		desc := (*ImageImportDescriptor)(unsafe.Pointer(uintptr(unsafe.Pointer(importData)) + offset))
+	offset := uint32(0)
+	for offset < importSize {
+		// Read import descriptor
+		mem.Seek(int64(importVA+offset), 0)
+		var desc ImageImportDescriptor
+		binary.Read(mem, binary.LittleEndian, &desc)
+
 		if desc.Name == 0 {
 			break
 		}
 
-		// Get DLL name - desc.Name is RVA, add baseAddr to get actual pointer
-		dllName := ptrToString(baseAddr + uintptr(desc.Name))
+		// Read DLL name
+		mem.Seek(int64(desc.Name), 0)
+		dllName := readString(mem)
 		if dllName == "" {
 			offset += 20
 			continue
 		}
 
 		// Load the DLL
-		dllHandle, _, _ := loadLibraryW.Call(uintptr(unsafe.Pointer(stringToUTF16Ptr(dllName))))
+		dllNamePtr, _ := syscall.UTF16PtrFromString(dllName)
+		dllHandle, _, _ := loadLibraryW.Call(uintptr(unsafe.Pointer(dllNamePtr)))
 		if dllHandle == 0 {
-			// Try without .dll extension
-			dllHandle, _, _ = loadLibraryW.Call(uintptr(unsafe.Pointer(stringToUTF16Ptr(dllName + ".dll"))))
+			dllNamePtr, _ = syscall.UTF16PtrFromString(dllName + ".dll")
+			dllHandle, _, _ = loadLibraryW.Call(uintptr(unsafe.Pointer(dllNamePtr)))
 			if dllHandle == 0 {
 				offset += 20
 				continue
@@ -309,18 +375,23 @@ func processImports(baseAddr uintptr, importData *[0]byte, is64Bit bool) error {
 		}
 
 		// Process thunks
-		thunkOffset := uintptr(desc.FirstThunk)
-		origThunkOffset := uintptr(desc.OriginalFirstThunk)
+		thunkOffset := desc.FirstThunk
+		origThunkOffset := desc.OriginalFirstThunk
 		if origThunkOffset == 0 {
 			origThunkOffset = thunkOffset
 		}
 
 		for {
+			mem.Seek(int64(origThunkOffset), 0)
 			var thunkVal uint64
 			if is64Bit {
-				thunkVal = uint64(*(*uintptr)(unsafe.Pointer(baseAddr + origThunkOffset)))
+				var v uint64
+				binary.Read(mem, binary.LittleEndian, &v)
+				thunkVal = v
 			} else {
-				thunkVal = uint64(*(*uint32)(unsafe.Pointer(baseAddr + origThunkOffset)))
+				var v uint32
+				binary.Read(mem, binary.LittleEndian, &v)
+				thunkVal = uint64(v)
 			}
 
 			if thunkVal == 0 {
@@ -328,33 +399,31 @@ func processImports(baseAddr uintptr, importData *[0]byte, is64Bit bool) error {
 			}
 
 			var procAddr uintptr
-			if thunkVal&0x8000000000000000 != 0 || thunkVal&0x80000000 != 0 {
+			if (is64Bit && thunkVal&0x8000000000000000 != 0) || (!is64Bit && thunkVal&0x80000000 != 0) {
 				// Import by ordinal
 				ordinal := uint16(thunkVal & 0xFFFF)
 				procAddr, _, _ = getProcAddress.Call(dllHandle, uintptr(ordinal))
 			} else {
 				// Import by name
-				nameOffset := uintptr(thunkVal & 0x7FFFFFFFFFFFFFFF)
-				if nameOffset != 0 {
-					namePtr := baseAddr + nameOffset + 2 // Skip hint
-					nameStr := ptrToString(namePtr)
-					if nameStr != "" {
-						nameBytes := []byte(nameStr)
-						procAddr, _, _ = getProcAddress.Call(dllHandle, uintptr(unsafe.Pointer(&nameBytes[0])))
-					}
+				mem.Seek(int64(thunkVal+2), 0)
+				funcName := readString(mem)
+				if funcName != "" {
+					namePtr, _ := syscall.BytePtrFromString(funcName)
+					procAddr, _, _ = getProcAddress.Call(dllHandle, uintptr(unsafe.Pointer(namePtr)))
 				}
 			}
 
 			if procAddr != 0 {
+				target := mem.Addr() + uintptr(thunkOffset)
 				if is64Bit {
-					*(*uintptr)(unsafe.Pointer(baseAddr + thunkOffset)) = procAddr
+					*(*uintptr)(unsafe.Pointer(target)) = procAddr
 				} else {
-					*(*uint32)(unsafe.Pointer(baseAddr + thunkOffset)) = uint32(procAddr)
+					*(*uint32)(unsafe.Pointer(target)) = uint32(procAddr)
 				}
 			}
 
-			thunkOffset += uintptr(ptrSize)
-			origThunkOffset += uintptr(ptrSize)
+			thunkOffset += uint32(ptrSize)
+			origThunkOffset += uint32(ptrSize)
 		}
 
 		offset += 20
@@ -363,19 +432,63 @@ func processImports(baseAddr uintptr, importData *[0]byte, is64Bit bool) error {
 }
 
 // loadExports loads export table.
-func loadExports(baseAddr uintptr, exportDir *ImageExportDirectory, exports map[string]uintptr, ordinalMap map[uint16]uintptr) {
-	names := (*[0]uint32)(unsafe.Pointer(baseAddr + uintptr(exportDir.AddressOfNames)))
-	functions := (*[0]uint32)(unsafe.Pointer(baseAddr + uintptr(exportDir.AddressOfFunctions)))
-	ordinals := (*[0]uint16)(unsafe.Pointer(baseAddr + uintptr(exportDir.AddressOfNameOrdinals)))
-
-	for i := uint32(0); i < exportDir.NumberOfNames; i++ {
-		nameOffset := names[i]
-		name := ptrToString(baseAddr + uintptr(nameOffset))
-		ordinal := ordinals[i]
-		funcOffset := functions[ordinal]
-		exports[name] = baseAddr + uintptr(funcOffset)
-		ordinalMap[ordinal] = baseAddr + uintptr(funcOffset)
+func loadExports(mem *memory, exportVA uint32, exports map[string]uintptr) error {
+	// Read export directory
+	mem.Seek(int64(exportVA), 0)
+	var header ImageExportDirectory
+	if err := binary.Read(mem, binary.LittleEndian, &header); err != nil {
+		return err
 	}
+
+	if header.NumberOfNames == 0 {
+		return nil
+	}
+
+	// Read function addresses
+	functions := make([]uint32, header.NumberOfFunctions)
+	mem.Seek(int64(header.AddressOfFunctions), 0)
+	for i := range functions {
+		binary.Read(mem, binary.LittleEndian, &functions[i])
+	}
+
+	// Read name ordinals
+	nameOrdinals := make([]uint16, header.NumberOfNames)
+	mem.Seek(int64(header.AddressOfNameOrdinals), 0)
+	for i := range nameOrdinals {
+		binary.Read(mem, binary.LittleEndian, &nameOrdinals[i])
+	}
+
+	// Read name addresses
+	nameAddresses := make([]uint32, header.NumberOfNames)
+	mem.Seek(int64(header.AddressOfNames), 0)
+	for i := range nameAddresses {
+		binary.Read(mem, binary.LittleEndian, &nameAddresses[i])
+	}
+
+	// Build export map
+	for i := uint32(0); i < header.NumberOfNames; i++ {
+		mem.Seek(int64(nameAddresses[i]), 0)
+		name := readString(mem)
+		if name != "" {
+			ordinal := nameOrdinals[i]
+			exports[name] = mem.Addr() + uintptr(functions[ordinal])
+		}
+	}
+
+	return nil
+}
+
+// readString reads a null-terminated string from memory.
+func readString(mem *memory) string {
+	var b []byte
+	for {
+		var v byte
+		if err := binary.Read(mem, binary.LittleEndian, &v); err != nil || v == 0 {
+			break
+		}
+		b = append(b, v)
+	}
+	return string(b)
 }
 
 // GetProc returns the address of a procedure by name.
@@ -389,9 +502,6 @@ func (m *MemoryModule) GetProc(name string) (uintptr, error) {
 // Free releases the module memory.
 func (m *MemoryModule) Free() error {
 	if m.baseAddr != 0 {
-		// Call DllMain with DLL_PROCESS_DETACH
-		// We would need to store entry point for this
-
 		ret, _, _ := virtualFree.Call(m.baseAddr, 0, uintptr(MEM_RELEASE))
 		if ret == 0 {
 			return fmt.Errorf("failed to free memory")
@@ -399,31 +509,4 @@ func (m *MemoryModule) Free() error {
 		m.baseAddr = 0
 	}
 	return nil
-}
-
-// Helper functions
-
-func ptrToString(ptr uintptr) string {
-	if ptr == 0 {
-		return ""
-	}
-	var length int
-	for {
-		b := *(*byte)(unsafe.Pointer(ptr + uintptr(length)))
-		if b == 0 {
-			break
-		}
-		length++
-	}
-	return string((*[0]byte)(unsafe.Pointer(ptr))[:length:length])
-}
-
-func stringToUTF16Ptr(s string) *uint16 {
-	ptr, _ := syscall.UTF16PtrFromString(s)
-	return ptr
-}
-
-func callDllMain(entry, hinst uintptr, reason uint32) {
-	// DllMain signature: BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
-	syscall.Syscall(entry, 3, hinst, uintptr(reason), 0)
 }
