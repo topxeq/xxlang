@@ -12,6 +12,7 @@ io.println("你好，世界！")
 ## 目录
 
 - [io](#io) - 输入输出操作
+- [file](#file) - 流式文件操作
 - [os](#os) - 操作系统工具和配置
 - [string](#string) - 字符串工具
 - [chars](#chars) - Unicode 字符处理
@@ -1263,41 +1264,284 @@ isEmpty([1])     // false
 
 ## json
 
-JSON 编解码。
+JSON 编解码和 JSONPath 查询操作。
+
+### 基本函数
 
 #### parse(jsonString)
-将 JSON 字符串解析为 Xxlang 值。
+将 JSON 字符串解析为 Xxlang 值。也作为内置函数 `fromJson` 使用。
 
 ```xxl
-var data = parse('{"name": "张三", "age": 30}')
+var data = json.parse('{"name": "张三", "age": 30}')
 pln(data["name"])  // "张三"
 
-var arr = parse('[1, 2, 3]')
+var arr = json.parse('[1, 2, 3]')
 pln(arr[0])  // 1
 ```
 
 #### stringify(value, indent)
-将 Xxlang 值转换为 JSON 字符串。
+将 Xxlang 值转换为 JSON 字符串。也作为内置函数 `toJson` 使用。
 
 ```xxl
 var obj = {"name": "张三", "age": 30}
-pln(stringify(obj))        // {"name":"张三","age":30}
-pln(stringify(obj, "  "))  // 带2空格缩进的格式化输出
-pln(stringify(obj, 4))     // 带4空格缩进的格式化输出
+pln(json.stringify(obj))        // {"name":"张三","age":30}
+pln(json.stringify(obj, "  "))  // 带2空格缩进的格式化输出
+pln(json.stringify(obj, 4))     // 带4空格缩进的格式化输出
 ```
 
 #### encode(value)
 不带缩进的 stringify 别名。
 
 ```xxl
-encode({"a": 1})  // '{"a":1}'
+json.encode({"a": 1})  // '{"a":1}'
 ```
 
 #### decode(jsonString)
 parse 的别名。
 
 ```xxl
-decode('{"x": 10}')["x"]  // 10
+json.decode('{"x": 10}')["x"]  // 10
+```
+
+#### toJson(value, options...)
+将 Xxlang 值转换为 JSON 字符串，支持选项。与内置函数 `toJson` 行为一致。
+
+```xxl
+json.toJson(obj, "-indent")  // 格式化输出
+json.toJson(obj, "-sort")    // 排序键
+```
+
+#### fromJson(jsonString)
+parse 的别名。与内置函数 `fromJson` 行为一致。
+
+```xxl
+json.fromJson('{"x": 10}')["x"]  // 10
+```
+
+### 文件操作
+
+#### readFile(path)
+读取并解析 JSON 文件。
+
+```xxl
+var config = json.readFile("config.json")
+io.println(config["server"])
+```
+
+#### writeFile(path, obj, indent)
+将对象写入 JSON 文件。
+
+```xxl
+var data = {"name": "测试", "values": [1, 2, 3]}
+json.writeFile("output.json", data)
+json.writeFile("output.json", data, "  ")  // 带缩进
+```
+
+#### writeFilePretty(path, obj, indent)
+写入格式化的 JSON 文件。
+
+```xxl
+json.writeFilePretty("output.json", data, "  ")
+```
+
+#### updateFile(path, updates)
+更新 JSON 文件中的值。
+
+```xxl
+json.updateFile("config.json", {"debug": true, "timeout": 60})
+```
+
+#### appendToArrayFile(path, element)
+向 JSON 数组文件追加元素。
+
+```xxl
+json.appendToArrayFile("logs.json", {"timestamp": time.unix(), "msg": "错误"})
+```
+
+### 工具函数
+
+#### isValid(jsonString)
+检查字符串是否为有效的 JSON。
+
+```xxl
+json.isValid('{"a": 1}')   // true
+json.isValid('{invalid}')  // false
+```
+
+#### getType(jsonString)
+返回 JSON 值的类型："object"、"array"、"string"、"number"、"boolean"、"null" 或 "invalid"。
+
+```xxl
+json.getType('{"a": 1}')  // "object"
+json.getType('[1, 2, 3]') // "array"
+json.getType('42')        // "number"
+```
+
+### JSONPath 操作
+
+JSONPath 是一种 JSON 查询语言，类似于 XML 的 XPath。它允许您从 JSON 文档中选择和提取数据。
+
+#### JSONPath 语法
+
+| 语法 | 说明 | 示例 |
+|------|------|------|
+| `$` | 根对象 | `$` |
+| `.field` | 访问字段 | `$.store.name` |
+| `[n]` | 数组索引 | `$.books[0]` |
+| `[-n]` | 负索引（从末尾） | `$.books[-1]` |
+| `[*]` | 通配符（所有元素） | `$.books[*]` |
+| `..` | 递归下降 | `$..author` |
+| `[start:end]` | 数组切片 | `$[1:5]` |
+| `[a,b,c]` | 多个索引 | `$[0,2,4]` |
+| `[?(expr)]` | 过滤表达式 | `$[?(@.price < 10)]` |
+
+#### get(path, obj)
+获取匹配 JSONPath 的第一个值。未找到返回 null。
+
+```xxl
+var data = json.parse('{"store": {"book": [{"title": "书1"}, {"title": "书2"}]}}')
+
+var title = json.get("$.store.book[0].title", data)  // "书1"
+var lastTitle = json.get("$.store.book[-1].title", data)  // "书2"
+```
+
+#### getAll(path, obj)
+获取匹配 JSONPath 的所有值，返回数组。
+
+```xxl
+var data = json.parse('{"store": {"book": [{"title": "A"}, {"title": "B"}]}}')
+
+var titles = json.getAll("$..title", data)  // ["A", "B"]
+var books = json.getAll("$.store.book[*]", data)  // 所有书籍
+```
+
+#### getWithPath(path, obj)
+获取匹配 JSONPath 的所有值及其路径，返回映射。
+
+```xxl
+var data = json.parse('{"a": {"b": 1, "c": 2}}')
+var result = json.getWithPath("$..*", data)
+// {"$.a": {"b": 1, "c": 2}, "$.a.b": 1, "$.a.c": 2}
+```
+
+#### set(path, obj, value)
+在指定 JSONPath 设置值。返回新对象（不修改原对象）。
+
+```xxl
+var data = {"name": "张三", "age": 30}
+var newData = json.set("$.age", data, 31)
+// newData = {"name": "张三", "age": 31}
+
+// 原对象不变
+pln(data.age)  // 30
+```
+
+#### delete(path, obj)
+删除指定 JSONPath 的值。返回新对象。
+
+```xxl
+var data = {"name": "张三", "age": 30, "city": "北京"}
+var newData = json.delete("$.city", data)
+// newData = {"name": "张三", "age": 30}
+```
+
+#### has(path, obj)
+检查是否有值匹配 JSONPath。
+
+```xxl
+var data = {"store": {"name": "我的书店"}}
+json.has("$.store.name", data)  // true
+json.has("$.store.owner", data)  // false
+```
+
+#### count(path, obj)
+返回匹配 JSONPath 的值的数量。
+
+```xxl
+var data = json.parse('{"items": [1, 2, 3, 4, 5]}')
+json.count("$.items[*]", data)  // 5
+```
+
+#### paths(obj)
+返回对象中存在的所有 JSONPath 字符串。
+
+```xxl
+var data = {"a": {"b": 1, "c": 2}}
+var allPaths = json.paths(data)
+// ["$.a", "$.a.b", "$.a.c"]
+```
+
+#### query(path, jsonString)
+合并解析和查询操作。
+
+```xxl
+var title = json.query("$.store.book[0].title", '{"store": {"book": [{"title": "测试"}]}}')
+// "测试"
+```
+
+#### queryAll(path, jsonString)
+合并解析和获取所有匹配操作。
+
+```xxl
+var titles = json.queryAll("$..title", '{"store": {"book": [{"title": "A"}, {"title": "B"}]}}')
+// ["A", "B"]
+```
+
+### JSONPath 示例
+
+```xxl
+import "json"
+
+var jsonStr = `
+{
+  "store": {
+    "book": [
+      {"category": "fiction", "title": "书 A", "price": 10},
+      {"category": "fiction", "title": "书 B", "price": 15},
+      {"category": "non-fiction", "title": "书 C", "price": 25}
+    ],
+    "name": "我的书店"
+  }
+}
+`
+
+var data = json.parse(jsonStr)
+
+// 获取书店名称
+var storeName = json.get("$.store.name", data)  // "我的书店"
+
+// 获取第一本书标题
+var firstTitle = json.get("$.store.book[0].title", data)  // "书 A"
+
+// 获取最后一本书
+var lastBook = json.get("$.store.book[-1]", data)
+
+// 获取所有书标题（递归）
+var titles = json.getAll("$..title", data)  // ["书 A", "书 B", "书 C"]
+
+// 获取所有价格
+var prices = json.getAll("$.store.book[*].price", data)  // [10, 15, 25]
+
+// 过滤价格小于 20 的书
+var cheapBooks = json.getAll("$.store.book[?(@.price < 20)]", data)
+
+// 切片：前两本书
+var firstTwo = json.getAll("$.store.book[0:2]", data)
+
+// 获取多个索引
+var selected = json.getAll("$.store.book[0,2]", data)  // 索引 0 和 2 的书
+
+// 检查路径是否存在
+json.has("$.store.book[0].title", data)  // true
+
+// 统计书籍数量
+json.count("$.store.book[*]", data)  // 3
+
+// 设置新价格
+var updated = json.set("$.store.book[0].price", data, 12.99)
+
+// 删除一本书
+var fewer = json.delete("$.store.book[1]", data)
 ```
 
 ---
@@ -1932,4 +2176,559 @@ entries({"x": 10, "y": 20})  // [["x", 10], ["y", 20]]
 ```xxl
 format("你好 %s，你 %d 岁", "张三", 30)  // "你好 张三，你 30 岁"
 format("圆周率是 %.2f", 3.14159)                 // "圆周率是 3.14"
+```
+
+---
+
+## 其他模块
+
+以下是更多可用的标准库模块：
+
+| 模块 | 说明 |
+|------|------|
+| `bytes` | 字节数组操作 |
+| `collections` | 集合工具（集合、栈、队列） |
+| `csv` | CSV 文件解析和写入 |
+| `env` | 环境变量工具 |
+| `fp` | 函数式编程工具（map、filter、reduce） |
+| `log` | 日志工具 |
+| `net` | 网络工具（HTTP 客户端） |
+| `sort` | 高级排序工具 |
+| `strconv` | 字符串转换工具 |
+| `text` | 文本处理工具 |
+| `validate` | 输入验证工具 |
+
+---
+
+### bytes 模块
+
+字节操作工具，用于低级别操作。
+
+```xxlang
+load("bytes")
+
+// 从字符串创建字节数组
+var b = bytes.fromString("hello")  // [104, 101, 108, 108, 111]
+
+// 转换回字符串
+var s = bytes.toString(b)  // "hello"
+
+// 获取/设置指定索引的字节
+var byte = bytes.get(b, 0)  // 104
+bytes.set(b, 0, 72)  // 修改第一个字节
+
+// 编码/解码整数（大端/小端）
+var encoded = bytes.encodeInt64BE(12345)
+var decoded = bytes.decodeInt64BE(encoded)
+
+// 其他操作
+bytes.concat(b1, b2)     // 连接字节数组
+bytes.slice(b, 0, 3)     // 切片字节数组
+bytes.compare(b1, b2)    // 比较（返回 -1, 0, 1）
+bytes.equal(b1, b2)      // 检查相等性
+bytes.count(b, 65)       // 统计字节出现次数
+bytes.indexOf(b, 65)     // 查找字节索引（未找到返回 -1）
+```
+
+---
+
+### collections 模块
+
+集合工具，用于处理数组和集合。
+
+```xxlang
+load("collections")
+
+// 集合操作
+var a = [1, 2, 3]
+var b = [2, 3, 4]
+collections.union(a, b)         // [1, 2, 3, 4]
+collections.intersection(a, b)  // [2, 3]
+collections.difference(a, b)    // [1]
+
+// 分块数组
+collections.chunk([1,2,3,4,5], 2)  // [[1,2], [3,4], [5]]
+
+// 拉链数组合并
+collections.zip([1,2], [3,4], [5,6])  // [[1,3,5], [2,4,6]]
+
+// 深度展平嵌套数组
+collections.flattenDeep([[1,[2]],3])  // [1, 2, 3]
+
+// 分组和计数
+collections.countBy([1,1,2,3])  // [["1", 2], ["2", 1], ["3", 1]]
+collections.groupBy([1,2,3,4], fn(x) { x % 2 })
+
+// 按条件分区
+collections.partition([1,2,3,4,5], fn(x) { x > 2 })  // [[3,4,5], [1,2]]
+
+// 取/弃元素
+collections.take([1,2,3,4,5], 3)      // [1, 2, 3]
+collections.drop([1,2,3,4,5], 2)      // [3, 4, 5]
+collections.takeWhile([1,2,3,4], fn(x) { x < 3 })  // [1, 2]
+
+// 查找
+collections.find([1,2,3,4], fn(x) { x > 2 })      // 3
+collections.findIndex([1,2,3,4], fn(x) { x > 2 }) // 2
+
+// 全部/存在检查
+collections.every([1,2,3], fn(x) { x > 0 })  // true
+collections.some([1,2,3], fn(x) { x > 2 })   // true
+
+// 带步长的范围
+collections.rangeStep(0, 10, 2)  // [0, 2, 4, 6, 8]
+
+// 重复元素
+collections.repeat("x", 5)  // ["x", "x", "x", "x", "x"]
+
+// 洗牌和采样
+collections.shuffle([1,2,3,4,5])
+collections.sample([1,2,3,4,5])      // 随机元素
+collections.sample([1,2,3,4,5], 2)   // 2 个随机元素
+```
+
+---
+
+### csv 模块
+
+CSV 解析和生成工具。
+
+```xxlang
+load("csv")
+
+// 解析 CSV 字符串
+var data = csv.parse("a,b,c\n1,2,3\n4,5,6")
+// [["a","b","c"], ["1","2","3"], ["4","5","6"]]
+
+// 带表头解析（返回映射数组）
+var records = csv.parseWithHeader("name,age\nAlice,30\nBob,25")
+// [{"name": "Alice", "age": "30"}, {"name": "Bob", "age": "25"}]
+
+// 自定义分隔符
+csv.parse("a;b;c", ";")
+
+// 生成 CSV
+csv.stringify([["a","b"], ["1","2"]])  // "a,b\n1,2"
+
+// 从映射生成
+csv.stringifyMaps([{"a": 1}], ["a"])  // "a\n1"
+
+// 获取列/行
+csv.column(data, 0)  // 获取第一列
+csv.row(data, 0)     // 获取第一行
+
+// 转置
+csv.transpose([[1,2], [3,4]])  // [[1,3], [2,4]]
+
+// 过滤/映射行
+csv.filterRows(data, fn(row) { row[0] == "1" })
+csv.mapRows(data, fn(row) { row })
+
+// 计数
+csv.rowCount(data)
+csv.colCount(data)
+
+// 跳过/取行
+csv.skip(data, 1)   // 跳过第一行
+csv.take(data, 2)   // 取前 2 行
+
+// 追加/前置行
+csv.appendRow(data, ["x", "y"])
+csv.prependRow(data, ["header"])
+```
+
+---
+
+### env 模块
+
+环境变量和系统工具。
+
+```xxlang
+load("env")
+
+// 环境变量
+env.get("HOME")            // 获取环境变量
+env.getOr("DEBUG", "0")    // 获取环境变量，带默认值
+env.set("MY_VAR", "value") // 设置环境变量
+env.unset("MY_VAR")        // 取消设置环境变量
+env.has("HOME")            // 检查是否存在
+env.all()                  // 获取所有环境变量（键值对数组）
+env.map()                  // 获取所有环境变量（映射）
+env.path()                 // 获取 PATH 作为数组
+env.expand("$HOME/test")   // 展开字符串中的环境变量
+
+// 类型特定的获取器
+env.getInt("PORT", 8080)   // 获取整数，带默认值
+env.getBool("DEBUG", false) // 获取布尔值
+env.lookup("HOME")         // [是否存在, 值]
+
+// 工作目录
+env.cwd()                  // 获取当前目录
+env.cd("/tmp")             // 切换目录
+
+// 进程信息
+env.pid()                  // 进程 ID
+env.ppid()                 // 父进程 ID
+env.exe()                  // 可执行文件路径
+env.exit(0)                // 退出程序
+
+// 命令行参数
+env.args()                 // 命令行参数
+env.scriptArgs()           // -- 后的参数
+env.mixArgs()              // 脚本参数或所有参数
+
+// 用户目录
+env.cacheDir()             // 用户缓存目录
+env.configDir()            // 用户配置目录
+
+// 其他
+env.clear()                // 清除所有环境变量
+env.streams()              // [stdin, stdout, stderr 可用]
+```
+
+---
+
+### fp 模块
+
+函数式编程工具。
+
+```xxlang
+load("fp")
+
+// 函数组合
+var double = fn(x) { x * 2 }
+var addOne = fn(x) { x + 1 }
+var composed = fp.compose(double, addOne)
+composed(5)  // (5 + 1) * 2 = 12
+
+var piped = fp.pipe(double, addOne)
+piped(5)     // (5 * 2) + 1 = 11
+
+// 工具函数
+fp.identity(5)         // 5
+fp.constant(10)(x)     // 总是返回 10
+fp.alwaysTrue()        // true
+fp.alwaysFalse()       // false
+
+// 谓词组合器
+fp.not(fn(x) { x > 0 })        // 取反谓词
+fp.allPass(fn(x) { x > 0 }, fn(x) { x < 10 })
+fp.anyPass(fn(x) { x < 0 }, fn(x) { x > 10 })
+
+// 高阶工具
+fp.tap(fn(x) { pln(x) })(5)   // 执行副作用，返回值
+fp.defaultTo(0)(null)          // null 时返回默认值
+
+// 对象工具
+fp.equals(5)(5)                // true
+fp.prop("name")({"name": "A"}) // 获取属性
+fp.pick(["a", "b"])({"a": 1, "b": 2, "c": 3})  // {"a": 1, "b": 2}
+fp.omit(["c"])({"a": 1, "b": 2, "c": 3})       // {"a": 1, "b": 2}
+
+// 数组工具
+fp.concat([1,2], [3,4])  // [1,2,3,4]
+fp.flatten([[1,2], [3]]) // [1,2,3]
+fp.head([1,2,3])         // 1
+fp.tail([1,2,3])         // [2,3]
+fp.init([1,2,3])         // [1,2]
+fp.last([1,2,3])         // 3
+fp.length([1,2,3])       // 3
+fp.isEmpty([])           // true
+
+// 范围
+fp.range(5)              // [0,1,2,3,4]
+fp.range(1, 5)           // [1,2,3,4]
+fp.range(0, 10, 2)       // [0,2,4,6,8]
+
+// 重复执行
+fp.times(3, fn(i) { i * 2 })  // [0, 2, 4]
+
+// 记忆化
+var memoized = fp.memoize(fn(x) { /* 昂贵的计算 */ })
+
+// 迭代直到条件满足
+fp.until(fn(x) { x > 10 }, fn(x) { x * 2 }, 1)  // 16
+```
+
+---
+
+### log 模块
+
+带日志级别的日志工具。
+
+```xxlang
+load("log")
+
+// 基本日志
+log.debug("调试信息")
+log.info("普通信息")
+log.warn("警告信息")
+log.error("错误信息")
+log.fatal("致命错误")  // 记录日志并退出
+
+// 设置日志级别
+log.setLevel("debug")  // debug, info, warn, error
+log.getLevel()         // 当前级别
+
+// 格式化但不打印
+log.format("info", "message")  // "[timestamp] INFO: message"
+
+// 记录到文件
+log.toFile("app.log", "info", "message")
+
+// 简单打印
+log.print("message")
+log.printNoNL("no newline")
+log.printf("Value: %d", 42)
+
+// 带前缀日志
+log.withPrefix("APP", "message")
+
+// JSON 格式
+log.json("info", "message")
+// {"timestamp":"...","level":"info","message":"..."}
+
+// 堆栈跟踪
+log.stack()
+
+// 检查级别是否启用
+log.isLevel("debug")  // true/false
+```
+
+---
+
+### net 模块
+
+HTTP 客户端工具。
+
+```xxlang
+load("net")
+
+// HTTP GET
+var result = net.get("https://api.example.com/data")
+// [body, statusCode, status]
+
+// HTTP POST
+var result = net.post("https://api.example.com/api", '{"key":"value"}')
+var result = net.post(url, body, "application/json")
+
+// 通用请求
+net.request("PUT", url, body, {"Authorization": "Bearer token"})
+
+// HEAD 请求
+var result = net.head(url)  // [statusCode, headers]
+
+// 下载文件内容
+var content = net.download("https://example.com/file.txt")
+
+// 设置超时（秒）
+net.setTimeout(60)
+
+// 状态码辅助函数
+net.isOK(200)           // true (200-299)
+net.isRedirect(301)     // true (300-399)
+net.isClientError(404)  // true (400-499)
+net.isServerError(500)  // true (500+)
+
+// JSON 辅助函数
+net.getJson("https://api.example.com/data")
+net.postJson("https://api.example.com/api", '{"key":"value"}')
+```
+
+---
+
+### sort 模块
+
+数组排序工具。
+
+```xxlang
+load("sort")
+
+// 数字排序
+sort.numbers([3, 1, 4, 1, 5])       // [1, 1, 3, 4, 5]
+sort.numbersDesc([3, 1, 4, 1, 5])   // [5, 4, 3, 1, 1]
+
+// 字符串排序
+sort.strings(["c", "a", "b"])       // ["a", "b", "c"]
+sort.stringsDesc(["c", "a", "b"])   // ["c", "b", "a"]
+
+// 按键函数排序
+sort.by([{name: "Bob"}, {name: "Alice"}], fn(x) { x.name })
+
+// 反转数组
+sort.reverse([1, 2, 3, 4])  // [4, 3, 2, 1]
+
+// 检查是否已排序
+sort.isSorted([1, 2, 3])    // true
+
+// 最小/最大值
+sort.min([3, 1, 2])         // 1
+sort.max([3, 1, 2])         // 3
+sort.minIndex([3, 1, 2])    // 1
+sort.maxIndex([3, 1, 2])    // 0
+```
+
+---
+
+### strconv 模块
+
+字符串转换工具。
+
+```xxlang
+load("strconv")
+
+// 解析函数
+strconv.parseInt("42")         // 42
+strconv.parseInt("ff", 16)     // 255（十六进制）
+strconv.parseFloat("3.14")     // 3.14
+strconv.parseBool("true")      // true
+
+// 格式化函数
+strconv.formatInt(42)          // "42"
+strconv.formatInt(255, 16)     // "ff"
+strconv.formatFloat(3.14)      // "3.14"
+strconv.formatFloat(3.14, 2)   // "3.14" 带精度
+strconv.formatBool(true)       // "true"
+
+// 引用/取消引用
+strconv.quote("hello\nworld")  // "\"hello\\nworld\""
+strconv.unquote("\"hello\"")   // "hello"
+
+// 类型转换
+strconv.toString(42)           // "42"
+strconv.toString(3.14)         // "3.14"
+strconv.toInt("42")            // 42
+strconv.toInt(3.14)            // 3
+strconv.toFloat("3.14")        // 3.14
+strconv.toFloat(42)            // 42.0
+strconv.toBool("true")         // true
+strconv.toBool(1)              // true
+
+// JSON
+strconv.toJSON(obj)
+strconv.toJSONPretty(obj)
+
+// 格式化辅助
+strconv.formatNumber(1234.567, 2)  // "1234.57"
+strconv.formatBytes(1536)          // "1.50 KB"
+strconv.formatDuration(65000)      // "1m 5s"
+```
+
+---
+
+### text 模块
+
+文本处理工具。
+
+```xxlang
+load("text")
+
+// 自动换行
+text.wordWrap("Hello world this is a test", 10)
+// "Hello\nworld this\nis a test"
+
+// 截断
+text.truncate("Hello world", 8)        // "Hello..."
+text.truncate("Hello world", 8, "…")   // "Hello w…"
+
+// 计数
+text.wordCount("Hello world")   // 2
+text.lineCount("Line1\nLine2")  // 2
+text.charCount("中文")          // 2（字符/码点）
+text.byteCount("中文")          // 6（字节）
+
+// 分割/连接
+text.lines("a\nb\nc")           // ["a", "b", "c"]
+text.joinLines(["a", "b"])      // "a\nb"
+text.words("hello world")       // ["hello", "world"]
+text.chars("abc")               // ["a", "b", "c"]
+
+// 大小写转换
+text.title("hello world")       // "Hello World"
+text.capitalize("hello")        // "Hello"
+text.swapCase("Hello")          // "hELLO"
+
+// 类型检查
+text.isAlphaNum("abc123")       // true
+text.isAlpha("abc")             // true
+text.isNumeric("123")           // true
+text.isSpace("   ")             // true
+text.isBlank("   ")             // true
+
+// 空白处理
+text.removeSpaces("a b c")      // "abc"
+text.normalizeSpace("a   b")    // "a b"
+
+// 填充
+text.padLeft("5", 3, "0")       // "005"
+text.padRight("5", 3, "0")      // "500"
+
+// 缩进
+text.indent("a\nb", "  ")       // "  a\n  b"
+text.dedent("  a\n  b")         // "a\nb"
+text.centerText("hi", 10)       // "    hi    "
+
+// 重复
+text.repeat("ab", 3)            // "ababab"
+
+// 字符工具
+text.charAt("hello", 1)         // "e"
+text.charCode("A", 0)           // 65
+text.fromCode(65)               // "A"
+
+// 转义
+text.shellEscape("hello'world") // "'hello'\"'\"'world'"
+text.jsonEscape("hello\n")      // "hello\\n"
+text.jsonUnescape("hello\\n")   // "hello\n"
+```
+
+---
+
+### validate 模块
+
+输入验证工具。
+
+```xxlang
+load("validate")
+
+// 格式验证
+validate.isEmail("user@example.com")  // true
+validate.isURL("https://example.com") // true
+
+// 正则匹配
+validate.matches("hello123", "^[a-z]+[0-9]+$")  // true
+
+// 字符串验证
+validate.lengthRange("hello", 1, 10)  // true
+validate.required("  hello  ")        // true（去除空格后非空）
+
+// 数组成员检查
+validate.inArray("a", ["a", "b", "c"])    // true
+validate.notInArray("x", ["a", "b", "c"]) // true
+
+// 数值范围
+validate.inRange(5, 1, 10)   // true
+
+// 类型检查
+validate.isJSON('{"a":1}')        // true
+validate.isAlphanumeric("abc123") // true
+validate.isAlpha("abc")           // true
+validate.isNumeric("123.45")      // true
+validate.isInteger("123")         // true
+
+// 格式检查
+validate.isHexColor("#ff0000")    // true
+validate.isUUID("550e8400-e29b-41d4-a716-446655440000")  // true
+validate.isIPv4("192.168.1.1")    // true
+validate.isPhone("+1-555-123-4567")  // true
+validate.isDate("2024-01-15")     // true
+validate.isTime("14:30:00")       // true
+
+// 字符串操作
+validate.startsWith("hello", "he")  // true
+validate.endsWith("hello", "lo")    // true
+validate.contains("hello", "ell")   // true
+
+// 信用卡（Luhn 算法）
+validate.isCreditCard("4111111111111111")  // true
 ```

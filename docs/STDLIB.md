@@ -29,6 +29,7 @@ io.println("Hello, World!")
 - [encoding](#encoding) - Base64 and hex encoding/decoding
 - [uuid](#uuid) - UUID generation
 - [debug](#debug) - Debugging utilities
+- [Other Modules](#other-modules) - bytes, collections, env, fp, log, net, sort, strconv, text, validate
 
 > **See also:** [File Operations Guide](FILE.md) for comprehensive file handling documentation.
 
@@ -1314,42 +1315,61 @@ isEmpty([1])     // false
 
 ## json
 
-JSON encoding and decoding.
+JSON encoding, decoding, and JSONPath query operations.
+
+### Basic Functions
 
 #### parse(jsonString)
-Parses JSON string to Xxlang value.
+Parses JSON string to Xxlang value. Also available as builtin `fromJson`.
 
 ```xxl
-var data = parse('{"name": "Alice", "age": 30}')
+var data = json.parse('{"name": "Alice", "age": 30}')
 pln(data["name"])  // "Alice"
 
-var arr = parse('[1, 2, 3]')
+var arr = json.parse('[1, 2, 3]')
 pln(arr[0])  // 1
 ```
 
 #### stringify(value, indent)
-Converts Xxlang value to JSON string.
+Converts Xxlang value to JSON string. Also available as builtin `toJson`.
 
 ```xxl
 var obj = {"name": "Alice", "age": 30}
-pln(stringify(obj))        // {"name":"Alice","age":30}
-pln(stringify(obj, "  "))  // Pretty printed with 2-space indent
-pln(stringify(obj, 4))     // Pretty printed with 4-space indent
+pln(json.stringify(obj))        // {"name":"Alice","age":30}
+pln(json.stringify(obj, "  "))  // Pretty printed with 2-space indent
+pln(json.stringify(obj, 4))     // Pretty printed with 4-space indent
 ```
 
 #### encode(value)
 Alias for stringify without indent.
 
 ```xxl
-encode({"a": 1})  // '{"a":1}'
+json.encode({"a": 1})  // '{"a":1}'
 ```
 
 #### decode(jsonString)
 Alias for parse.
 
 ```xxl
-decode('{"x": 10}')["x"]  // 10
+json.decode('{"x": 10}')["x"]  // 10
 ```
+
+#### toJson(value, options...)
+Converts Xxlang value to JSON string with options. Matches builtin `toJson` behavior.
+
+```xxl
+json.toJson(obj, "-indent")  // Pretty print
+json.toJson(obj, "-sort")    // Sort keys
+```
+
+#### fromJson(jsonString)
+Alias for parse. Matches builtin `fromJson` behavior.
+
+```xxl
+json.fromJson('{"x": 10}')["x"]  // 10
+```
+
+### File Operations
 
 #### readFile(path)
 Reads and parses a JSON file.
@@ -1359,12 +1379,13 @@ var config = json.readFile("config.json")
 io.println(config["server"])
 ```
 
-#### writeFile(path, obj)
+#### writeFile(path, obj, indent)
 Writes object to JSON file.
 
 ```xxl
 var data = {"name": "test", "values": [1, 2, 3]}
 json.writeFile("output.json", data)
+json.writeFile("output.json", data, "  ")  // With indent
 ```
 
 #### writeFilePretty(path, obj, indent)
@@ -1372,6 +1393,206 @@ Writes formatted JSON to file.
 
 ```xxl
 json.writeFilePretty("output.json", data, "  ")
+```
+
+#### updateFile(path, updates)
+Updates a JSON file with new values.
+
+```xxl
+json.updateFile("config.json", {"debug": true, "timeout": 60})
+```
+
+#### appendToArrayFile(path, element)
+Appends an element to a JSON array file.
+
+```xxl
+json.appendToArrayFile("logs.json", {"timestamp": time.unix(), "msg": "error"})
+```
+
+### Utility Functions
+
+#### isValid(jsonString)
+Returns true if the string is valid JSON.
+
+```xxl
+json.isValid('{"a": 1}')   // true
+json.isValid('{invalid}')  // false
+```
+
+#### getType(jsonString)
+Returns the type of JSON value: "object", "array", "string", "number", "boolean", "null", or "invalid".
+
+```xxl
+json.getType('{"a": 1}')  // "object"
+json.getType('[1, 2, 3]') // "array"
+json.getType('42')        // "number"
+```
+
+### JSONPath Operations
+
+JSONPath is a query language for JSON, similar to XPath for XML. It allows you to select and extract data from JSON documents.
+
+#### JSONPath Syntax
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `$` | Root object | `$` |
+| `.field` | Access field | `$.store.name` |
+| `[n]` | Array index | `$.books[0]` |
+| `[-n]` | Negative index (from end) | `$.books[-1]` |
+| `[*]` | Wildcard (all elements) | `$.books[*]` |
+| `..` | Recursive descent | `$..author` |
+| `[start:end]` | Array slice | `$[1:5]` |
+| `[a,b,c]` | Multiple indices | `$[0,2,4]` |
+| `[?(expr)]` | Filter expression | `$[?(@.price < 10)]` |
+
+#### get(path, obj)
+Gets the first value matching a JSONPath. Returns null if not found.
+
+```xxl
+var data = json.parse('{"store": {"book": [{"title": "Book1"}, {"title": "Book2"}]}}')
+
+var title = json.get("$.store.book[0].title", data)  // "Book1"
+var lastTitle = json.get("$.store.book[-1].title", data)  // "Book2"
+```
+
+#### getAll(path, obj)
+Gets all values matching a JSONPath as an array.
+
+```xxl
+var data = json.parse('{"store": {"book": [{"title": "A"}, {"title": "B"}]}}')
+
+var titles = json.getAll("$..title", data)  // ["A", "B"]
+var books = json.getAll("$.store.book[*]", data)  // All books
+```
+
+#### getWithPath(path, obj)
+Gets all values matching a JSONPath with their paths as a map.
+
+```xxl
+var data = json.parse('{"a": {"b": 1, "c": 2}}')
+var result = json.getWithPath("$..*", data)
+// {"$.a": {"b": 1, "c": 2}, "$.a.b": 1, "$.a.c": 2}
+```
+
+#### set(path, obj, value)
+Sets a value at the specified JSONPath. Returns a new object (does not mutate original).
+
+```xxl
+var data = {"name": "Alice", "age": 30}
+var newData = json.set("$.age", data, 31)
+// newData = {"name": "Alice", "age": 31}
+
+// Original unchanged
+pln(data.age)  // 30
+```
+
+#### delete(path, obj)
+Deletes values at the specified JSONPath. Returns a new object.
+
+```xxl
+var data = {"name": "Alice", "age": 30, "city": "NYC"}
+var newData = json.delete("$.city", data)
+// newData = {"name": "Alice", "age": 30}
+```
+
+#### has(path, obj)
+Returns true if at least one value matches the JSONPath.
+
+```xxl
+var data = {"store": {"name": "MyStore"}}
+json.has("$.store.name", data)  // true
+json.has("$.store.owner", data)  // false
+```
+
+#### count(path, obj)
+Returns the number of values matching the JSONPath.
+
+```xxl
+var data = json.parse('{"items": [1, 2, 3, 4, 5]}')
+json.count("$.items[*]", data)  // 5
+```
+
+#### paths(obj)
+Returns all JSONPath strings that exist in an object.
+
+```xxl
+var data = {"a": {"b": 1, "c": 2}}
+var allPaths = json.paths(data)
+// ["$.a", "$.a.b", "$.a.c"]
+```
+
+#### query(path, jsonString)
+Combines parse and get in one operation.
+
+```xxl
+var title = json.query("$.store.book[0].title", '{"store": {"book": [{"title": "Test"}]}}')
+// "Test"
+```
+
+#### queryAll(path, jsonString)
+Combines parse and getAll in one operation.
+
+```xxl
+var titles = json.queryAll("$..title", '{"store": {"book": [{"title": "A"}, {"title": "B"}]}}')
+// ["A", "B"]
+```
+
+### JSONPath Examples
+
+```xxl
+import "json"
+
+var jsonStr = `
+{
+  "store": {
+    "book": [
+      {"category": "fiction", "title": "Book A", "price": 10},
+      {"category": "fiction", "title": "Book B", "price": 15},
+      {"category": "non-fiction", "title": "Book C", "price": 25}
+    ],
+    "name": "My Bookstore"
+  }
+}
+`
+
+var data = json.parse(jsonStr)
+
+// Get store name
+var storeName = json.get("$.store.name", data)  // "My Bookstore"
+
+// Get first book title
+var firstTitle = json.get("$.store.book[0].title", data)  // "Book A"
+
+// Get last book
+var lastBook = json.get("$.store.book[-1]", data)
+
+// Get all book titles (recursive)
+var titles = json.getAll("$..title", data)  // ["Book A", "Book B", "Book C"]
+
+// Get all prices
+var prices = json.getAll("$.store.book[*].price", data)  // [10, 15, 25]
+
+// Filter books with price < 20
+var cheapBooks = json.getAll("$.store.book[?(@.price < 20)]", data)
+
+// Slice: first two books
+var firstTwo = json.getAll("$.store.book[0:2]", data)
+
+// Get multiple indices
+var selected = json.getAll("$.store.book[0,2]", data)  // Books at index 0 and 2
+
+// Check if path exists
+json.has("$.store.book[0].title", data)  // true
+
+// Count books
+json.count("$.store.book[*]", data)  // 3
+
+// Set a new price
+var updated = json.set("$.store.book[0].price", data, 12.99)
+
+// Delete a book
+var fewer = json.delete("$.store.book[1]", data)
 ```
 
 ---
