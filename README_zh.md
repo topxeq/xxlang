@@ -155,6 +155,73 @@ xxl version                        # 显示版本
 xxl help                           # 显示帮助
 ```
 
+### 直接执行代码（-e 参数）
+
+无需创建脚本文件，直接在命令行执行 Xxlang 代码：
+
+```bash
+# 快速单行代码
+xxl -e 'pln("Hello, World!")'
+xxl -e '1 + 2 + 3'
+
+# 更复杂的表达式
+xxl -e 'for (var i = 1; i <= 5; i++) { pln(i) }'
+
+# 使用 --eval 更清晰
+xxl --eval 'var x = 10; var y = 20; pln(x + y)'
+```
+
+### 管道模式（-pipe 参数）
+
+从标准输入（stdin）读取并执行 Xxlang 代码：
+
+```bash
+# 从管道执行代码
+echo 'pln("来自管道！")' | xxl -pipe
+
+# 执行脚本文件内容
+cat script.xxl | xxl -pipe
+
+# 配合 curl 运行远程脚本
+curl -s https://example.com/script.xxl | xxl -pipe
+```
+
+### 管道数据传递给脚本
+
+不带 `-pipe` 参数时，标准输入数据会传递给脚本处理。脚本可以使用 `io.scan()`、`io.scanLine()` 等函数读取：
+
+```bash
+# 将 JSON 数据传递给格式化脚本
+echo '{"name": "Alice", "age": 30}' | xxl format_json.xxl
+
+# 将 CSV 数据传递给处理脚本
+cat data.csv | xxl process_csv.xxl
+
+# 与其他命令配合使用
+ls -la | xxl filter_output.xxl
+```
+
+示例脚本（`format_json.xxl`）：
+```xxl
+import { scan, parseJson, formatJson, pln } from "io"
+
+var input = scan()
+var data = parseJson(input)
+pln(formatJson(data))
+```
+
+### 查看模式（-view 参数）
+
+只查看脚本内容而不执行：
+
+```bash
+# 查看本地脚本
+xxl -view script.xxl
+
+# 查看远程脚本
+xxl -view https://example.com/script.xxl
+```
+
 ### VM 选择
 
 Xxlang 支持两种虚拟机：

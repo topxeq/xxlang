@@ -302,6 +302,73 @@ xxl version                   # Show version
 xxl help                      # Show help
 ```
 
+### Direct Code Execution (-e flag)
+
+Execute Xxlang code directly from the command line without creating a script file:
+
+```bash
+# Quick one-liners
+xxl -e 'pln("Hello, World!")'
+xxl -e '1 + 2 + 3'
+
+# More complex expressions
+xxl -e 'for (var i = 1; i <= 5; i++) { pln(i) }'
+
+# Use --eval for clarity
+xxl --eval 'var x = 10; var y = 20; pln(x + y)'
+```
+
+### Pipe Mode (-pipe flag)
+
+Execute Xxlang code from stdin (standard input):
+
+```bash
+# Execute code from pipe
+echo 'pln("Hello from pipe!")' | xxl -pipe
+
+# Execute script file content
+cat script.xxl | xxl -pipe
+
+# Use with curl to run remote scripts
+curl -s https://example.com/script.xxl | xxl -pipe
+```
+
+### Piping Data to Scripts
+
+Without `-pipe`, stdin data is passed to the script for processing. Scripts can read stdin using `io.scan()`, `io.scanLine()`, etc.:
+
+```bash
+# Pipe JSON data to a formatter script
+echo '{"name": "Alice", "age": 30}' | xxl format_json.xxl
+
+# Pipe CSV data to a processor
+cat data.csv | xxl process_csv.xxl
+
+# Chain with other commands
+ls -la | xxl filter_output.xxl
+```
+
+Example script (`format_json.xxl`):
+```xxl
+import { scan, parseJson, formatJson, pln } from "io"
+
+var input = scan()
+var data = parseJson(input)
+pln(formatJson(data))
+```
+
+### View Mode (-view flag)
+
+View script content without executing:
+
+```bash
+# View local script
+xxl -view script.xxl
+
+# View remote script
+xxl -view https://example.com/script.xxl
+```
+
 ### VM Selection
 
 Xxlang supports two virtual machines:

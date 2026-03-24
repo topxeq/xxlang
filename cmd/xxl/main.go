@@ -35,6 +35,9 @@ var debugMode = false
 // ViewMode controls whether to only display script content without executing
 var viewMode = false
 
+// PipeMode controls whether to read code from stdin
+var pipeMode = false
+
 const (
 	PROMPT          = ">> "
 	CONTINUE_PROMPT = ".. "
@@ -112,6 +115,17 @@ func main() {
 
 	// Set script args for scripts to access via env::scriptArgs()
 	stdlib.SetScriptArgs(scriptArgs)
+
+	// Check for -pipe flag to read code from stdin
+	if pipeMode {
+		code, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
+			os.Exit(1)
+		}
+		executeCode(string(code), "<stdin>")
+		return
+	}
 
 	// Check for help or version flags (only in interpreter args)
 	for _, arg := range interpreterArgs {
@@ -197,6 +211,8 @@ func parseFlags(args []string) []string {
 			debugMode = true
 		} else if arg == "-view" || arg == "--view" {
 			viewMode = true
+		} else if arg == "-pipe" || arg == "--pipe" {
+			pipeMode = true
 		} else {
 			result = append(result, arg)
 		}
@@ -215,6 +231,7 @@ func printUsage() {
 	fmt.Println("  xxl                         Start interactive REPL")
 	fmt.Println("  xxl <file|url> [-- args...] Execute a .xxl file or script from URL")
 	fmt.Println("  xxl -e <code>               Execute code directly from command line")
+	fmt.Println("  echo 'code' | xxl -pipe     Execute code from stdin")
 	fmt.Println("  xxl run <file|url> [-- args...]")
 	fmt.Println("                              Execute a .xxl file or script from URL")
 	fmt.Println("  xxl serve [options]         Start HTTP/HTTPS server")
@@ -238,6 +255,7 @@ func printUsage() {
 	fmt.Println("      --bytecode        Output as bytecode (.xxb) instead of executable")
 	fmt.Println("  -cloud <script>       Execute script from configured cloudUrlBase")
 	fmt.Println("  -e, --eval <code>     Execute code directly from command line")
+	fmt.Println("  -pipe, --pipe         Read and execute code from stdin")
 	fmt.Println("  -view, --view         View script content without executing")
 	fmt.Println("      --jit             Enable JIT compilation for hot paths (experimental)")
 	fmt.Println("      --jit-threshold=N Set JIT hot path threshold (default: 100)")
@@ -253,6 +271,9 @@ func printUsage() {
 	fmt.Println("  xxl script.xxl")
 	fmt.Println("  xxl -e 'pln(\"Hello, World!\")'    Execute code directly")
 	fmt.Println("  xxl -e '1 + 2 + 3'                Execute expression")
+	fmt.Println("  echo 'pln(1+2+3)' | xxl -pipe     Execute code from stdin")
+	fmt.Println("  cat script.xxl | xxl -pipe        Execute file from stdin")
+	fmt.Println("  echo '{\"f1\":\"v1\"}' | xxl fmt.xxl  Pipe data to script (use scan/read)")
 	fmt.Println("  xxl -view script.xxl              View script content without executing")
 	fmt.Println("  xxl -view https://example.com/script.xxl")
 	fmt.Println("  xxl script.xxl -- arg1 arg2 --help")
