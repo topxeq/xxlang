@@ -40,6 +40,11 @@ const (
 // Version is set via -ldflags at build time. Default is "dev" for local builds.
 var Version = "dev"
 
+// BuildNumber is a hardcoded build number for development builds.
+// Format: YYYYMMDDNN (year month day + daily sequence number, e.g., 2026032401)
+// This should be updated manually for each significant build.
+var BuildNumber = "2026032401"
+
 // REPL represents an interactive REPL session
 type REPL struct {
 	symbolTable *compiler.SymbolTable
@@ -189,7 +194,11 @@ func parseFlags(args []string) []string {
 }
 
 func printUsage() {
-	fmt.Printf("Xxlang v%s\n", Version)
+	if Version == "dev" {
+		fmt.Printf("Xxlang v%s.%s\n", Version, BuildNumber)
+	} else {
+		fmt.Printf("Xxlang v%s\n", Version)
+	}
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Println("  xxl                         Start interactive REPL")
@@ -239,14 +248,22 @@ func printUsage() {
 }
 
 func printVersion() {
-	fmt.Printf("Xxlang v%s\n", Version)
+	if Version == "dev" {
+		fmt.Printf("Xxlang v%s.%s\n", Version, BuildNumber)
+	} else {
+		fmt.Printf("Xxlang v%s\n", Version)
+	}
 }
 
 func startREPL() {
 	repl := NewREPL()
 	scanner := bufio.NewScanner(os.Stdin)
 
-	fmt.Println("Xxlang REPL v" + Version)
+	if Version == "dev" {
+		fmt.Println("Xxlang REPL v" + Version + "." + BuildNumber)
+	} else {
+		fmt.Println("Xxlang REPL v" + Version)
+	}
 	fmt.Println("Type 'exit' or 'quit' to exit, 'help' for help, 'history' for command history")
 	fmt.Println("Multi-line: end line with '{' to continue")
 	fmt.Print(PROMPT)
@@ -774,7 +791,11 @@ func serveCmd(args []string) error {
 
 	// Create and start server
 	srv := server.NewServer(cfg)
-	fmt.Printf("Xxlang Server v%s\n", Version)
+	if Version == "dev" {
+		fmt.Printf("Xxlang Server v%s.%s\n", Version, BuildNumber)
+	} else {
+		fmt.Printf("Xxlang Server v%s\n", Version)
+	}
 	fmt.Printf("Web path: %s\n", cfg.WebPath)
 	fmt.Printf("Microservice path: %s\n", cfg.MSPath)
 	if cfg.HTTPSPort > 0 {
