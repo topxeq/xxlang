@@ -2582,7 +2582,6 @@ var Builtins = map[string]*Builtin{
 			// Parse options
 			indent := false
 			sortKeys := false
-			indentStr := "  " // default 2 spaces
 
 			for i := 1; i < len(args); i++ {
 				if str, ok := args[i].(*String); ok {
@@ -2595,8 +2594,11 @@ var Builtins = map[string]*Builtin{
 				}
 			}
 
-			// Convert object to JSON
-			jsonBytes, err := objectToJSON(args[0], indent, sortKeys, indentStr, 0)
+			// Convert object to JSON using the exported function
+			jsonBytes, err := ObjectToJSON(args[0], ObjectToJSONOptions{
+				Indent:   indent,
+				SortKeys: sortKeys,
+			})
 			if err != nil {
 				return newError("toJson error: %s", err.Error())
 			}
@@ -2615,7 +2617,8 @@ var Builtins = map[string]*Builtin{
 				return newError("argument to 'fromJson' must be STRING, got %s", args[0].Type())
 			}
 
-			obj, err := jsonToObject(str.Value)
+			// Parse JSON using the exported function
+			obj, err := JSONToObject(str.Value)
 			if err != nil {
 				return newError("fromJson error: %s", err.Error())
 			}
@@ -3405,7 +3408,7 @@ var Builtins = map[string]*Builtin{
 				if err := json.Unmarshal(body, &data); err != nil {
 					return newError("getWeb JSON parse failed: %v", err)
 				}
-				return goValueToObject(data)
+				return GoValueToObject(data)
 			}
 
 			return NewString(string(body))
@@ -3502,7 +3505,7 @@ var Builtins = map[string]*Builtin{
 			if err := json.Unmarshal(body, &data); err != nil {
 				return newError("getWebObject JSON parse failed: %v", err)
 			}
-			return goValueToObject(data)
+			return GoValueToObject(data)
 		},
 	},
 
@@ -3607,7 +3610,7 @@ var Builtins = map[string]*Builtin{
 			if err := json.Unmarshal(body, &data); err != nil {
 				return newError("postWebObject JSON parse failed: %v", err)
 			}
-			return goValueToObject(data)
+			return GoValueToObject(data)
 		},
 	},
 
@@ -3684,6 +3687,138 @@ var Builtins = map[string]*Builtin{
 			}
 
 			return NewMap(pairs)
+		},
+	},
+
+	// ============================================================
+	// Reader/Writer Functions
+	// ============================================================
+
+	// getWebReader - fetch URL and return a Reader for streaming
+	// Usage: getWebReader(url)
+	// Returns: Reader object
+	"getWebReader": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 {
+				return newError("wrong number of arguments for getWebReader. got=%d, want>=1", len(args))
+			}
+
+			urlObj, ok := args[0].(*String)
+			if !ok {
+				return newError("first argument to 'getWebReader' must be STRING, got %s", args[0].Type())
+			}
+
+			// Parse timeout option
+			timeout := 30 * time.Second
+			if len(args) > 1 {
+				if t, ok := args[1].(*Int); ok {
+					timeout = time.Duration(t.Value) * time.Second
+				}
+			}
+
+			client := &http.Client{Timeout: timeout}
+			resp, err := client.Get(urlObj.Value)
+			if err != nil {
+				return newError("getWebReader request failed: %v", err)
+			}
+
+			if resp.StatusCode >= 400 {
+				resp.Body.Close()
+				return newError("getWebReader HTTP error: %d %s", resp.StatusCode, resp.Status)
+			}
+
+			return NewReader(resp.Body)
+		},
+	},
+
+	// ioCopy - copy data from reader to writer
+	// Usage: ioCopy(writer, reader)
+	// Returns: number of bytes copied
+	"ioCopy": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 2 {
+				return newError("wrong number of arguments for ioCopy. got=%d, want=2", len(args))
+			}
+
+			writer, ok := args[0].(*Writer)
+			if !ok {
+				return newError("first argument to 'ioCopy' must be WRITER, got %s", args[0].Type())
+			}
+
+			reader, ok := args[1].(*Reader)
+			if !ok {
+				return newError("second argument to 'ioCopy' must be READER, got %s", args[1].Type())
+			}
+
+			return IoCopy(writer, reader)
+		},
+	},
+
+	// isReader - check if value is a Reader
+	"isReader": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for isReader. got=%d, want=1", len(args))
+			}
+			_, ok := args[0].(*Reader)
+			return &Bool{Value: ok}
+		},
+	},
+
+	// isWriter - check if value is a Writer
+	"isWriter": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for isWriter. got=%d, want=1", len(args))
+			}
+			_, ok := args[0].(*Writer)
+			return &Bool{Value: ok}
+		},
+	},
+
+	// newBytesReader - create a Reader from byte array
+	// Usage: newBytesReader(bytes)
+	"newBytesReader": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for newBytesReader. got=%d, want=1", len(args))
+			}
+
+			arr, ok := args[0].(*Array)
+			if !ok {
+				return newError("argument to 'newBytesReader' must be ARRAY, got %s", args[0].Type())
+			}
+
+			data := make([]byte, len(arr.Elements))
+			for i, elem := range arr.Elements {
+				b, ok := elem.(*Int)
+				if !ok {
+					return newError("array elements must be integers (0-255)")
+				}
+				if b.Value < 0 || b.Value > 255 {
+					return newError("byte value out of range (0-255)")
+				}
+				data[i] = byte(b.Value)
+			}
+
+			return NewReader(strings.NewReader(string(data)))
+		},
+	},
+
+	// newStringReader - create a Reader from string
+	// Usage: newStringReader(str)
+	"newStringReader": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for newStringReader. got=%d, want=1", len(args))
+			}
+
+			s, ok := args[0].(*String)
+			if !ok {
+				return newError("argument to 'newStringReader' must be STRING, got %s", args[0].Type())
+			}
+
+			return NewReader(strings.NewReader(s.Value))
 		},
 	},
 }
@@ -3895,176 +4030,6 @@ func deepEquals(a, b Object) bool {
 		return true
 	default:
 		return a.Inspect() == b.Inspect()
-	}
-}
-
-// objectToJSON converts an Object to JSON bytes
-func objectToJSON(obj Object, indent, sortKeys bool, indentStr string, level int) ([]byte, error) {
-	switch o := obj.(type) {
-	case *Null:
-		return []byte("null"), nil
-	case *Bool:
-		if o.Value {
-			return []byte("true"), nil
-		}
-		return []byte("false"), nil
-	case *Int:
-		return []byte(strconv.FormatInt(o.Value, 10)), nil
-	case *Float:
-		return []byte(strconv.FormatFloat(o.Value, 'f', -1, 64)), nil
-	case *String:
-		data, err := json.Marshal(o.Value)
-		if err != nil {
-			return nil, err
-		}
-		return data, nil
-	case *Array:
-		var buf strings.Builder
-		buf.WriteString("[")
-		if indent {
-			buf.WriteString("\n")
-		}
-		for i, elem := range o.Elements {
-			if indent {
-				for j := 0; j <= level; j++ {
-					buf.WriteString(indentStr)
-				}
-			}
-			data, err := objectToJSON(elem, indent, sortKeys, indentStr, level+1)
-			if err != nil {
-				return nil, err
-			}
-			buf.Write(data)
-			if i < len(o.Elements)-1 {
-				buf.WriteString(",")
-			}
-			if indent {
-				buf.WriteString("\n")
-			}
-		}
-		if indent {
-			for j := 0; j < level; j++ {
-				buf.WriteString(indentStr)
-			}
-		}
-		buf.WriteString("]")
-		return []byte(buf.String()), nil
-	case *Map:
-		var buf strings.Builder
-		buf.WriteString("{")
-		if indent {
-			buf.WriteString("\n")
-		}
-
-		// Get keys
-		keys := make([]string, 0, len(o.Pairs))
-		for _, pair := range o.Pairs {
-			if keyStr, ok := pair.Key.(*String); ok {
-				keys = append(keys, keyStr.Value)
-			}
-		}
-
-		// Sort keys if requested
-		if sortKeys {
-			sort.Strings(keys)
-		}
-
-		for i, key := range keys {
-			if indent {
-				for j := 0; j <= level; j++ {
-					buf.WriteString(indentStr)
-				}
-			}
-			// Write key
-			keyData, _ := json.Marshal(key)
-			buf.Write(keyData)
-			buf.WriteString(":")
-			if indent {
-				buf.WriteString(" ")
-			}
-			// Find value for this key
-			for _, pair := range o.Pairs {
-				if keyStr, ok := pair.Key.(*String); ok && keyStr.Value == key {
-					data, err := objectToJSON(pair.Value, indent, sortKeys, indentStr, level+1)
-					if err != nil {
-						return nil, err
-					}
-					buf.Write(data)
-					break
-				}
-			}
-			if i < len(keys)-1 {
-				buf.WriteString(",")
-			}
-			if indent {
-				buf.WriteString("\n")
-			}
-		}
-		if indent {
-			for j := 0; j < level; j++ {
-				buf.WriteString(indentStr)
-			}
-		}
-		buf.WriteString("}")
-		return []byte(buf.String()), nil
-	default:
-		// For other types, use Inspect as string
-		data, err := json.Marshal(o.Inspect())
-		if err != nil {
-			return nil, err
-		}
-		return data, nil
-	}
-}
-
-// jsonToObject parses JSON string to Object
-func jsonToObject(s string) (Object, error) {
-	var v interface{}
-	if err := json.Unmarshal([]byte(s), &v); err != nil {
-		return nil, err
-	}
-	return goValueToObject(v), nil
-}
-
-// goValueToObject converts a Go value to Object
-func goValueToObject(v interface{}) Object {
-	if v == nil {
-		return NULL
-	}
-
-	switch val := v.(type) {
-	case bool:
-		if val {
-			return TRUE
-		}
-		return FALSE
-	case float64:
-		// Check if it's actually an integer
-		if val == float64(int64(val)) {
-			return NewInt(int64(val))
-		}
-		return NewFloat(val)
-	case string:
-		return NewString(val)
-	case []interface{}:
-		elements := make([]Object, len(val))
-		for i, elem := range val {
-			elements[i] = goValueToObject(elem)
-		}
-		return NewArray(elements)
-	case map[string]interface{}:
-		pairs := make(map[HashKey]MapPair)
-		for k, v := range val {
-			key := NewString(k)
-			hashKey := key.HashKey()
-			pairs[hashKey] = MapPair{
-				Key:   key,
-				Value: goValueToObject(v),
-			}
-		}
-		return NewMap(pairs)
-	default:
-		return NewString(fmt.Sprintf("%v", v))
 	}
 }
 

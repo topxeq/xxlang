@@ -676,7 +676,7 @@ func tryReadConfigFile(path string) objects.Object {
 	pairs := make(map[objects.HashKey]objects.MapPair)
 	for key, val := range cfg {
 		keyObj := String(key)
-		valObj := jsonToXxlang(val)
+		valObj := objects.GoValueToObject(val)
 		if errObj, ok := valObj.(*objects.Error); ok {
 			// Skip values that can't be converted
 			_ = errObj
