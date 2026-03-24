@@ -32,6 +32,9 @@ var jitDebug = false
 // DebugMode controls whether comprehensive debug output is enabled
 var debugMode = false
 
+// ViewMode controls whether to only display script content without executing
+var viewMode = false
+
 const (
 	PROMPT          = ">> "
 	CONTINUE_PROMPT = ".. "
@@ -43,7 +46,7 @@ var Version = "dev"
 // BuildNumber is a hardcoded build number for development builds.
 // Format: YYYYMMDDNN (year month day + daily sequence number, e.g., 2026032401)
 // This should be updated manually for each significant build.
-var BuildNumber = "2026032401"
+var BuildNumber = "2026032402"
 
 // REPL represents an interactive REPL session
 type REPL struct {
@@ -186,6 +189,8 @@ func parseFlags(args []string) []string {
 			useJIT = false
 		} else if arg == "--debug" {
 			debugMode = true
+		} else if arg == "-view" || arg == "--view" {
+			viewMode = true
 		} else {
 			result = append(result, arg)
 		}
@@ -225,6 +230,7 @@ func printUsage() {
 	fmt.Println("      --target os/arch  Cross-compile for target OS/architecture")
 	fmt.Println("      --bytecode        Output as bytecode (.xxb) instead of executable")
 	fmt.Println("  -cloud <script>       Execute script from configured cloudUrlBase")
+	fmt.Println("  -view, --view         View script content without executing")
 	fmt.Println("      --jit             Enable JIT compilation for hot paths (experimental)")
 	fmt.Println("      --jit-threshold=N Set JIT hot path threshold (default: 100)")
 	fmt.Println("      --no-jit          Disable JIT compilation (default)")
@@ -237,6 +243,8 @@ func printUsage() {
 	fmt.Println("Examples:")
 	fmt.Println("  xxl")
 	fmt.Println("  xxl script.xxl")
+	fmt.Println("  xxl -view script.xxl              View script content without executing")
+	fmt.Println("  xxl -view https://example.com/script.xxl")
 	fmt.Println("  xxl script.xxl -- arg1 arg2 --help")
 	fmt.Println("  xxl run script.xxl -- --verbose -f file.txt")
 	fmt.Println("  xxl https://raw.githubusercontent.com/user/repo/main/script.xxl")
@@ -433,6 +441,13 @@ func runFromURL(url string) {
 		os.Exit(1)
 	}
 
+	// If view mode, just print the content and return
+	if viewMode {
+		fmt.Printf("// Source: %s\n", url)
+		fmt.Print(string(code))
+		return
+	}
+
 	// Execute the code
 	executeCode(string(code), url)
 }
@@ -448,6 +463,15 @@ func runFile(filename string) {
 
 	// Check if it's a bytecode file
 	if strings.HasSuffix(absPath, ".xxb") {
+		if viewMode {
+			// Bytecode files are binary, just show info
+			fmt.Printf("// Binary bytecode file: %s\n", absPath)
+			info, err := os.Stat(absPath)
+			if err == nil {
+				fmt.Printf("// Size: %d bytes\n", info.Size())
+			}
+			return
+		}
 		runBytecodeFile(absPath)
 		return
 	}
@@ -457,6 +481,13 @@ func runFile(filename string) {
 	if err != nil {
 		fmt.Printf("Error reading file '%s': %v\n", filename, err)
 		os.Exit(1)
+	}
+
+	// If view mode, just print the content and return
+	if viewMode {
+		fmt.Printf("// Source: %s\n", absPath)
+		fmt.Print(string(code))
+		return
 	}
 
 	// Execute the code
