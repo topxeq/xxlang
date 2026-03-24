@@ -245,6 +245,7 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["decryptStream"], // 206
 		objects.Builtins["aesEncrypt"],    // 207
 		objects.Builtins["aesDecrypt"],    // 208
+		objects.Builtins["downloadFile"],  // 209
 	}
 
 	if index < 0 || index >= len(builtins) {

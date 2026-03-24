@@ -15,6 +15,7 @@
 - [命令行参数函数](#命令行参数函数)
 - [工具函数](#工具函数)
 - [加密函数](#加密函数)
+- [HTTP 客户端函数](#http-客户端函数)
 - [动态代码执行](#动态代码执行)
 - [类型方法](#类型方法)
 - [标准库模块](#标准库模块)
@@ -1194,6 +1195,92 @@ var decryptedCBC = aesDecrypt(encryptedCBC, "16bytekey1234567", "cbc")
 ```
 
 **注意：** 密钥如果超过 16 字节会被截断。CBC 模式下，密钥前缀用作 IV。
+
+---
+
+## HTTP 客户端函数
+
+### getWeb(url, options?)
+
+获取 URL 内容并返回字符串。使用 `-object` 或 `-json` 标志可解析 JSON 响应。
+
+```xxl
+var content = getWeb("https://example.com/api/data")
+var data = getWeb("https://api.example.com/json", "-object")
+```
+
+### getWebBytes(url, timeout?)
+
+获取 URL 内容并返回字节数组。
+
+```xxl
+var bytes = getWebBytes("https://example.com/image.png")
+```
+
+### getWebObject(url, timeout?)
+
+获取 URL 内容并解析为 JSON 对象。
+
+```xxl
+var obj = getWebObject("https://api.example.com/data")
+pln(obj["name"])
+```
+
+### postWeb(url, body, options?)
+
+向 URL 发送 POST 请求并返回字符串响应。
+
+```xxl
+var response = postWeb("https://api.example.com/submit", '{"key": "value"}')
+```
+
+### postWebObject(url, body, options?)
+
+向 URL 发送 POST 请求并解析 JSON 响应。
+
+```xxl
+var result = postWebObject("https://api.example.com/submit", '{"name": "test"}')
+```
+
+### urlExists(url)
+
+检查 URL 是否存在（HTTP 200）。返回布尔值。
+
+```xxl
+if (urlExists("https://example.com/file.txt")) {
+    pln("文件存在")
+}
+```
+
+### httpStatus(url)
+
+返回 HTTP 状态信息，包含 `statusCode`、`status` 和 `headers` 的映射。
+
+```xxl
+var info = httpStatus("https://example.com")
+pln("状态码:", info["statusCode"])
+pln("响应头:", info["headers"])
+```
+
+### downloadFile(url, localPath, timeout?)
+
+从 URL 下载文件到本地路径。成功返回 null，失败返回错误。
+
+```xxl
+// 下载文件
+var result = downloadFile("https://example.com/file.zip", "/path/to/local/file.zip")
+checkErr(result, "下载失败: %v")
+
+// 指定超时时间（秒）
+downloadFile("https://example.com/large.zip", "/path/to/large.zip", 120)
+```
+
+**参数：**
+- `url` - 要下载的 URL
+- `localPath` - 本地保存路径
+- `timeout` - 可选超时时间（秒），默认 60
+
+**返回：** 成功返回 null，失败返回 ERROR
 
 ---
 

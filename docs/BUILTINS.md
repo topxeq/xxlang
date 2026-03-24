@@ -14,6 +14,7 @@ This document provides a comprehensive reference for all built-in functions in X
 - [Command Line Argument Functions](#command-line-argument-functions)
 - [Utility Functions](#utility-functions)
 - [Encryption Functions](#encryption-functions)
+- [HTTP Client Functions](#http-client-functions)
 - [Type Checking Functions](#type-checking-functions)
 - [Formatting Functions](#formatting-functions)
 - [Dynamic Code Execution](#dynamic-code-execution)
@@ -1254,6 +1255,92 @@ var decryptedCBC = aesDecrypt(encryptedCBC, "16bytekey1234567", "cbc")
 ```
 
 **Note:** Key is truncated to 16 bytes if longer. For CBC mode, the key prefix is used as IV.
+
+---
+
+## HTTP Client Functions
+
+### getWeb(url, options?)
+
+Fetches URL content and returns as string. With `-object` or `-json` flag, parses JSON response.
+
+```xxl
+var content = getWeb("https://example.com/api/data")
+var data = getWeb("https://api.example.com/json", "-object")
+```
+
+### getWebBytes(url, timeout?)
+
+Fetches URL content and returns as byte array.
+
+```xxl
+var bytes = getWebBytes("https://example.com/image.png")
+```
+
+### getWebObject(url, timeout?)
+
+Fetches URL content and parses as JSON object.
+
+```xxl
+var obj = getWebObject("https://api.example.com/data")
+pln(obj["name"])
+```
+
+### postWeb(url, body, options?)
+
+Posts data to URL and returns response as string.
+
+```xxl
+var response = postWeb("https://api.example.com/submit", '{"key": "value"}')
+```
+
+### postWebObject(url, body, options?)
+
+Posts data to URL and parses JSON response.
+
+```xxl
+var result = postWebObject("https://api.example.com/submit", '{"name": "test"}')
+```
+
+### urlExists(url)
+
+Returns true if URL exists (HTTP 200).
+
+```xxl
+if (urlExists("https://example.com/file.txt")) {
+    pln("File exists")
+}
+```
+
+### httpStatus(url)
+
+Returns HTTP status information as a map with `statusCode`, `status`, and `headers`.
+
+```xxl
+var info = httpStatus("https://example.com")
+pln("Status:", info["statusCode"])
+pln("Headers:", info["headers"])
+```
+
+### downloadFile(url, localPath, timeout?)
+
+Downloads a file from URL to local path. Returns null on success, error on failure.
+
+```xxl
+// Download a file
+var result = downloadFile("https://example.com/file.zip", "/path/to/local/file.zip")
+checkErr(result, "Download failed: %v")
+
+// With custom timeout (seconds)
+downloadFile("https://example.com/large.zip", "/path/to/large.zip", 120)
+```
+
+**Parameters:**
+- `url` - The URL to download from
+- `localPath` - The local file path to save to
+- `timeout` - Optional timeout in seconds (default: 60)
+
+**Returns:** null on success, ERROR on failure
 
 ---
 

@@ -3690,6 +3690,62 @@ var Builtins = map[string]*Builtin{
 		},
 	},
 
+	// downloadFile - download a file from URL to local path
+	// Usage: downloadFile(url, localPath) or downloadFile(url, localPath, timeoutSeconds)
+	// Returns: null on success, error on failure
+	"downloadFile": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 2 {
+				return newError("wrong number of arguments for downloadFile. got=%d, want>=2", len(args))
+			}
+
+			urlObj, ok := args[0].(*String)
+			if !ok {
+				return newError("first argument to 'downloadFile' must be STRING (URL), got %s", args[0].Type())
+			}
+
+			pathObj, ok := args[1].(*String)
+			if !ok {
+				return newError("second argument to 'downloadFile' must be STRING (local path), got %s", args[1].Type())
+			}
+
+			// Parse timeout option
+			timeout := 60 * time.Second
+			if len(args) > 2 {
+				if timeoutOpt, ok := args[2].(*Int); ok {
+					timeout = time.Duration(timeoutOpt.Value) * time.Second
+				}
+			}
+
+			// Create HTTP client with timeout
+			client := &http.Client{Timeout: timeout}
+			resp, err := client.Get(urlObj.Value)
+			if err != nil {
+				return newError("downloadFile request failed: %v", err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode >= 400 {
+				return newError("downloadFile HTTP error: %d %s", resp.StatusCode, resp.Status)
+			}
+
+			// Create the local file
+			out, err := os.Create(pathObj.Value)
+			if err != nil {
+				return newError("downloadFile create file failed: %v", err)
+			}
+			defer out.Close()
+
+			// Copy the response body to file
+			_, err = io.Copy(out, resp.Body)
+			if err != nil {
+				return newError("downloadFile write failed: %v", err)
+			}
+
+			return NULL
+		},
+	},
+
 	// ============================================================
 	// Reader/Writer Functions
 	// ============================================================

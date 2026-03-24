@@ -278,6 +278,7 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(206, "decryptStream")
 	s.DefineBuiltin(207, "aesEncrypt")
 	s.DefineBuiltin(208, "aesDecrypt")
+	s.DefineBuiltin(209, "downloadFile")
 	return s
 }
 
