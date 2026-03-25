@@ -56,6 +56,7 @@ const (
 	OrderedMapType      ObjectType = "ORDERED_MAP"
 	QueueType           ObjectType = "QUEUE"
 	SetType             ObjectType = "SET"
+	XLSXType            ObjectType = "XLSX"
 )
 
 // TypeTag is a fast integer type identifier for hot path checks
@@ -111,6 +112,7 @@ const (
 	TagOrderedMap
 	TagQueue
 	TagSet
+	TagXLSX
 	TagUnknown
 )
 

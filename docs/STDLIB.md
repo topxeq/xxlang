@@ -3252,3 +3252,88 @@ d.isSuperset(c)    // true
 d.equals(e)        // true
 ```
 
+---
+
+### xlsx Module
+
+Excel file handling for reading and writing xlsx files.
+
+```xxlang
+load("xlsx")
+
+// Create a new workbook
+var wb = xlsx.create()
+
+// Open an existing file
+var wb = xlsx.open("data.xlsx")
+
+// Check if object is an XLSX workbook
+xlsx.isXLSX(wb)  // true
+
+// ========== Workbook Operations ==========
+
+wb.getSheetList()                // ["Sheet1", "Sheet2"]
+wb.newSheet("Data")              // Create new sheet
+wb.deleteSheet("Sheet1")         // Delete sheet
+wb.save("output.xlsx")           // Save to file
+wb.close()                       // Close workbook
+
+// ========== Cell Operations ==========
+
+// Read cells
+wb.getCell("Sheet1", "A1")       // By reference
+wb.getCell("Sheet1", 1, 1)       // By row/col (1-based)
+
+// Write cells
+wb.setCell("Sheet1", "A1", "Hello")    // String
+wb.setCell("Sheet1", "B1", 123)        // Number
+wb.setCell("Sheet1", "C1", true)       // Boolean
+wb.setCell("Sheet1", 2, 1, "World")    // By row/col
+
+// ========== Row/Column Operations ==========
+
+// Read row/column
+wb.getRow("Sheet1", 1)           // [A1, B1, C1, ...]
+wb.getCol("Sheet1", 1)           // [A1, A2, A3, ...]
+wb.getRange("Sheet1", "A1:C3")   // 2D array
+
+// Write row
+wb.setRow("Sheet1", 1, ["Name", "Age", "City"])
+
+// Dimensions
+wb.getRowCount("Sheet1")         // Number of rows
+wb.getColCount("Sheet1")         // Number of columns
+
+// Insert/delete
+wb.insertRow("Sheet1", 3)        // Insert row at position 3
+wb.deleteRow("Sheet1", 5)        // Delete row 5
+wb.insertCol("Sheet1", 2)        // Insert column at position 2
+wb.deleteCol("Sheet1", 3)        // Delete column 3
+
+// ========== Merge Cells ==========
+
+wb.mergeCell("Sheet1", "A1", "C1")   // Merge A1:C1
+wb.unmergeCell("Sheet1", "A1")       // Unmerge
+wb.getMerges("Sheet1")               // ["A1:C1", ...]
+
+// ========== Images ==========
+
+// Get image information
+var images = wb.getImages("Sheet1")
+// Returns: [{col: 1, row: 1, colEnd: 3, rowEnd: 5, filename: "xl/media/image1.png"}, ...]
+
+// Extract image to file
+wb.extractImage("Sheet1", 0, "output.png")
+
+// Get image data as base64
+var data = wb.getImageData("Sheet1", 0)
+
+// ========== Utility Functions ==========
+
+xlsx.colToIndex("A")       // 1
+xlsx.colToIndex("AA")      // 27
+xlsx.indexToCol(1)         // "A"
+xlsx.indexToCol(27)        // "AA"
+xlsx.parseCellRef("A1")    // ["A", 1]
+```
+

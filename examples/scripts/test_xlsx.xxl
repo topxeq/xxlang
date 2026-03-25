@@ -1,0 +1,108 @@
+// test_xlsx.xxl
+// Test XLSX module
+
+import "xlsx"
+
+pln("=== Testing XLSX Creation ===")
+
+// Create a new workbook
+var wb = xlsx.create()
+pln("Created workbook: ", wb)
+
+// Add sheets
+wb.newSheet("Sheet1")
+wb.newSheet("Data")
+pln("Sheet list: ", wb.getSheetList())
+
+// Write some data
+wb.setCell("Sheet1", "A1", "Name")
+wb.setCell("Sheet1", "B1", "Age")
+wb.setCell("Sheet1", "C1", "City")
+
+wb.setCell("Sheet1", "A2", "Alice")
+wb.setCell("Sheet1", "B2", 30)
+wb.setCell("Sheet1", "C2", "Beijing")
+
+wb.setCell("Sheet1", "A3", "Bob")
+wb.setCell("Sheet1", "B3", 25)
+wb.setCell("Sheet1", "C3", "Shanghai")
+
+wb.setCell("Sheet1", "A4", "Charlie")
+wb.setCell("Sheet1", "B4", 35)
+wb.setCell("Sheet1", "C4", "Guangzhou")
+
+pln("Wrote data to Sheet1")
+
+// Test row/col index methods
+wb.setCell("Data", 1, 1, "ID")
+wb.setCell("Data", 1, 2, "Value")
+wb.setCell("Data", 2, 1, 101)
+wb.setCell("Data", 2, 2, 3.14159)
+pln("Wrote data to Data sheet using row/col indices")
+
+// Test get row
+pln("Row 1: ", wb.getRow("Sheet1", 1))
+pln("Row 2: ", wb.getRow("Sheet1", 2))
+
+// Test get col
+pln("Column A: ", wb.getCol("Sheet1", 1))
+
+// Test dimensions
+pln("Sheet1 rows: ", wb.getRowCount("Sheet1"))
+pln("Sheet1 cols: ", wb.getColCount("Sheet1"))
+
+// Test merge cells
+wb.mergeCell("Sheet1", "A5", "C5")
+wb.setCell("Sheet1", "A5", "Merged Cell")
+pln("Merged cells: ", wb.getMerges("Sheet1"))
+
+// Save the file
+var savePath = "D:/aiprjs/xxlang/repo/temp/test_output.xlsx"
+wb.save(savePath)
+pln("Saved to: ", savePath)
+
+pln("")
+pln("=== Testing XLSX Reading ===")
+
+// Open the file we just created
+var wb2 = xlsx.open(savePath)
+pln("Opened workbook: ", wb2)
+pln("Sheet list: ", wb2.getSheetList())
+
+// Read cells
+pln("A1: ", wb2.getCell("Sheet1", "A1"))
+pln("B2: ", wb2.getCell("Sheet1", "B2"))
+pln("C3: ", wb2.getCell("Sheet1", "C3"))
+
+// Read using row/col
+pln("Data!A1 (by index): ", wb2.getCell("Data", 1, 1))
+pln("Data!B2 (by index): ", wb2.getCell("Data", 2, 2))
+
+// Get range
+pln("Range A1:C2: ", wb2.getRange("Sheet1", "A1:C2"))
+
+// Check merges
+pln("Merges: ", wb2.getMerges("Sheet1"))
+
+// Close the workbook
+wb2.close()
+pln("Closed workbook")
+
+pln("")
+pln("=== Testing Utility Functions ===")
+
+pln("colToIndex('A'): ", xlsx.colToIndex("A"))
+pln("colToIndex('Z'): ", xlsx.colToIndex("Z"))
+pln("colToIndex('AA'): ", xlsx.colToIndex("AA"))
+pln("colToIndex('AB'): ", xlsx.colToIndex("AB"))
+
+pln("indexToCol(1): ", xlsx.indexToCol(1))
+pln("indexToCol(26): ", xlsx.indexToCol(26))
+pln("indexToCol(27): ", xlsx.indexToCol(27))
+pln("indexToCol(28): ", xlsx.indexToCol(28))
+
+pln("parseCellRef('A1'): ", xlsx.parseCellRef("A1"))
+pln("parseCellRef('Z100'): ", xlsx.parseCellRef("Z100"))
+
+pln("")
+pln("All tests completed!")

@@ -3207,3 +3207,88 @@ c.isSubset(d)      // true（c 是 d 的子集）
 d.isSuperset(c)    // true（d 是 c 的超集）
 d.equals(e)        // true（相等）
 ```
+
+---
+
+### xlsx 模块
+
+Excel 文件读写处理。
+
+```xxlang
+load("xlsx")
+
+// 创建新工作簿
+var wb = xlsx.create()
+
+// 打开现有文件
+var wb = xlsx.open("data.xlsx")
+
+// 检查对象是否为 XLSX 工作簿
+xlsx.isXLSX(wb)  // true
+
+// ========== 工作簿操作 ==========
+
+wb.getSheetList()                // ["Sheet1", "Sheet2"]
+wb.newSheet("Data")              // 创建新工作表
+wb.deleteSheet("Sheet1")         // 删除工作表
+wb.save("output.xlsx")           // 保存文件
+wb.close()                       // 关闭工作簿
+
+// ========== 单元格操作 ==========
+
+// 读取单元格
+wb.getCell("Sheet1", "A1")       // 按引用
+wb.getCell("Sheet1", 1, 1)       // 按行列索引（从1开始）
+
+// 写入单元格
+wb.setCell("Sheet1", "A1", "你好")    // 字符串
+wb.setCell("Sheet1", "B1", 123)        // 数字
+wb.setCell("Sheet1", "C1", true)       // 布尔值
+wb.setCell("Sheet1", 2, 1, "世界")     // 按行列索引
+
+// ========== 行列操作 ==========
+
+// 读取行/列
+wb.getRow("Sheet1", 1)           // [A1, B1, C1, ...]
+wb.getCol("Sheet1", 1)           // [A1, A2, A3, ...]
+wb.getRange("Sheet1", "A1:C3")   // 二维数组
+
+// 写入行
+wb.setRow("Sheet1", 1, ["姓名", "年龄", "城市"])
+
+// 获取维度
+wb.getRowCount("Sheet1")         // 行数
+wb.getColCount("Sheet1")         // 列数
+
+// 插入/删除
+wb.insertRow("Sheet1", 3)        // 在第3行插入
+wb.deleteRow("Sheet1", 5)        // 删除第5行
+wb.insertCol("Sheet1", 2)        // 在第2列插入
+wb.deleteCol("Sheet1", 3)        // 删除第3列
+
+// ========== 合并单元格 ==========
+
+wb.mergeCell("Sheet1", "A1", "C1")   // 合并 A1:C1
+wb.unmergeCell("Sheet1", "A1")       // 取消合并
+wb.getMerges("Sheet1")               // ["A1:C1", ...]
+
+// ========== 图片 ==========
+
+// 获取图片信息
+var images = wb.getImages("Sheet1")
+// 返回: [{col: 1, row: 1, colEnd: 3, rowEnd: 5, filename: "xl/media/image1.png"}, ...]
+
+// 提取图片到文件
+wb.extractImage("Sheet1", 0, "output.png")
+
+// 获取图片数据（Base64）
+var data = wb.getImageData("Sheet1", 0)
+
+// ========== 工具函数 ==========
+
+xlsx.colToIndex("A")       // 1
+xlsx.colToIndex("AA")      // 27
+xlsx.indexToCol(1)         // "A"
+xlsx.indexToCol(27)        // "AA"
+xlsx.parseCellRef("A1")    // ["A", 1]
+```

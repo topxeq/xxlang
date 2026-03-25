@@ -49,6 +49,8 @@ var TypeMethods = map[ObjectType]map[string]*Builtin{
 	// Queue and Set
 	QueueType: queueMethods,
 	SetType:   setMethods,
+	// XLSX
+	XLSXType: xlsxMethods,
 }
 
 // GetMethod returns the builtin method for the given object type and method name
@@ -3938,5 +3940,462 @@ var setMethods = map[string]*Builtin{
 			return newError("argument for equals must be SET, got %s", args[1].Type())
 		}
 		return &Bool{Value: self.Equals(other)}
+	}},
+}
+
+// ============================================================
+// XLSX Methods
+// ============================================================
+
+var xlsxMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"close": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for close. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for close must be XLSX, got %s", args[0].Type())
+		}
+		self.Close()
+		return NULL
+	}},
+	"save": {Fn: func(args ...Object) Object {
+		if len(args) < 1 {
+			return newError("wrong number of arguments for save. got=%d, want>=1", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for save must be XLSX, got %s", args[0].Type())
+		}
+		path := ""
+		if len(args) >= 2 {
+			if p, ok := args[1].(*String); ok {
+				path = p.Value
+			}
+		}
+		if err := self.Save(path); err != nil {
+			return newError("save failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"getSheetList": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getSheetList. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for getSheetList must be XLSX, got %s", args[0].Type())
+		}
+		list := self.GetSheetList()
+		elements := make([]Object, len(list))
+		for i, name := range list {
+			elements[i] = &String{Value: name}
+		}
+		return &Array{Elements: elements}
+	}},
+	"newSheet": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for newSheet. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for newSheet must be XLSX, got %s", args[0].Type())
+		}
+		name, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for newSheet must be STRING, got %s", args[1].Type())
+		}
+		return &Bool{Value: self.NewSheet(name.Value)}
+	}},
+	"deleteSheet": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for deleteSheet. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for deleteSheet must be XLSX, got %s", args[0].Type())
+		}
+		name, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for deleteSheet must be STRING, got %s", args[1].Type())
+		}
+		return &Bool{Value: self.DeleteSheet(name.Value)}
+	}},
+	"getCell": {Fn: func(args ...Object) Object {
+		if len(args) < 3 {
+			return newError("wrong number of arguments for getCell. got=%d, want>=3", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for getCell must be XLSX, got %s", args[0].Type())
+		}
+		sheet, ok := args[1].(*String)
+		if !ok {
+			return newError("sheet name must be STRING")
+		}
+		// Args[2] can be string ref or row number
+		if ref, ok := args[2].(*String); ok {
+			return self.GetCell(sheet.Value, ref.Value)
+		}
+		// Row, col form
+		if len(args) < 4 {
+			return newError("wrong number of arguments for getCell with row/col")
+		}
+		row, ok1 := args[2].(*Int)
+		col, ok2 := args[3].(*Int)
+		if !ok1 || !ok2 {
+			return newError("row and col must be INT")
+		}
+		return self.GetCellByIndex(sheet.Value, int(row.Value), int(col.Value))
+	}},
+	"setCell": {Fn: func(args ...Object) Object {
+		if len(args) < 4 {
+			return newError("wrong number of arguments for setCell. got=%d, want>=4", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for setCell must be XLSX, got %s", args[0].Type())
+		}
+		sheet, ok := args[1].(*String)
+		if !ok {
+			return newError("sheet name must be STRING")
+		}
+		// Args[2] can be string ref or row number
+		if ref, ok := args[2].(*String); ok {
+			if len(args) < 4 {
+				return newError("missing value argument")
+			}
+			if err := self.SetCell(sheet.Value, ref.Value, args[3]); err != nil {
+				return newError("%s", err.Error())
+			}
+			return NULL
+		}
+		// Row, col form
+		if len(args) < 5 {
+			return newError("wrong number of arguments for setCell with row/col")
+		}
+		row, ok1 := args[2].(*Int)
+		col, ok2 := args[3].(*Int)
+		if !ok1 || !ok2 {
+			return newError("row and col must be INT")
+		}
+		if err := self.SetCellByIndex(sheet.Value, int(row.Value), int(col.Value), args[4]); err != nil {
+			return newError("%s", err.Error())
+		}
+		return NULL
+	}},
+	"getRow": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for getRow. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for getRow must be XLSX, got %s", args[0].Type())
+		}
+		sheet, ok := args[1].(*String)
+		if !ok {
+			return newError("sheet name must be STRING")
+		}
+		row, ok := args[2].(*Int)
+		if !ok {
+			return newError("row must be INT")
+		}
+		return self.GetRow(sheet.Value, int(row.Value))
+	}},
+	"setRow": {Fn: func(args ...Object) Object {
+		if len(args) != 4 {
+			return newError("wrong number of arguments for setRow. got=%d, want=4", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for setRow must be XLSX, got %s", args[0].Type())
+		}
+		sheet, ok := args[1].(*String)
+		if !ok {
+			return newError("sheet name must be STRING")
+		}
+		row, ok := args[2].(*Int)
+		if !ok {
+			return newError("row must be INT")
+		}
+		values, ok := args[3].(*Array)
+		if !ok {
+			return newError("values must be ARRAY")
+		}
+		if err := self.SetRow(sheet.Value, int(row.Value), values); err != nil {
+			return newError("%s", err.Error())
+		}
+		return NULL
+	}},
+	"getCol": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for getCol. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for getCol must be XLSX, got %s", args[0].Type())
+		}
+		sheet, ok := args[1].(*String)
+		if !ok {
+			return newError("sheet name must be STRING")
+		}
+		col, ok := args[2].(*Int)
+		if !ok {
+			return newError("col must be INT")
+		}
+		return self.GetCol(sheet.Value, int(col.Value))
+	}},
+	"getRange": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for getRange. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for getRange must be XLSX, got %s", args[0].Type())
+		}
+		sheet, ok := args[1].(*String)
+		if !ok {
+			return newError("sheet name must be STRING")
+		}
+		rng, ok := args[2].(*String)
+		if !ok {
+			return newError("range must be STRING")
+		}
+		return self.GetRange(sheet.Value, rng.Value)
+	}},
+	"getRowCount": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for getRowCount. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for getRowCount must be XLSX, got %s", args[0].Type())
+		}
+		sheet, ok := args[1].(*String)
+		if !ok {
+			return newError("sheet name must be STRING")
+		}
+		return NewInt(int64(self.GetRowCount(sheet.Value)))
+	}},
+	"getColCount": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for getColCount. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for getColCount must be XLSX, got %s", args[0].Type())
+		}
+		sheet, ok := args[1].(*String)
+		if !ok {
+			return newError("sheet name must be STRING")
+		}
+		return NewInt(int64(self.GetColCount(sheet.Value)))
+	}},
+	"insertRow": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for insertRow. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for insertRow must be XLSX, got %s", args[0].Type())
+		}
+		sheet, ok := args[1].(*String)
+		if !ok {
+			return newError("sheet name must be STRING")
+		}
+		row, ok := args[2].(*Int)
+		if !ok {
+			return newError("row must be INT")
+		}
+		if err := self.InsertRow(sheet.Value, int(row.Value)); err != nil {
+			return newError("%s", err.Error())
+		}
+		return NULL
+	}},
+	"deleteRow": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for deleteRow. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for deleteRow must be XLSX, got %s", args[0].Type())
+		}
+		sheet, ok := args[1].(*String)
+		if !ok {
+			return newError("sheet name must be STRING")
+		}
+		row, ok := args[2].(*Int)
+		if !ok {
+			return newError("row must be INT")
+		}
+		if err := self.DeleteRow(sheet.Value, int(row.Value)); err != nil {
+			return newError("%s", err.Error())
+		}
+		return NULL
+	}},
+	"insertCol": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for insertCol. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for insertCol must be XLSX, got %s", args[0].Type())
+		}
+		sheet, ok := args[1].(*String)
+		if !ok {
+			return newError("sheet name must be STRING")
+		}
+		col, ok := args[2].(*Int)
+		if !ok {
+			return newError("col must be INT")
+		}
+		if err := self.InsertCol(sheet.Value, int(col.Value)); err != nil {
+			return newError("%s", err.Error())
+		}
+		return NULL
+	}},
+	"deleteCol": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for deleteCol. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for deleteCol must be XLSX, got %s", args[0].Type())
+		}
+		sheet, ok := args[1].(*String)
+		if !ok {
+			return newError("sheet name must be STRING")
+		}
+		col, ok := args[2].(*Int)
+		if !ok {
+			return newError("col must be INT")
+		}
+		if err := self.DeleteCol(sheet.Value, int(col.Value)); err != nil {
+			return newError("%s", err.Error())
+		}
+		return NULL
+	}},
+	"mergeCell": {Fn: func(args ...Object) Object {
+		if len(args) != 4 {
+			return newError("wrong number of arguments for mergeCell. got=%d, want=4", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for mergeCell must be XLSX, got %s", args[0].Type())
+		}
+		sheet, ok := args[1].(*String)
+		if !ok {
+			return newError("sheet name must be STRING")
+		}
+		start, ok := args[2].(*String)
+		if !ok {
+			return newError("start ref must be STRING")
+		}
+		end, ok := args[3].(*String)
+		if !ok {
+			return newError("end ref must be STRING")
+		}
+		if err := self.MergeCell(sheet.Value, start.Value, end.Value); err != nil {
+			return newError("%s", err.Error())
+		}
+		return NULL
+	}},
+	"unmergeCell": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for unmergeCell. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for unmergeCell must be XLSX, got %s", args[0].Type())
+		}
+		sheet, ok := args[1].(*String)
+		if !ok {
+			return newError("sheet name must be STRING")
+		}
+		ref, ok := args[2].(*String)
+		if !ok {
+			return newError("ref must be STRING")
+		}
+		if err := self.UnmergeCell(sheet.Value, ref.Value); err != nil {
+			return newError("%s", err.Error())
+		}
+		return NULL
+	}},
+	"getMerges": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for getMerges. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for getMerges must be XLSX, got %s", args[0].Type())
+		}
+		sheet, ok := args[1].(*String)
+		if !ok {
+			return newError("sheet name must be STRING")
+		}
+		return self.GetMerges(sheet.Value)
+	}},
+	"getImages": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for getImages. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for getImages must be XLSX, got %s", args[0].Type())
+		}
+		sheet, ok := args[1].(*String)
+		if !ok {
+			return newError("sheet name must be STRING")
+		}
+		return self.GetImages(sheet.Value)
+	}},
+	"extractImage": {Fn: func(args ...Object) Object {
+		if len(args) != 4 {
+			return newError("wrong number of arguments for extractImage. got=%d, want=4", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for extractImage must be XLSX, got %s", args[0].Type())
+		}
+		sheet, ok := args[1].(*String)
+		if !ok {
+			return newError("sheet name must be STRING")
+		}
+		imageIdx, ok := args[2].(*Int)
+		if !ok {
+			return newError("image index must be INT")
+		}
+		outputPath, ok := args[3].(*String)
+		if !ok {
+			return newError("output path must be STRING")
+		}
+		if err := self.ExtractImage(sheet.Value, int(imageIdx.Value), outputPath.Value); err != nil {
+			return newError("%s", err.Error())
+		}
+		return NULL
+	}},
+	"getImageData": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for getImageData. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for getImageData must be XLSX, got %s", args[0].Type())
+		}
+		sheet, ok := args[1].(*String)
+		if !ok {
+			return newError("sheet name must be STRING")
+		}
+		imageIdx, ok := args[2].(*Int)
+		if !ok {
+			return newError("image index must be INT")
+		}
+		data, err := self.GetImageData(sheet.Value, int(imageIdx.Value))
+		if err != nil {
+			return newError("%s", err.Error())
+		}
+		return &String{Value: data}
 	}},
 }
