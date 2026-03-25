@@ -25,6 +25,7 @@ This document provides a comprehensive reference for all built-in functions in X
 - [Dynamic Code Execution](#dynamic-code-execution)
 - [BigInt/BigFloat Functions](#bigintbigfloat-functions)
 - [Reader/Writer Functions](#readerwriter-functions)
+- [System Command Functions](#system-command-functions)
 - [Type Methods](#type-methods)
 - [Standard Library Modules](#standard-library-modules)
 
@@ -696,6 +697,115 @@ Returns an array of [key, value] pairs.
 
 ```xxl
 entries({"x": 10, "y": 20})  // [["x", 10], ["y", 20]]
+```
+
+---
+
+## OrderedMap Functions
+
+OrderedMap is a map that preserves insertion order of key-value pairs. Unlike regular Maps, OrderedMaps maintain the order in which keys were added, which is useful for:
+
+- Database query results where column order matters
+- Configuration files where key order should be preserved
+- JSON serialization with predictable key order
+- Building ordered data structures
+
+### newOrderedMap([source])
+
+Creates a new empty OrderedMap, or creates one from an existing Map or Array.
+
+```xxl
+// Create empty OrderedMap
+var om = newOrderedMap()
+
+// Create from Map
+var om2 = newOrderedMap({"a": 1, "b": 2})
+
+// Create from Array of [key, value] pairs
+var om3 = newOrderedMap([["x", 10], ["y", 20]])
+
+// Add entries
+om["name"] = "Alice"
+om["age"] = 30
+om["city"] = "Beijing"
+
+pln(om.keys())    // ["name", "age", "city"] - insertion order preserved
+pln(om.values())  // ["Alice", 30, "Beijing"]
+```
+
+### make("orderedMap", [capacity])
+
+Creates a new OrderedMap with optional pre-allocated capacity.
+
+```xxl
+var om = make("orderedMap", 100)  // Pre-allocate space for 100 entries
+```
+
+### isOrderedMap(value)
+
+Returns true if value is an OrderedMap.
+
+```xxl
+isOrderedMap(newOrderedMap())  // true
+isOrderedMap({"a": 1})         // false (regular Map)
+```
+
+---
+
+## OrderedMap Methods
+
+OrderedMap supports the following methods:
+
+### Basic Operations
+
+```xxl
+var om = newOrderedMap()
+om["a"] = 1           // Set value
+var v = om["a"]       // Get value: 1
+om.hasKey("a")        // Check key: true
+om.len()              // Length: 1
+var newOm = om.delete("a")  // Delete (returns new OrderedMap)
+```
+
+### Ordered Access
+
+```xxl
+var om = newOrderedMap()
+om["x"] = 1
+om["y"] = 2
+om["z"] = 3
+
+om.keys()             // ["x", "y", "z"] - keys in insertion order
+om.values()           // [1, 2, 3] - values in insertion order
+om.entries()          // [["x", 1], ["y", 2], ["z", 3]]
+om.indexOf("y")       // 1 - index of key
+om.getAt(0)           // ["x", 1] - [key, value] at index
+```
+
+### Reordering Operations
+
+```xxl
+var om = newOrderedMap()
+om["a"] = 1
+om["b"] = 2
+om["c"] = 3
+
+om.moveToFront("c")   // Move key to front: ["c", "a", "b"]
+om.moveToBack("a")    // Move key to back: ["c", "b", "a"]
+om.swap("c", "a")     // Swap positions: ["a", "b", "c"]
+om.reverse()          // Reverse order: ["c", "b", "a"]
+om.sortByKey()        // Sort by key alphabetically
+```
+
+### Conversion
+
+```xxl
+var om = newOrderedMap()
+om["a"] = 1
+om["b"] = 2
+
+om.toMap()            // Convert to regular Map
+om.clone()            // Create a copy
 ```
 
 ---
@@ -1965,12 +2075,15 @@ for (row in rows) {
 
 #### dbQueryOrdered(db, query, params...)
 
-Executes a query and returns an ordered array of `[columnName, value]` pairs for each row.
+Executes a query and returns an array of OrderedMaps, where each OrderedMap preserves column order from the query. All values are converted to strings.
 
 ```xxl
 var ordered = dbQueryOrdered(db, "SELECT name, salary FROM employees ORDER BY salary DESC LIMIT 3")
 for (row in ordered) {
-    pln(row[0][1], "=", row[1][1])  // name = salary
+    // row is an OrderedMap with keys in query column order
+    pln("columns:", row.keys())        // ["name", "salary"]
+    pln("values:", row.values())       // ["Alice", "50000"]
+    pln(row["name"], "=", row["salary"])  // Direct access by column name
 }
 ```
 
@@ -2255,6 +2368,16 @@ Returns true if value is a map.
 ```xxl
 isMap({"a": 1})      // true
 isMap([1, 2])        // false
+```
+
+### isOrderedMap(value)
+
+Returns true if value is an OrderedMap.
+
+```xxl
+isOrderedMap(newOrderedMap())  // true
+isOrderedMap({"a": 1})         // false (regular Map)
+isOrderedMap([1, 2])           // false
 ```
 
 ### isBool(value)
@@ -2847,6 +2970,112 @@ Text processing utilities.
 ### uuid
 
 UUID generation.
+
+---
+
+## System Command Functions
+
+Xxlang provides built-in functions for executing system commands and starting applications.
+
+### systemCmd(cmd, args...)
+
+Executes a system command synchronously and returns the result as an OrderedMap.
+
+**Parameters:**
+- `cmd` (string): The command to execute
+- `args...` (strings, optional): Additional arguments for the command
+
+**Returns:** An OrderedMap with:
+- `success` (bool): Whether the command succeeded (exit code 0)
+- `exitCode` (int): The exit code of the command
+- `output` (string): Combined stdout and stderr output
+- `error` (string): Error message if any
+
+```xxl
+// Simple command
+var r = systemCmd("echo hello")
+pln(r["output"])     // "hello"
+pln(r["success"])    // true
+pln(r["exitCode"])   // 0
+
+// Command with arguments
+var r = systemCmd("dir", ".")
+if (r["success"]) {
+    pln("Output: ", r["output"])
+}
+
+// Handle errors
+var r = systemCmd("nonexistent_command")
+if (!r["success"]) {
+    pln("Error: ", r["error"])
+    pln("Exit code: ", r["exitCode"])
+}
+```
+
+### systemCmdDetached(cmd, args...)
+
+Executes a system command in detached (background) mode. The command runs asynchronously without waiting for completion.
+
+**Parameters:**
+- `cmd` (string): The command to execute
+- `args...` (strings, optional): Additional arguments for the command
+
+**Returns:** An OrderedMap with:
+- `success` (bool): Whether the command was started successfully
+- `pid` (int): Process ID (0 if not available)
+- `error` (string): Error message if any
+
+```xxl
+// Start a background process
+var r = systemCmdDetached("notepad")
+pln(r["success"])    // true
+pln(r["pid"])        // Process ID (e.g., 12345)
+
+// Start a background script
+var r = systemCmdDetached("python", "server.py")
+if (r["success"]) {
+    pln("Server started with PID: ", r["pid"])
+}
+
+// Handle errors
+var r = systemCmdDetached("nonexistent_command")
+if (!r["success"]) {
+    pln("Failed to start: ", r["error"])
+}
+```
+
+### systemStart(path, workingDir)
+
+Opens a file or URL with the default application, or starts a program. This is equivalent to:
+- Windows: `start "" path`
+- macOS: `open path`
+- Linux: `xdg-open path`
+
+**Parameters:**
+- `path` (string): The file path, URL, or program to open
+- `workingDir` (string, optional): Working directory for the process
+
+**Returns:** An OrderedMap with:
+- `success` (bool): Whether the operation succeeded
+- `error` (string): Error message if any
+
+```xxl
+// Open a URL in the default browser
+var r = systemStart("https://www.example.com")
+pln(r["success"])    // true
+
+// Open a file with its default application
+var r = systemStart("C:\\Documents\\report.pdf")
+pln(r["success"])    // true
+
+// Open a file in a specific working directory
+var r = systemStart("readme.txt", "C:\\MyProject")
+
+// Handle errors
+if (!r["success"]) {
+    pln("Failed to open: ", r["error"])
+}
+```
 
 ---
 

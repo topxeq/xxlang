@@ -297,6 +297,13 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(223, "dbQueryRowTyped")
 	s.DefineBuiltin(224, "dbQueryArrayTyped")
 	s.DefineBuiltin(225, "dbQueryValueTyped")
+	// OrderedMap built-ins
+	s.DefineBuiltin(226, "isOrderedMap")
+	s.DefineBuiltin(227, "newOrderedMap")
+	// System command built-ins
+	s.DefineBuiltin(228, "systemCmd")
+	s.DefineBuiltin(229, "systemCmdDetached")
+	s.DefineBuiltin(230, "systemStart")
 	return s
 }
 

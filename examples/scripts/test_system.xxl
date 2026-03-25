@@ -1,0 +1,34 @@
+// test_system.xxl
+// Test system command built-in functions
+
+pln("=== Testing systemCmd ===")
+
+var r1 = systemCmd("echo hello world")
+pln("Output: ", r1["output"])
+pln("Success: ", r1["success"])
+pln("Exit code: ", r1["exitCode"])
+
+pln("")
+pln("=== Testing systemCmd with error ===")
+
+var r2 = systemCmd("nonexistent_command_xyz")
+pln("Success: ", r2["success"])
+pln("Exit code: ", r2["exitCode"])
+pln("Error: ", r2["error"])
+
+pln("")
+pln("=== Testing systemCmdDetached ===")
+
+var r3 = systemCmdDetached("cmd", "/c", "echo test")
+pln("Success: ", r3["success"])
+pln("PID: ", r3["pid"])
+
+pln("")
+pln("=== Testing systemStart ===")
+
+// Test with a URL (will open browser)
+var r4 = systemStart("https://example.com")
+pln("Success: ", r4["success"])
+
+pln("")
+pln("All tests completed!")

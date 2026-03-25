@@ -264,6 +264,13 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["dbQueryRowTyped"],   // 223
 		objects.Builtins["dbQueryArrayTyped"], // 224
 		objects.Builtins["dbQueryValueTyped"], // 225
+		// OrderedMap built-in functions
+		objects.Builtins["isOrderedMap"],  // 226
+		objects.Builtins["newOrderedMap"], // 227
+		// System command built-in functions
+		objects.Builtins["systemCmd"],         // 228
+		objects.Builtins["systemCmdDetached"], // 229
+		objects.Builtins["systemStart"],       // 230
 	}
 
 	if index < 0 || index >= len(builtins) {
