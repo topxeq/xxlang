@@ -20,6 +20,7 @@ Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language impleme
 - **Exception Handling** - Full try/catch/finally/throw support
 - **Module System** - Import/export with standard library
 - **Microservice Mode** - Built-in HTTP/HTTPS server, REST API support, WebSocket
+- **Database Support** - SQLite, MySQL, PostgreSQL, Oracle, MSSQL Server (pure Go drivers, no CGO)
 - **Plugin System** - WASM plugins for high-performance operations (Windows compatible, no CGO required)
 - **Rich Built-ins** - 200+ built-in functions for string, math, array, map, HTTP, concurrency, crypto and more
 - **REPL** - Interactive REPL with multi-line support and persistent state
@@ -31,7 +32,7 @@ Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language impleme
 
 - [Language Reference](docs/LANGUAGE.md) - Complete language syntax and features
 - [Built-in Functions](docs/BUILTINS.md) - Global built-in functions
-- [Standard Library](docs/STDLIB.md) - Standard library modules (os, json, math, etc.)
+- [Standard Library](docs/STDLIB.md) - Standard library modules (db, json, math, etc.)
 - [Concurrency Programming](docs/CONCURRENCY.md) - Goroutines, tubes (channels), select, context, sync primitives
 - [Microservice Mode](docs/MICROSERVICE.md) - HTTP/HTTPS server, REST API, WebSocket
 - [Code Examples](docs/EXAMPLES.md) - Common scenarios code examples
@@ -222,6 +223,94 @@ pln(math.sqrt(16))
 // Import specific functions
 import "io" { readFile, writeFile }
 ```
+
+### Database (db) Module
+
+Xxlang provides built-in database support with pure Go drivers (no CGO required):
+
+**Supported Databases:**
+| Database | Driver Name | Notes |
+|----------|-------------|-------|
+| SQLite | `sqlite` | File-based, no server needed |
+| MySQL | `mysql` | TCP connection |
+| PostgreSQL | `postgres` | TCP connection |
+| Oracle | `oracle` | Oracle DB |
+| MSSQL Server | `mssql` | Microsoft SQL Server |
+
+**Basic Usage:**
+```xxl
+db = import("db")
+
+// Open SQLite database
+conn = db.open("sqlite", "test.db")
+
+// Create table
+db.exec(conn, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)")
+
+// Insert data
+db.exec(conn, "INSERT INTO users (name, age) VALUES (?, ?)", "Alice", 30)
+
+// Query data
+rows = db.query(conn, "SELECT * FROM users WHERE age > ?", 25)
+for (row in rows) {
+    pln(row["name"], row["age"])
+}
+
+// Query single row
+row = db.queryRow(conn, "SELECT * FROM users WHERE name = ?", "Alice")
+if (row != null) {
+    pln(row)
+}
+
+// Close connection
+db.close(conn)
+```
+
+**Transaction Support:**
+```xxl
+tx = db.begin(conn)
+db.txExec(tx, "UPDATE users SET age = age + 1 WHERE id = ?", 1)
+db.commit(tx)  // or db.rollback(tx)
+```
+
+**Prepared Statements:**
+```xxl
+stmt = db.prepare(conn, "INSERT INTO users (name, age) VALUES (?, ?)")
+db.stmtExec(stmt, "Bob", 25)
+db.stmtExec(stmt, "Charlie", 35)
+db.close(stmt)
+```
+
+**Connection Pool Settings:**
+```xxl
+db.setMaxOpenConns(conn, 10)
+db.setMaxIdleConns(conn, 5)
+db.setConnMaxLifetime(conn, 3600)  // seconds
+```
+
+**Available Functions:**
+| Function | Description |
+|----------|-------------|
+| `open(driver, dsn)` | Open database connection |
+| `openWithoutPing(driver, dsn)` | Open without testing connection |
+| `close(db)` | Close connection/rows/stmt |
+| `ping(db)` | Test connection |
+| `isConnected(db)` | Check connection status |
+| `drivers()` | List registered drivers |
+| `query(db, sql, args...)` | Query returning array of maps |
+| `queryArrays(db, sql, args...)` | Query returning array of arrays |
+| `queryRow(db, sql, args...)` | Query single row |
+| `exec(db, sql, args...)` | Execute SQL, returns `[lastInsertId, rowsAffected]` |
+| `begin(db)` | Start transaction |
+| `commit(tx)` | Commit transaction |
+| `rollback(tx)` | Rollback transaction |
+| `txExec(tx, sql, args...)` | Execute in transaction |
+| `txQuery(tx, sql, args...)` | Query in transaction |
+| `prepare(db, sql)` | Create prepared statement |
+| `stmtExec(stmt, args...)` | Execute prepared statement |
+| `stmtQuery(stmt, args...)` | Query prepared statement |
+| `stats(db)` | Get connection statistics |
+| `columns(rows)` | Get column names |
 
 ### Plugin System
 
@@ -645,6 +734,7 @@ Xxlang provides 200+ built-in functions:
 | HTTP Server | `writeResp`, `setRespHeader`, `getReqHeader`, `setCookie`, `getCookie`, `parseForm`, `parseJSON`, `getReqBody`, `status`, `redirect`, `serveFile`, `queryParam`, `formValue` |
 | WebSocket | `webSocket`, `wsReadMsg`, `wsSendText`, `wsSendBinary`, `wsClose`, `isWebSocket` |
 | Concurrency | `makeTube`, `closeTube`, `tubeSend`, `tubeRecv`, `newMutex`, `newRWMutex`, `newWaitGroup`, `newOnce`, `newCond`, `newAtomic` |
+| Database (db module) | `open`, `openWithoutPing`, `close`, `ping`, `isConnected`, `query`, `queryArrays`, `queryRow`, `exec`, `begin`, `commit`, `rollback`, `txExec`, `txQuery`, `prepare`, `stmtExec`, `stmtQuery`, `drivers`, `stats`, `columns` |
 | Context | `newContext`, `contextWithTimeout`, `contextWithCancel`, `contextWithDeadline`, `contextCancel`, `contextDone` |
 | Time | `sleep`, `now`, `nowMs`, `uuid` |
 | Utility | `range`, `runCode`, `loadPlugin`, `format`, `checkErr`, `checkEmpty`, `genOtpCode`, `make`, `delegate` |
