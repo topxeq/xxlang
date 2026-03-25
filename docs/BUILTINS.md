@@ -19,6 +19,7 @@ This document provides a comprehensive reference for all built-in functions in X
 - [WebSocket Functions](#websocket-functions)
 - [Concurrency Functions](#concurrency-functions)
 - [Context Functions](#context-functions)
+- [Database Functions](#database-functions)
 - [Type Checking Functions](#type-checking-functions)
 - [Formatting Functions](#formatting-functions)
 - [Dynamic Code Execution](#dynamic-code-execution)
@@ -1892,6 +1893,277 @@ Returns the deadline of the context, or 0 if no deadline.
 
 ```xxl
 var deadline = contextDeadline(ctx)
+```
+
+---
+
+## Database Functions
+
+Xxlang provides comprehensive database builtin functions with two versions: **string-based** (Charlang compatible) and **typed** (preserve native types).
+
+### String-Based Functions (Charlang Compatible)
+
+These functions convert all database values to strings, providing compatibility with Charlang. NULL values are returned as empty strings.
+
+#### formatSQLValue(str)
+
+Escapes a string for safe SQL usage by escaping single quotes and backslashes.
+
+```xxl
+formatSQLValue("O'Brien's test")  // "O''Brien''s test"
+formatSQLValue("Line1\nLine2")    // "Line1\\nLine2"
+```
+
+#### dbConnect(driver, dataSource)
+
+Connects to a database and returns a database connection object. Returns ERROR on failure.
+
+**Supported drivers:** `sqlite`, `sqlite3`, `mysql`, `postgres`
+
+```xxl
+// SQLite in-memory database
+var db = dbConnect("sqlite", ":memory:")
+
+// SQLite file database
+var db = dbConnect("sqlite", "/path/to/database.sqlite")
+
+// MySQL
+var db = dbConnect("mysql", "user:password@tcp(localhost:3306)/dbname")
+
+// PostgreSQL
+var db = dbConnect("postgres", "postgres://user:password@localhost/dbname?sslmode=disable")
+
+if (typeOf(db) == "ERROR") {
+    pln("Connection failed:", db)
+}
+```
+
+#### dbClose(db)
+
+Closes a database connection.
+
+```xxl
+dbClose(db)
+```
+
+#### dbQuery(db, query, params...)
+
+Executes a query and returns an array of maps where all values are strings. Supports parameterized queries.
+
+```xxl
+// Query all rows
+var rows = dbQuery(db, "SELECT * FROM users ORDER BY id")
+
+// Query with parameters
+var rows = dbQuery(db, "SELECT * FROM users WHERE age > ?", 25)
+
+// Access values (all as strings)
+for (row in rows) {
+    pln("Name:", row["name"], "Age:", row["age"])  // age is string "30"
+}
+```
+
+#### dbQueryOrdered(db, query, params...)
+
+Executes a query and returns an ordered array of `[columnName, value]` pairs for each row.
+
+```xxl
+var ordered = dbQueryOrdered(db, "SELECT name, salary FROM employees ORDER BY salary DESC LIMIT 3")
+for (row in ordered) {
+    pln(row[0][1], "=", row[1][1])  // name = salary
+}
+```
+
+#### dbQueryRecs(db, query, params...)
+
+Executes a query and returns a 2D array with the first row as column headers.
+
+```xxl
+var recs = dbQueryRecs(db, "SELECT name, age FROM users LIMIT 3")
+// recs[0] = ["name", "age"]      (header row)
+// recs[1] = ["Alice", "30"]      (data row)
+// recs[2] = ["Bob", "25"]
+```
+
+#### dbQueryMap(db, query, keyColumn, params...)
+
+Executes a query and returns a map where each key maps to a single row. Useful for GROUP BY queries with aggregation.
+
+```xxl
+// Group by department, get count
+var byDept = dbQueryMap(db, "SELECT department, COUNT(*) as cnt FROM employees GROUP BY department", "department")
+var keys = keys(byDept)
+for (k in keys) {
+    pln(k, ":", byDept[k]["cnt"])
+}
+```
+
+#### dbQueryMapArray(db, query, keyColumn, params...)
+
+Executes a query and returns a map where each key maps to an array of rows. Useful for grouping multiple rows by a column.
+
+```xxl
+// Group employees by department
+var byDept = dbQueryMapArray(db, "SELECT * FROM employees ORDER BY salary", "department")
+var keys = keys(byDept)
+for (k in keys) {
+    var arr = byDept[k]
+    pln(k, ":", len(arr), "employees")
+}
+```
+
+#### dbQueryCount(db, query, params...)
+
+Executes a query and returns the first column of the first row as an integer. Useful for COUNT queries.
+
+```xxl
+var total = dbQueryCount(db, "SELECT COUNT(*) FROM employees")
+var active = dbQueryCount(db, "SELECT COUNT(*) FROM employees WHERE active = ?", 1)
+```
+
+#### dbQueryFloat(db, query, params...)
+
+Executes a query and returns the first column of the first row as a float. Useful for SUM, AVG queries.
+
+```xxl
+var totalSalary = dbQueryFloat(db, "SELECT SUM(salary) FROM employees")
+var avgAge = dbQueryFloat(db, "SELECT AVG(age) FROM employees WHERE department = ?", "Engineering")
+```
+
+#### dbQueryString(db, query, params...)
+
+Executes a query and returns the first column of the first row as a string.
+
+```xxl
+var name = dbQueryString(db, "SELECT name FROM users WHERE id = ?", 1)
+var topDept = dbQueryString(db, "SELECT department FROM employees GROUP BY department ORDER BY COUNT(*) DESC LIMIT 1")
+```
+
+#### dbExec(db, query, params...)
+
+Executes a SQL statement (INSERT, UPDATE, DELETE, CREATE, etc.) and returns `[lastInsertId, rowsAffected]`.
+
+```xxl
+// CREATE TABLE
+var result = dbExec(db, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)")
+
+// INSERT
+var result = dbExec(db, "INSERT INTO users (name, age) VALUES (?, ?)", "Alice", 30)
+pln("Inserted ID:", result[0], "Affected rows:", result[1])
+
+// UPDATE
+var result = dbExec(db, "UPDATE users SET age = ? WHERE name = ?", 31, "Alice")
+pln("Affected rows:", result[1])
+
+// DELETE
+var result = dbExec(db, "DELETE FROM users WHERE id = ?", 1)
+```
+
+### Typed Functions (Preserve Native Types)
+
+These functions preserve native data types (int, float, bool, string, time). NULL values are returned as `null`.
+
+#### dbQueryTyped(db, query, params...)
+
+Executes a query and returns an array of maps with native types preserved.
+
+```xxl
+var rows = dbQueryTyped(db, "SELECT * FROM users ORDER BY id")
+for (row in rows) {
+    pln("Name:", row["name"], "type:", typeOf(row["name"]))  // STRING
+    pln("Age:", row["age"], "type:", typeOf(row["age"]))      // INT
+    pln("Salary:", row["salary"], "type:", typeOf(row["salary"]))  // FLOAT
+}
+```
+
+#### dbQueryRowTyped(db, query, params...)
+
+Executes a query and returns a single row as a map with native types preserved. Returns `null` if no rows found.
+
+```xxl
+var user = dbQueryRowTyped(db, "SELECT * FROM users WHERE id = ?", 1)
+if (user != null) {
+    pln("Name:", user["name"])
+}
+
+var notFound = dbQueryRowTyped(db, "SELECT * FROM users WHERE id = ?", 999)
+// notFound is null
+```
+
+#### dbQueryArrayTyped(db, query, params...)
+
+Executes a query and returns an array of arrays (rows as arrays, not maps) with native types preserved.
+
+```xxl
+var rows = dbQueryArrayTyped(db, "SELECT name, age FROM employees ORDER BY age")
+for (row in rows) {
+    pln("Name:", row[0], "Age:", row[1], "Age type:", typeOf(row[1]))
+}
+```
+
+#### dbQueryValueTyped(db, query, params...)
+
+Executes a query and returns a single value with native type preserved. Returns `null` if no rows found.
+
+```xxl
+var maxAge = dbQueryValueTyped(db, "SELECT MAX(age) FROM employees")  // INT
+var avgSalary = dbQueryValueTyped(db, "SELECT AVG(salary) FROM employees")  // FLOAT
+var name = dbQueryValueTyped(db, "SELECT name FROM users WHERE id = ?", 1)  // STRING
+```
+
+### NULL Handling
+
+**String-based functions:** NULL values become empty strings `""`.
+
+**Typed functions:** NULL values become `null`.
+
+```xxl
+// Insert with NULL
+dbExec(db, "INSERT INTO users (name, age) VALUES (?, ?)", "Unknown", null)
+
+// String version - NULL becomes ""
+var rows = dbQuery(db, "SELECT * FROM users WHERE name = ?", "Unknown")
+pln(rows[0]["age"])  // "" (empty string)
+
+// Typed version - NULL becomes null
+var rowsTyped = dbQueryTyped(db, "SELECT * FROM users WHERE name = ?", "Unknown")
+pln(rowsTyped[0]["age"])  // null
+pln(typeOf(rowsTyped[0]["age"]))  // "NULL"
+```
+
+### Complete Example
+
+```xxl
+// Connect to SQLite in-memory database
+var db = dbConnect("sqlite", ":memory:")
+
+// Create table
+dbExec(db, "CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, age INTEGER, salary REAL, department TEXT)")
+
+// Insert data
+dbExec(db, "INSERT INTO employees (name, age, salary, department) VALUES (?, ?, ?, ?)", "Alice", 30, 75000.50, "Engineering")
+dbExec(db, "INSERT INTO employees (name, age, salary, department) VALUES (?, ?, ?, ?)", "Bob", 25, 65000.00, "Marketing")
+
+// Query with string-based function (all values are strings)
+var rows = dbQuery(db, "SELECT * FROM employees")
+for (row in rows) {
+    pln(row["name"], "age:", row["age"], "(type:", typeOf(row["age"]), ")")
+}
+// Output: Alice age: 30 (type: STRING)
+
+// Query with typed function (native types preserved)
+var rowsTyped = dbQueryTyped(db, "SELECT * FROM employees")
+for (row in rowsTyped) {
+    pln(row["name"], "age:", row["age"], "(type:", typeOf(row["age"]), ")")
+}
+// Output: Alice age: 30 (type: INT)
+
+// Aggregate queries
+var total = dbQueryCount(db, "SELECT COUNT(*) FROM employees")
+var avgSalary = dbQueryFloat(db, "SELECT AVG(salary) FROM employees")
+
+// Close connection
+dbClose(db)
 ```
 
 ---

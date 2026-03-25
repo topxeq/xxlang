@@ -19,6 +19,7 @@
 - [WebSocket 函数](#websocket-函数)
 - [并发函数](#并发函数)
 - [上下文函数](#上下文函数)
+- [数据库函数](#数据库函数)
 - [类型检查函数](#类型检查函数)
 - [格式化函数](#格式化函数)
 - [动态代码执行](#动态代码执行)
@@ -508,6 +509,277 @@ string(42)     // "42"
 string(3.14)   // "3.14"
 string(true)   // "true"
 string([1, 2]) // "[1, 2]"
+```
+
+---
+
+## 数据库函数
+
+Xxlang 提供了完善的数据库内置函数，分为两个版本：**字符串版本**（Charlang 兼容）和**类型保留版本**（保留原生类型）。
+
+### 字符串版本函数（Charlang 兼容）
+
+这些函数将所有数据库值转换为字符串，与 Charlang 兼容。NULL 值返回为空字符串。
+
+#### formatSQLValue(str)
+
+转义字符串以用于 SQL 语句，转义单引号和反斜杠。
+
+```xxl
+formatSQLValue("O'Brien's test")  // "O''Brien''s test"
+formatSQLValue("Line1\nLine2")    // "Line1\\nLine2"
+```
+
+#### dbConnect(driver, dataSource)
+
+连接数据库并返回数据库连接对象。失败时返回 ERROR。
+
+**支持的驱动：** `sqlite`、`sqlite3`、`mysql`、`postgres`
+
+```xxl
+// SQLite 内存数据库
+var db = dbConnect("sqlite", ":memory:")
+
+// SQLite 文件数据库
+var db = dbConnect("sqlite", "/path/to/database.sqlite")
+
+// MySQL
+var db = dbConnect("mysql", "user:password@tcp(localhost:3306)/dbname")
+
+// PostgreSQL
+var db = dbConnect("postgres", "postgres://user:password@localhost/dbname?sslmode=disable")
+
+if (typeOf(db) == "ERROR") {
+    pln("连接失败:", db)
+}
+```
+
+#### dbClose(db)
+
+关闭数据库连接。
+
+```xxl
+dbClose(db)
+```
+
+#### dbQuery(db, query, params...)
+
+执行查询并返回映射数组，所有值均为字符串。支持参数化查询。
+
+```xxl
+// 查询所有行
+var rows = dbQuery(db, "SELECT * FROM users ORDER BY id")
+
+// 带参数查询
+var rows = dbQuery(db, "SELECT * FROM users WHERE age > ?", 25)
+
+// 访问值（均为字符串）
+for (row in rows) {
+    pln("姓名:", row["name"], "年龄:", row["age"])  // age 是字符串 "30"
+}
+```
+
+#### dbQueryOrdered(db, query, params...)
+
+执行查询并返回有序的 `[列名, 值]` 对数组。
+
+```xxl
+var ordered = dbQueryOrdered(db, "SELECT name, salary FROM employees ORDER BY salary DESC LIMIT 3")
+for (row in ordered) {
+    pln(row[0][1], "=", row[1][1])  // name = salary
+}
+```
+
+#### dbQueryRecs(db, query, params...)
+
+执行查询并返回二维数组，第一行为列标题。
+
+```xxl
+var recs = dbQueryRecs(db, "SELECT name, age FROM users LIMIT 3")
+// recs[0] = ["name", "age"]      (标题行)
+// recs[1] = ["Alice", "30"]      (数据行)
+// recs[2] = ["Bob", "25"]
+```
+
+#### dbQueryMap(db, query, keyColumn, params...)
+
+执行查询并返回映射，每个键映射到单行。适用于 GROUP BY 聚合查询。
+
+```xxl
+// 按部门分组统计
+var byDept = dbQueryMap(db, "SELECT department, COUNT(*) as cnt FROM employees GROUP BY department", "department")
+var keys = keys(byDept)
+for (k in keys) {
+    pln(k, ":", byDept[k]["cnt"])
+}
+```
+
+#### dbQueryMapArray(db, query, keyColumn, params...)
+
+执行查询并返回映射，每个键映射到行数组。适用于按列分组多行数据。
+
+```xxl
+// 按部门分组员工
+var byDept = dbQueryMapArray(db, "SELECT * FROM employees ORDER BY salary", "department")
+var keys = keys(byDept)
+for (k in keys) {
+    var arr = byDept[k]
+    pln(k, ":", len(arr), "名员工")
+}
+```
+
+#### dbQueryCount(db, query, params...)
+
+执行查询并将第一行第一列作为整数返回。适用于 COUNT 查询。
+
+```xxl
+var total = dbQueryCount(db, "SELECT COUNT(*) FROM employees")
+var active = dbQueryCount(db, "SELECT COUNT(*) FROM employees WHERE active = ?", 1)
+```
+
+#### dbQueryFloat(db, query, params...)
+
+执行查询并将第一行第一列作为浮点数返回。适用于 SUM、AVG 查询。
+
+```xxl
+var totalSalary = dbQueryFloat(db, "SELECT SUM(salary) FROM employees")
+var avgAge = dbQueryFloat(db, "SELECT AVG(age) FROM employees WHERE department = ?", "Engineering")
+```
+
+#### dbQueryString(db, query, params...)
+
+执行查询并将第一行第一列作为字符串返回。
+
+```xxl
+var name = dbQueryString(db, "SELECT name FROM users WHERE id = ?", 1)
+var topDept = dbQueryString(db, "SELECT department FROM employees GROUP BY department ORDER BY COUNT(*) DESC LIMIT 1")
+```
+
+#### dbExec(db, query, params...)
+
+执行 SQL 语句（INSERT、UPDATE、DELETE、CREATE 等）并返回 `[最后插入ID, 影响行数]`。
+
+```xxl
+// 创建表
+var result = dbExec(db, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)")
+
+// 插入
+var result = dbExec(db, "INSERT INTO users (name, age) VALUES (?, ?)", "Alice", 30)
+pln("插入ID:", result[0], "影响行数:", result[1])
+
+// 更新
+var result = dbExec(db, "UPDATE users SET age = ? WHERE name = ?", 31, "Alice")
+pln("影响行数:", result[1])
+
+// 删除
+var result = dbExec(db, "DELETE FROM users WHERE id = ?", 1)
+```
+
+### 类型保留版本函数
+
+这些函数保留原生数据类型（int、float、bool、string、time）。NULL 值返回为 `null`。
+
+#### dbQueryTyped(db, query, params...)
+
+执行查询并返回映射数组，保留原生类型。
+
+```xxl
+var rows = dbQueryTyped(db, "SELECT * FROM users ORDER BY id")
+for (row in rows) {
+    pln("姓名:", row["name"], "类型:", typeOf(row["name"]))  // STRING
+    pln("年龄:", row["age"], "类型:", typeOf(row["age"]))    // INT
+    pln("薪资:", row["salary"], "类型:", typeOf(row["salary"]))  // FLOAT
+}
+```
+
+#### dbQueryRowTyped(db, query, params...)
+
+执行查询并返回单行映射，保留原生类型。未找到时返回 `null`。
+
+```xxl
+var user = dbQueryRowTyped(db, "SELECT * FROM users WHERE id = ?", 1)
+if (user != null) {
+    pln("姓名:", user["name"])
+}
+
+var notFound = dbQueryRowTyped(db, "SELECT * FROM users WHERE id = ?", 999)
+// notFound 为 null
+```
+
+#### dbQueryArrayTyped(db, query, params...)
+
+执行查询并返回数组的数组（行为数组而非映射），保留原生类型。
+
+```xxl
+var rows = dbQueryArrayTyped(db, "SELECT name, age FROM employees ORDER BY age")
+for (row in rows) {
+    pln("姓名:", row[0], "年龄:", row[1], "年龄类型:", typeOf(row[1]))
+}
+```
+
+#### dbQueryValueTyped(db, query, params...)
+
+执行查询并返回单个值，保留原生类型。未找到时返回 `null`。
+
+```xxl
+var maxAge = dbQueryValueTyped(db, "SELECT MAX(age) FROM employees")  // INT
+var avgSalary = dbQueryValueTyped(db, "SELECT AVG(salary) FROM employees")  // FLOAT
+var name = dbQueryValueTyped(db, "SELECT name FROM users WHERE id = ?", 1)  // STRING
+```
+
+### NULL 值处理
+
+**字符串版本函数：** NULL 值变为空字符串 `""`。
+
+**类型保留版本函数：** NULL 值变为 `null`。
+
+```xxl
+// 插入 NULL 值
+dbExec(db, "INSERT INTO users (name, age) VALUES (?, ?)", "Unknown", null)
+
+// 字符串版本 - NULL 变为 ""
+var rows = dbQuery(db, "SELECT * FROM users WHERE name = ?", "Unknown")
+pln(rows[0]["age"])  // ""（空字符串）
+
+// 类型保留版本 - NULL 变为 null
+var rowsTyped = dbQueryTyped(db, "SELECT * FROM users WHERE name = ?", "Unknown")
+pln(rowsTyped[0]["age"])  // null
+pln(typeOf(rowsTyped[0]["age"]))  // "NULL"
+```
+
+### 完整示例
+
+```xxl
+// 连接 SQLite 内存数据库
+var db = dbConnect("sqlite", ":memory:")
+
+// 创建表
+dbExec(db, "CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, age INTEGER, salary REAL, department TEXT)")
+
+// 插入数据
+dbExec(db, "INSERT INTO employees (name, age, salary, department) VALUES (?, ?, ?, ?)", "Alice", 30, 75000.50, "Engineering")
+dbExec(db, "INSERT INTO employees (name, age, salary, department) VALUES (?, ?, ?, ?)", "Bob", 25, 65000.00, "Marketing")
+
+// 使用字符串版本查询（所有值为字符串）
+var rows = dbQuery(db, "SELECT * FROM employees")
+for (row in rows) {
+    pln(row["name"], "年龄:", row["age"], "(类型:", typeOf(row["age"]), ")")
+}
+// 输出: Alice 年龄: 30 (类型: STRING)
+
+// 使用类型保留版本查询（保留原生类型）
+var rowsTyped = dbQueryTyped(db, "SELECT * FROM employees")
+for (row in rowsTyped) {
+    pln(row["name"], "年龄:", row["age"], "(类型:", typeOf(row["age"]), ")")
+}
+// 输出: Alice 年龄: 30 (类型: INT)
+
+// 聚合查询
+var total = dbQueryCount(db, "SELECT COUNT(*) FROM employees")
+var avgSalary = dbQueryFloat(db, "SELECT AVG(salary) FROM employees")
+
+// 关闭连接
+dbClose(db)
 ```
 
 ---

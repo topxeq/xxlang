@@ -1,0 +1,201 @@
+// test_db_builtins.xxl
+// Test all database builtin functions using SQLite temporary database
+
+pln("========================================")
+pln("Database Builtin Functions Test Script")
+pln("========================================")
+
+// 1. Test dbConnect
+pln("\n--- 1. dbConnect ---")
+db := dbConnect("sqlite", ":memory:")
+if (typeOf(db) == "ERROR") {
+    pln("ERROR: Failed to connect:", db)
+} else {
+    pln("Connected to SQLite in-memory database")
+}
+
+// 2. Test dbExec - CREATE TABLE
+pln("\n--- 2. dbExec (CREATE TABLE) ---")
+result := dbExec(db, "CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, age INTEGER, salary REAL, department TEXT, hire_date TEXT)")
+pln("CREATE TABLE result:", result)
+
+// 3. Test dbExec - INSERT
+pln("\n--- 3. dbExec (INSERT) ---")
+result = dbExec(db, "INSERT INTO employees (name, age, salary, department, hire_date) VALUES (?, ?, ?, ?, ?)", "Alice Johnson", 30, 75000.50, "Engineering", "2020-01-15")
+pln("INSERT Alice: id=", result[0], " affected=", result[1])
+
+result = dbExec(db, "INSERT INTO employees (name, age, salary, department, hire_date) VALUES (?, ?, ?, ?, ?)", "Bob Smith", 25, 65000.00, "Marketing", "2021-03-20")
+pln("INSERT Bob: id=", result[0], " affected=", result[1])
+
+result = dbExec(db, "INSERT INTO employees (name, age, salary, department, hire_date) VALUES (?, ?, ?, ?, ?)", "Charlie Brown", 35, 85000.75, "Engineering", "2019-06-10")
+pln("INSERT Charlie: id=", result[0], " affected=", result[1])
+
+result = dbExec(db, "INSERT INTO employees (name, age, salary, department, hire_date) VALUES (?, ?, ?, ?, ?)", "Diana Prince", 28, 70000.25, "Sales", "2022-02-28")
+pln("INSERT Diana: id=", result[0], " affected=", result[1])
+
+result = dbExec(db, "INSERT INTO employees (name, age, salary, department, hire_date) VALUES (?, ?, ?, ?, ?)", "Eve Wilson", 32, 80000.00, "Engineering", "2018-11-05")
+pln("INSERT Eve: id=", result[0], " affected=", result[1])
+
+// Insert a record with NULL values
+result = dbExec(db, "INSERT INTO employees (name, age) VALUES (?, ?)", "Frank Miller", 40)
+pln("INSERT Frank (with NULLs): id=", result[0], " affected=", result[1])
+
+// 4. Test dbQuery (string-based)
+pln("\n--- 4. dbQuery (string-based, all values are strings) ---")
+rows := dbQuery(db, "SELECT * FROM employees ORDER BY id")
+pln("Total rows:", len(rows))
+pln("First row (Alice):")
+pln("  name:", rows[0]["name"], "type:", typeOf(rows[0]["name"]))
+pln("  age:", rows[0]["age"], "type:", typeOf(rows[0]["age"]))
+pln("  salary:", rows[0]["salary"], "type:", typeOf(rows[0]["salary"]))
+pln("  department:", rows[0]["department"], "type:", typeOf(rows[0]["department"]))
+
+// 5. Test dbQueryTyped (preserves native types)
+pln("\n--- 5. dbQueryTyped (preserves native types) ---")
+rowsTyped := dbQueryTyped(db, "SELECT * FROM employees ORDER BY id")
+pln("First row (Alice) with preserved types:")
+pln("  name:", rowsTyped[0]["name"], "type:", typeOf(rowsTyped[0]["name"]))
+pln("  age:", rowsTyped[0]["age"], "type:", typeOf(rowsTyped[0]["age"]))
+pln("  salary:", rowsTyped[0]["salary"], "type:", typeOf(rowsTyped[0]["salary"]))
+pln("  department:", rowsTyped[0]["department"], "type:", typeOf(rowsTyped[0]["department"]))
+
+// 6. Test NULL handling
+pln("\n--- 6. NULL Handling ---")
+pln("String version - Frank's salary (NULL):", rows[5]["salary"], "type:", typeOf(rows[5]["salary"]))
+pln("Typed version - Frank's salary (NULL):", rowsTyped[5]["salary"], "type:", typeOf(rowsTyped[5]["salary"]))
+
+// 7. Test dbQuery with parameters
+pln("\n--- 7. dbQuery with parameters ---")
+engRows := dbQuery(db, "SELECT name, age, salary FROM employees WHERE department = ? ORDER BY age", "Engineering")
+pln("Engineering employees:", len(engRows))
+for (row in engRows) {
+    pln("  ", row["name"], "age:", row["age"], "salary:", row["salary"])
+}
+
+// 8. Test dbQueryRecs (2D array with header)
+pln("\n--- 8. dbQueryRecs (2D array with header row) ---")
+recs := dbQueryRecs(db, "SELECT name, department FROM employees ORDER BY name LIMIT 3")
+pln("Total rows (including header):", len(recs))
+pln("Header row:", recs[0])
+pln("Data rows:")
+for (var i = 1; i < len(recs); i++) {
+    pln("  Row", i, ":", recs[i])
+}
+
+// 9. Test dbQueryOrdered
+pln("\n--- 9. dbQueryOrdered ---")
+ordered := dbQueryOrdered(db, "SELECT name, salary FROM employees ORDER BY salary DESC LIMIT 3")
+pln("Top 3 salaries (ordered):")
+for (row in ordered) {
+    pln("  ", row[0][1], "=", row[1][1])
+}
+
+// 10. Test dbQueryMap
+pln("\n--- 10. dbQueryMap (group by department) ---")
+byDept := dbQueryMap(db, "SELECT department, COUNT(*) as cnt FROM employees GROUP BY department", "department")
+deptKeys := keys(byDept)
+pln("Departments:", len(deptKeys))
+for (k in deptKeys) {
+    pln("  ", k, ":", byDept[k])
+}
+
+// 11. Test dbQueryMapArray
+pln("\n--- 11. dbQueryMapArray (group employees by department) ---")
+byAge := dbQueryMapArray(db, "SELECT * FROM employees WHERE salary IS NOT NULL ORDER BY salary", "department")
+ageKeys := keys(byAge)
+pln("Grouped by department:")
+for (k in ageKeys) {
+    arr := byAge[k]
+    pln("  ", k, ":", len(arr), "employees")
+}
+
+// 12. Test dbQueryCount
+pln("\n--- 12. dbQueryCount ---")
+count := dbQueryCount(db, "SELECT COUNT(*) FROM employees")
+pln("Total employees:", count, "type:", typeOf(count))
+
+engCount := dbQueryCount(db, "SELECT COUNT(*) FROM employees WHERE department = ?", "Engineering")
+pln("Engineering employees:", engCount)
+
+// 13. Test dbQueryFloat
+pln("\n--- 13. dbQueryFloat ---")
+totalSalary := dbQueryFloat(db, "SELECT SUM(salary) FROM employees WHERE salary IS NOT NULL")
+pln("Total salary:", totalSalary, "type:", typeOf(totalSalary))
+
+avgSalary := dbQueryFloat(db, "SELECT AVG(salary) FROM employees WHERE salary IS NOT NULL")
+pln("Average salary:", avgSalary, "type:", typeOf(avgSalary))
+
+maxSalary := dbQueryFloat(db, "SELECT MAX(salary) FROM employees")
+pln("Max salary:", maxSalary, "type:", typeOf(maxSalary))
+
+// 14. Test dbQueryString
+pln("\n--- 14. dbQueryString ---")
+youngest := dbQueryString(db, "SELECT name FROM employees ORDER BY age ASC LIMIT 1")
+pln("Youngest employee:", youngest, "type:", typeOf(youngest))
+
+topDept := dbQueryString(db, "SELECT department FROM employees GROUP BY department ORDER BY COUNT(*) DESC LIMIT 1")
+pln("Department with most employees:", topDept)
+
+// 15. Test dbQueryValueTyped
+pln("\n--- 15. dbQueryValueTyped ---")
+maxAge := dbQueryValueTyped(db, "SELECT MAX(age) FROM employees")
+pln("Max age:", maxAge, "type:", typeOf(maxAge))
+
+minAge := dbQueryValueTyped(db, "SELECT MIN(age) FROM employees")
+pln("Min age:", minAge, "type:", typeOf(minAge))
+
+avgAge := dbQueryValueTyped(db, "SELECT AVG(age) FROM employees")
+pln("Average age:", avgAge, "type:", typeOf(avgAge))
+
+// 16. Test dbQueryArrayTyped
+pln("\n--- 16. dbQueryArrayTyped ---")
+arrTyped := dbQueryArrayTyped(db, "SELECT name, age FROM employees WHERE salary IS NOT NULL ORDER BY age")
+pln("Employees (name, age) as typed array:")
+for (row in arrTyped) {
+    pln("  ", row[0], "age:", row[1], "age type:", typeOf(row[1]))
+}
+
+// 17. Test dbQueryRowTyped
+pln("\n--- 17. dbQueryRowTyped ---")
+singleRow := dbQueryRowTyped(db, "SELECT * FROM employees WHERE name = ?", "Alice Johnson")
+pln("Alice's record:", singleRow)
+
+notFound := dbQueryRowTyped(db, "SELECT * FROM employees WHERE name = ?", "NonExistent")
+pln("Non-existent record:", notFound, "type:", typeOf(notFound))
+
+// 18. Test formatSQLValue
+pln("\n--- 18. formatSQLValue ---")
+testStr1 := "O'Brien's test"
+escaped1 := formatSQLValue(testStr1)
+pln("Original:", testStr1)
+pln("Escaped:", escaped1)
+
+testStr2 := "Line1\nLine2\rLine3"
+escaped2 := formatSQLValue(testStr2)
+pln("Original:", testStr2)
+pln("Escaped:", escaped2)
+
+// 19. Test dbExec - UPDATE
+pln("\n--- 19. dbExec (UPDATE) ---")
+result = dbExec(db, "UPDATE employees SET salary = ? WHERE name = ?", 80000.00, "Alice Johnson")
+pln("UPDATE result: affected=", result[1])
+
+updated := dbQueryRowTyped(db, "SELECT salary FROM employees WHERE name = ?", "Alice Johnson")
+pln("Alice's new salary:", updated["salary"])
+
+// 20. Test dbExec - DELETE
+pln("\n--- 20. dbExec (DELETE) ---")
+result = dbExec(db, "DELETE FROM employees WHERE name = ?", "Frank Miller")
+pln("DELETE result: affected=", result[1])
+
+countAfter := dbQueryCount(db, "SELECT COUNT(*) FROM employees")
+pln("Employees after delete:", countAfter)
+
+// Final: Close database
+pln("\n--- Closing database ---")
+dbClose(db)
+pln("Database closed")
+
+pln("\n========================================")
+pln("All tests completed successfully!")
+pln("========================================")
