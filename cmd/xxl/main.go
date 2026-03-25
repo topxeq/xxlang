@@ -10,6 +10,15 @@ import (
 	"strings"
 	"time"
 
+	// Database drivers - imported for their side effects (driver registration)
+	// These drivers are only available when using the main xxl executable
+	// For embedded use, import these drivers in your application
+	_ "github.com/glebarez/go-sqlite"        // SQLite3 driver (pure Go)
+	_ "github.com/go-sql-driver/mysql"       // MySQL driver (pure Go)
+	_ "github.com/jackc/pgx/v5/stdlib"       // PostgreSQL driver (pure Go)
+	_ "github.com/microsoft/go-mssqldb"      // MSSQL Server driver (pure Go)
+	_ "github.com/sijms/go-ora/v2"           // Oracle driver (pure Go)
+
 	"github.com/topxeq/xxlang/pkg/compiler"
 	"github.com/topxeq/xxlang/pkg/jit"
 	"github.com/topxeq/xxlang/pkg/lexer"

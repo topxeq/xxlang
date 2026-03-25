@@ -49,6 +49,10 @@ const (
 	ReaderType          ObjectType = "READER"
 	WriterType          ObjectType = "WRITER"
 	ScannerType         ObjectType = "SCANNER"
+	DBType              ObjectType = "DB"
+	DBTxType            ObjectType = "DB_TX"
+	DBRowsType          ObjectType = "DB_ROWS"
+	DBStmtType          ObjectType = "DB_STMT"
 )
 
 // TypeTag is a fast integer type identifier for hot path checks
@@ -97,6 +101,10 @@ const (
 	TagReader
 	TagWriter
 	TagScanner
+	TagDB
+	TagDBTx
+	TagDBRows
+	TagDBStmt
 	TagUnknown
 )
 
