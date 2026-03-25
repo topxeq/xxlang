@@ -25,6 +25,7 @@
 - [动态代码执行](#动态代码执行)
 - [BigInt/BigFloat 函数](#bigintbigfloat-函数)
 - [Reader/Writer 函数](#readerwriter-函数)
+- [系统命令函数](#系统命令函数)
 - [类型方法](#类型方法)
 - [标准库模块](#标准库模块)
 
@@ -581,12 +582,15 @@ for (row in rows) {
 
 #### dbQueryOrdered(db, query, params...)
 
-执行查询并返回有序的 `[列名, 值]` 对数组。
+执行查询并返回 OrderedMap 数组，每个 OrderedMap 保留查询的列顺序。所有值转换为字符串。
 
 ```xxl
 var ordered = dbQueryOrdered(db, "SELECT name, salary FROM employees ORDER BY salary DESC LIMIT 3")
 for (row in ordered) {
-    pln(row[0][1], "=", row[1][1])  // name = salary
+    // row 是 OrderedMap，键按查询列顺序排列
+    pln("列:", row.keys())            // ["name", "salary"]
+    pln("值:", row.values())          // ["Alice", "50000"]
+    pln(row["name"], "=", row["salary"])  // 按列名直接访问
 }
 ```
 
@@ -859,6 +863,16 @@ isArray("hello")     // false
 ```xxl
 isMap({"a": 1})      // true
 isMap([1, 2])        // false
+```
+
+### isOrderedMap(value)
+
+判断值是否为有序映射（OrderedMap）。
+
+```xxl
+isOrderedMap(newOrderedMap())  // true
+isOrderedMap({"a": 1})         // false（普通 Map）
+isOrderedMap([1, 2])           // false
 ```
 
 ### isBool(value)
@@ -1261,6 +1275,115 @@ merge({"a": 1}, {"a": 2, "b": 3})    // {"a": 2, "b": 3}
 
 ```xxl
 entries({"x": 10, "y": 20})  // [["x", 10], ["y", 20]]
+```
+
+---
+
+## 有序映射函数（OrderedMap）
+
+OrderedMap 是一种保留键值对插入顺序的映射。与普通 Map 不同，OrderedMap 会保持键的添加顺序，适用于：
+
+- 数据库查询结果，列顺序很重要
+- 配置文件，需要保持键的顺序
+- JSON 序列化，需要可预测的键顺序
+- 构建有序数据结构
+
+### newOrderedMap([source])
+
+创建新的空 OrderedMap，或从现有 Map 或 Array 创建。
+
+```xxl
+// 创建空 OrderedMap
+var om = newOrderedMap()
+
+// 从 Map 创建
+var om2 = newOrderedMap({"a": 1, "b": 2})
+
+// 从 [key, value] 对数组创建
+var om3 = newOrderedMap([["x", 10], ["y", 20]])
+
+// 添加条目
+om["name"] = "Alice"
+om["age"] = 30
+om["city"] = "Beijing"
+
+pln(om.keys())    // ["name", "age", "city"] - 保持插入顺序
+pln(om.values())  // ["Alice", 30, "Beijing"]
+```
+
+### make("orderedMap", [capacity])
+
+创建具有可选预分配容量的新 OrderedMap。
+
+```xxl
+var om = make("orderedMap", 100)  // 预分配 100 个条目的空间
+```
+
+### isOrderedMap(value)
+
+判断值是否为 OrderedMap。
+
+```xxl
+isOrderedMap(newOrderedMap())  // true
+isOrderedMap({"a": 1})         // false（普通 Map）
+```
+
+---
+
+## OrderedMap 方法
+
+OrderedMap 支持以下方法：
+
+### 基本操作
+
+```xxl
+var om = newOrderedMap()
+om["a"] = 1           // 设置值
+var v = om["a"]       // 获取值: 1
+om.hasKey("a")        // 检查键: true
+om.len()              // 长度: 1
+var newOm = om.delete("a")  // 删除（返回新的 OrderedMap）
+```
+
+### 有序访问
+
+```xxl
+var om = newOrderedMap()
+om["x"] = 1
+om["y"] = 2
+om["z"] = 3
+
+om.keys()             // ["x", "y", "z"] - 按插入顺序的键
+om.values()           // [1, 2, 3] - 按插入顺序的值
+om.entries()          // [["x", 1], ["y", 2], ["z", 3]]
+om.indexOf("y")       // 1 - 键的索引
+om.getAt(0)           // ["x", 1] - 指定索引的 [key, value]
+```
+
+### 重排序操作
+
+```xxl
+var om = newOrderedMap()
+om["a"] = 1
+om["b"] = 2
+om["c"] = 3
+
+om.moveToFront("c")   // 移动键到开头: ["c", "a", "b"]
+om.moveToBack("a")    // 移动键到末尾: ["c", "b", "a"]
+om.swap("c", "a")     // 交换位置: ["a", "b", "c"]
+om.reverse()          // 反转顺序: ["c", "b", "a"]
+om.sortByKey()        // 按键名字母排序
+```
+
+### 转换
+
+```xxl
+var om = newOrderedMap()
+om["a"] = 1
+om["b"] = 2
+
+om.toMap()            // 转换为普通 Map
+om.clone()            // 创建副本
 ```
 
 ---
@@ -2867,6 +2990,112 @@ CSV 文件解析和写入。
 ### uuid
 
 UUID 生成。
+
+---
+
+## 系统命令函数
+
+Xxlang 提供内置函数用于执行系统命令和启动应用程序。
+
+### systemCmd(cmd, args...)
+
+同步执行系统命令并返回结果。
+
+**参数：**
+- `cmd` (字符串): 要执行的命令
+- `args...` (字符串, 可选): 命令的额外参数
+
+**返回值：** 一个有序映射（OrderedMap），包含：
+- `success` (布尔): 命令是否成功（退出码为0）
+- `exitCode` (整数): 命令的退出码
+- `output` (字符串): 标准输出和标准错误的合并输出
+- `error` (字符串): 错误信息（如有）
+
+```xxl
+// 简单命令
+var r = systemCmd("echo hello")
+pln(r["output"])     // "hello"
+pln(r["success"])    // true
+pln(r["exitCode"])   // 0
+
+// 带参数的命令
+var r = systemCmd("dir", ".")
+if (r["success"]) {
+    pln("输出: ", r["output"])
+}
+
+// 处理错误
+var r = systemCmd("nonexistent_command")
+if (!r["success"]) {
+    pln("错误: ", r["error"])
+    pln("退出码: ", r["exitCode"])
+}
+```
+
+### systemCmdDetached(cmd, args...)
+
+以分离（后台）模式执行系统命令。命令异步运行，不等待完成。
+
+**参数：**
+- `cmd` (字符串): 要执行的命令
+- `args...` (字符串, 可选): 命令的额外参数
+
+**返回值：** 一个有序映射（OrderedMap），包含：
+- `success` (布尔): 命令是否成功启动
+- `pid` (整数): 进程ID（如不可用则为0）
+- `error` (字符串): 错误信息（如有）
+
+```xxl
+// 启动后台进程
+var r = systemCmdDetached("notepad")
+pln(r["success"])    // true
+pln(r["pid"])        // 进程ID（如 12345）
+
+// 启动后台脚本
+var r = systemCmdDetached("python", "server.py")
+if (r["success"]) {
+    pln("服务器已启动，PID: ", r["pid"])
+}
+
+// 处理错误
+var r = systemCmdDetached("nonexistent_command")
+if (!r["success"]) {
+    pln("启动失败: ", r["error"])
+}
+```
+
+### systemStart(path, workingDir)
+
+使用默认应用程序打开文件或URL，或启动程序。等效于：
+- Windows: `start "" path`
+- macOS: `open path`
+- Linux: `xdg-open path`
+
+**参数：**
+- `path` (字符串): 文件路径、URL 或要打开的程序
+- `workingDir` (字符串, 可选): 进程的工作目录
+
+**返回值：** 一个有序映射（OrderedMap），包含：
+- `success` (布尔): 操作是否成功
+- `error` (字符串): 错误信息（如有）
+
+```xxl
+// 在默认浏览器中打开 URL
+var r = systemStart("https://www.example.com")
+pln(r["success"])    // true
+
+// 使用默认应用程序打开文件
+var r = systemStart("C:\\Documents\\report.pdf")
+pln(r["success"])    // true
+
+// 在特定工作目录中打开文件
+var r = systemStart("readme.txt", "C:\\MyProject")
+
+// 处理错误
+if (!r["success"]) {
+    pln("打开失败: ", r["error"])
+}
+```
 
 ---
 
