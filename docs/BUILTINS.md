@@ -3079,6 +3079,179 @@ if (!r["success"]) {
 
 ---
 
+## Test Assertion Functions
+
+These functions help with testing and debugging Xxlang code.
+
+### testByText(actual, expected, testName?, testGroup?)
+
+Tests that two strings are exactly equal.
+
+**Parameters:**
+- `actual` (string): The actual value
+- `expected` (string): The expected value
+- `testName` (string, optional): A name for the test
+- `testGroup` (string, optional): A group identifier for the test
+
+**Returns:** `null` on success, or an `ERROR` object with details on failure.
+
+```xxl
+// Basic test
+testByText("hello", "hello")  // Prints: test 1 passed
+
+// Test with custom name
+testByText("hello", "hello", "greeting test")  // Prints: test greeting test passed
+
+// Test with group
+testByText("hello", "hello", "greeting", "group1")  // Prints: test greeting(group1) passed
+
+// Failed test shows diff position
+testByText("hello world", "hello")
+// ERROR: test 2 failed at position 5:
+// -----
+// hello world
+// -----
+// hello
+```
+
+### testByStartsWith(str, prefix, testName?, testGroup?)
+
+Tests that a string starts with a given prefix.
+
+**Parameters:**
+- `str` (string): The string to check
+- `prefix` (string): The expected prefix
+- `testName` (string, optional): A name for the test
+- `testGroup` (string, optional): A group identifier for the test
+
+**Returns:** `null` on success, or an `ERROR` object with details on failure.
+
+```xxl
+testByStartsWith("hello world", "hello")  // Prints: test 1 passed
+testByStartsWith("hello world", "world")  // ERROR: string does not start with prefix
+```
+
+### testByEndsWith(str, suffix, testName?, testGroup?)
+
+Tests that a string ends with a given suffix.
+
+**Parameters:**
+- `str` (string): The string to check
+- `suffix` (string): The expected suffix
+- `testName` (string, optional): A name for the test
+- `testGroup` (string, optional): A group identifier for the test
+
+**Returns:** `null` on success, or an `ERROR` object with details on failure.
+
+```xxl
+testByEndsWith("hello world", "world")  // Prints: test 1 passed
+testByEndsWith("hello world", "hello")  // ERROR: string does not end with suffix
+```
+
+### testByContains(str, substr, testName?, testGroup?)
+
+Tests that a string contains a given substring.
+
+**Parameters:**
+- `str` (string): The string to check
+- `substr` (string): The substring to find
+- `testName` (string, optional): A name for the test
+- `testGroup` (string, optional): A group identifier for the test
+
+**Returns:** `null` on success, or an `ERROR` object with details on failure.
+
+```xxl
+testByContains("hello world", "lo wo")  // Prints: test 1 passed
+testByContains("hello world", "xyz")    // ERROR: string does not contain substring
+```
+
+### testByReg(str, pattern, testName?, testGroup?)
+
+Tests that a string matches a regex pattern (full match).
+
+**Parameters:**
+- `str` (string): The string to check
+- `pattern` (string): The regex pattern (must match the entire string)
+- `testName` (string, optional): A name for the test
+- `testGroup` (string, optional): A group identifier for the test
+
+**Returns:** `null` on success, or an `ERROR` object with details on failure.
+
+```xxl
+testByReg("hello123", "hello[0-9]+")  // Prints: test 1 passed
+testByReg("hello", "[0-9]+")          // ERROR: string does not match regex pattern
+```
+
+### testByRegContains(str, pattern, testName?, testGroup?)
+
+Tests that a string contains a match for a regex pattern (partial match).
+
+**Parameters:**
+- `str` (string): The string to check
+- `pattern` (string): The regex pattern to find in the string
+- `testName` (string, optional): A name for the test
+- `testGroup` (string, optional): A group identifier for the test
+
+**Returns:** `null` on success, or an `ERROR` object with details on failure.
+
+```xxl
+testByRegContains("The price is $100", "\\$[0-9]+")  // Prints: test 1 passed
+testByRegContains("hello world", "[0-9]+")           // ERROR: string does not contain regex match
+```
+
+### dumpVar(value)
+
+Dumps a variable for debugging, showing its type and contents.
+
+**Parameters:**
+- `value` (any): The value to dump
+
+**Returns:** `null` (output is printed to stdout)
+
+```xxl
+var testMap = {"name": "Alice", "age": 30}
+dumpVar(testMap)
+// Output:
+// Dump: {age: 30, name: Alice}
+// Type: MAP
+// Contents:
+//   name: Alice
+//   age: 30
+
+var testArr = [1, 2, 3, "four"]
+dumpVar(testArr)
+// Output:
+// Dump: [1, 2, 3, four]
+// Type: ARRAY
+// Elements:
+//   [0]: 1
+//   [1]: 2
+//   [2]: 3
+//   [3]: four
+```
+
+### debugInfo(args...)
+
+Returns debug information about the arguments passed.
+
+**Parameters:**
+- `args...` (any, optional): Values to include in debug info
+
+**Returns:** A string with debug information.
+
+```xxl
+var info = debugInfo("test", 42)
+pln(info)
+// Output:
+// === Debug Info ===
+// Note: Full debug info requires VM context.
+// Arguments:
+//   [0]: test (type: STRING)
+//   [1]: 42 (type: INT)
+```
+
+---
+
 ## See Also
 
 - [Language Reference](LANGUAGE.md) - Complete language syntax

@@ -304,6 +304,15 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(228, "systemCmd")
 	s.DefineBuiltin(229, "systemCmdDetached")
 	s.DefineBuiltin(230, "systemStart")
+	// Test assertion built-ins
+	s.DefineBuiltin(231, "testByText")
+	s.DefineBuiltin(232, "testByStartsWith")
+	s.DefineBuiltin(233, "testByEndsWith")
+	s.DefineBuiltin(234, "testByContains")
+	s.DefineBuiltin(235, "testByReg")
+	s.DefineBuiltin(236, "testByRegContains")
+	s.DefineBuiltin(237, "dumpVar")
+	s.DefineBuiltin(238, "debugInfo")
 	return s
 }
 

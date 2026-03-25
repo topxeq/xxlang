@@ -3099,6 +3099,179 @@ if (!r["success"]) {
 
 ---
 
+## 测试断言函数
+
+这些函数用于测试和调试 Xxlang 代码。
+
+### testByText(actual, expected, testName?, testGroup?)
+
+测试两个字符串是否完全相等。
+
+**参数：**
+- `actual` (字符串): 实际值
+- `expected` (字符串): 期望值
+- `testName` (字符串, 可选): 测试名称
+- `testGroup` (字符串, 可选): 测试分组标识
+
+**返回值：** 成功返回 `null`，失败返回包含详细信息的 `ERROR` 对象。
+
+```xxl
+// 基本测试
+testByText("hello", "hello")  // 输出: test 1 passed
+
+// 带自定义名称的测试
+testByText("hello", "hello", "问候测试")  // 输出: test 问候测试 passed
+
+// 带分组的测试
+testByText("hello", "hello", "问候", "group1")  // 输出: test 问候(group1) passed
+
+// 失败的测试会显示差异位置
+testByText("hello world", "hello")
+// ERROR: test 2 failed at position 5:
+// -----
+// hello world
+// -----
+// hello
+```
+
+### testByStartsWith(str, prefix, testName?, testGroup?)
+
+测试字符串是否以给定前缀开头。
+
+**参数：**
+- `str` (字符串): 要检查的字符串
+- `prefix` (字符串): 期望的前缀
+- `testName` (字符串, 可选): 测试名称
+- `testGroup` (字符串, 可选): 测试分组标识
+
+**返回值：** 成功返回 `null`，失败返回包含详细信息的 `ERROR` 对象。
+
+```xxl
+testByStartsWith("hello world", "hello")  // 输出: test 1 passed
+testByStartsWith("hello world", "world")  // ERROR: string does not start with prefix
+```
+
+### testByEndsWith(str, suffix, testName?, testGroup?)
+
+测试字符串是否以给定后缀结尾。
+
+**参数：**
+- `str` (字符串): 要检查的字符串
+- `suffix` (字符串): 期望的后缀
+- `testName` (字符串, 可选): 测试名称
+- `testGroup` (字符串, 可选): 测试分组标识
+
+**返回值：** 成功返回 `null`，失败返回包含详细信息的 `ERROR` 对象。
+
+```xxl
+testByEndsWith("hello world", "world")  // 输出: test 1 passed
+testByEndsWith("hello world", "hello")  // ERROR: string does not end with suffix
+```
+
+### testByContains(str, substr, testName?, testGroup?)
+
+测试字符串是否包含给定子字符串。
+
+**参数：**
+- `str` (字符串): 要检查的字符串
+- `substr` (字符串): 要查找的子字符串
+- `testName` (字符串, 可选): 测试名称
+- `testGroup` (字符串, 可选): 测试分组标识
+
+**返回值：** 成功返回 `null`，失败返回包含详细信息的 `ERROR` 对象。
+
+```xxl
+testByContains("hello world", "lo wo")  // 输出: test 1 passed
+testByContains("hello world", "xyz")    // ERROR: string does not contain substring
+```
+
+### testByReg(str, pattern, testName?, testGroup?)
+
+测试字符串是否匹配正则表达式（完整匹配）。
+
+**参数：**
+- `str` (字符串): 要检查的字符串
+- `pattern` (字符串): 正则表达式模式（必须匹配整个字符串）
+- `testName` (字符串, 可选): 测试名称
+- `testGroup` (字符串, 可选): 测试分组标识
+
+**返回值：** 成功返回 `null`，失败返回包含详细信息的 `ERROR` 对象。
+
+```xxl
+testByReg("hello123", "hello[0-9]+")  // 输出: test 1 passed
+testByReg("hello", "[0-9]+")          // ERROR: string does not match regex pattern
+```
+
+### testByRegContains(str, pattern, testName?, testGroup?)
+
+测试字符串是否包含正则表达式匹配（部分匹配）。
+
+**参数：**
+- `str` (字符串): 要检查的字符串
+- `pattern` (字符串): 要在字符串中查找的正则表达式模式
+- `testName` (字符串, 可选): 测试名称
+- `testGroup` (字符串, 可选): 测试分组标识
+
+**返回值：** 成功返回 `null`，失败返回包含详细信息的 `ERROR` 对象。
+
+```xxl
+testByRegContains("价格是 $100", "\\$[0-9]+")  // 输出: test 1 passed
+testByRegContains("hello world", "[0-9]+")    // ERROR: string does not contain regex match
+```
+
+### dumpVar(value)
+
+转储变量用于调试，显示其类型和内容。
+
+**参数：**
+- `value` (任意): 要转储的值
+
+**返回值：** `null`（输出打印到标准输出）
+
+```xxl
+var testMap = {"name": "Alice", "age": 30}
+dumpVar(testMap)
+// 输出:
+// Dump: {age: 30, name: Alice}
+// Type: MAP
+// Contents:
+//   name: Alice
+//   age: 30
+
+var testArr = [1, 2, 3, "four"]
+dumpVar(testArr)
+// 输出:
+// Dump: [1, 2, 3, four]
+// Type: ARRAY
+// Elements:
+//   [0]: 1
+//   [1]: 2
+//   [2]: 3
+//   [3]: four
+```
+
+### debugInfo(args...)
+
+返回关于传入参数的调试信息。
+
+**参数：**
+- `args...` (任意, 可选): 要包含在调试信息中的值
+
+**返回值：** 包含调试信息的字符串。
+
+```xxl
+var info = debugInfo("test", 42)
+pln(info)
+// 输出:
+// === Debug Info ===
+// Note: Full debug info requires VM context.
+// Arguments:
+//   [0]: test (type: STRING)
+//   [1]: 42 (type: INT)
+```
+
+---
+
 ## 另见
 
 - [语言参考](LANGUAGE.md) - 完整语言语法

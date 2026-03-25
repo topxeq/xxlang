@@ -271,6 +271,15 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["systemCmd"],         // 228
 		objects.Builtins["systemCmdDetached"], // 229
 		objects.Builtins["systemStart"],       // 230
+		// Test assertion built-in functions
+		objects.Builtins["testByText"],       // 231
+		objects.Builtins["testByStartsWith"], // 232
+		objects.Builtins["testByEndsWith"],   // 233
+		objects.Builtins["testByContains"],   // 234
+		objects.Builtins["testByReg"],        // 235
+		objects.Builtins["testByRegContains"], // 236
+		objects.Builtins["dumpVar"],          // 237
+		objects.Builtins["debugInfo"],        // 238
 	}
 
 	if index < 0 || index >= len(builtins) {

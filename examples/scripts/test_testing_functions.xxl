@@ -1,0 +1,79 @@
+// test_testing_functions.xxl
+// Test the test assertion built-in functions
+
+pln("=== Testing testByText ===")
+
+var r1 = testByText("hello", "hello")
+pln("Result of exact match: ", r1)
+
+var r2 = testByText("hello world", "hello")
+pln("Result of mismatch: ", r2)
+
+pln("")
+pln("=== Testing testByStartsWith ===")
+
+var r3 = testByStartsWith("hello world", "hello")
+pln("Result of prefix match: ", r3)
+
+var r4 = testByStartsWith("hello world", "world")
+pln("Result of prefix mismatch: ", r4)
+
+pln("")
+pln("=== Testing testByEndsWith ===")
+
+var r5 = testByEndsWith("hello world", "world")
+pln("Result of suffix match: ", r5)
+
+var r6 = testByEndsWith("hello world", "hello")
+pln("Result of suffix mismatch: ", r6)
+
+pln("")
+pln("=== Testing testByContains ===")
+
+var r7 = testByContains("hello world", "lo wo")
+pln("Result of contains match: ", r7)
+
+var r8 = testByContains("hello world", "xyz")
+pln("Result of contains mismatch: ", r8)
+
+pln("")
+pln("=== Testing testByReg ===")
+
+var r9 = testByReg("hello123", "hello[0-9]+")
+pln("Result of regex match: ", r9)
+
+var r10 = testByReg("hello", "[0-9]+")
+pln("Result of regex mismatch: ", r10)
+
+pln("")
+pln("=== Testing testByRegContains ===")
+
+var r11 = testByRegContains("The price is $100", "\\$[0-9]+")
+pln("Result of regex contains match: ", r11)
+
+var r12 = testByRegContains("hello world", "[0-9]+")
+pln("Result of regex contains mismatch: ", r12)
+
+pln("")
+pln("=== Testing dumpVar ===")
+
+var testMap = {"name": "Alice", "age": 30}
+dumpVar(testMap)
+
+var testArr = [1, 2, 3, "four"]
+dumpVar(testArr)
+
+pln("")
+pln("=== Testing debugInfo ===")
+
+var info = debugInfo("arg1", 42)
+pln(info)
+
+pln("")
+pln("=== Testing with custom test names ===")
+
+testByText("expected", "expected", "custom test name")
+testByText("expected", "expected", "named test", "group1")
+
+pln("")
+pln("All tests completed!")
