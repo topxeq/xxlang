@@ -1,10 +1,18 @@
 # JIT Compilation Status Report
 
+> **Note**: This document has been merged into [JIT.md](JIT.md). Please refer to JIT.md for the most up-to-date documentation.
+
 ## Current Status: Production Ready
 
 The JIT (Just-In-Time) compiler for Xxlang is now **production-ready** for compute-intensive workloads. Native x86-64 execution provides near-native performance for pure arithmetic and recursive algorithms on **Linux, macOS, and Windows**.
 
-## Platform Support
+---
+
+*This file is kept for historical reference. For current documentation, see [JIT.md](JIT.md).*
+
+---
+
+## Platform Support (Historical Reference)
 
 | Platform | Architecture | JIT Support | Notes |
 |----------|--------------|-------------|-------|

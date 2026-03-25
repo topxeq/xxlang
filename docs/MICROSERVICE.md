@@ -2,6 +2,22 @@
 
 Xxlang includes a built-in HTTP/HTTPS server for building web applications and microservices.
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Starting the Server](#starting-the-server)
+- [Request Handling](#request-handling)
+- [Microservice Routes](#microservice-routes)
+- [Dynamic Web Pages](#dynamic-web-pages)
+- [XHP Dynamic Pages](#xhp-dynamic-pages)
+- [Built-in HTTP Functions](#built-in-http-functions)
+- [WebSocket Support](#websocket-support)
+- [HTTP Client (net Module)](#http-client-net-module)
+- [JSON API Example](#json-api-example)
+- [Error Handling](#error-handling)
+- [Concurrency in Server](#concurrency-in-server)
+- [Best Practices](#best-practices)
+
 ## Overview
 
 Xxlang server mode provides:

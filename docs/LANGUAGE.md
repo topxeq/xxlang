@@ -6,9 +6,34 @@ Xxlang is a bytecode VM-based scripting language implemented in Go. It features:
 - Bytecode compilation and virtual machine execution
 - First-class functions with closures
 - Object-oriented programming with classes and inheritance
+- Concurrency with goroutines, tubes (channels), and select
 - Module system with import/export
 - Rich standard library
 - Embeddable in Go applications
+
+## Table of Contents
+
+- [CLI Usage](#cli-usage)
+- [REPL Commands](#repl-commands)
+- [Types](#types)
+- [Strings](#strings)
+- [Variables](#variables)
+- [Variable Scope](#variable-scope)
+- [Operators](#operators)
+- [Control Flow](#control-flow)
+- [Functions](#functions)
+- [Arrays](#arrays)
+- [Maps](#maps)
+- [Classes](#classes)
+- [Modules](#modules)
+- [Error Handling](#error-handling)
+- [Concurrency](#concurrency)
+- [Standard Library](#standard-library)
+- [Primitive Type Methods](#primitive-type-methods)
+- [Comments](#comments)
+- [Keywords](#keywords)
+- [Performance Considerations](#performance-considerations)
+- [Embedding in Go](#embedding-in-go)
 
 ## File Extension
 
@@ -1834,6 +1859,95 @@ level1()  // Output: Caught at level1: error at level 3
    }
    ```
 
+## Concurrency
+
+Xxlang provides Go-style concurrency primitives:
+
+### Goroutines
+
+Use the `run` keyword to start a new goroutine:
+
+```xxl
+// Run anonymous block
+run {
+    sleep(100)
+    pln("Background task completed")
+}
+
+// Run function with arguments
+run worker(1, 2, 3)
+```
+
+### Tubes (Channels)
+
+Tubes are typed channels for communication between goroutines:
+
+```xxl
+var tube = makeTube(10)
+
+// Send
+tube <- 42
+
+// Receive
+var val = <- tube
+```
+
+### Select
+
+Use `select` to wait on multiple tube operations:
+
+```xxl
+select {
+    case val = <- tube1:
+        pln("Received from tube1:", val)
+    case tube2 <- data:
+        pln("Sent to tube2")
+    default:
+        pln("No operation ready")
+}
+```
+
+### Context
+
+Context provides timeout and cancellation:
+
+```xxl
+var ctx = contextWithTimeout(5000)  // 5 second timeout
+
+run {
+    sleep(3000)
+    contextCancel(ctx)
+}
+
+if (contextDone(ctx)) {
+    pln("Context cancelled or timed out")
+}
+```
+
+### Sync Primitives
+
+```xxl
+var mutex = newMutex()
+var wg = newWaitGroup()
+var atomic = newAtomic(0)
+
+mutex.lock()
+// critical section
+mutex.unlock()
+
+wg.add(1)
+run {
+    // do work
+    wg.done()
+}
+wg.wait()  // Wait for all goroutines
+
+atomic.add(1)
+pln(atomic.load())
+```
+
+> 📘 **See [CONCURRENCY.md](CONCURRENCY.md) for complete concurrency documentation.**
+
 ## Standard Library
 
 Xxlang includes several standard library modules:
@@ -1847,6 +1961,9 @@ Xxlang includes several standard library modules:
 | `json` | JSON parsing and encoding |
 | `regex` | Regular expressions |
 | `crypto` | Cryptographic functions |
+| `time` | Time and date functions |
+| `http` | HTTP client operations |
+| `file` | File operations |
 
 See [STDLIB.md](STDLIB.md) for complete documentation.
 
@@ -1913,6 +2030,7 @@ All types have universal methods:
 var const func return if else while for in break continue
 class new this super true false null import export
 try catch finally throw switch case default
+run select
 ```
 
 ## Performance Considerations

@@ -9,14 +9,21 @@
 - [字符串函数](#字符串函数)
 - [数学函数](#数学函数)
 - [类型转换函数](#类型转换函数)
-- [类型检查函数](#类型检查函数)
 - [数组函数](#数组函数)
 - [映射函数](#映射函数)
 - [命令行参数函数](#命令行参数函数)
 - [工具函数](#工具函数)
 - [加密函数](#加密函数)
 - [HTTP 客户端函数](#http-客户端函数)
+- [HTTP 服务器函数](#http-服务器函数)
+- [WebSocket 函数](#websocket-函数)
+- [并发函数](#并发函数)
+- [上下文函数](#上下文函数)
+- [类型检查函数](#类型检查函数)
+- [格式化函数](#格式化函数)
 - [动态代码执行](#动态代码执行)
+- [BigInt/BigFloat 函数](#bigintbigfloat-函数)
+- [Reader/Writer 函数](#readerwriter-函数)
 - [类型方法](#类型方法)
 - [标准库模块](#标准库模块)
 
@@ -421,6 +428,52 @@ max(5, 3)    // 5
 max(1.5, 2)  // 2
 ```
 
+### round(value, precision?)
+
+将数值四舍五入到最接近的整数或指定小数位数。
+
+```xxl
+round(3.7)           // 4
+round(3.14159, 2)    // 3.14
+round(3.14159, 4)    // 3.1416
+```
+
+### clamp(value, min, max)
+
+将值限制在 [min, max] 范围内。
+
+```xxl
+clamp(15, 0, 10)     // 10
+clamp(-5, 0, 10)     // 0
+clamp(5, 0, 10)      // 5
+```
+
+### sign(value)
+
+返回数值的符号（-1、0 或 1）。
+
+```xxl
+sign(-42)    // -1
+sign(0)      // 0
+sign(42)     // 1
+```
+
+### random()
+
+返回 0 到 1 之间的随机浮点数。
+
+```xxl
+var r = random()  // 0.0 <= r < 1.0
+```
+
+### randomInt(min, max)
+
+返回指定范围 [min, max] 内的随机整数（包含边界）。
+
+```xxl
+var die = randomInt(1, 6)   // 1, 2, 3, 4, 5, 或 6
+```
+
 ---
 
 ## 类型转换函数
@@ -563,6 +616,146 @@ isNull(null)         // true
 isNull(0)            // false
 ```
 
+### isEmpty(value)
+
+判断值是否为空字符串、空数组、空映射或 null。
+
+```xxl
+isEmpty("")          // true
+isEmpty([])          // true
+isEmpty({})          // true
+isEmpty(null)        // true
+isEmpty([1, 2])      // false
+```
+
+---
+
+## 格式化函数
+
+### format(template, args...)
+
+使用 Go 风格格式化符格式化字符串。
+
+```xxl
+format("Hello %s, you are %d", "Alice", 30)  // "Hello Alice, you are 30"
+format("Pi is %.2f", 3.14159)                 // "Pi is 3.14"
+```
+
+---
+
+## BigInt/BigFloat 函数
+
+Xxlang 支持任意精度数值用于高精度计算。
+
+### bigInt(value)
+
+从字符串或整数创建 BigInt。
+
+```xxl
+var big = bigInt("123456789012345678901234567890")
+var fromInt = bigInt(42)
+```
+
+### bigFloat(value)
+
+从字符串或浮点数创建 BigFloat。
+
+```xxl
+var precise = bigFloat("3.141592653589793238462643383279")
+var fromFloat = bigFloat(3.14)
+```
+
+### isBigInt(value)
+
+判断值是否为 BigInt。
+
+```xxl
+isBigInt(12345678901234567890n)  // true
+isBigInt(42)                      // false
+```
+
+### isBigFloat(value)
+
+判断值是否为 BigFloat。
+
+```xxl
+isBigFloat(3.14159265358979323846m)  // true
+isBigFloat(3.14)                      // false
+```
+
+**BigInt 字面量：** 使用 `n` 后缀：`12345678901234567890n`
+
+**BigFloat 字面量：** 使用 `m` 后缀：`3.14159265358979323846m`
+
+```xxl
+// BigInt 运算
+var a = 1000000000000000000n
+var b = 2000000000000000000n
+pln(a + b)  // 3000000000000000000
+
+// BigFloat 运算（精确精度）
+var pi = 3.14159265358979323846m
+var e = 2.71828182845904523536m
+pln(pi + e)  // 精确结果，无浮点误差
+```
+
+---
+
+## Reader/Writer 函数
+
+用于操作 I/O 读写器的函数。
+
+### getWebReader(url)
+
+返回用于流式读取 HTTP 响应体的读取器。
+
+```xxl
+var reader = getWebReader("https://example.com/large-file.zip")
+```
+
+### ioCopy(dst, src)
+
+从读取器复制数据到写入器。返回复制的字节数和错误。
+
+```xxl
+var bytesCopied, err = ioCopy(dstWriter, srcReader)
+```
+
+### isReader(value)
+
+判断值是否为读取器。
+
+```xxl
+isReader(reader)  // true
+isReader("text")  // false
+```
+
+### isWriter(value)
+
+判断值是否为写入器。
+
+```xxl
+isWriter(writer)  // true
+isWriter({})      // false
+```
+
+### newBytesReader(bytes)
+
+从字节数组创建读取器。
+
+```xxl
+var data = [72, 101, 108, 108, 111]  // "Hello"
+var reader = newBytesReader(data)
+```
+
+### newStringReader(str)
+
+从字符串创建读取器。
+
+```xxl
+var reader = newStringReader("Hello, World!")
+```
+
 ---
 
 ## 数组函数
@@ -644,6 +837,40 @@ containsArr([1, 2, 3], 5)  // false
 sort([3, 1, 2])  // [1, 2, 3]
 ```
 
+### sortByFunc(array, comparator)
+
+使用自定义比较函数对数组进行原地排序。比较函数接收两个索引（idx1, idx2），如果 idx1 处的元素应在 idx2 之前则返回 true。
+
+```xxl
+// 按自定义条件排序
+var users = [
+    {"name": "Bob", "age": 30},
+    {"name": "Alice", "age": 25},
+    {"name": "Charlie", "age": 35}
+]
+
+// 按年龄升序排序
+users.sortByFunc(func(i, j) {
+    return users[i]["age"] < users[j]["age"]
+})
+// 结果: [{"name": "Alice", "age": 25}, {"name": "Bob", "age": 30}, {"name": "Charlie", "age": 35}]
+
+// 按名字字母排序
+users.sortByFunc(func(i, j) {
+    return users[i]["name"] < users[j]["name"]
+})
+// 结果: [{"name": "Alice", "age": 25}, {"name": "Bob", "age": 30}, {"name": "Charlie", "age": 35}]
+
+// 按绝对值排序数字
+var nums = [-5, 2, -1, 8, -3]
+nums.sortByFunc(func(i, j) {
+    return abs(nums[i]) < abs(nums[j])
+})
+// 结果: [-1, 2, -3, -5, 8]
+```
+
+**注意：** 与 `sort()` 不同，`sortByFunc` 是原地排序，返回同一个数组。
+
 ### sum(array)
 
 返回数组元素的和。
@@ -666,6 +893,48 @@ avg([1, 2, 3, 4, 5])  // 3.0
 
 ```xxl
 reverse([1, 2, 3])  // [3, 2, 1]
+```
+
+### unique(array)
+
+返回移除重复值后的数组。
+
+```xxl
+unique([1, 2, 2, 3, 3, 3])  // [1, 2, 3]
+```
+
+### flatten(array, depth?)
+
+将嵌套数组展平到指定深度。
+
+```xxl
+flatten([[1, 2], [3, 4]])           // [1, 2, 3, 4]
+flatten([[[1]], [2]], 1)            // [[1], 2]（深度1）
+flatten([[[1]], [2]])               // [1, 2]（完全展平）
+```
+
+### without(array, values...)
+
+返回移除指定值后的数组。
+
+```xxl
+without([1, 2, 3, 4], 2, 4)  // [1, 3]
+```
+
+### take(array, n)
+
+返回数组的前 n 个元素。
+
+```xxl
+take([1, 2, 3, 4, 5], 3)  // [1, 2, 3]
+```
+
+### drop(array, n)
+
+返回移除前 n 个元素后的数组。
+
+```xxl
+drop([1, 2, 3, 4, 5], 2)  // [3, 4, 5]
 ```
 
 ---
@@ -703,6 +972,23 @@ hasKey({"a": 1}, "b")  // false
 
 ```xxl
 delete({"a": 1, "b": 2}, "a")  // {"b": 2}
+```
+
+### merge(map1, map2, ...)
+
+合并多个映射。对于重复键，后面的映射会覆盖前面的。
+
+```xxl
+merge({"a": 1}, {"b": 2})           // {"a": 1, "b": 2}
+merge({"a": 1}, {"a": 2, "b": 3})    // {"a": 2, "b": 3}
+```
+
+### entries(map)
+
+返回所有 [key, value] 对组成的数组。
+
+```xxl
+entries({"x": 10, "y": 20})  // [["x", 10], ["y", 20]]
 ```
 
 ---
@@ -760,6 +1046,17 @@ var hasDebugEq = switchExists(argsG, "-debug=true") // true（精确匹配）
 - `true` 如果开关精确匹配存在
 - `false` 如果未找到
 
+### toStr(obj)
+
+将任意值转换为其字符串表示。
+
+```xxl
+toStr(42)       // "42"
+toStr(3.14)     // "3.14"
+toStr(true)     // "true"
+toStr([1, 2])   // "[1, 2]"
+```
+
 ---
 
 ## 工具函数
@@ -799,6 +1096,21 @@ runCode("a + b", {"a": 10, "b": 20}) // 30
 ```xxl
 loadPlugin("./myplugin.so")
 ```
+
+### delegate(code)
+
+委托代码执行到 VM 上下文。主要用于嵌入式执行场景，宿主应用需要在受控上下文中执行 Xxlang 代码。
+
+```xxl
+// 在委托上下文中执行代码
+var result = delegate("2 + 2")
+pln(result)  // 4
+
+// 可用于沙箱执行
+delegate("import 'math'; math.sqrt(16)")  // 4
+```
+
+**注意：** `delegate` 函数主要用于高级用例和嵌入式场景。对于大多数动态代码执行需求，请使用 `runCode()`。
 
 ### copy(obj)
 
@@ -1281,6 +1593,552 @@ downloadFile("https://example.com/large.zip", "/path/to/large.zip", 120)
 - `timeout` - 可选超时时间（秒），默认 60
 
 **返回：** 成功返回 null，失败返回 ERROR
+
+---
+
+## HTTP 服务器函数
+
+这些函数在服务器模式下可用（使用 `-server` 标志运行或作为微服务运行时）。
+
+### writeResp(body)
+
+写入 HTTP 响应体。
+
+```xxl
+writeResp("Hello, World!")
+writeResp('{"status": "ok"}')
+```
+
+### setRespHeader(key, value)
+
+设置响应头。
+
+```xxl
+setRespHeader("Content-Type", "application/json")
+setRespHeader("X-Custom-Header", "value")
+```
+
+### addRespHeader(key, value)
+
+添加响应头（追加到现有头部）。
+
+```xxl
+addRespHeader("Set-Cookie", "session=abc123")
+```
+
+### getReqHeader(key)
+
+获取请求头值。
+
+```xxl
+var contentType = getReqHeader("Content-Type")
+var auth = getReqHeader("Authorization")
+```
+
+### getReqHeaders()
+
+获取所有请求头作为映射。
+
+```xxl
+var headers = getReqHeaders()
+pln(headers["Content-Type"])
+```
+
+### setCookie(name, value, options?)
+
+设置响应 cookie。
+
+```xxl
+setCookie("session", "abc123")
+setCookie("token", "xyz", {"HttpOnly": true, "Secure": true, "MaxAge": 3600})
+```
+
+### getCookie(name)
+
+获取请求中的 cookie 值。
+
+```xxl
+var session = getCookie("session")
+```
+
+### getCookies()
+
+获取所有 cookie 作为映射。
+
+```xxl
+var cookies = getCookies()
+pln(cookies["session"])
+```
+
+### parseForm()
+
+解析请求体中的 URL 编码表单数据。
+
+```xxl
+var form = parseForm()
+pln(form["username"])
+```
+
+### parseJSON()
+
+解析请求体中的 JSON 数据。
+
+```xxl
+var data = parseJSON()
+pln(data["name"])
+```
+
+### getReqBody()
+
+获取原始请求体字符串。
+
+```xxl
+var body = getReqBody()
+pln(body)
+```
+
+### getReqBodyBytes()
+
+获取原始请求体字节数组。
+
+```xxl
+var bytes = getReqBodyBytes()
+```
+
+### status(code)
+
+设置 HTTP 响应状态码。
+
+```xxl
+status(404)
+status(500)
+writeResp("Not Found")
+```
+
+### redirect(url)
+
+重定向到另一个 URL。
+
+```xxl
+redirect("/login")
+redirect("https://example.com")
+```
+
+### serveFile(path)
+
+提供静态文件服务。
+
+```xxl
+serveFile("./static/index.html")
+serveFile("/var/www/files/document.pdf")
+```
+
+### getMimeType(filename)
+
+获取文件的 MIME 类型。
+
+```xxl
+var mime = getMimeType("document.pdf")  // "application/pdf"
+var mime2 = getMimeType("image.png")     // "image/png"
+```
+
+### setContentType(contentType)
+
+设置 Content-Type 头。
+
+```xxl
+setContentType("application/json")
+setContentType("text/html; charset=utf-8")
+```
+
+### queryParam(key)
+
+获取查询参数值。
+
+```xxl
+// URL: /search?q=hello&page=1
+var q = queryParam("q")       // "hello"
+var page = queryParam("page") // "1"
+```
+
+### queryParams()
+
+获取所有查询参数作为映射。
+
+```xxl
+var params = queryParams()
+pln(params["q"])
+```
+
+### formValue(key)
+
+获取表单值（来自 URL 编码的 POST 请求体）。
+
+```xxl
+var username = formValue("username")
+```
+
+### httpStatusName(code)
+
+获取 HTTP 状态码对应的名称。
+
+```xxl
+httpStatusName(200)  // "OK"
+httpStatusName(404)  // "Not Found"
+httpStatusName(500)  // "Internal Server Error"
+```
+
+### isHttpReq(value)
+
+判断值是否为 HTTP 请求对象。
+
+```xxl
+isHttpReq(req)  // true
+isHttpReq({})   // false
+```
+
+### isHttpResp(value)
+
+判断值是否为 HTTP 响应对象。
+
+```xxl
+isHttpResp(resp)  // true
+isHttpResp({})    // false
+```
+
+### urlEncode(str)
+
+URL 编码字符串。
+
+```xxl
+urlEncode("hello world")  // "hello+world"
+urlEncode("a=b&c=d")      // "a%3Db%26c%3Dd"
+```
+
+### urlDecode(str)
+
+URL 解码字符串。
+
+```xxl
+urlDecode("hello+world")  // "hello world"
+urlDecode("a%3Db")        // "a=b"
+```
+
+---
+
+## WebSocket 函数
+
+### webSocket(upgrade?)
+
+将 HTTP 连接升级为 WebSocket。返回 WebSocket 连接对象。
+
+```xxl
+var ws = webSocket()
+if (isWebSocket(ws)) {
+    // 处理 WebSocket 连接
+    var msg = wsReadMsg(ws)
+    wsSendText(ws, "Echo: " + msg)
+    wsClose(ws)
+}
+```
+
+### wsReadMsg(ws)
+
+从 WebSocket 连接读取消息。返回消息字符串。
+
+```xxl
+var msg = wsReadMsg(ws)
+pln("收到:", msg)
+```
+
+### wsSendText(ws, message)
+
+通过 WebSocket 发送文本消息。
+
+```xxl
+wsSendText(ws, "Hello, client!")
+```
+
+### wsSendBinary(ws, data)
+
+通过 WebSocket 发送二进制数据。
+
+```xxl
+wsSendBinary(ws, [1, 2, 3, 4, 5])
+```
+
+### wsSendClose(ws)
+
+向 WebSocket 客户端发送关闭帧。
+
+```xxl
+wsSendClose(ws)
+```
+
+### wsClose(ws)
+
+关闭 WebSocket 连接。
+
+```xxl
+wsClose(ws)
+```
+
+### isWebSocket(value)
+
+判断值是否为 WebSocket 连接对象。
+
+```xxl
+isWebSocket(ws)  // true
+isWebSocket({})  // false
+```
+
+---
+
+## 并发函数
+
+Xxlang 提供类似 Go 的并发原语。详见 [CONCURRENCY_zh.md](CONCURRENCY_zh.md)。
+
+### makeTube(type?, buffer?)
+
+创建新的 tube（通道）。可选类型字符串和缓冲区大小。
+
+```xxl
+var tube = makeTube(10)          // 缓冲 tube（容量10）
+var intTube = makeTube("INT", 5) // 整数类型的 tube
+var syncTube = makeTube(0)       // 无缓冲（同步）
+```
+
+### closeTube(tube)
+
+关闭 tube。关闭后，发送会 panic，接收会返回 null。
+
+```xxl
+closeTube(tube)
+```
+
+### tubeLen(tube)
+
+返回 tube 中的元素数量。
+
+```xxl
+tubeLen(tube)  // 当前缓冲的元素数量
+```
+
+### tubeCap(tube)
+
+返回 tube 的容量。
+
+```xxl
+tubeCap(tube)  // 缓冲区大小
+```
+
+### tubeClosed(tube)
+
+返回 tube 是否已关闭。
+
+```xxl
+if (tubeClosed(tube)) {
+    pln("Tube 已关闭")
+}
+```
+
+### tubeSend(tube, value)
+
+向 tube 发送值。如果 tube 满则阻塞。
+
+```xxl
+tubeSend(tube, 42)
+```
+
+### tubeRecv(tube)
+
+从 tube 接收值。如果 tube 空则阻塞。关闭后返回 null。
+
+```xxl
+var val = tubeRecv(tube)
+```
+
+### tubeTrySend(tube, value)
+
+尝试非阻塞发送。发送成功返回 true，tube 满返回 false。
+
+```xxl
+if (!tubeTrySend(tube, data)) {
+    pln("Tube 已满，无法发送")
+}
+```
+
+### tubeTryRecv(tube)
+
+尝试非阻塞接收。返回 `[value, ok]`，ok 为 true 表示成功接收。
+
+```xxl
+var val, ok = tubeTryRecv(tube)
+if (!ok) {
+    pln("没有可用数据")
+}
+```
+
+### newMutex()
+
+创建互斥锁。
+
+```xxl
+var mutex = newMutex()
+mutex.lock()
+// 临界区
+mutex.unlock()
+```
+
+### newRWMutex()
+
+创建读写锁。
+
+```xxl
+var rwmutex = newRWMutex()
+rwmutex.rLock()   // 读锁
+// 读操作
+rwmutex.rUnlock()
+rwmutex.lock()    // 写锁
+// 写操作
+rwmutex.unlock()
+```
+
+### newWaitGroup()
+
+创建等待组，用于协程同步。
+
+```xxl
+var wg = newWaitGroup()
+
+wg.add(1)
+run {
+    // 执行工作
+    wg.done()
+}
+
+wg.wait()  // 等待所有协程完成
+```
+
+### newOnce()
+
+创建一次性执行守卫。
+
+```xxl
+var once = newOnce()
+once.do(func() {
+    pln("这只执行一次")
+})
+```
+
+### newCond()
+
+创建条件变量用于同步。
+
+```xxl
+var cond = newCond()
+cond.wait()      // 等待信号
+cond.signal()    // 唤醒一个等待者
+cond.broadcast() // 唤醒所有等待者
+```
+
+### newAtomic(value?)
+
+创建原子整数用于无锁操作。
+
+```xxl
+var counter = newAtomic(0)
+
+counter.add(1)    // 原子加
+counter.load()    // 原子读取
+counter.store(10) // 原子存储
+counter.swap(5)   // 原子交换（返回旧值）
+```
+
+---
+
+## 上下文函数
+
+Context 提供操作的超时和取消功能。
+
+### newContext()
+
+创建新的上下文。
+
+```xxl
+var ctx = newContext()
+```
+
+### contextWithTimeout(timeoutMs)
+
+创建带超时的上下文。
+
+```xxl
+var ctx = contextWithTimeout(5000)  // 5秒超时
+```
+
+### contextWithCancel(parent?)
+
+创建可取消的上下文。
+
+```xxl
+var ctx = contextWithCancel()
+contextCancel(ctx)  // 取消上下文
+```
+
+### contextWithDeadline(deadlineMs)
+
+创建带截止时间的上下文（绝对 Unix 时间戳，毫秒）。
+
+```xxl
+var deadline = nowMs() + 10000  // 10秒后
+var ctx = contextWithDeadline(deadline)
+```
+
+### contextCancel(ctx)
+
+取消上下文。
+
+```xxl
+contextCancel(ctx)
+```
+
+### contextDone(ctx)
+
+返回上下文是否已完成（取消或超时）。
+
+```xxl
+if (contextDone(ctx)) {
+    pln("操作已取消或超时")
+}
+```
+
+### contextErr(ctx)
+
+返回上下文错误（未完成返回 null，取消/超时返回错误字符串）。
+
+```xxl
+var err = contextErr(ctx)
+if (err != null) {
+    pln("上下文错误:", err)
+}
+```
+
+### contextIsDone(ctx)
+
+返回上下文是否已完成（contextDone 的别名）。
+
+```xxl
+contextIsDone(ctx)
+```
+
+### contextDeadline(ctx)
+
+返回上下文的截止时间，无截止时间返回 0。
+
+```xxl
+var deadline = contextDeadline(ctx)
+```
 
 ---
 

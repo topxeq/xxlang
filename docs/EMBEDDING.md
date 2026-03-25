@@ -8,6 +8,23 @@ Xxlang can be embedded in Go applications to provide scripting capabilities. Thi
 - Passing values between Go and Xxlang
 - Module loading
 - Error handling
+- High-performance Go function integration
+
+## Table of Contents
+
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Configuration Options](#configuration-options)
+- [Passing Values from Go to Xxlang](#passing-values-from-go-to-xxlang)
+- [Getting Values from Xxlang](#getting-values-from-xxlang)
+- [Type Conversion Helpers](#type-conversion-helpers)
+- [Calling Xxlang Functions from Go](#calling-xxlang-functions-from-go)
+- [Error Handling](#error-handling)
+- [Module Loading](#module-loading)
+- [Complete Example](#complete-example)
+- [Best Practices](#best-practices)
+- [High Performance via Go Functions](#high-performance-via-go-functions)
+- [Thread Safety](#thread-safety)
 
 ## Installation
 
@@ -810,5 +827,388 @@ func evalSafe(code string) (objects.Object, error) {
     mu.Lock()
     defer mu.Unlock()
     return interp.Eval(code)
+}
+```
+
+## Common Embedding Scenarios
+
+### 1. Configuration Script Engine
+
+Use Xxlang as a configuration language with computed values:
+
+```go
+package main
+
+import (
+    "fmt"
+    "github.com/topxeq/xxlang/pkg/interpreter"
+)
+
+func main() {
+    interp := interpreter.New(interpreter.WithStdlib())
+
+    // Load configuration script
+    configScript := `
+        var config = {
+            "host": "localhost",
+            "port": 8080,
+            "maxConnections": 100,
+            "timeout": 30,
+            "debug": true
+        }
+
+        // Computed configuration
+        var effectiveTimeout = config.timeout * 2
+        var connectionString = config.host + ":" + config.port
+    `
+
+    _, err := interp.Eval(configScript)
+    if err != nil {
+        panic(err)
+    }
+
+    // Get configuration values
+    if cfg, ok := interp.GetGlobalAs("config"); ok {
+        if m, ok := cfg.(map[string]interface{}); ok {
+            fmt.Printf("Host: %v\n", m["host"])
+            fmt.Printf("Port: %v\n", m["port"])
+            fmt.Printf("Debug: %v\n", m["debug"])
+        }
+    }
+}
+```
+
+### 2. Plugin System for Go Applications
+
+Allow users to extend your application with scripts:
+
+```go
+package main
+
+import (
+    "fmt"
+    "github.com/topxeq/xxlang/pkg/interpreter"
+    "github.com/topxeq/xxlang/pkg/objects"
+)
+
+// Application context exposed to scripts
+type AppContext struct {
+    Name    string
+    Version string
+}
+
+func main() {
+    interp := interpreter.New(interpreter.WithStdlib())
+
+    // Expose application API to scripts
+    interp.SetGlobal("app", &objects.Builtin{
+        Fn: func(args ...objects.Object) objects.Object {
+            return &objects.String{Value: "MyApp v1.0"}
+        },
+    })
+
+    // Expose logging function
+    interp.SetGlobal("log", &objects.Builtin{
+        Fn: func(args ...objects.Object) objects.Object {
+            if len(args) > 0 {
+                fmt.Println("[PLUGIN]", args[0].Inspect())
+            }
+            return &objects.Null{}
+        },
+    })
+
+    // User plugin script
+    pluginScript := `
+        func onInit() {
+            log("Plugin initialized")
+        }
+
+        func processData(data) {
+            log("Processing: " + data)
+            return data * 2
+        }
+
+        onInit()
+    `
+
+    interp.Eval(pluginScript)
+
+    // Call plugin function
+    result, _ := interp.Eval(`processData(42)`)
+    fmt.Println("Result:", result.Inspect())
+}
+```
+
+### 3. Template Engine
+
+Use Xxlang for dynamic content generation:
+
+```go
+package main
+
+import (
+    "fmt"
+    "strings"
+    "github.com/topxeq/xxlang/pkg/interpreter"
+)
+
+func renderTemplate(template string, data map[string]interface{}) (string, error) {
+    interp := interpreter.New(interpreter.WithStdlib())
+
+    // Pass data to interpreter
+    for k, v := range data {
+        interp.SetGlobal(k, v)
+    }
+
+    // Execute template
+    result, err := interp.Eval(template)
+    if err != nil {
+        return "", err
+    }
+
+    return result.Inspect(), nil
+}
+
+func main() {
+    template := `"Hello, " + name + "! You have " + count + " messages."`
+
+    data := map[string]interface{}{
+        "name":  "Alice",
+        "count": 5,
+    }
+
+    output, err := renderTemplate(template, data)
+    if err != nil {
+        panic(err)
+    }
+
+    fmt.Println(output) // Hello, Alice! You have 5 messages.
+}
+```
+
+### 4. Rule Engine
+
+Implement business rules in scripts:
+
+```go
+package main
+
+import (
+    "fmt"
+    "github.com/topxeq/xxlang/pkg/interpreter"
+    "github.com/topxeq/xxlang/pkg/objects"
+)
+
+type Order struct {
+    Amount   float64
+    Items    int
+    Customer string
+    Region   string
+}
+
+func applyRules(order Order) (float64, []string) {
+    interp := interpreter.New(interpreter.WithStdlib())
+
+    // Pass order data
+    interp.SetGlobal("amount", order.Amount)
+    interp.SetGlobal("items", order.Items)
+    interp.SetGlobal("customer", order.Customer)
+    interp.SetGlobal("region", order.Region)
+
+    // Define discount rules
+    rulesScript := `
+        var discounts = []
+        var totalDiscount = 0
+
+        // Bulk discount
+        if (items >= 10) {
+            totalDiscount = totalDiscount + amount * 0.1
+            discounts = push(discounts, "Bulk discount: 10%")
+        }
+
+        // VIP customer
+        if (customer == "VIP") {
+            totalDiscount = totalDiscount + amount * 0.05
+            discounts = push(discounts, "VIP discount: 5%")
+        }
+
+        // Regional promotion
+        if (region == "US") {
+            totalDiscount = totalDiscount + 10
+            discounts = push(discounts, "Regional promo: $10")
+        }
+
+        [totalDiscount, discounts]
+    `
+
+    result, _ := interp.Eval(rulesScript)
+
+    // Extract results
+    if arr, ok := result.(*objects.Array); ok {
+        discount := arr.Elements[0].(*objects.Float).Value
+        var applied []string
+        for _, d := range arr.Elements[1].(*objects.Array).Elements {
+            applied = append(applied, d.(*objects.String).Value)
+        }
+        return discount, applied
+    }
+
+    return 0, nil
+}
+
+func main() {
+    order := Order{
+        Amount:   500,
+        Items:    12,
+        Customer: "VIP",
+        Region:   "US",
+    }
+
+    discount, rules := applyRules(order)
+    fmt.Printf("Order: $%.2f\n", order.Amount)
+    fmt.Printf("Discount: $%.2f\n", discount)
+    fmt.Println("Applied rules:")
+    for _, r := range rules {
+        fmt.Println("  -", r)
+    }
+}
+```
+
+### 5. Data Transformation Pipeline
+
+Use Xxlang for ETL-like data processing:
+
+```go
+package main
+
+import (
+    "fmt"
+    "github.com/topxeq/xxlang/pkg/interpreter"
+)
+
+func transformData(data []map[string]interface{}, transformScript string) ([]map[string]interface{}, error) {
+    interp := interpreter.New(interpreter.WithStdlib())
+
+    // Convert data to Xxlang array
+    interp.Eval("var data = []")
+    for _, item := range data {
+        for k, v := range item {
+            interp.SetGlobal("_temp", v)
+            interp.Eval("var _item = " + k + " + _temp") // Simplified
+        }
+    }
+
+    // Apply transformation
+    result, err := interp.Eval(transformScript)
+    if err != nil {
+        return nil, err
+    }
+
+    // Convert back to Go
+    if arr, ok := result.(*objects.Array); ok {
+        var output []map[string]interface{}
+        for _, elem := range arr.Elements {
+            if m, ok := elem.(*objects.Map); ok {
+                item := make(map[string]interface{})
+                for k, v := range m.Value {
+                    item[k] = interpreter.ToGo(v)
+                }
+                output = append(output, item)
+            }
+        }
+        return output, nil
+    }
+
+    return nil, nil
+}
+
+func main() {
+    data := []map[string]interface{}{
+        {"name": "Alice", "score": 85},
+        {"name": "Bob", "score": 92},
+    }
+
+    script := `
+        var result = []
+        for (item in data) {
+            var transformed = {
+                "name": item.name,
+                "grade": item.score >= 90 ? "A" : "B"
+            }
+            result = push(result, transformed)
+        }
+        result
+    `
+
+    output, err := transformData(data, script)
+    if err != nil {
+        panic(err)
+    }
+
+    fmt.Printf("Transformed: %v\n", output)
+}
+```
+
+### 6. Web Server Script Handler
+
+Embed Xxlang in a web server for dynamic request handling:
+
+```go
+package main
+
+import (
+    "fmt"
+    "net/http"
+    "github.com/topxeq/xxlang/pkg/interpreter"
+    "github.com/topxeq/xxlang/pkg/objects"
+)
+
+func scriptHandler(script string) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        interp := interpreter.New(interpreter.WithStdlib())
+
+        // Pass HTTP context
+        interp.SetGlobal("method", r.Method)
+        interp.SetGlobal("path", r.URL.Path)
+        interp.SetGlobal("query", r.URL.Query().Get("q"))
+
+        // Provide response writer
+        interp.SetGlobal("respond", &objects.Builtin{
+            Fn: func(args ...objects.Object) objects.Object {
+                if len(args) > 0 {
+                    w.Write([]byte(args[0].Inspect()))
+                }
+                return &objects.Null{}
+            },
+        })
+
+        // Execute script
+        result, err := interp.Eval(script)
+        if err != nil {
+            http.Error(w, err.Error(), 500)
+            return
+        }
+
+        // Use result if respond wasn't called
+        if result != nil && result.Type() != "NULL" {
+            w.Write([]byte(result.Inspect()))
+        }
+    }
+}
+
+func main() {
+    // Dynamic endpoint
+    http.HandleFunc("/api/hello", scriptHandler(`
+        var name = query || "World"
+        respond("Hello, " + name + "!")
+    `))
+
+    http.HandleFunc("/api/calc", scriptHandler(`
+        var a = int(query)
+        respond("Result: " + (a * 2))
+    `))
+
+    fmt.Println("Server starting on :8080")
+    http.ListenAndServe(":8080", nil)
 }
 ```

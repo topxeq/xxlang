@@ -2,6 +2,19 @@
 
 Xxlang 提供 Go 风格的并发原语，用于构建并发应用程序。
 
+## 目录
+
+- [概述](#概述)
+- [Goroutine](#goroutine)
+- [Tube（管道）](#tube管道)
+- [Select 语句](#select-语句)
+- [Context（上下文）](#context上下文)
+- [同步原语](#同步原语)
+- [内置函数](#内置函数)
+- [标准库：concurrent 模块](#标准库concurrent-模块)
+- [完整示例](#完整示例工作池)
+- [最佳实践](#最佳实践)
+
 ## 概述
 
 Xxlang 的并发模型灵感来自 Go 的 CSP（通信顺序进程）模型：

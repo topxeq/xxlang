@@ -190,6 +190,53 @@ io.println(args[0])  // 程序名
 
 ---
 
+## file
+
+流式文件操作，提供 File 对象进行读写、定位、锁定等操作。
+
+> **完整文档请参阅 [文件操作指南](FILE.md)。**
+
+### 快速入门
+
+```xxl
+import * as file from "file"
+
+// 简单读写
+var content = file.readAll("data.txt")
+file.writeAll("output.txt", "你好！")
+
+// 流式操作
+var f = file.openWrite("log.txt")
+f.writeLine("日志条目 1")
+f.writeLine("日志条目 2")
+f.close()
+
+// 文件信息
+var info = file.stat("data.txt")
+io.println("大小: " + info.size().toStr())
+io.println("修改时间: " + info.modTime())
+```
+
+### 主要函数
+
+| 函数 | 说明 |
+|------|------|
+| `open(path, mode)` | 以指定模式打开文件（"r"、"w"、"a"、"rw"） |
+| `openRead(path)` | 以读取模式打开 |
+| `openWrite(path)` | 以写入模式打开（截断） |
+| `openAppend(path)` | 以追加模式打开 |
+| `create(path)` | 创建新文件 |
+| `readAll(path)` | 读取整个文件为字符串 |
+| `writeAll(path, content)` | 将字符串写入文件 |
+| `readLines(path)` | 读取所有行为数组 |
+| `copy(src, dst)` | 复制文件 |
+| `move(src, dst)` | 移动/重命名文件 |
+| `exists(path)` | 检查文件是否存在 |
+| `stat(path)` | 获取 FileInfo 对象 |
+| `glob(pattern)` | 按模式匹配文件 |
+
+---
+
 ## os
 
 操作系统工具和配置管理。
@@ -2117,6 +2164,98 @@ time.isLeapYear(2023)  // false
 time.daysInMonth(2024, 2)  // 29 (闰年)
 time.daysInMonth(2023, 2)  // 28
 time.daysInMonth(2024, 1)  // 31
+```
+
+---
+
+## fmt
+
+格式化工具。
+
+#### sprintf(format, args...)
+使用 Go 风格格式化符返回格式化字符串。
+
+```xxl
+import "fmt"
+var msg = fmt.sprintf("姓名: %s, 年龄: %d", "张三", 30)
+pln(msg)  // 姓名: 张三, 年龄: 30
+```
+
+#### printf(format, args...)
+打印格式化字符串到标准输出。
+
+```xxl
+fmt.printf("值: %d\n", 42)
+```
+
+---
+
+## encoding
+
+编码/解码工具（Base64、Hex）。
+
+#### base64Encode(s)
+将字符串编码为 base64。
+
+```xxl
+import "encoding"
+encoding.base64Encode("hello")  // "aGVsbG8="
+```
+
+#### base64Decode(s)
+解码 base64 字符串。
+
+```xxl
+encoding.base64Decode("aGVsbG8=")  // "hello"
+```
+
+#### hexEncode(s)
+将字符串编码为十六进制。
+
+```xxl
+encoding.hexEncode("hello")  // "68656c6c6f"
+```
+
+#### hexDecode(s)
+解码十六进制字符串。
+
+```xxl
+encoding.hexDecode("68656c6c6f")  // "hello"
+```
+
+---
+
+## uuid
+
+UUID 生成。
+
+#### uuid()
+生成随机 UUID (v4) 字符串。
+
+```xxl
+import "uuid"
+var id = uuid.uuid()  // "550e8400-e29b-41d4-a716-446655440000"
+```
+
+---
+
+## debug
+
+调试工具。
+
+#### stacktrace()
+返回当前调用栈字符串。
+
+```xxl
+import "debug"
+pln(debug.stacktrace())
+```
+
+#### gc()
+触发垃圾回收。
+
+```xxl
+debug.gc()
 ```
 
 ---

@@ -15,9 +15,15 @@ This document provides a comprehensive reference for all built-in functions in X
 - [Utility Functions](#utility-functions)
 - [Encryption Functions](#encryption-functions)
 - [HTTP Client Functions](#http-client-functions)
+- [HTTP Server Functions](#http-server-functions)
+- [WebSocket Functions](#websocket-functions)
+- [Concurrency Functions](#concurrency-functions)
+- [Context Functions](#context-functions)
 - [Type Checking Functions](#type-checking-functions)
 - [Formatting Functions](#formatting-functions)
 - [Dynamic Code Execution](#dynamic-code-execution)
+- [BigInt/BigFloat Functions](#bigintbigfloat-functions)
+- [Reader/Writer Functions](#readerwriter-functions)
 - [Type Methods](#type-methods)
 - [Standard Library Modules](#standard-library-modules)
 
@@ -1344,6 +1350,552 @@ downloadFile("https://example.com/large.zip", "/path/to/large.zip", 120)
 
 ---
 
+## HTTP Server Functions
+
+These functions are available in server mode (when running with `-server` flag or as a microservice).
+
+### writeResp(body)
+
+Writes response body to the HTTP response.
+
+```xxl
+writeResp("Hello, World!")
+writeResp('{"status": "ok"}')
+```
+
+### setRespHeader(key, value)
+
+Sets a response header.
+
+```xxl
+setRespHeader("Content-Type", "application/json")
+setRespHeader("X-Custom-Header", "value")
+```
+
+### addRespHeader(key, value)
+
+Adds a response header (appends to existing).
+
+```xxl
+addRespHeader("Set-Cookie", "session=abc123")
+```
+
+### getReqHeader(key)
+
+Gets a request header value.
+
+```xxl
+var contentType = getReqHeader("Content-Type")
+var auth = getReqHeader("Authorization")
+```
+
+### getReqHeaders()
+
+Gets all request headers as a map.
+
+```xxl
+var headers = getReqHeaders()
+pln(headers["Content-Type"])
+```
+
+### setCookie(name, value, options?)
+
+Sets a cookie in the response.
+
+```xxl
+setCookie("session", "abc123")
+setCookie("token", "xyz", {"HttpOnly": true, "Secure": true, "MaxAge": 3600})
+```
+
+### getCookie(name)
+
+Gets a cookie value from the request.
+
+```xxl
+var session = getCookie("session")
+```
+
+### getCookies()
+
+Gets all cookies as a map.
+
+```xxl
+var cookies = getCookies()
+pln(cookies["session"])
+```
+
+### parseForm()
+
+Parses URL-encoded form data from the request body.
+
+```xxl
+var form = parseForm()
+pln(form["username"])
+```
+
+### parseJSON()
+
+Parses JSON body from the request.
+
+```xxl
+var data = parseJSON()
+pln(data["name"])
+```
+
+### getReqBody()
+
+Gets the raw request body as a string.
+
+```xxl
+var body = getReqBody()
+pln(body)
+```
+
+### getReqBodyBytes()
+
+Gets the raw request body as a byte array.
+
+```xxl
+var bytes = getReqBodyBytes()
+```
+
+### status(code)
+
+Sets the HTTP response status code.
+
+```xxl
+status(404)
+status(500)
+writeResp("Not Found")
+```
+
+### redirect(url)
+
+Redirects to another URL.
+
+```xxl
+redirect("/login")
+redirect("https://example.com")
+```
+
+### serveFile(path)
+
+Serves a static file.
+
+```xxl
+serveFile("./static/index.html")
+serveFile("/var/www/files/document.pdf")
+```
+
+### getMimeType(filename)
+
+Gets the MIME type for a file.
+
+```xxl
+var mime = getMimeType("document.pdf")  // "application/pdf"
+var mime2 = getMimeType("image.png")     // "image/png"
+```
+
+### setContentType(contentType)
+
+Sets the Content-Type header.
+
+```xxl
+setContentType("application/json")
+setContentType("text/html; charset=utf-8")
+```
+
+### queryParam(key)
+
+Gets a query parameter value.
+
+```xxl
+// URL: /search?q=hello&page=1
+var q = queryParam("q")     // "hello"
+var page = queryParam("page") // "1"
+```
+
+### queryParams()
+
+Gets all query parameters as a map.
+
+```xxl
+var params = queryParams()
+pln(params["q"])
+```
+
+### formValue(key)
+
+Gets a form value (from URL-encoded POST body).
+
+```xxl
+var username = formValue("username")
+```
+
+### httpStatusName(code)
+
+Gets the HTTP status name for a code.
+
+```xxl
+httpStatusName(200)  // "OK"
+httpStatusName(404)  // "Not Found"
+httpStatusName(500)  // "Internal Server Error"
+```
+
+### isHttpReq(value)
+
+Returns true if value is an HTTP request object.
+
+```xxl
+isHttpReq(req)  // true
+isHttpReq({})   // false
+```
+
+### isHttpResp(value)
+
+Returns true if value is an HTTP response object.
+
+```xxl
+isHttpResp(resp)  // true
+isHttpResp({})    // false
+```
+
+### urlEncode(str)
+
+URL-encodes a string.
+
+```xxl
+urlEncode("hello world")  // "hello+world"
+urlEncode("a=b&c=d")      // "a%3Db%26c%3Dd"
+```
+
+### urlDecode(str)
+
+URL-decodes a string.
+
+```xxl
+urlDecode("hello+world")  // "hello world"
+urlDecode("a%3Db")        // "a=b"
+```
+
+---
+
+## WebSocket Functions
+
+### webSocket(upgrade?)
+
+Upgrades an HTTP connection to WebSocket. Returns a WebSocket connection object.
+
+```xxl
+var ws = webSocket()
+if (isWebSocket(ws)) {
+    // Handle WebSocket connection
+    var msg = wsReadMsg(ws)
+    wsSendText(ws, "Echo: " + msg)
+    wsClose(ws)
+}
+```
+
+### wsReadMsg(ws)
+
+Reads a message from a WebSocket connection. Returns the message as a string.
+
+```xxl
+var msg = wsReadMsg(ws)
+pln("Received:", msg)
+```
+
+### wsSendText(ws, message)
+
+Sends a text message through a WebSocket connection.
+
+```xxl
+wsSendText(ws, "Hello, client!")
+```
+
+### wsSendBinary(ws, data)
+
+Sends binary data through a WebSocket connection.
+
+```xxl
+wsSendBinary(ws, [1, 2, 3, 4, 5])
+```
+
+### wsSendClose(ws)
+
+Sends a close frame to the WebSocket client.
+
+```xxl
+wsSendClose(ws)
+```
+
+### wsClose(ws)
+
+Closes the WebSocket connection.
+
+```xxl
+wsClose(ws)
+```
+
+### isWebSocket(value)
+
+Returns true if value is a WebSocket connection object.
+
+```xxl
+isWebSocket(ws)  // true
+isWebSocket({})  // false
+```
+
+---
+
+## Concurrency Functions
+
+Xxlang provides Go-style concurrency primitives. See [CONCURRENCY.md](CONCURRENCY.md) for detailed documentation.
+
+### makeTube(type?, buffer?)
+
+Creates a new tube (channel). Optional type string and buffer size.
+
+```xxl
+var tube = makeTube(10)          // Buffered tube (capacity 10)
+var intTube = makeTube("INT", 5) // Typed tube for integers
+var syncTube = makeTube(0)       // Unbuffered (synchronous)
+```
+
+### closeTube(tube)
+
+Closes a tube. After closing, sends will panic and receives will return null.
+
+```xxl
+closeTube(tube)
+```
+
+### tubeLen(tube)
+
+Returns the number of elements in the tube.
+
+```xxl
+tubeLen(tube)  // Current number of buffered elements
+```
+
+### tubeCap(tube)
+
+Returns the capacity of the tube.
+
+```xxl
+tubeCap(tube)  // Buffer size
+```
+
+### tubeClosed(tube)
+
+Returns true if the tube is closed.
+
+```xxl
+if (tubeClosed(tube)) {
+    pln("Tube is closed")
+}
+```
+
+### tubeSend(tube, value)
+
+Sends a value to a tube. Blocking if tube is full.
+
+```xxl
+tubeSend(tube, 42)
+```
+
+### tubeRecv(tube)
+
+Receives a value from a tube. Blocking if tube is empty. Returns null if closed.
+
+```xxl
+var val = tubeRecv(tube)
+```
+
+### tubeTrySend(tube, value)
+
+Attempts to send without blocking. Returns true if sent, false if tube is full.
+
+```xxl
+if (!tubeTrySend(tube, data)) {
+    pln("Tube is full, couldn't send")
+}
+```
+
+### tubeTryRecv(tube)
+
+Attempts to receive without blocking. Returns `[value, ok]` where ok is true if received.
+
+```xxl
+var val, ok = tubeTryRecv(tube)
+if (!ok) {
+    pln("No data available")
+}
+```
+
+### newMutex()
+
+Creates a new mutex for mutual exclusion.
+
+```xxl
+var mutex = newMutex()
+mutex.lock()
+// Critical section
+mutex.unlock()
+```
+
+### newRWMutex()
+
+Creates a new read-write mutex.
+
+```xxl
+var rwmutex = newRWMutex()
+rwmutex.rLock()   // Read lock
+// Read operations
+rwmutex.rUnlock()
+rwmutex.lock()    // Write lock
+// Write operations
+rwmutex.unlock()
+```
+
+### newWaitGroup()
+
+Creates a new wait group for coordinating goroutines.
+
+```xxl
+var wg = newWaitGroup()
+
+wg.add(1)
+run {
+    // Do work
+    wg.done()
+}
+
+wg.wait()  // Wait for all goroutines
+```
+
+### newOnce()
+
+Creates a one-time execution guard.
+
+```xxl
+var once = newOnce()
+once.do(func() {
+    pln("This will only execute once")
+})
+```
+
+### newCond()
+
+Creates a condition variable for synchronization.
+
+```xxl
+var cond = newCond()
+cond.wait()     // Wait for signal
+cond.signal()   // Signal one waiter
+cond.broadcast() // Signal all waiters
+```
+
+### newAtomic(value?)
+
+Creates an atomic integer for lock-free operations.
+
+```xxl
+var counter = newAtomic(0)
+
+counter.add(1)    // Atomic add
+counter.load()    // Atomic load
+counter.store(10) // Atomic store
+counter.swap(5)   // Atomic swap (returns old value)
+```
+
+---
+
+## Context Functions
+
+Context provides timeout and cancellation for operations.
+
+### newContext()
+
+Creates a new context.
+
+```xxl
+var ctx = newContext()
+```
+
+### contextWithTimeout(timeoutMs)
+
+Creates a context with a timeout.
+
+```xxl
+var ctx = contextWithTimeout(5000)  // 5 second timeout
+```
+
+### contextWithCancel(parent?)
+
+Creates a context that can be cancelled.
+
+```xxl
+var ctx = contextWithCancel()
+contextCancel(ctx)  // Cancel the context
+```
+
+### contextWithDeadline(deadlineMs)
+
+Creates a context with a deadline (absolute Unix timestamp in milliseconds).
+
+```xxl
+var deadline = nowMs() + 10000  // 10 seconds from now
+var ctx = contextWithDeadline(deadline)
+```
+
+### contextCancel(ctx)
+
+Cancels a context.
+
+```xxl
+contextCancel(ctx)
+```
+
+### contextDone(ctx)
+
+Returns true if the context is done (cancelled or timed out).
+
+```xxl
+if (contextDone(ctx)) {
+    pln("Operation cancelled or timed out")
+}
+```
+
+### contextErr(ctx)
+
+Returns the context error (null if not done, error string if cancelled/timed out).
+
+```xxl
+var err = contextErr(ctx)
+if (err != null) {
+    pln("Context error:", err)
+}
+```
+
+### contextIsDone(ctx)
+
+Returns true if the context is done (alias for contextDone).
+
+```xxl
+contextIsDone(ctx)
+```
+
+### contextDeadline(ctx)
+
+Returns the deadline of the context, or 0 if no deadline.
+
+```xxl
+var deadline = contextDeadline(ctx)
+```
+
+---
+
 ## Type Checking Functions
 
 ### isEmpty(value)
@@ -1471,6 +2023,121 @@ Formats a string using Go-style format specifiers.
 ```xxl
 format("Hello %s, you are %d", "Alice", 30)  // "Hello Alice, you are 30"
 format("Pi is %.2f", 3.14159)                 // "Pi is 3.14"
+```
+
+---
+
+## BigInt/BigFloat Functions
+
+Xxlang supports arbitrary precision numbers for high-precision calculations.
+
+### bigInt(value)
+
+Creates a BigInt from a string or integer.
+
+```xxl
+var big = bigInt("123456789012345678901234567890")
+var fromInt = bigInt(42)
+```
+
+### bigFloat(value)
+
+Creates a BigFloat from a string or float.
+
+```xxl
+var precise = bigFloat("3.141592653589793238462643383279")
+var fromFloat = bigFloat(3.14)
+```
+
+### isBigInt(value)
+
+Returns true if value is a BigInt.
+
+```xxl
+isBigInt(12345678901234567890n)  // true
+isBigInt(42)                      // false
+```
+
+### isBigFloat(value)
+
+Returns true if value is a BigFloat.
+
+```xxl
+isBigFloat(3.14159265358979323846m)  // true
+isBigFloat(3.14)                      // false
+```
+
+**BigInt Literals:** Use the `n` suffix: `12345678901234567890n`
+
+**BigFloat Literals:** Use the `m` suffix: `3.14159265358979323846m`
+
+```xxl
+// BigInt operations
+var a = 1000000000000000000n
+var b = 2000000000000000000n
+pln(a + b)  // 3000000000000000000
+
+// BigFloat operations (exact precision)
+var pi = 3.14159265358979323846m
+var e = 2.71828182845904523536m
+pln(pi + e)  // Exact result, no floating-point errors
+```
+
+---
+
+## Reader/Writer Functions
+
+Functions for working with I/O readers and writers.
+
+### getWebReader(url)
+
+Returns a reader for streaming HTTP response body.
+
+```xxl
+var reader = getWebReader("https://example.com/large-file.zip")
+```
+
+### ioCopy(dst, src)
+
+Copies data from a reader to a writer. Returns bytes copied and error.
+
+```xxl
+var bytesCopied, err = ioCopy(dstWriter, srcReader)
+```
+
+### isReader(value)
+
+Returns true if value is a reader.
+
+```xxl
+isReader(reader)  // true
+isReader("text")  // false
+```
+
+### isWriter(value)
+
+Returns true if value is a writer.
+
+```xxl
+isWriter(writer)  // true
+isWriter({})      // false
+```
+
+### newBytesReader(bytes)
+
+Creates a reader from a byte array.
+
+```xxl
+var data = [72, 101, 108, 108, 111]  // "Hello"
+var reader = newBytesReader(data)
+```
+
+### newStringReader(str)
+
+Creates a reader from a string.
+
+```xxl
+var reader = newStringReader("Hello, World!")
 ```
 
 ---

@@ -24,6 +24,7 @@ Xxlang provides comprehensive file handling capabilities through multiple module
 - [CSV Module](#csv-module)
 - [JSON File Operations](#json-file-operations)
 - [OS Module Extensions](#os-module-extensions)
+- [Error Handling](#error-handling)
 
 ---
 
@@ -515,6 +516,174 @@ var isLink = os.isLink("link.txt")
 
 // Get info without following symlinks
 var info = os.lstat("link.txt")
+```
+
+---
+
+## Error Handling
+
+When working with files, errors can occur for various reasons. Xxlang provides patterns to handle these errors gracefully.
+
+### Checking File Existence
+
+Always verify a file exists before operations:
+
+```xxl
+import * as file from "file"
+
+func safeReadFile(path) {
+    if (!file.exists(path)) {
+        return error("File not found: " + path)
+    }
+    return file.readAll(path)
+}
+
+var result = safeReadFile("config.txt")
+if (isError(result)) {
+    pln("Error:", result)
+} else {
+    pln("Content:", result)
+}
+```
+
+### Result Pattern
+
+Use a result map for detailed error information:
+
+```xxl
+func readConfig(path) {
+    // Check existence
+    if (!file.exists(path)) {
+        return {"ok": false, "error": "File not found", "path": path}
+    }
+
+    // Check if it's a file
+    if (!file.isFile(path)) {
+        return {"ok": false, "error": "Path is not a file", "path": path}
+    }
+
+    // Try to read
+    var content = file.readAll(path)
+    if (isError(content)) {
+        return {"ok": false, "error": "Read failed: " + content.toStr(), "path": path}
+    }
+
+    return {"ok": true, "data": content}
+}
+
+var result = readConfig("config.json")
+if (result["ok"]) {
+    pln("Config loaded:", result["data"])
+} else {
+    pln("Failed:", result["error"])
+}
+```
+
+### Safe File Operations
+
+Create helper functions for common operations with built-in error handling:
+
+```xxl
+// Safe write with backup
+func safeWrite(path, content) {
+    // Create backup if file exists
+    if (file.exists(path)) {
+        var backup = path + ".bak"
+        file.copy(path, backup)
+    }
+
+    // Write new content
+    var f = file.openWrite(path)
+    if (isError(f)) {
+        return error("Cannot open file for writing: " + path)
+    }
+
+    f.write(content)
+    f.close()
+    return true
+}
+
+// Safe directory creation
+func ensureDir(path) {
+    if (file.exists(path)) {
+        if (!file.isDir(path)) {
+            return error("Path exists but is not a directory: " + path)
+        }
+        return true
+    }
+    return file.mkdir(path)
+}
+
+// Usage
+if (isError(ensureDir("data/output"))) {
+    pln("Failed to create directory")
+}
+```
+
+### File Locking Errors
+
+Handle file locking failures:
+
+```xxl
+func writeWithLock(path, content) {
+    var f = file.openWrite(path)
+    if (isError(f)) {
+        return error("Cannot open: " + path)
+    }
+
+    // Try non-blocking lock
+    var locked = f.lock(file.LOCK_EXCLUSIVE, false)
+    if (!locked) {
+        f.close()
+        return error("File is locked by another process")
+    }
+
+    f.write(content)
+    f.unlock()
+    f.close()
+    return true
+}
+
+var result = writeWithLock("shared.txt", "data")
+if (isError(result)) {
+    pln("Write failed:", result)
+}
+```
+
+### Common Error Scenarios
+
+| Operation | Possible Errors | Handling |
+|-----------|-----------------|----------|
+| `file.openRead` | File not found, permission denied | Check `exists()` and permissions first |
+| `file.openWrite` | Permission denied, disk full | Create parent directories, check space |
+| `file.readAll` | File too large, encoding error | Read in chunks, validate encoding |
+| `file.mkdir` | Permission denied, parent not exists | Create parents with `mkdirAll` |
+| `file.remove` | File not found, permission denied | Check existence, close open handles |
+| `file.copy` | Source not found, dest not writable | Verify both paths, check disk space |
+
+### Cleanup Pattern
+
+Use defer-like patterns for cleanup (manual in Xxlang):
+
+```xxl
+func processFile(path) {
+    var f = file.openRead(path)
+    if (isError(f)) {
+        return error("Cannot open: " + path)
+    }
+
+    // Process file...
+    var content = f.readAll()
+
+    // Always close, even on error
+    f.close()
+
+    if (isError(content)) {
+        return error("Read failed")
+    }
+
+    return content
+}
 ```
 
 ---

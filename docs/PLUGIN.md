@@ -10,6 +10,14 @@ Xxlang supports two types of plugins for high-performance operations:
 | Performance | Fastest | Fast (~10-20% overhead) |
 | Distribution | Compiled in | Single .wasm file |
 
+## Table of Contents
+
+- [WebAssembly Plugins (Recommended)](#webassembly-plugins-recommended)
+- [Static Plugins](#static-plugins)
+- [Performance](#performance)
+- [Examples](#examples)
+- [Full Code Examples](#full-code-examples)
+
 ---
 
 ## WebAssembly Plugins (Recommended)
@@ -221,5 +229,283 @@ go run test_loadplugin_main.go
 ---
 
 ## Full Code Examples
+
+### AssemblyScript Example (Recommended)
+
+AssemblyScript produces the smallest WASM files (~1KB) and has TypeScript-like syntax:
+
+```typescript
+// fib.ts - AssemblyScript plugin for Fibonacci calculations
+
+// Memory allocator (required)
+var buffer: usize = 0
+
+export function alloc(size: usize): usize {
+    const ptr = buffer
+    buffer += size
+    return ptr
+}
+
+// Plugin metadata
+export function plugin_name(ptr: usize): void {
+    const name = "fib"
+    for (let i = 0; i < name.length; i++) {
+        store<u8>(ptr + i, name.charCodeAt(i))
+    }
+    store<u8>(ptr + name.length, 0)
+}
+
+export function plugin_version(ptr: usize): void {
+    const version = "1.0.0-as"
+    for (let i = 0; i < version.length; i++) {
+        store<u8>(ptr + i, version.charCodeAt(i))
+    }
+    store<u8>(ptr + version.length, 0)
+}
+
+// Fast Fibonacci - O(n) iterative
+export function call_fast(n: i64): i64 {
+    if (n <= 1) return n
+    let a: i64 = 0
+    let b: i64 = 1
+    for (let i = 2; i <= n; i++) {
+        const temp = a + b
+        a = b
+        b = temp
+    }
+    return b
+}
+
+// Matrix exponentiation - O(log n)
+export function call_matrix(n: i64): i64 {
+    if (n <= 1) return n
+
+    var a: i64 = 1, b: i64 = 1, c: i64 = 1, d: i64 = 0
+    var ta: i64, tb: i64, tc: i64, td: i64
+    var ra: i64 = 1, rb: i64 = 0, rc: i64 = 0, rd: i64 = 1
+
+    while (n > 0) {
+        if ((n & 1) == 1) {
+            ta = ra * a + rb * c
+            tb = ra * b + rb * d
+            tc = rc * a + rd * c
+            td = rc * b + rd * d
+            ra = ta; rb = tb; rc = tc; rd = td
+        }
+        ta = a * a + b * c
+        tb = a * b + b * d
+        tc = c * a + d * c
+        td = c * b + d * d
+        a = ta; b = tb; c = tc; d = td
+        n = n >> 1
+    }
+    return rb
+}
+
+// Check if number is Fibonacci
+export function call_isFib(n: i64): i32 {
+    // A number is Fibonacci if one or both of (5*n^2 + 4) or (5*n^2 - 4) is a perfect square
+    const test1 = 5 * n * n + 4
+    const test2 = 5 * n * n - 4
+    return (isPerfectSquare(test1) || isPerfectSquare(test2)) ? 1 : 0
+}
+
+function isPerfectSquare(n: i64): bool {
+    if (n < 0) return false
+    const root = isqrt(n)
+    return root * root == n
+}
+
+function isqrt(n: i64): i64 {
+    if (n < 2) return n
+    var x: i64 = n
+    var y: i64 = (x + 1) >> 1
+    while (y < x) {
+        x = y
+        y = (x + n / x) >> 1
+    }
+    return x
+}
+
+// Return array of Fibonacci numbers (writes to memory)
+export function call_range_(n: i64, resultPtr: usize): usize {
+    const startPtr = resultPtr
+    // Write count
+    store<i64>(resultPtr, n + 1)
+    resultPtr += 8
+
+    // Write Fibonacci sequence
+    var a: i64 = 0, b: i64 = 1
+    for (let i = 0; i <= n; i++) {
+        store<i64>(resultPtr, a)
+        resultPtr += 8
+        const temp = a + b
+        a = b
+        b = temp
+    }
+
+    // Return total bytes written
+    return resultPtr - startPtr
+}
+```
+
+**Build command:**
+```bash
+asc fib.ts -o fib.wasm --optimize --runtime stub --initialMemory 2
+```
+
+### C Example
+
+```c
+// fib.c - C plugin for Fibonacci calculations
+#include <stdint.h>
+
+static uint8_t memory[65536];
+static size_t buffer_ptr = 0;
+
+// Required: Memory allocator
+uint32_t alloc(uint32_t size) {
+    uint32_t ptr = (uint32_t)buffer_ptr;
+    buffer_ptr += size;
+    return ptr;
+}
+
+// Plugin metadata
+void plugin_name(uint32_t ptr) {
+    const char* name = "fib";
+    for (int i = 0; name[i]; i++) {
+        ((uint8_t*)ptr)[i] = name[i];
+    }
+}
+
+void plugin_version(uint32_t ptr) {
+    const char* version = "1.0.0-c";
+    for (int i = 0; version[i]; i++) {
+        ((uint8_t*)ptr)[i] = version[i];
+    }
+}
+
+// Fast Fibonacci - O(n) iterative
+int64_t call_fast(int64_t n) {
+    if (n <= 1) return n;
+    int64_t a = 0, b = 1;
+    for (int64_t i = 2; i <= n; i++) {
+        int64_t temp = a + b;
+        a = b;
+        b = temp;
+    }
+    return b;
+}
+
+// Matrix exponentiation - O(log n)
+int64_t call_matrix(int64_t n) {
+    if (n <= 1) return n;
+
+    int64_t a = 1, b = 1, c = 1, d = 0;
+    int64_t ta, tb, tc, td;
+    int64_t ra = 1, rb = 0, rc = 0, rd = 1;
+
+    while (n > 0) {
+        if (n & 1) {
+            ta = ra * a + rb * c;
+            tb = ra * b + rb * d;
+            tc = rc * a + rd * c;
+            td = rc * b + rd * d;
+            ra = ta; rb = tb; rc = tc; rd = td;
+        }
+        ta = a * a + b * c;
+        tb = a * b + b * d;
+        tc = c * a + d * c;
+        td = c * b + d * d;
+        a = ta; b = tb; c = tc; d = td;
+        n >>= 1;
+    }
+    return rb;
+}
+
+// Check if number is Fibonacci
+int32_t call_isFib(int64_t n) {
+    // Implementation similar to AssemblyScript version
+    return 0; // Simplified
+}
+
+// Range function
+uint32_t call_range_(int64_t n, uint32_t resultPtr) {
+    int64_t* ptr = (int64_t*)resultPtr;
+    *ptr++ = n + 1; // Count
+
+    int64_t a = 0, b = 1;
+    for (int64_t i = 0; i <= n; i++) {
+        *ptr++ = a;
+        int64_t temp = a + b;
+        a = b;
+        b = temp;
+    }
+
+    return (uint32_t)((uint8_t*)ptr - (uint8_t*)resultPtr);
+}
+```
+
+**Build command:**
+```bash
+clang -o fib.wasm --target=wasm32 -O2 fib.c -nostdlib -nostartfiles \
+    -Wl,--no-entry -Wl,--export-all
+```
+
+### Zig Example
+
+```zig
+// fib.zig - Zig plugin for Fibonacci calculations
+
+var buffer: usize = 0;
+
+export fn alloc(size: usize) usize {
+    const ptr = buffer;
+    buffer += size;
+    return ptr;
+}
+
+export fn plugin_name(ptr: usize) void {
+    const name = "fib";
+    var i: usize = 0;
+    while (i < name.len) : (i += 1) {
+        @intToPtr(*u8, ptr + i).* = name[i];
+    }
+}
+
+export fn plugin_version(ptr: usize) void {
+    const version = "1.0.0-zig";
+    var i: usize = 0;
+    while (i < version.len) : (i += 1) {
+        @intToPtr(*u8, ptr + i).* = version[i];
+    }
+}
+
+export fn call_fast(n: i64) i64 {
+    if (n <= 1) return n;
+    var a: i64 = 0;
+    var b: i64 = 1;
+    var i: i64 = 2;
+    while (i <= n) : (i += 1) {
+        const temp = a + b;
+        a = b;
+        b = temp;
+    }
+    return b;
+}
+
+export fn call_matrix(n: i64) i64 {
+    if (n <= 1) return n;
+    // Matrix implementation...
+    return call_fast(n); // Simplified
+}
+```
+
+**Build command:**
+```bash
+zig build-exe fib.zig -target wasm32-freestanding -O ReleaseSmall -fno-entry -rdynamic
+```
+
+---
 
 See the `examples/wasm_plugin/plugin/` directory for complete implementations in each language.

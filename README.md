@@ -1,5 +1,5 @@
 # Xxlang
-![Coverage](https://img.shields.io/badge/Coverage-43.0%25-yellow)
+![Coverage](https://img.shields.io/badge/Coverage-60%25-yellow)
 
 [中文文档](README_zh.md)
 
@@ -21,7 +21,7 @@ Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language impleme
 - **Module System** - Import/export with standard library
 - **Microservice Mode** - Built-in HTTP/HTTPS server, REST API support, WebSocket
 - **Plugin System** - WASM plugins for high-performance operations (Windows compatible, no CGO required)
-- **Rich Built-ins** - 60+ built-in functions for string, math, array, and map operations
+- **Rich Built-ins** - 200+ built-in functions for string, math, array, map, HTTP, concurrency, crypto and more
 - **REPL** - Interactive REPL with multi-line support and persistent state
 - **Embeddable** - Can be used as a library in other Go projects
 - **Compilable** - Compile to standalone executable or cross-platform bytecode
@@ -627,19 +627,27 @@ See [docs/EMBEDDING.md](docs/EMBEDDING.md) for complete examples.
 
 ## Built-in Functions List
 
-Xxlang provides 60+ built-in functions:
+Xxlang provides 200+ built-in functions:
 
 | Category | Functions |
 |----------|-----------|
-| Output | `pln`, `pr`, `pl`, `prf` |
-| General | `len`, `typeOf`, `toStr` |
-| String | `substr`, `split`, `join`, `trim`, `upper`, `lower`, `containsStr`, `replace`, `startsWith`, `endsWith`, `repeat`, `charAt`, `padLeft`, `padRight`, `trimLeft`, `trimRight` |
-| Math | `abs`, `floor`, `ceil`, `sqrt`, `pow`, `min`, `max`, `round`, `clamp`, `sign` |
-| Type Conversion | `int`, `float`, `string` |
-| Array | `push`, `pop`, `first`, `last`, `rest`, `concat`, `indexOf`, `containsArr`, `sort`, `sum`, `avg`, `reverse`, `unique`, `flatten`, `without`, `take`, `drop` |
+| Output | `pln`, `pr`, `pl`, `prf`, `plt` |
+| General | `len`, `typeOf`, `toStr`, `copy`, `clone`, `equals`, `defaults` |
+| String | `substr`, `split`, `join`, `trim`, `upper`, `lower`, `containsStr`, `replace`, `startsWith`, `endsWith`, `repeat`, `charAt`, `lpad`, `rpad`, `trimLeft`, `trimRight`, `trimPrefix`, `trimSuffix`, `count`, `isDigit`, `isAlpha`, `isAlphaNum` |
+| Math | `abs`, `floor`, `ceil`, `sqrt`, `pow`, `min`, `max`, `round`, `clamp`, `sign`, `random`, `randomInt` |
+| Type Conversion | `int`, `float`, `string`, `toJson`, `fromJson`, `bytes`, `bigInt`, `bigFloat` |
+| Array | `push`, `pop`, `first`, `last`, `rest`, `concat`, `indexOf`, `containsArr`, `sort`, `sum`, `avg`, `reverse`, `unique`, `flatten`, `without`, `take`, `drop`, `find`, `findIndex`, `includes`, `shuffle`, `sample`, `chunk`, `append`, `appendArray`, `arrayContains`, `removeItems` |
 | Map | `keys`, `values`, `hasKey`, `delete`, `merge`, `entries` |
-| Type Checking | `isEmpty`, `isString`, `isNumber`, `isInt`, `isFloat`, `isArray`, `isMap`, `isBool`, `isFunction`, `isNull` |
-| Utility | `range`, `runCode`, `loadPlugin`, `format`, `checkErr`, `checkEmpty`, `genOtpCode` |
+| Type Checking | `isEmpty`, `isString`, `isNumber`, `isInt`, `isFloat`, `isArray`, `isMap`, `isBool`, `isFunction`, `isNull`, `isBigInt`, `isBigFloat` |
+| Encoding | `base64Encode`, `base64Decode`, `hexEncode`, `hexDecode`, `urlEncode`, `urlDecode` |
+| Crypto | `md5`, `sha256`, `encryptText`, `decryptText`, `aesEncrypt`, `aesDecrypt` |
+| HTTP Client | `getWeb`, `getWebBytes`, `getWebObject`, `postWeb`, `postWebObject`, `urlExists`, `httpStatus`, `downloadFile` |
+| HTTP Server | `writeResp`, `setRespHeader`, `getReqHeader`, `setCookie`, `getCookie`, `parseForm`, `parseJSON`, `getReqBody`, `status`, `redirect`, `serveFile`, `queryParam`, `formValue` |
+| WebSocket | `webSocket`, `wsReadMsg`, `wsSendText`, `wsSendBinary`, `wsClose`, `isWebSocket` |
+| Concurrency | `makeTube`, `closeTube`, `tubeSend`, `tubeRecv`, `newMutex`, `newRWMutex`, `newWaitGroup`, `newOnce`, `newCond`, `newAtomic` |
+| Context | `newContext`, `contextWithTimeout`, `contextWithCancel`, `contextWithDeadline`, `contextCancel`, `contextDone` |
+| Time | `sleep`, `now`, `nowMs`, `uuid` |
+| Utility | `range`, `runCode`, `loadPlugin`, `format`, `checkErr`, `checkEmpty`, `genOtpCode`, `make`, `delegate` |
 
 ## License
 

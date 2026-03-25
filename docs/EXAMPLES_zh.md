@@ -18,6 +18,11 @@
 12. [HTTP请求](#http请求)
 13. [StringBuilder](#stringbuilder)
 14. [实用案例](#实用案例)
+15. [并发编程](#并发编程)
+16. [大整数与大浮点数](#大整数与大浮点数)
+17. [Chars类型（Unicode处理）](#chars类型unicode处理)
+18. [技巧与最佳实践](#技巧与最佳实践)
+19. [常见问题解决](#常见问题解决)
 
 ---
 
@@ -1523,6 +1528,246 @@ pln("大额销售 (>$50):")
 for (sale in sorted) {
     pln("  " + sale["product"] + ": $" + str(sale["total"]))
 }
+```
+
+---
+
+## 并发编程
+
+### Tube（通道）
+
+Tube 是 Xxlang 中的并发通信机制，类似于 Go 语言的 channel：
+
+```xxl
+// 创建一个带缓冲的 tube
+var tube = makeTube(2)
+
+// 发送值
+tube <- 10
+tube <- 20
+
+// 接收值
+pln("接收:", <- tube)
+pln("接收:", <- tube)
+
+// 检查容量和长度
+pln("Tube容量:", tubeCap(tube))
+pln("Tube长度:", tubeLen(tube))
+```
+
+### Select 语句
+
+Select 用于处理多个 tube 的并发操作：
+
+```xxl
+var ch1 = makeTube(1)
+var ch2 = makeTube(1)
+
+ch1 <- "来自ch1"
+ch2 <- "来自ch2"
+
+// Select 从最先就绪的 tube 接收
+for (var i = 0; i < 2; i++) {
+    select {
+        case var v = <- ch1:
+            pln("从ch1收到:", v)
+        case var v = <- ch2:
+            pln("从ch2收到:", v)
+    }
+}
+```
+
+### Context 超时控制
+
+Context 用于超时和取消控制：
+
+```xxl
+// 创建带超时的 context
+var ctx = contextWithTimeout(100)  // 100毫秒超时
+
+pln("初始状态:", contextDone(ctx))
+
+sleep(50)
+pln("50ms后状态:", contextDone(ctx))
+
+sleep(100)
+pln("150ms后状态:", contextDone(ctx))  // true，已超时
+```
+
+### 并发执行
+
+使用 `run` 关键字启动并发任务：
+
+```xxl
+var results = makeTube(3)
+
+// 并发运行多个任务
+run func() {
+    sleep(30)
+    results <- "任务1完成"
+}
+
+run func() {
+    sleep(20)
+    results <- "任务2完成"
+}
+
+run func() {
+    sleep(10)
+    results <- "任务3完成"
+}
+
+// 收集结果（可能以任意顺序到达）
+for (var i = 0; i < 3; i++) {
+    pln(<- results)
+}
+```
+
+### 并发安全计数器
+
+```xxl
+func createSafeCounter() {
+    var count = 0
+    var mutex = makeMutex()
+
+    return {
+        "increment": func() {
+            mutexLock(mutex)
+            count = count + 1
+            mutexUnlock(mutex)
+            return count
+        },
+        "decrement": func() {
+            mutexLock(mutex)
+            count = count - 1
+            mutexUnlock(mutex)
+            return count
+        },
+        "get": func() {
+            mutexLock(mutex)
+            var val = count
+            mutexUnlock(mutex)
+            return val
+        }
+    }
+}
+
+var counter = createSafeCounter()
+pln(counter["increment"]())  // 1
+pln(counter["increment"]())  // 2
+pln(counter["get"]())        // 2
+```
+
+---
+
+## 大整数与大浮点数
+
+### BigInt 任意精度整数
+
+当需要处理超出普通整数范围的数值时，使用 BigInt（后缀 `n`）：
+
+```xxl
+// 普通整数有限制（64位）
+var maxInt64 = 9223372036854775807
+
+// BigInt 没有实际限制
+var huge = 1234567890123456789012345678901234567890n
+pln("巨大数字:", huge)
+
+// BigInt 运算
+var a = 1000000000000000000n
+var b = 2000000000000000000n
+pln("a + b =", a + b)
+pln("a * b =", a * b)
+
+// 大数阶乘
+func factorialBig(n) {
+    var result = 1n
+    for (var i = 2; i <= n; i++) {
+        result = result * toBigInt(i)
+    }
+    return result
+}
+
+pln("100! =", factorialBig(100))
+```
+
+### BigFloat 任意精度浮点数
+
+BigFloat 解决浮点数精度问题（后缀 `m`）：
+
+```xxl
+// 普通浮点数有精度问题
+var regular = 0.1 + 0.2
+pln("普通 0.1 + 0.2:", regular)  // 可能有精度误差
+
+// BigFloat 保持精确
+var precise = 0.1m + 0.2m
+pln("BigFloat 0.1m + 0.2m:", precise)  // 精确的 0.3
+
+// 高精度计算
+var pi = 3.14159265358979323846264338327950288419716939937510m
+pln("高精度圆周率:", pi)
+
+// 金融计算示例
+var price = 19.99m
+var tax = price * 0.08m
+var total = price + tax
+pln("价格:", price)
+pln("税费 (8%):", tax)
+pln("总计:", total)
+```
+
+**适用场景：**
+- **BigInt**: 加密算法、阶乘计算、超过 int64 范围的 ID
+- **BigFloat**: 金融计算、科学计算、避免浮点误差
+
+---
+
+## Chars 类型（Unicode 处理）
+
+### 字符级操作
+
+String 是字节导向的，而 Chars 是字符导向的：
+
+```xxl
+// String 按字节计算
+var s = "中文测试"
+pln("字符串长度（字节）:", len(s))  // 12 字节
+
+// Chars 按字符计算
+var c = toChars(s)
+pln("Chars长度（字符）:", len(c))  // 4 个字符
+
+// 字符访问
+pln("c[0]:", c[0])  // 中
+pln("c[1]:", c[1])  // 文
+
+// 混合内容和 emoji
+var mixed = toChars("Hello世界🎉")
+pln("长度:", len(mixed))
+for (ch in mixed) {
+    pln(" -", ch)
+}
+```
+
+### Chars 方法
+
+```xxl
+var text = toChars("Hello World 世界")
+
+// 按字符位置截取
+pln("subStr(0, 5):", text.subStr(0, 5).toStr())  // Hello
+
+// 大小写转换（支持 Unicode）
+pln("upper():", text.upper().toStr())
+pln("lower():", text.lower().toStr())
+
+// 反转
+pln("reverse():", text.reverse().toStr())
+
+// 包含检测
+pln("contains('世界'):", text.contains("世界"))
 ```
 
 ---

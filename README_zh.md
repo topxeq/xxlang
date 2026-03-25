@@ -1,5 +1,5 @@
 # Xxlang (现象语言)
-![Coverage](https://img.shields.io/badge/Coverage-81.8%25-brightgreen)
+![Coverage](https://img.shields.io/badge/Coverage-60%25-yellow)
 
 [English](README.md)
 
@@ -16,10 +16,12 @@ Xxlang 是一个基于字节码虚拟机的脚本语言，使用 Go 语言实现
 - **方法尾调用优化** - 函数和方法的尾调用优化，支持高效递归
 - **闭包支持** - 一等函数，完整的闭包支持
 - **类与面向对象** - 支持类、继承和多级 super 调用
+- **并发编程** - Go 风格的 goroutine、tube（管道）、select、context 超时/取消、同步原语
 - **异常处理** - 完整的 try/catch/finally/throw 支持
 - **模块系统** - 导入导出机制，丰富的标准库
+- **微服务模式** - 内置 HTTP/HTTPS 服务器、REST API 支持、WebSocket
 - **插件系统** - WASM 插件实现高性能操作（兼容 Windows，无需 CGO）
-- **丰富的内置函数** - 60+ 个内置函数，支持字符串、数学、数组和映射操作
+- **丰富的内置函数** - 200+ 个内置函数，支持字符串、数学、数组、映射、HTTP、并发、加密等
 - **交互式 REPL** - 支持多行输入和状态持久化
 - **可嵌入** - 可作为库在其他 Go 项目中使用
 - **可编译** - 编译为独立可执行文件或跨平台字节码
@@ -684,19 +686,27 @@ pln(fib.matrix(92))    // int64 范围内最大的斐波那契数
 
 ## 内置函数列表
 
-Xxlang 提供 60+ 个内置函数：
+Xxlang 提供 200+ 个内置函数：
 
 | 类别 | 函数 |
 |------|------|
-| 输出 | `pln`, `pr`, `pl`, `prf` |
-| 通用 | `len`, `typeOf`, `toStr` |
-| 字符串 | `substr`, `split`, `join`, `trim`, `upper`, `lower`, `containsStr`, `replace`, `startsWith`, `endsWith`, `repeat`, `charAt`, `padLeft`, `padRight`, `trimLeft`, `trimRight` |
-| 数学 | `abs`, `floor`, `ceil`, `sqrt`, `pow`, `min`, `max`, `round`, `clamp`, `sign` |
-| 类型转换 | `int`, `float`, `string` |
-| 数组 | `push`, `pop`, `first`, `last`, `rest`, `concat`, `indexOf`, `containsArr`, `sort`, `sum`, `avg`, `reverse`, `unique`, `flatten`, `without`, `take`, `drop` |
+| 输出 | `pln`, `pr`, `pl`, `prf`, `plt` |
+| 通用 | `len`, `typeOf`, `toStr`, `copy`, `clone`, `equals`, `defaults` |
+| 字符串 | `substr`, `split`, `join`, `trim`, `upper`, `lower`, `containsStr`, `replace`, `startsWith`, `endsWith`, `repeat`, `charAt`, `lpad`, `rpad`, `trimLeft`, `trimRight`, `trimPrefix`, `trimSuffix`, `count`, `isDigit`, `isAlpha`, `isAlphaNum` |
+| 数学 | `abs`, `floor`, `ceil`, `sqrt`, `pow`, `min`, `max`, `round`, `clamp`, `sign`, `random`, `randomInt` |
+| 类型转换 | `int`, `float`, `string`, `toJson`, `fromJson`, `bytes`, `bigInt`, `bigFloat` |
+| 数组 | `push`, `pop`, `first`, `last`, `rest`, `concat`, `indexOf`, `containsArr`, `sort`, `sum`, `avg`, `reverse`, `unique`, `flatten`, `without`, `take`, `drop`, `find`, `findIndex`, `includes`, `shuffle`, `sample`, `chunk`, `append`, `appendArray`, `arrayContains`, `removeItems` |
 | 映射 | `keys`, `values`, `hasKey`, `delete`, `merge`, `entries` |
-| 类型检查 | `isEmpty`, `isString`, `isNumber`, `isInt`, `isFloat`, `isArray`, `isMap`, `isBool`, `isFunction`, `isNull` |
-| 工具 | `range`, `runCode`, `loadPlugin`, `format`, `checkErr`, `checkEmpty`, `genOtpCode` |
+| 类型检查 | `isEmpty`, `isString`, `isNumber`, `isInt`, `isFloat`, `isArray`, `isMap`, `isBool`, `isFunction`, `isNull`, `isBigInt`, `isBigFloat` |
+| 编码 | `base64Encode`, `base64Decode`, `hexEncode`, `hexDecode`, `urlEncode`, `urlDecode` |
+| 加密 | `md5`, `sha256`, `encryptText`, `decryptText`, `aesEncrypt`, `aesDecrypt` |
+| HTTP 客户端 | `getWeb`, `getWebBytes`, `getWebObject`, `postWeb`, `postWebObject`, `urlExists`, `httpStatus`, `downloadFile` |
+| HTTP 服务器 | `writeResp`, `setRespHeader`, `getReqHeader`, `setCookie`, `getCookie`, `parseForm`, `parseJSON`, `getReqBody`, `status`, `redirect`, `serveFile`, `queryParam`, `formValue` |
+| WebSocket | `webSocket`, `wsReadMsg`, `wsSendText`, `wsSendBinary`, `wsClose`, `isWebSocket` |
+| 并发 | `makeTube`, `closeTube`, `tubeSend`, `tubeRecv`, `newMutex`, `newRWMutex`, `newWaitGroup`, `newOnce`, `newCond`, `newAtomic` |
+| Context | `newContext`, `contextWithTimeout`, `contextWithCancel`, `contextWithDeadline`, `contextCancel`, `contextDone` |
+| 时间 | `sleep`, `now`, `nowMs`, `uuid` |
+| 工具 | `range`, `runCode`, `loadPlugin`, `format`, `checkErr`, `checkEmpty`, `genOtpCode`, `make`, `delegate` |
 
 ## 许可证
 
