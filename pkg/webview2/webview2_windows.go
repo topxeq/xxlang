@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 )
@@ -25,9 +26,13 @@ type WebView2 struct {
 	scriptID    int64
 	eventTokens map[uintptr]EventRegistrationToken
 
-	// Channels for async operations
-	envCreated    chan error
-	controllerCreated chan error
+	// Handlers (stored to prevent GC)
+	envHandler        *EnvironmentHandler
+	controllerHandler *ControllerHandler
+	messageHandler    *MessageHandler
+
+	// Atomic flag for initialization
+	inited uintptr
 }
 
 // ICoreWebView2Controller wrapper.
@@ -205,11 +210,13 @@ func NewWebView2(config WebView2Config) (*WebView2, error) {
 	}
 
 	wv := &WebView2{
-		callbacks:       make(map[string]func(args map[string]interface{})),
-		eventTokens:     make(map[uintptr]EventRegistrationToken),
-		envCreated:      make(chan error, 1),
-		controllerCreated: make(chan error, 1),
+		callbacks:   make(map[string]func(args map[string]interface{})),
+		eventTokens: make(map[uintptr]EventRegistrationToken),
 	}
+
+	// Create and store handlers (prevents GC)
+	wv.envHandler = newEnvironmentHandler(wv)
+	wv.controllerHandler = newControllerHandler(wv)
 
 	// Create window
 	hwnd, err := wv.createWindow(config.Title, config.Width, config.Height)
@@ -219,15 +226,48 @@ func NewWebView2(config WebView2Config) (*WebView2, error) {
 	wv.hwnd = hwnd
 
 	// Create WebView2 environment
-	if err := wv.createEnvironment(config.UserDataFolder); err != nil {
-		wv.destroyWindow()
-		return nil, fmt.Errorf("failed to create environment: %w", err)
+	var userDataPtr *uint16
+	if config.UserDataFolder != "" {
+		userDataPtr = StringToLPCWSTR(config.UserDataFolder)
 	}
 
-	// Create controller
-	if err := wv.createController(); err != nil {
+	hr, _, _ := syscall.Syscall6(
+		createEnvWithOps,
+		4,
+		0, // browserExecutableFolder
+		uintptr(unsafe.Pointer(userDataPtr)),
+		0, // environmentOptions
+		uintptr(unsafe.Pointer(wv.envHandler)),
+		0, 0,
+	)
+
+	if hr != 0 {
 		wv.destroyWindow()
-		return nil, fmt.Errorf("failed to create controller: %w", err)
+		return nil, fmt.Errorf("CreateCoreWebView2EnvironmentWithOptions failed: hr=0x%x", hr)
+	}
+
+	// Process messages until initialization completes
+	var msg Msg
+	for {
+		if atomic.LoadUintptr(&wv.inited) != 0 {
+			break
+		}
+		ret, _, _ := getMessage.Call(
+			uintptr(unsafe.Pointer(&msg)),
+			0, 0, 0,
+		)
+		if ret == 0 {
+			wv.destroyWindow()
+			return nil, fmt.Errorf("message loop quit during initialization")
+		}
+		translateMessage.Call(uintptr(unsafe.Pointer(&msg)))
+		dispatchMessage.Call(uintptr(unsafe.Pointer(&msg)))
+	}
+
+	// Check if we have a controller
+	if wv.controller == nil {
+		wv.destroyWindow()
+		return nil, fmt.Errorf("controller creation failed")
 	}
 
 	// Setup message handler
@@ -245,71 +285,21 @@ func NewWebView2(config WebView2Config) (*WebView2, error) {
 	return wv, nil
 }
 
-// createEnvironment creates the WebView2 environment.
-func (wv *WebView2) createEnvironment(userDataFolder string) error {
-	// Create handler callback
-	handler := wv.createEnvironmentCompletedHandler()
-
-	var userDataPtr *uint16
-	if userDataFolder != "" {
-		userDataPtr = StringToLPCWSTR(userDataFolder)
-	}
-
-	hr, _, _ := syscall.Syscall6(
-		createEnvWithOps,
-		4,
-		0, // browserExecutableFolder
-		uintptr(unsafe.Pointer(userDataPtr)),
-		0, // environmentOptions
-		uintptr(unsafe.Pointer(handler)),
-		0, 0,
-	)
-
-	if hr != 0 {
-		return fmt.Errorf("CreateCoreWebView2EnvironmentWithOptions failed: hr=0x%x", hr)
-	}
-
-	// Wait for async completion
-	return <-wv.envCreated
-}
-
-// createController creates the WebView2 controller.
-func (wv *WebView2) createController() error {
-	if wv.env == nil {
-		return fmt.Errorf("environment not created")
-	}
-
-	handler := wv.createControllerCompletedHandler()
-
-	hr, _, _ := syscall.Syscall(
-		wv.env.vtbl.CreateCoreWebView2Controller,
-		3,
-		uintptr(unsafe.Pointer(wv.env)),
-		wv.hwnd,
-		uintptr(unsafe.Pointer(handler)),
-	)
-
-	if hr != 0 {
-		return fmt.Errorf("CreateCoreWebView2Controller failed: hr=0x%x", hr)
-	}
-
-	return <-wv.controllerCreated
-}
-
 // setupMessageHandler sets up the web message handler.
 func (wv *WebView2) setupMessageHandler() error {
 	if wv.webview == nil {
 		return fmt.Errorf("webview not created")
 	}
 
-	handler := wv.createWebMessageHandler()
+	// Create and store message handler
+	wv.messageHandler = newMessageHandler(wv)
 	var token EventRegistrationToken
 
 	hr, _, _ := syscall.Syscall(
 		wv.webview.vtbl.AddWebMessageReceived,
 		3,
 		uintptr(unsafe.Pointer(wv.webview)),
-		uintptr(unsafe.Pointer(handler)),
+		uintptr(unsafe.Pointer(wv.messageHandler)),
 		uintptr(unsafe.Pointer(&token)),
 	)
 
@@ -327,7 +317,7 @@ func (wv *WebView2) configureSettings(debug bool) error {
 		return fmt.Errorf("controller not created")
 	}
 
-	// Get settings
+	// Get settings - GetSettings returns an ICoreWebView2Settings* (interface pointer)
 	var settingsPtr uintptr
 	hr, _, _ := syscall.Syscall(
 		wv.webview.vtbl.GetSettings,
@@ -341,9 +331,8 @@ func (wv *WebView2) configureSettings(debug bool) error {
 		return fmt.Errorf("GetSettings failed: hr=0x%x", hr)
 	}
 
-	wv.settings = &ICoreWebView2Settings{
-		vtbl: (*ICoreWebView2SettingsVTable)(unsafe.Pointer(settingsPtr)),
-	}
+	// Cast the interface pointer directly to *ICoreWebView2Settings
+	wv.settings = (*ICoreWebView2Settings)(unsafe.Pointer(settingsPtr))
 
 	// Configure settings
 	debugVal := uintptr(0)

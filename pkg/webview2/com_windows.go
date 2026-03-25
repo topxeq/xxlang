@@ -17,9 +17,18 @@ var (
 	coTaskMemAlloc  = ole32DLL.NewProc("CoTaskMemAlloc")
 	coTaskMemFree   = ole32DLL.NewProc("CoTaskMemFree")
 
+	// WinRT initialization (combase.dll)
+	combaseDLL     = syscall.NewLazyDLL("combase.dll")
+	roInitialize   = combaseDLL.NewProc("RoInitialize")
+	roUninitialize = combaseDLL.NewProc("RoUninitialize")
+
 	// COM initialization flags
 	COINIT_APARTMENTTHREADED = 0x2
 	COINIT_MULTITHREADED     = 0x0
+
+	// WinRT initialization flags
+	RO_INIT_SINGLETHREADED   = 0x1
+	RO_INIT_MULTITHREADED    = 0x0
 
 	// Common HRESULT values
 	S_OK          uintptr = 0x00000000
@@ -31,6 +40,7 @@ var (
 
 var (
 	comInitialized bool
+	roInitialized  bool
 	comMutex       sync.Mutex
 )
 
@@ -44,12 +54,26 @@ func COMInitialize() error {
 		return nil
 	}
 
+	// Initialize COM in STA mode (WebView2 requires STA)
 	hr, _, _ := coInitialize.Call(0, uintptr(COINIT_APARTMENTTHREADED))
-	if hr != S_OK && hr != 0x80010106 { // S_OK or RPC_E_CHANGED_MODE
+	// RPC_E_CHANGED_MODE (0x80010106) means COM was already initialized in a different mode
+	// We need to accept this and continue
+	if hr != S_OK && hr != 0x80010106 {
 		return syscall.Errno(hr)
 	}
 
 	comInitialized = true
+
+	// Initialize WinRT (Windows Runtime) for WebView2
+	// WebView2 uses WinRT components internally
+	if !roInitialized {
+		hr, _, _ = roInitialize.Call(uintptr(RO_INIT_SINGLETHREADED))
+		// S_OK, S_FALSE (already initialized), or RPC_E_CHANGED_MODE are all acceptable
+		if hr == S_OK || hr == S_FALSE || hr == 0x80010106 {
+			roInitialized = true
+		}
+	}
+
 	return nil
 }
 
@@ -57,6 +81,11 @@ func COMInitialize() error {
 func COMUninitialize() {
 	comMutex.Lock()
 	defer comMutex.Unlock()
+
+	if roInitialized {
+		roUninitialize.Call()
+		roInitialized = false
+	}
 
 	if comInitialized {
 		coUninitialize.Call()

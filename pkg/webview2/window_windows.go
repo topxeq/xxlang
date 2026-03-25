@@ -95,11 +95,13 @@ func (wv *WebView2) createWindow(title string, width, height int) (uintptr, erro
 	// Create window
 	titlePtr := syscall.StringToUTF16Ptr(title)
 
+	// Use WS_CHILD style to create a child window for WebView2
+	// Or use WS_OVERLAPPEDWINDOW for a top-level window
 	hwnd, _, err := createWindowEx.Call(
 		0, // dwExStyle
 		uintptr(unsafe.Pointer(className)),
 		uintptr(unsafe.Pointer(titlePtr)),
-		uintptr(WS_OVERLAPPEDWINDOW),
+		uintptr(WS_OVERLAPPEDWINDOW|WS_VISIBLE),
 		0x80000000, // CW_USEDEFAULT
 		0x80000000, // CW_USEDEFAULT
 		uintptr(width),
@@ -119,8 +121,8 @@ func (wv *WebView2) createWindow(title string, width, height int) (uintptr, erro
 	windowInstances[hwnd] = wv
 	windowInstancesLock.Unlock()
 
-	// Show window
-	user32DLL.NewProc("ShowWindow").Call(hwnd, SW_SHOW)
+	// Update window to ensure it's ready
+	user32DLL.NewProc("UpdateWindow").Call(hwnd)
 
 	return hwnd, nil
 }
@@ -212,4 +214,26 @@ func runMessageLoop(hwnd uintptr) {
 		translateMessage.Call(uintptr(unsafe.Pointer(&msg)))
 		dispatchMessage.Call(uintptr(unsafe.Pointer(&msg)))
 	}
+}
+
+// processSingleMessage processes a single Windows message without blocking.
+// Returns true if a message was processed, false if no message was available.
+func processSingleMessage() bool {
+	// Use PeekMessageW to check for messages without blocking
+	peekMessage := user32DLL.NewProc("PeekMessageW")
+
+	var msg Msg
+	ret, _, _ := peekMessage.Call(
+		uintptr(unsafe.Pointer(&msg)),
+		0, 0, 0,
+		1, // PM_REMOVE
+	)
+
+	if ret != 0 {
+		translateMessage.Call(uintptr(unsafe.Pointer(&msg)))
+		dispatchMessage.Call(uintptr(unsafe.Pointer(&msg)))
+		return true
+	}
+
+	return false
 }

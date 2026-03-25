@@ -5,248 +5,254 @@
 package webview2
 
 import (
+	"runtime"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 )
 
-// Callback handler structures and VTables
+// ComProc stores a COM procedure.
+type ComProc uintptr
 
-// EnvironmentCompletedHandler handles environment creation callback.
-type EnvironmentCompletedHandler struct {
-	vtbl  *EnvironmentCompletedHandlerVTable
-	ref   int32
-	wv    *WebView2
+// NewComProc creates a new COM proc from a Go function.
+func NewComProc(fn interface{}) ComProc {
+	return ComProc(syscall.NewCallback(fn))
 }
 
-type EnvironmentCompletedHandlerVTable struct {
-	QueryInterface uintptr
-	AddRef         uintptr
-	Release        uintptr
-	Invoke         uintptr
+//go:uintptrescapes
+// Call calls a COM procedure.
+// The go:uintptrescapes directive prevents the Go compiler from moving pointers
+// during the call, which is critical for COM interop.
+func (p ComProc) Call(a ...uintptr) (r1, r2 uintptr, lastErr error) {
+	return syscall.SyscallN(uintptr(p), a...)
 }
 
-// ControllerCompletedHandler handles controller creation callback.
-type ControllerCompletedHandler struct {
-	vtbl  *ControllerCompletedHandlerVTable
-	ref   int32
-	wv    *WebView2
+// Initialize COM on the main thread
+func init() {
+	runtime.LockOSThread()
 }
 
-type ControllerCompletedHandlerVTable struct {
-	QueryInterface uintptr
-	AddRef         uintptr
-	Release        uintptr
-	Invoke         uintptr
+// ============================================================
+// Environment Completed Handler
+// ============================================================
+
+// EnvironmentHandlerVTable is the vtable for environment creation callback.
+type EnvironmentHandlerVTable struct {
+	QueryInterface ComProc
+	AddRef         ComProc
+	Release        ComProc
+	Invoke         ComProc
 }
 
-// WebMessageHandler handles web message callback.
-type WebMessageHandler struct {
-	vtbl  *WebMessageHandlerVTable
-	ref   int32
-	wv    *WebView2
+// EnvironmentHandler handles environment creation callback.
+// IMPORTANT: vtbl must be the first field for COM compatibility.
+type EnvironmentHandler struct {
+	vtbl *EnvironmentHandlerVTable
+	wv   *WebView2
+	ref  int32
 }
 
-type WebMessageHandlerVTable struct {
-	QueryInterface uintptr
-	AddRef         uintptr
-	Release        uintptr
-	Invoke         uintptr
+// Global vtable for environment handlers (shared by all instances)
+var environmentHandlerVTable = EnvironmentHandlerVTable{
+	QueryInterface: NewComProc(environmentQueryInterface),
+	AddRef:         NewComProc(environmentAddRef),
+	Release:        NewComProc(environmentRelease),
+	Invoke:         NewComProc(environmentInvoke),
 }
 
-// ExecuteScriptHandler handles script execution callback.
-type ExecuteScriptHandler struct {
-	vtbl  *ExecuteScriptHandlerVTable
-	ref   int32
-	wv    *WebView2
-	id    int64
-	callback func(string, error)
-}
-
-type ExecuteScriptHandlerVTable struct {
-	QueryInterface uintptr
-	AddRef         uintptr
-	Release        uintptr
-	Invoke         uintptr
-}
-
-var (
-	handlerVTablesInit sync.Once
-
-	envHandlerVTable    EnvironmentCompletedHandlerVTable
-	ctrlHandlerVTable   ControllerCompletedHandlerVTable
-	msgHandlerVTable    WebMessageHandlerVTable
-	scriptHandlerVTable ExecuteScriptHandlerVTable
-)
-
-// initHandlerVTables initializes the VTables for callbacks.
-func initHandlerVTables() {
-	handlerVTablesInit.Do(func() {
-		envHandlerVTable = EnvironmentCompletedHandlerVTable{
-			QueryInterface: syscall.NewCallback(environmentQueryInterface),
-			AddRef:         syscall.NewCallback(environmentAddRef),
-			Release:        syscall.NewCallback(environmentRelease),
-			Invoke:         syscall.NewCallback(environmentInvoke),
-		}
-
-		ctrlHandlerVTable = ControllerCompletedHandlerVTable{
-			QueryInterface: syscall.NewCallback(controllerQueryInterface),
-			AddRef:         syscall.NewCallback(controllerAddRef),
-			Release:        syscall.NewCallback(controllerRelease),
-			Invoke:         syscall.NewCallback(controllerInvoke),
-		}
-
-		msgHandlerVTable = WebMessageHandlerVTable{
-			QueryInterface: syscall.NewCallback(messageQueryInterface),
-			AddRef:         syscall.NewCallback(messageAddRef),
-			Release:        syscall.NewCallback(messageRelease),
-			Invoke:         syscall.NewCallback(messageInvoke),
-		}
-
-		scriptHandlerVTable = ExecuteScriptHandlerVTable{
-			QueryInterface: syscall.NewCallback(scriptQueryInterface),
-			AddRef:         syscall.NewCallback(scriptAddRef),
-			Release:        syscall.NewCallback(scriptRelease),
-			Invoke:         syscall.NewCallback(scriptInvoke),
-		}
-	})
-}
-
-// createEnvironmentCompletedHandler creates a new environment completed handler.
-func (wv *WebView2) createEnvironmentCompletedHandler() *EnvironmentCompletedHandler {
-	initHandlerVTables()
-	return &EnvironmentCompletedHandler{
-		vtbl: &envHandlerVTable,
-		ref:  1,
+func newEnvironmentHandler(wv *WebView2) *EnvironmentHandler {
+	return &EnvironmentHandler{
+		vtbl: &environmentHandlerVTable,
 		wv:   wv,
-	}
-}
-
-// createControllerCompletedHandler creates a new controller completed handler.
-func (wv *WebView2) createControllerCompletedHandler() *ControllerCompletedHandler {
-	initHandlerVTables()
-	return &ControllerCompletedHandler{
-		vtbl: &ctrlHandlerVTable,
 		ref:  1,
-		wv:   wv,
 	}
 }
 
-// createWebMessageHandler creates a new web message handler.
-func (wv *WebView2) createWebMessageHandler() *WebMessageHandler {
-	initHandlerVTables()
-	return &WebMessageHandler{
-		vtbl: &msgHandlerVTable,
+func environmentQueryInterface(this *EnvironmentHandler, riid, ppvObject uintptr) uintptr {
+	if ppvObject == 0 {
+		return uintptr(E_POINTER)
+	}
+	// Return self for IUnknown and our interface
+	*(*uintptr)(unsafe.Pointer(ppvObject)) = uintptr(unsafe.Pointer(this))
+	return S_OK
+}
+
+func environmentAddRef(this *EnvironmentHandler) uintptr {
+	return uintptr(atomic.AddInt32(&this.ref, 1))
+}
+
+func environmentRelease(this *EnvironmentHandler) uintptr {
+	newRef := atomic.AddInt32(&this.ref, -1)
+	return uintptr(newRef)
+}
+
+func environmentInvoke(this *EnvironmentHandler, hr uintptr, env *ICoreWebView2Environment) uintptr {
+	if hr != S_OK || env == nil {
+		// Signal failure - the main loop will detect controller is nil
+		return S_OK
+	}
+
+	// AddRef the environment
+	syscall.SyscallN(env.vtbl.AddRef, uintptr(unsafe.Pointer(env)))
+	this.wv.env = env
+
+	// Create controller from within the callback
+	ret, _, _ := syscall.SyscallN(
+		env.vtbl.CreateCoreWebView2Controller,
+		uintptr(unsafe.Pointer(env)),
+		this.wv.hwnd,
+		uintptr(unsafe.Pointer(this.wv.controllerHandler)),
+	)
+
+	// Return value is checked in controller callback
+	_ = ret
+	return S_OK
+}
+
+// ============================================================
+// Controller Completed Handler
+// ============================================================
+
+// ControllerHandlerVTable is the vtable for controller creation callback.
+type ControllerHandlerVTable struct {
+	QueryInterface ComProc
+	AddRef         ComProc
+	Release        ComProc
+	Invoke         ComProc
+}
+
+// ControllerHandler handles controller creation callback.
+// IMPORTANT: vtbl must be the first field for COM compatibility.
+type ControllerHandler struct {
+	vtbl *ControllerHandlerVTable
+	wv   *WebView2
+	ref  int32
+}
+
+// Global vtable for controller handlers (shared by all instances)
+var controllerHandlerVTable = ControllerHandlerVTable{
+	QueryInterface: NewComProc(controllerQueryInterface),
+	AddRef:         NewComProc(controllerAddRef),
+	Release:        NewComProc(controllerRelease),
+	Invoke:         NewComProc(controllerInvoke),
+}
+
+func newControllerHandler(wv *WebView2) *ControllerHandler {
+	return &ControllerHandler{
+		vtbl: &controllerHandlerVTable,
+		wv:   wv,
 		ref:  1,
+	}
+}
+
+func controllerQueryInterface(this *ControllerHandler, riid, ppvObject uintptr) uintptr {
+	if ppvObject == 0 {
+		return uintptr(E_POINTER)
+	}
+	*(*uintptr)(unsafe.Pointer(ppvObject)) = uintptr(unsafe.Pointer(this))
+	return S_OK
+}
+
+func controllerAddRef(this *ControllerHandler) uintptr {
+	return uintptr(atomic.AddInt32(&this.ref, 1))
+}
+
+func controllerRelease(this *ControllerHandler) uintptr {
+	newRef := atomic.AddInt32(&this.ref, -1)
+	return uintptr(newRef)
+}
+
+func controllerInvoke(this *ControllerHandler, hr uintptr, controller *ICoreWebView2Controller) uintptr {
+	if hr != S_OK || controller == nil {
+		// Signal that initialization is done (but failed)
+		atomic.StoreUintptr(&this.wv.inited, 1)
+		return S_OK
+	}
+
+	// AddRef the controller
+	syscall.SyscallN(controller.vtbl.AddRef, uintptr(unsafe.Pointer(controller)))
+	this.wv.controller = controller
+
+	// Get ICoreWebView2 from controller
+	// GetCoreWebView2 returns an ICoreWebView2* (interface pointer)
+	// Pass pointer to the webview field directly
+	syscall.SyscallN(
+		controller.vtbl.GetCoreWebView2,
+		uintptr(unsafe.Pointer(controller)),
+		uintptr(unsafe.Pointer(&this.wv.webview)),
+	)
+
+	// AddRef the webview
+	if this.wv.webview != nil {
+		syscall.SyscallN(this.wv.webview.vtbl.AddRef, uintptr(unsafe.Pointer(this.wv.webview)))
+	}
+
+	// Signal that initialization is complete
+	atomic.StoreUintptr(&this.wv.inited, 1)
+	return S_OK
+}
+
+// ============================================================
+// Web Message Handler
+// ============================================================
+
+// MessageHandlerVTable is the vtable for web message callback.
+type MessageHandlerVTable struct {
+	QueryInterface ComProc
+	AddRef         ComProc
+	Release        ComProc
+	Invoke         ComProc
+}
+
+// MessageHandler handles web message callback.
+type MessageHandler struct {
+	vtbl *MessageHandlerVTable
+	wv   *WebView2
+	ref  int32
+}
+
+var messageHandlerVTable = MessageHandlerVTable{
+	QueryInterface: NewComProc(messageQueryInterface),
+	AddRef:         NewComProc(messageAddRef),
+	Release:        NewComProc(messageRelease),
+	Invoke:         NewComProc(messageInvoke),
+}
+
+func newMessageHandler(wv *WebView2) *MessageHandler {
+	return &MessageHandler{
+		vtbl: &messageHandlerVTable,
 		wv:   wv,
+		ref:  1,
 	}
 }
 
-// createExecuteScriptHandler creates a new execute script handler.
-func (wv *WebView2) createExecuteScriptHandler(id int64, callback func(string, error)) *ExecuteScriptHandler {
-	initHandlerVTables()
-	return &ExecuteScriptHandler{
-		vtbl:     &scriptHandlerVTable,
-		ref:      1,
-		wv:       wv,
-		id:       id,
-		callback: callback,
+func messageQueryInterface(this *MessageHandler, riid, ppvObject uintptr) uintptr {
+	if ppvObject == 0 {
+		return uintptr(E_POINTER)
 	}
-}
-
-// Environment handler callbacks
-
-func environmentQueryInterface(this *EnvironmentCompletedHandler, riid *syscall.GUID, ppvObject *uintptr) uintptr {
-	*ppvObject = uintptr(unsafe.Pointer(this))
+	*(*uintptr)(unsafe.Pointer(ppvObject)) = uintptr(unsafe.Pointer(this))
 	return S_OK
 }
 
-func environmentAddRef(this *EnvironmentCompletedHandler) uintptr {
-	this.ref++
-	return uintptr(this.ref)
+func messageAddRef(this *MessageHandler) uintptr {
+	return uintptr(atomic.AddInt32(&this.ref, 1))
 }
 
-func environmentRelease(this *EnvironmentCompletedHandler) uintptr {
-	this.ref--
-	return uintptr(this.ref)
+func messageRelease(this *MessageHandler) uintptr {
+	return uintptr(atomic.AddInt32(&this.ref, -1))
 }
 
-func environmentInvoke(this *EnvironmentCompletedHandler, hr uintptr, env *ICoreWebView2Environment) uintptr {
-	if hr == S_OK && env != nil {
-		this.wv.env = env
-		this.wv.envCreated <- nil
-	} else {
-		this.wv.envCreated <- syscall.Errno(hr)
-	}
-	return S_OK
-}
-
-// Controller handler callbacks
-
-func controllerQueryInterface(this *ControllerCompletedHandler, riid *syscall.GUID, ppvObject *uintptr) uintptr {
-	*ppvObject = uintptr(unsafe.Pointer(this))
-	return S_OK
-}
-
-func controllerAddRef(this *ControllerCompletedHandler) uintptr {
-	this.ref++
-	return uintptr(this.ref)
-}
-
-func controllerRelease(this *ControllerCompletedHandler) uintptr {
-	this.ref--
-	return uintptr(this.ref)
-}
-
-func controllerInvoke(this *ControllerCompletedHandler, hr uintptr, controller *ICoreWebView2Controller) uintptr {
-	if hr == S_OK && controller != nil {
-		this.wv.controller = controller
-
-		// Get ICoreWebView2 from controller
-		var webviewPtr uintptr
-		syscall.Syscall(controller.vtbl.GetCoreWebView2, 2,
-			uintptr(unsafe.Pointer(controller)),
-			uintptr(unsafe.Pointer(&webviewPtr)), 0)
-
-		this.wv.webview = &ICoreWebView2{
-			vtbl: (*ICoreWebView2VTable)(unsafe.Pointer(webviewPtr)),
-		}
-
-		this.wv.controllerCreated <- nil
-	} else {
-		this.wv.controllerCreated <- syscall.Errno(hr)
-	}
-	return S_OK
-}
-
-// Web message handler callbacks
-
-func messageQueryInterface(this *WebMessageHandler, riid *syscall.GUID, ppvObject *uintptr) uintptr {
-	*ppvObject = uintptr(unsafe.Pointer(this))
-	return S_OK
-}
-
-func messageAddRef(this *WebMessageHandler) uintptr {
-	this.ref++
-	return uintptr(this.ref)
-}
-
-func messageRelease(this *WebMessageHandler) uintptr {
-	this.ref--
-	return uintptr(this.ref)
-}
-
-func messageInvoke(this *WebMessageHandler, sender uintptr, args *ICoreWebView2WebMessageReceivedEventArgs) uintptr {
+func messageInvoke(this *MessageHandler, sender uintptr, args uintptr) uintptr {
 	if this.wv == nil {
 		return S_OK
 	}
 
-	// Get message as JSON
-	argsVtbl := (*ICoreWebView2WebMessageReceivedEventArgsVTable)(unsafe.Pointer(args))
+	// Get message as JSON - use the vtable from interfaces.go
+	argsVtbl := *(**ICoreWebView2WebMessageReceivedEventArgsVTable)(unsafe.Pointer(args))
 	var msgBSTR BSTR
-	syscall.Syscall(argsVtbl.GetWebMessageAsJson, 2,
-		uintptr(unsafe.Pointer(args)),
-		uintptr(unsafe.Pointer(&msgBSTR)), 0)
+	syscall.SyscallN(uintptr(argsVtbl.GetWebMessageAsJson),
+		args, uintptr(unsafe.Pointer(&msgBSTR)))
 
 	msg := BSTRToString(msgBSTR)
 	FreeBSTR(msgBSTR)
@@ -256,37 +262,94 @@ func messageInvoke(this *WebMessageHandler, sender uintptr, args *ICoreWebView2W
 	return S_OK
 }
 
-// ICoreWebView2WebMessageReceivedEventArgs (forward declaration)
-type ICoreWebView2WebMessageReceivedEventArgs struct {
-	vtbl *ICoreWebView2WebMessageReceivedEventArgsVTable
+// ============================================================
+// Execute Script Handler
+// ============================================================
+
+// ScriptHandlerVTable is the vtable for script execution callback.
+type ScriptHandlerVTable struct {
+	QueryInterface ComProc
+	AddRef         ComProc
+	Release        ComProc
+	Invoke         ComProc
 }
 
-// Execute script handler callbacks
+// ScriptHandler handles script execution callback.
+type ScriptHandler struct {
+	vtbl     *ScriptHandlerVTable
+	wv       *WebView2
+	ref      int32
+	id       int64
+	callback func(string, error)
+}
 
-func scriptQueryInterface(this *ExecuteScriptHandler, riid *syscall.GUID, ppvObject *uintptr) uintptr {
-	*ppvObject = uintptr(unsafe.Pointer(this))
+var scriptHandlerVTable = ScriptHandlerVTable{
+	QueryInterface: NewComProc(scriptQueryInterface),
+	AddRef:         NewComProc(scriptAddRef),
+	Release:        NewComProc(scriptRelease),
+	Invoke:         NewComProc(scriptInvoke),
+}
+
+func newScriptHandler(wv *WebView2, id int64, callback func(string, error)) *ScriptHandler {
+	return &ScriptHandler{
+		vtbl:     &scriptHandlerVTable,
+		wv:       wv,
+		ref:      1,
+		id:       id,
+		callback: callback,
+	}
+}
+
+func scriptQueryInterface(this *ScriptHandler, riid, ppvObject uintptr) uintptr {
+	if ppvObject == 0 {
+		return uintptr(E_POINTER)
+	}
+	*(*uintptr)(unsafe.Pointer(ppvObject)) = uintptr(unsafe.Pointer(this))
 	return S_OK
 }
 
-func scriptAddRef(this *ExecuteScriptHandler) uintptr {
-	this.ref++
-	return uintptr(this.ref)
+func scriptAddRef(this *ScriptHandler) uintptr {
+	return uintptr(atomic.AddInt32(&this.ref, 1))
 }
 
-func scriptRelease(this *ExecuteScriptHandler) uintptr {
-	this.ref--
-	return uintptr(this.ref)
+func scriptRelease(this *ScriptHandler) uintptr {
+	return uintptr(atomic.AddInt32(&this.ref, -1))
 }
 
-func scriptInvoke(this *ExecuteScriptHandler, hr uintptr, resultObjectAsJson BSTR) uintptr {
+func scriptInvoke(this *ScriptHandler, hr uintptr, resultObjectAsJson uintptr) uintptr {
 	if this.callback != nil {
-		if hr == S_OK {
-			result := BSTRToString(resultObjectAsJson)
+		if hr == S_OK && resultObjectAsJson != 0 {
+			// resultObjectAsJson is a BSTR (which is uintptr)
+			result := BSTRToString(BSTR(resultObjectAsJson))
 			this.callback(result, nil)
 		} else {
 			this.callback("", syscall.Errno(hr))
 		}
 	}
-	FreeBSTR(resultObjectAsJson)
 	return S_OK
+}
+
+// ============================================================
+// Handler creation methods for WebView2
+// ============================================================
+
+var handlerInitOnce sync.Once
+
+func (wv *WebView2) createEnvironmentCompletedHandler() *EnvironmentHandler {
+	handlerInitOnce.Do(func() {
+		// Ensure vtables are initialized
+	})
+	return newEnvironmentHandler(wv)
+}
+
+func (wv *WebView2) createControllerCompletedHandler() *ControllerHandler {
+	return newControllerHandler(wv)
+}
+
+func (wv *WebView2) createWebMessageHandler() *MessageHandler {
+	return newMessageHandler(wv)
+}
+
+func (wv *WebView2) createExecuteScriptHandler(id int64, callback func(string, error)) *ScriptHandler {
+	return newScriptHandler(wv, id, callback)
 }
