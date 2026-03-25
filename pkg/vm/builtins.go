@@ -246,6 +246,24 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["aesEncrypt"],    // 207
 		objects.Builtins["aesDecrypt"],    // 208
 		objects.Builtins["downloadFile"],  // 209
+		// Database built-in functions (String-based - Charlang compatible)
+		objects.Builtins["formatSQLValue"],  // 210
+		objects.Builtins["dbConnect"],       // 211
+		objects.Builtins["dbClose"],         // 212
+		objects.Builtins["dbQuery"],         // 213
+		objects.Builtins["dbQueryOrdered"],  // 214
+		objects.Builtins["dbQueryRecs"],     // 215
+		objects.Builtins["dbQueryMap"],      // 216
+		objects.Builtins["dbQueryMapArray"], // 217
+		objects.Builtins["dbQueryCount"],    // 218
+		objects.Builtins["dbQueryFloat"],    // 219
+		objects.Builtins["dbQueryString"],   // 220
+		objects.Builtins["dbExec"],          // 221
+		// Database built-in functions (Typed - preserve native types)
+		objects.Builtins["dbQueryTyped"],      // 222
+		objects.Builtins["dbQueryRowTyped"],   // 223
+		objects.Builtins["dbQueryArrayTyped"], // 224
+		objects.Builtins["dbQueryValueTyped"], // 225
 	}
 
 	if index < 0 || index >= len(builtins) {

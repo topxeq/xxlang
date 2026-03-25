@@ -312,6 +312,88 @@ db.setConnMaxLifetime(conn, 3600)  // seconds
 | `stats(db)` | Get connection statistics |
 | `columns(rows)` | Get column names |
 
+### Database Built-in Functions
+
+Xxlang provides database built-in functions (no module import needed) in two versions:
+
+1. **String-based (Charlang compatible)**: All values converted to strings
+2. **Typed (preserve native types)**: int, float, bool, string preserved
+
+**Basic Usage:**
+```xxl
+// Connect to database (no import needed)
+db = dbConnect("sqlite", "test.db")
+
+// Create table
+dbExec(db, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER, salary REAL)")
+
+// Insert data with parameters
+result = dbExec(db, "INSERT INTO users (name, age, salary) VALUES (?, ?, ?)", "Alice", 30, 50000.50)
+id = result[0]         // last inserted ID
+affected = result[1]   // rows affected
+
+// String-based query (Charlang compatible - all values are strings)
+rows = dbQuery(db, "SELECT * FROM users WHERE age > ?", 25)
+pln(rows[0]["age"])      // "30" (string)
+
+// Typed query (preserves native data types)
+rowsTyped = dbQueryTyped(db, "SELECT * FROM users WHERE age > ?", 25)
+pln(rowsTyped[0]["age"]) // 30 (int)
+
+// Query with header row (first row is column names)
+recs = dbQueryRecs(db, "SELECT name, age FROM users")
+// recs[0] = ["name", "age"]       // header
+// recs[1] = ["Alice", "30"]       // data row
+
+// Group results by a column
+byName = dbQueryMap(db, "SELECT * FROM users", "name")
+// byName["Alice"] = {id: "1", name: "Alice", age: "30", salary: "50000.5"}
+
+byAge = dbQueryMapArray(db, "SELECT * FROM users", "age")
+// byAge["30"] = [{id: "1", name: "Alice", ...}]
+
+// Query single values
+count = dbQueryCount(db, "SELECT COUNT(*) FROM users")   // returns int
+avgSalary = dbQueryFloat(db, "SELECT AVG(salary) FROM users")  // returns float
+name = dbQueryString(db, "SELECT name FROM users WHERE id = 1") // returns string
+
+// Typed versions preserve native types
+val = dbQueryValueTyped(db, "SELECT salary FROM users WHERE id = 1") // returns float
+
+// Close connection
+dbClose(db)
+```
+
+**String-based Functions (Charlang Compatible):**
+| Function | Description |
+|----------|-------------|
+| `formatSQLValue(str)` | Escape special characters for SQL strings |
+| `dbConnect(driver, dsn)` | Connect to database, returns DB object |
+| `dbClose(db)` | Close database connection |
+| `dbQuery(db, sql, args...)` | Query returning array of maps (all values as strings) |
+| `dbQueryOrdered(db, sql, args...)` | Query returning ordered array of arrays |
+| `dbQueryRecs(db, sql, args...)` | Query returning 2D array with header row (all strings) |
+| `dbQueryMap(db, sql, keyCol, args...)` | Query grouped by key column into map (all strings) |
+| `dbQueryMapArray(db, sql, keyCol, args...)` | Query grouped by key column into map of arrays |
+| `dbQueryCount(db, sql, args...)` | Query returning single integer (for COUNT) |
+| `dbQueryFloat(db, sql, args...)` | Query returning single float (for SUM, AVG, etc.) |
+| `dbQueryString(db, sql, args...)` | Query returning single string |
+| `dbExec(db, sql, args...)` | Execute SQL, returns `[lastInsertId, rowsAffected]` |
+
+**Typed Functions (Preserve Native Types):**
+| Function | Description |
+|----------|-------------|
+| `dbQueryTyped(db, sql, args...)` | Query returning array of maps (types preserved) |
+| `dbQueryRowTyped(db, sql, args...)` | Query single row, returns map or `null` |
+| `dbQueryArrayTyped(db, sql, args...)` | Query returning 2D array (types preserved) |
+| `dbQueryValueTyped(db, sql, args...)` | Query single value (type preserved) |
+
+**Key Differences:**
+- String-based functions: NULL → empty string, all values are strings
+- Typed functions: NULL → `null`, native types preserved (int, float, bool, string, time)
+- All functions work with DB object from db module
+- No import required (built-in functions)
+
 ### Plugin System
 
 Write native Go plugins for high-performance operations:
@@ -735,6 +817,7 @@ Xxlang provides 200+ built-in functions:
 | WebSocket | `webSocket`, `wsReadMsg`, `wsSendText`, `wsSendBinary`, `wsClose`, `isWebSocket` |
 | Concurrency | `makeTube`, `closeTube`, `tubeSend`, `tubeRecv`, `newMutex`, `newRWMutex`, `newWaitGroup`, `newOnce`, `newCond`, `newAtomic` |
 | Database (db module) | `open`, `openWithoutPing`, `close`, `ping`, `isConnected`, `query`, `queryArrays`, `queryRow`, `exec`, `begin`, `commit`, `rollback`, `txExec`, `txQuery`, `prepare`, `stmtExec`, `stmtQuery`, `drivers`, `stats`, `columns` |
+| Database (built-in) | `formatSQLValue`, `dbConnect`, `dbClose`, `dbQuery`, `dbQueryOrdered`, `dbQueryRecs`, `dbQueryMap`, `dbQueryMapArray`, `dbQueryCount`, `dbQueryFloat`, `dbQueryString`, `dbExec`, `dbQueryTyped`, `dbQueryRowTyped`, `dbQueryArrayTyped`, `dbQueryValueTyped` |
 | Context | `newContext`, `contextWithTimeout`, `contextWithCancel`, `contextWithDeadline`, `contextCancel`, `contextDone` |
 | Time | `sleep`, `now`, `nowMs`, `uuid` |
 | Utility | `range`, `runCode`, `loadPlugin`, `format`, `checkErr`, `checkEmpty`, `genOtpCode`, `make`, `delegate` |

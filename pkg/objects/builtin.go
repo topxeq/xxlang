@@ -4245,6 +4245,33 @@ var Builtins = map[string]*Builtin{
 			return NewString(string(result))
 		},
 	},
+
+	// ============================================================
+	// Database Builtin Functions
+	// ============================================================
+	// Two versions are provided:
+	// 1. String-based (Charlang compatible): dbQuery, dbQueryRecs, dbQueryMap, etc.
+	// 2. Typed (preserve native types): dbQueryTyped, dbQueryRowTyped, etc.
+
+	// String-based functions (Charlang compatible)
+	"formatSQLValue":  BuiltinFormatSQLValue,
+	"dbConnect":       BuiltinDbConnect,
+	"dbClose":         BuiltinDbClose,
+	"dbQuery":         BuiltinDbQuery,
+	"dbQueryOrdered":  BuiltinDbQueryOrdered,
+	"dbQueryRecs":     BuiltinDbQueryRecs,
+	"dbQueryMap":      BuiltinDbQueryMap,
+	"dbQueryMapArray": BuiltinDbQueryMapArray,
+	"dbQueryCount":    BuiltinDbQueryCount,
+	"dbQueryFloat":    BuiltinDbQueryFloat,
+	"dbQueryString":   BuiltinDbQueryString,
+	"dbExec":          BuiltinDbExec,
+
+	// Typed functions (preserve native data types)
+	"dbQueryTyped":      BuiltinDbQueryTyped,
+	"dbQueryRowTyped":   BuiltinDbQueryRowTyped,
+	"dbQueryArrayTyped": BuiltinDbQueryArrayTyped,
+	"dbQueryValueTyped": BuiltinDbQueryValueTyped,
 }
 
 // RunCodeImpl is the implementation function for runCode, set by the VM
