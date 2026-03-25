@@ -3110,3 +3110,100 @@ validate.contains("hello", "ell")   // true
 // 信用卡（Luhn 算法）
 validate.isCreditCard("4111111111111111")  // true
 ```
+
+---
+
+### queue 模块
+
+FIFO（先进先出）队列，push 和 pop 操作均为 O(1)。
+
+```xxlang
+load("queue")
+
+// 创建空队列
+var q = queue.create()
+
+// 创建指定初始容量的队列
+var q2 = queue.create(100)
+
+// 从数组创建队列
+var q3 = queue.fromArray([1, 2, 3])
+
+// 检查对象是否为队列
+queue.isQueue(q)  // true
+
+// 队列方法
+q.push(1)           // 添加到队尾
+q.push(2)
+q.push(3)
+q.peek()            // 1（队首元素，不删除）
+q.peekBack()        // 3（队尾元素，不删除）
+q.pop()             // 1（从队首移除）
+q.len()             // 2
+q.isEmpty()         // false
+q.toArray()         // [2, 3]
+q.clear()           // 清空队列
+q.clone()           // 创建副本
+```
+
+---
+
+### set 模块
+
+无序唯一元素集合，支持集合运算。
+
+```xxlang
+load("set")
+
+// 创建空集合
+var s = set.create()
+
+// 创建包含初始元素的集合
+var s1 = set.create(1, 2, 3)
+
+// 创建指定初始容量的集合
+var s2 = set.create(100)
+
+// 从数组创建集合
+var s3 = set.fromArray([1, 2, 2, 3])  // {1, 2, 3}
+
+// 检查对象是否为集合
+set.isSet(s1)  // true
+
+// 基本操作
+s1.add(4)           // true（已添加）
+s1.add(3)           // false（已存在）
+s1.contains(2)      // true
+s1.remove(2)        // true
+s1.remove(99)       // false（不存在）
+s1.len()            // 3
+s1.isEmpty()        // false
+s1.toArray()        // [1, 3, 4]（顺序不保证）
+s1.toSortedArray()  // [1, 3, 4]（按 Inspect() 排序）
+s1.clear()          // 清空集合
+s1.clone()          // 创建副本
+
+// 集合运算
+var a = set.create(1, 2, 3)
+var b = set.create(2, 3, 4)
+
+a.union(b)              // {1, 2, 3, 4} 并集
+a.intersect(b)          // {2, 3} 交集
+a.difference(b)         // {1} 差集
+a.symmetricDiff(b)      // {1, 4} 对称差
+
+// 也可作为模块函数调用
+set.union(a, b)
+set.intersect(a, b)
+set.difference(a, b)
+set.symmetricDiff(a, b)
+
+// 集合比较
+var c = set.create(1, 2)
+var d = set.create(1, 2, 3)
+var e = set.create(1, 2, 3)
+
+c.isSubset(d)      // true（c 是 d 的子集）
+d.isSuperset(c)    // true（d 是 c 的超集）
+d.equals(e)        // true（相等）
+```

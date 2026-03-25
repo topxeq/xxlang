@@ -44,6 +44,11 @@ var TypeMethods = map[ObjectType]map[string]*Builtin{
 	ReaderType:  readerMethods,
 	WriterType:  writerMethods,
 	ScannerType: scannerMethods,
+	// Ordered map
+	OrderedMapType: orderedMapMethods,
+	// Queue and Set
+	QueueType: queueMethods,
+	SetType:   setMethods,
 }
 
 // GetMethod returns the builtin method for the given object type and method name
@@ -3348,5 +3353,590 @@ var scannerMethods = map[string]*Builtin{
 			return newError("receiver for close must be SCANNER, got %s", args[0].Type())
 		}
 		return self.close()
+	}},
+}
+
+// ============================================================
+// OrderedMap Methods
+// ============================================================
+
+var orderedMapMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+
+	// len returns the number of entries
+	"len": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for len. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*OrderedMap)
+		if !ok {
+			return newError("receiver for len must be ORDERED_MAP, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.Len()))
+	}},
+
+	// keys returns keys in insertion order
+	"keys": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for keys. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*OrderedMap)
+		if !ok {
+			return newError("receiver for keys must be ORDERED_MAP, got %s", args[0].Type())
+		}
+		return NewArray(self.GetOrderedKeys())
+	}},
+
+	// values returns values in insertion order
+	"values": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for values. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*OrderedMap)
+		if !ok {
+			return newError("receiver for values must be ORDERED_MAP, got %s", args[0].Type())
+		}
+		return NewArray(self.GetOrderedValues())
+	}},
+
+	// hasKey checks if key exists
+	"hasKey": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for hasKey. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*OrderedMap)
+		if !ok {
+			return newError("receiver for hasKey must be ORDERED_MAP, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.HasKey(args[1])}
+	}},
+
+	// delete removes a key, maintaining order
+	"delete": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for delete. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*OrderedMap)
+		if !ok {
+			return newError("receiver for delete must be ORDERED_MAP, got %s", args[0].Type())
+		}
+		// Create a clone and delete from it (immutable operation)
+		newMap := self.Clone()
+		newMap.Delete(args[1])
+		return newMap
+	}},
+
+	// entries returns [key, value] pairs in insertion order
+	"entries": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for entries. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*OrderedMap)
+		if !ok {
+			return newError("receiver for entries must be ORDERED_MAP, got %s", args[0].Type())
+		}
+		return NewArray(self.GetOrderedPairs())
+	}},
+
+	// moveToFront moves key to position 0
+	"moveToFront": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for moveToFront. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*OrderedMap)
+		if !ok {
+			return newError("receiver for moveToFront must be ORDERED_MAP, got %s", args[0].Type())
+		}
+		err := self.MoveToFront(args[1])
+		if err != nil {
+			return newError("%s", err.Error())
+		}
+		return NULL
+	}},
+
+	// moveToBack moves key to last position
+	"moveToBack": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for moveToBack. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*OrderedMap)
+		if !ok {
+			return newError("receiver for moveToBack must be ORDERED_MAP, got %s", args[0].Type())
+		}
+		err := self.MoveToBack(args[1])
+		if err != nil {
+			return newError("%s", err.Error())
+		}
+		return NULL
+	}},
+
+	// moveBefore moves key1 before key2
+	"moveBefore": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for moveBefore. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*OrderedMap)
+		if !ok {
+			return newError("receiver for moveBefore must be ORDERED_MAP, got %s", args[0].Type())
+		}
+		err := self.MoveBefore(args[1], args[2])
+		if err != nil {
+			return newError("%s", err.Error())
+		}
+		return NULL
+	}},
+
+	// moveAfter moves key1 after key2
+	"moveAfter": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for moveAfter. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*OrderedMap)
+		if !ok {
+			return newError("receiver for moveAfter must be ORDERED_MAP, got %s", args[0].Type())
+		}
+		err := self.MoveAfter(args[1], args[2])
+		if err != nil {
+			return newError("%s", err.Error())
+		}
+		return NULL
+	}},
+
+	// swap swaps positions of two keys
+	"swap": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for swap. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*OrderedMap)
+		if !ok {
+			return newError("receiver for swap must be ORDERED_MAP, got %s", args[0].Type())
+		}
+		err := self.Swap(args[1], args[2])
+		if err != nil {
+			return newError("%s", err.Error())
+		}
+		return NULL
+	}},
+
+	// insertAt inserts key-value pair at specific index
+	"insertAt": {Fn: func(args ...Object) Object {
+		if len(args) != 4 {
+			return newError("wrong number of arguments for insertAt. got=%d, want=4", len(args))
+		}
+		self, ok := args[0].(*OrderedMap)
+		if !ok {
+			return newError("receiver for insertAt must be ORDERED_MAP, got %s", args[0].Type())
+		}
+		idx, ok := args[3].(*Int)
+		if !ok {
+			return newError("index must be INT, got %s", args[3].Type())
+		}
+		err := self.InsertAt(args[1], args[2], int(idx.Value))
+		if err != nil {
+			return newError("%s", err.Error())
+		}
+		return NULL
+	}},
+
+	// indexOf returns index of key (-1 if not found)
+	"indexOf": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for indexOf. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*OrderedMap)
+		if !ok {
+			return newError("receiver for indexOf must be ORDERED_MAP, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.GetIndex(args[1])))
+	}},
+
+	// getAt returns [key, value] at index
+	"getAt": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for getAt. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*OrderedMap)
+		if !ok {
+			return newError("receiver for getAt must be ORDERED_MAP, got %s", args[0].Type())
+		}
+		idx, ok := args[1].(*Int)
+		if !ok {
+			return newError("index must be INT, got %s", args[1].Type())
+		}
+		key, value, err := self.GetAt(int(idx.Value))
+		if err != nil {
+			return newError("%s", err.Error())
+		}
+		return NewArray([]Object{key, value})
+	}},
+
+	// setAt updates value at index
+	"setAt": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for setAt. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*OrderedMap)
+		if !ok {
+			return newError("receiver for setAt must be ORDERED_MAP, got %s", args[0].Type())
+		}
+		idx, ok := args[1].(*Int)
+		if !ok {
+			return newError("index must be INT, got %s", args[1].Type())
+		}
+		err := self.SetAt(int(idx.Value), args[2])
+		if err != nil {
+			return newError("%s", err.Error())
+		}
+		return NULL
+	}},
+
+	// reverse reverses order of all elements
+	"reverse": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for reverse. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*OrderedMap)
+		if !ok {
+			return newError("receiver for reverse must be ORDERED_MAP, got %s", args[0].Type())
+		}
+		self.Reverse()
+		return NULL
+	}},
+
+	// sortByKey sorts by key alphabetically
+	"sortByKey": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for sortByKey. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*OrderedMap)
+		if !ok {
+			return newError("receiver for sortByKey must be ORDERED_MAP, got %s", args[0].Type())
+		}
+		self.SortByKey()
+		return NULL
+	}},
+
+	// toMap converts to regular Map
+	"toMap": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toMap. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*OrderedMap)
+		if !ok {
+			return newError("receiver for toMap must be ORDERED_MAP, got %s", args[0].Type())
+		}
+		return self.ToMap()
+	}},
+
+	// clone creates a deep copy
+	"clone": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for clone. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*OrderedMap)
+		if !ok {
+			return newError("receiver for clone must be ORDERED_MAP, got %s", args[0].Type())
+		}
+		return self.Clone()
+	}},
+}
+
+// ============================================================
+// Queue Methods
+// ============================================================
+
+var queueMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"len": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for len. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Queue)
+		if !ok {
+			return newError("receiver for len must be QUEUE, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.Len()))
+	}},
+	"push": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for push. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Queue)
+		if !ok {
+			return newError("receiver for push must be QUEUE, got %s", args[0].Type())
+		}
+		self.Push(args[1])
+		return NULL
+	}},
+	"pop": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for pop. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Queue)
+		if !ok {
+			return newError("receiver for pop must be QUEUE, got %s", args[0].Type())
+		}
+		return self.Pop()
+	}},
+	"peek": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for peek. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Queue)
+		if !ok {
+			return newError("receiver for peek must be QUEUE, got %s", args[0].Type())
+		}
+		return self.Peek()
+	}},
+	"peekBack": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for peekBack. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Queue)
+		if !ok {
+			return newError("receiver for peekBack must be QUEUE, got %s", args[0].Type())
+		}
+		return self.PeekBack()
+	}},
+	"isEmpty": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for isEmpty. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Queue)
+		if !ok {
+			return newError("receiver for isEmpty must be QUEUE, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.IsEmpty()}
+	}},
+	"clear": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for clear. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Queue)
+		if !ok {
+			return newError("receiver for clear must be QUEUE, got %s", args[0].Type())
+		}
+		self.Clear()
+		return NULL
+	}},
+	"toArray": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toArray. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Queue)
+		if !ok {
+			return newError("receiver for toArray must be QUEUE, got %s", args[0].Type())
+		}
+		return self.ToArray()
+	}},
+	"clone": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for clone. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Queue)
+		if !ok {
+			return newError("receiver for clone must be QUEUE, got %s", args[0].Type())
+		}
+		return self.Clone()
+	}},
+}
+
+// ============================================================
+// Set Methods
+// ============================================================
+
+var setMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"len": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for len. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Set)
+		if !ok {
+			return newError("receiver for len must be SET, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.Len()))
+	}},
+	"add": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for add. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Set)
+		if !ok {
+			return newError("receiver for add must be SET, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.Add(args[1])}
+	}},
+	"remove": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for remove. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Set)
+		if !ok {
+			return newError("receiver for remove must be SET, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.Remove(args[1])}
+	}},
+	"contains": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for contains. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Set)
+		if !ok {
+			return newError("receiver for contains must be SET, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.Contains(args[1])}
+	}},
+	"isEmpty": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for isEmpty. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Set)
+		if !ok {
+			return newError("receiver for isEmpty must be SET, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.IsEmpty()}
+	}},
+	"clear": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for clear. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Set)
+		if !ok {
+			return newError("receiver for clear must be SET, got %s", args[0].Type())
+		}
+		self.Clear()
+		return NULL
+	}},
+	"toArray": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toArray. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Set)
+		if !ok {
+			return newError("receiver for toArray must be SET, got %s", args[0].Type())
+		}
+		return self.ToArray()
+	}},
+	"toSortedArray": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toSortedArray. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Set)
+		if !ok {
+			return newError("receiver for toSortedArray must be SET, got %s", args[0].Type())
+		}
+		return self.ToSortedArray()
+	}},
+	"clone": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for clone. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Set)
+		if !ok {
+			return newError("receiver for clone must be SET, got %s", args[0].Type())
+		}
+		return self.Clone()
+	}},
+	"union": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for union. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Set)
+		if !ok {
+			return newError("receiver for union must be SET, got %s", args[0].Type())
+		}
+		other, ok := args[1].(*Set)
+		if !ok {
+			return newError("argument for union must be SET, got %s", args[1].Type())
+		}
+		return self.Union(other)
+	}},
+	"intersect": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for intersect. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Set)
+		if !ok {
+			return newError("receiver for intersect must be SET, got %s", args[0].Type())
+		}
+		other, ok := args[1].(*Set)
+		if !ok {
+			return newError("argument for intersect must be SET, got %s", args[1].Type())
+		}
+		return self.Intersect(other)
+	}},
+	"difference": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for difference. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Set)
+		if !ok {
+			return newError("receiver for difference must be SET, got %s", args[0].Type())
+		}
+		other, ok := args[1].(*Set)
+		if !ok {
+			return newError("argument for difference must be SET, got %s", args[1].Type())
+		}
+		return self.Difference(other)
+	}},
+	"symmetricDiff": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for symmetricDiff. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Set)
+		if !ok {
+			return newError("receiver for symmetricDiff must be SET, got %s", args[0].Type())
+		}
+		other, ok := args[1].(*Set)
+		if !ok {
+			return newError("argument for symmetricDiff must be SET, got %s", args[1].Type())
+		}
+		return self.SymmetricDifference(other)
+	}},
+	"isSubset": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for isSubset. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Set)
+		if !ok {
+			return newError("receiver for isSubset must be SET, got %s", args[0].Type())
+		}
+		other, ok := args[1].(*Set)
+		if !ok {
+			return newError("argument for isSubset must be SET, got %s", args[1].Type())
+		}
+		return &Bool{Value: self.IsSubset(other)}
+	}},
+	"isSuperset": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for isSuperset. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Set)
+		if !ok {
+			return newError("receiver for isSuperset must be SET, got %s", args[0].Type())
+		}
+		other, ok := args[1].(*Set)
+		if !ok {
+			return newError("argument for isSuperset must be SET, got %s", args[1].Type())
+		}
+		return &Bool{Value: self.IsSuperset(other)}
+	}},
+	"equals": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for equals. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Set)
+		if !ok {
+			return newError("receiver for equals must be SET, got %s", args[0].Type())
+		}
+		other, ok := args[1].(*Set)
+		if !ok {
+			return newError("argument for equals must be SET, got %s", args[1].Type())
+		}
+		return &Bool{Value: self.Equals(other)}
 	}},
 }

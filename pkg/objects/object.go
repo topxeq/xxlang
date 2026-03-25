@@ -53,6 +53,9 @@ const (
 	DBTxType            ObjectType = "DB_TX"
 	DBRowsType          ObjectType = "DB_ROWS"
 	DBStmtType          ObjectType = "DB_STMT"
+	OrderedMapType      ObjectType = "ORDERED_MAP"
+	QueueType           ObjectType = "QUEUE"
+	SetType             ObjectType = "SET"
 )
 
 // TypeTag is a fast integer type identifier for hot path checks
@@ -105,6 +108,9 @@ const (
 	TagDBTx
 	TagDBRows
 	TagDBStmt
+	TagOrderedMap
+	TagQueue
+	TagSet
 	TagUnknown
 )
 

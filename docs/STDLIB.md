@@ -3155,3 +3155,100 @@ validate.contains("hello", "ell")   // true
 validate.isCreditCard("4111111111111111")  // true
 ```
 
+---
+
+### queue Module
+
+A FIFO (First-In-First-Out) queue with O(1) push and pop operations.
+
+```xxlang
+load("queue")
+
+// Create an empty queue
+var q = queue.create()
+
+// Create with initial capacity
+var q2 = queue.create(100)
+
+// Create from array
+var q3 = queue.fromArray([1, 2, 3])
+
+// Check if object is a queue
+queue.isQueue(q)  // true
+
+// Queue methods
+q.push(1)           // Add to back
+q.push(2)
+q.push(3)
+q.peek()            // 1 (front element, doesn't remove)
+q.peekBack()        // 3 (back element, doesn't remove)
+q.pop()             // 1 (removes from front)
+q.len()             // 2
+q.isEmpty()         // false
+q.toArray()         // [2, 3]
+q.clear()           // Remove all elements
+q.clone()           // Create a copy
+```
+
+---
+
+### set Module
+
+An unordered collection of unique elements with set operations.
+
+```xxlang
+load("set")
+
+// Create an empty set
+var s = set.create()
+
+// Create with initial elements
+var s1 = set.create(1, 2, 3)
+
+// Create with initial capacity
+var s2 = set.create(100)
+
+// Create from array
+var s3 = set.fromArray([1, 2, 2, 3])  // {1, 2, 3}
+
+// Check if object is a set
+set.isSet(s1)  // true
+
+// Basic operations
+s1.add(4)           // true (added)
+s1.add(3)           // false (already exists)
+s1.contains(2)      // true
+s1.remove(2)        // true
+s1.remove(99)       // false (not found)
+s1.len()            // 3
+s1.isEmpty()        // false
+s1.toArray()        // [1, 3, 4] (order not guaranteed)
+s1.toSortedArray()  // [1, 3, 4] (sorted by Inspect())
+s1.clear()          // Remove all elements
+s1.clone()          // Create a copy
+
+// Set operations
+var a = set.create(1, 2, 3)
+var b = set.create(2, 3, 4)
+
+a.union(b)              // {1, 2, 3, 4}
+a.intersect(b)          // {2, 3}
+a.difference(b)         // {1}
+a.symmetricDiff(b)      // {1, 4}
+
+// Also available as module functions
+set.union(a, b)
+set.intersect(a, b)
+set.difference(a, b)
+set.symmetricDiff(a, b)
+
+// Set comparisons
+var c = set.create(1, 2)
+var d = set.create(1, 2, 3)
+var e = set.create(1, 2, 3)
+
+c.isSubset(d)      // true
+d.isSuperset(c)    // true
+d.equals(e)        // true
+```
+

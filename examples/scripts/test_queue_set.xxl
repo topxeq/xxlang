@@ -1,0 +1,98 @@
+// test_queue_set.xxl
+// Test Queue and Set modules
+
+import "queue"
+import "set"
+
+pln("=== Testing Queue ===")
+
+// Create and test queue
+var q = queue.create()
+pln("Created queue: ", q)
+
+// Push elements
+q.push(1)
+q.push(2)
+q.push(3)
+pln("After pushing 1, 2, 3: len=", q.len())
+
+// Peek
+pln("Peek front: ", q.peek())
+pln("Peek back: ", q.peekBack())
+
+// Pop elements
+pln("Pop: ", q.pop())
+pln("Pop: ", q.pop())
+pln("After popping 2 elements: len=", q.len())
+
+// IsEmpty
+pln("Is empty: ", q.isEmpty())
+
+// ToArray
+pln("To array: ", q.toArray())
+
+// Clear
+q.clear()
+pln("After clear: len=", q.len(), ", is empty: ", q.isEmpty())
+
+// Create from array
+var q2 = queue.fromArray([10, 20, 30])
+pln("Queue from array: ", q2.toArray())
+
+pln("")
+pln("=== Testing Set ===")
+
+// Create and test set
+var s = set.create("a", "b", "c")
+pln("Created set with elements: ", s)
+
+// Add elements
+var added = s.add("d")
+pln("Added 'd': ", added)
+var added2 = s.add("a")  // Already exists
+pln("Added 'a' again: ", added2)
+
+// Contains
+pln("Contains 'b': ", s.contains("b"))
+pln("Contains 'x': ", s.contains("x"))
+
+// Length
+pln("Length: ", s.len())
+
+// Remove
+var removed = s.remove("b")
+pln("Removed 'b': ", removed)
+var removed2 = s.remove("x")  // Not present
+pln("Removed 'x': ", removed2)
+
+// ToArray and ToSortedArray
+pln("To array: ", s.toArray())
+pln("To sorted array: ", s.toSortedArray())
+
+pln("")
+pln("=== Testing Set Operations ===")
+
+var s1 = set.create(1, 2, 3)
+var s2 = set.create(2, 3, 4)
+
+pln("s1: ", s1.toSortedArray())
+pln("s2: ", s2.toSortedArray())
+
+pln("Union: ", s1.union(s2).toSortedArray())
+pln("Intersect: ", s1.intersect(s2).toSortedArray())
+pln("Difference (s1 - s2): ", s1.difference(s2).toSortedArray())
+pln("Symmetric diff: ", s1.symmetricDiff(s2).toSortedArray())
+
+pln("")
+pln("=== Testing Set Comparisons ===")
+
+var s3 = set.create(1, 2)
+var s4 = set.create(1, 2, 3)
+var s5 = set.create(1, 2, 3)
+
+pln("s3 is subset of s4: ", s3.isSubset(s4))
+pln("s4 is superset of s3: ", s4.isSuperset(s3))
+pln("s4 equals s5: ", s4.equals(s5))
+
+pln("")
+pln("All tests completed!")
