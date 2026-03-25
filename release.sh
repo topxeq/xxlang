@@ -80,7 +80,7 @@ build_platform() {
     local build_dir="${output_dir}/build/${os}-${arch}"
     mkdir -p "$build_dir"
 
-    go build -ldflags="-s -w" -o "${build_dir}/${binary_name}" ./cmd/xxl
+    go build -ldflags="-s -w -X main.Version=${version}" -o "${build_dir}/${binary_name}" ./cmd/xxl
 
     # Create archive
     info "Creating archive: $archive_name"
