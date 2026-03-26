@@ -102,6 +102,11 @@ const (
 	PDFDocumentType    ObjectType = "PDF_DOCUMENT"
 	PDFPageType        ObjectType = "PDF_PAGE"
 	PDFInfoType        ObjectType = "PDF_INFO"
+	// Socket types
+	SocketAddrType   ObjectType = "SOCKET_ADDR"
+	TcpServerType    ObjectType = "TCP_SERVER"
+	TcpClientType    ObjectType = "TCP_CLIENT"
+	UdpSocketType    ObjectType = "UDP_SOCKET"
 )
 
 // TypeTag is a fast integer type identifier for hot path checks
@@ -203,6 +208,11 @@ const (
 	TagPDFDocument
 	TagPDFPage
 	TagPDFInfo
+	// Socket tags
+	TagSocketAddr
+	TagTcpServer
+	TagTcpClient
+	TagUdpSocket
 	TagUnknown
 )
 
