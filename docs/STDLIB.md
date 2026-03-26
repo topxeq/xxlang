@@ -1664,175 +1664,116 @@ var fewer = json.delete("$.store.book[1]", data)
 
 ## xml
 
-XML encoding, decoding, and manipulation utilities.
+XML document handling with path search support.
 
-### Core Functions
+### Module Functions
 
-#### parse(xmlStr)
-Parses an XML string and returns an Xxlang object (map).
+| Function | Description |
+|----------|-------------|
+| `xml.parse(str)` | Parse XML string, return XMLDocument |
+| `xml.parseFile(path)` | Parse XML file, return XMLDocument |
+| `xml.create(rootName)` | Create new XML document with root element |
+| `xml.newDocument()` | Create empty XML document |
+| `xml.newNode(name)` | Create new XML node |
+| `xml.isXMLDocument(obj)` | Check if object is XMLDocument |
+| `xml.isXMLNode(obj)` | Check if object is XMLNode |
+| `xml.encode(obj, rootName?)` | Convert object to XML string |
+| `xml.escape(str)` | Escape special XML characters |
+| `xml.escapeAttr(str)` | Escape for XML attribute |
+
+### XMLDocument Methods
+
+| Method | Description |
+|--------|-------------|
+| `doc.root()` | Get root node |
+| `doc.find(path)` | Find nodes by path, return array |
+| `doc.findFirst(path)` | Find first matching node |
+| `doc.findElement(path)` | Alias for findFirst |
+| `doc.toString()` | Convert to XML string |
+| `doc.toIndented()` | Convert to formatted XML |
+| `doc.save(path)` | Save to file |
+| `doc.toMap()` | Convert to Map |
+| `doc.version()` | Get XML version |
+| `doc.encoding()` | Get XML encoding |
+
+### XMLNode Methods
+
+| Method | Description |
+|--------|-------------|
+| `node.name()` | Get node name |
+| `node.setName(str)` | Set node name |
+| `node.text()` | Get text content |
+| `node.setText(str)` | Set text content |
+| `node.attr(name)` | Get attribute value |
+| `node.setAttr(name, val)` | Set attribute |
+| `node.delAttr(name)` | Delete attribute |
+| `node.attrs()` | Get all attributes as Map |
+| `node.children()` | Get all child nodes |
+| `node.childCount()` | Get number of children |
+| `node.parent()` | Get parent node |
+| `node.addChild(child)` | Add child node |
+| `node.removeChild(index)` | Remove child by index |
+| `node.clear()` | Remove all children |
+| `node.find(path)` | Find nodes from this node |
+| `node.findFirst(path)` | Find first from this node |
+| `node.toMap()` | Convert to Map |
+| `node.toString()` | Convert to XML string |
+| `node.toIndented()` | Convert to formatted XML |
+
+### Path Search Syntax
+
+Supports XPath-like expressions:
+
+| Expression | Description |
+|------------|-------------|
+| `/root/child` | Absolute path from root |
+| `//element` | Search at any depth |
+| `[@attr='value']` | Filter by attribute |
+| `[0]` | Select by index |
+| `*` | Wildcard (any element) |
+
+### Example Usage
 
 ```xxl
 import "xml"
 
-var xmlStr = `<book id="123">
-    <title>Learning Xxlang</title>
-    <author>John Doe</author>
-</book>`
+// Parse XML
+var xmlStr = "<bookstore><book category=\"web\"><title>Learning XML</title><price>39.95</price></book><book category=\"programming\"><title>Go Programming</title><price>49.99</price></book></bookstore>"
 
-var data = xml.parse(xmlStr)
-// data is: {"book": {"@attributes": {"id": "123"}, "title": {"@text": "Learning Xxlang"}, ...}}
-```
+var doc = xml.parse(xmlStr)
 
-#### stringify(rootName, obj, indent?)
-Converts an Xxlang object to an XML string.
+// Path search
+var books = doc.find("//book")              // All books
+var titles = doc.find("/bookstore/book/title")  // All titles
+var webBooks = doc.find("//book[@category='web']")  // Filter by attr
 
-```xxl
-var obj = {
-    "@attributes": {"version": "1.0"},
-    "@text": "Some content",
-    "name": {"@text": "Test"}
-}
-var xmlStr = xml.stringify("root", obj, 2)  // 2-space indent
-```
+// Get content
+var title = doc.findFirst("//title").text()
+var category = books[0].attr("category")
 
-#### encode(rootName, obj)
-Converts an Xxlang object to a compact XML string (no indentation).
+// Node operations
+var book = books[0]
+pln("Children: ", book.childCount())
+var children = book.children()
 
-```xxl
-var xmlStr = xml.encode("root", {"@text": "Hello"})
-// <root>Hello</root>
-```
+// Create XML
+var newDoc = xml.create("root")
+var root = newDoc.root()
+root.setAttr("version", "1.0")
 
-#### decode(xmlStr)
-Alias for `parse()`. Parses an XML string.
+var item = xml.newNode("item")
+item.setText("Hello")
+item.setAttr("id", "1")
+root.addChild(item)
 
-### File Operations
+pln(newDoc.toIndented())
 
-#### readFile(path)
-Reads an XML file and parses it.
+// XML to Map
+var mapData = doc.root().toMap()
 
-```xxl
-var data = xml.readFile("config.xml")
-pln(data["config"]["setting"]["@text"])
-```
-
-#### writeFile(path, rootName, obj, indent?)
-Writes an Xxlang object to an XML file with XML declaration.
-
-```xxl
-xml.writeFile("output.xml", "config", data, 2)
-```
-
-### Element Extraction
-
-#### getAttr(element, attrName)
-Gets an attribute value from an XML element.
-
-```xxl
-var book = xml.getElement(data, "book")
-var id = xml.getAttr(book, "id")  // "123"
-```
-
-#### getText(element)
-Gets the text content from an XML element.
-
-```xxl
-var title = xml.getElement(book, "title")
-var text = xml.getText(title)  // "Learning Xxlang"
-```
-
-#### getElement(element, name)
-Gets a child element by name. Returns null if not found.
-
-```xxl
-var author = xml.getElement(book, "author")
-```
-
-#### getElements(element, name)
-Gets all child elements with a given name (for repeated elements). Always returns an array.
-
-```xxl
-var chapters = xml.getElements(book, "chapter")
-for (ch in chapters) {
-    pln(xml.getText(ch))
-}
-```
-
-### Element Modification
-
-#### setAttr(element, name, value)
-Sets an attribute on an XML element. Returns a new element with the attribute.
-
-```xxl
-var updated = xml.setAttr(book, "lang", "en")
-```
-
-#### setText(element, text)
-Sets the text content of an XML element. Returns a new element.
-
-```xxl
-var updated = xml.setText(title, "New Title")
-```
-
-#### addElement(parent, name, child)
-Adds a child element to an XML element. Returns a new element.
-
-```xxl
-var updated = xml.addElement(book, "publisher", {"@text": "Tech Books"})
-```
-
-#### newElement(name, text?, attributes?)
-Creates a new XML element.
-
-```xxl
-var elem = xml.newElement("item", "Hello", {"type": "greeting"})
-```
-
-### Utilities
-
-#### isValid(xmlStr)
-Checks if a string is valid XML. Returns boolean.
-
-```xxl
-if (xml.isValid(xmlStr)) {
-    var data = xml.parse(xmlStr)
-}
-```
-
-#### escape(str)
-Escapes special XML characters (<, >, &, ", ').
-
-```xxl
-var escaped = xml.escape("<tag>text & more</tag>")
-// "&lt;tag&gt;text &amp; more&lt;/tag&gt;"
-```
-
-#### unescape(str)
-Unescapes XML entities.
-
-```xxl
-var text = xml.unescape("&lt;tag&gt;")
-// "<tag>"
-```
-
-### XML Structure
-
-Parsed XML is represented as maps with special keys:
-
-- `@attributes` - Map of element attributes
-- `@text` - Text content of the element
-- `@declaration` - XML declaration (if present)
-- Child elements are stored by their tag names as keys
-
-```xxl
-// XML: <book id="123" lang="en"><title>Hello</title></book>
-// Becomes:
-{
-    "book": {
-        "@attributes": {"id": "123", "lang": "en"},
-        "title": {"@text": "Hello"}
-    }
-}
+// Map to XML
+var data = {"@id": "123", "name": "Product"}
+var xmlStr = xml.encode(data, "product")
 ```
 
 ---

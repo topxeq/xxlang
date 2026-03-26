@@ -1661,175 +1661,116 @@ var fewer = json.delete("$.store.book[1]", data)
 
 ## xml
 
-XML 编解码和操作工具。
+XML 文档处理，支持路径搜索。
 
-### 核心函数
+### 模块函数
 
-#### parse(xmlStr)
-解析 XML 字符串并返回 Xxlang 对象（映射）。
+| 函数 | 说明 |
+|------|------|
+| `xml.parse(str)` | 解析 XML 字符串，返回 XMLDocument |
+| `xml.parseFile(path)` | 解析 XML 文件，返回 XMLDocument |
+| `xml.create(rootName)` | 创建带有根元素的新 XML 文档 |
+| `xml.newDocument()` | 创建空的 XML 文档 |
+| `xml.newNode(name)` | 创建新的 XML 节点 |
+| `xml.isXMLDocument(obj)` | 检查对象是否为 XMLDocument |
+| `xml.isXMLNode(obj)` | 检查对象是否为 XMLNode |
+| `xml.encode(obj, rootName?)` | 将对象转换为 XML 字符串 |
+| `xml.escape(str)` | 转义 XML 特殊字符 |
+| `xml.escapeAttr(str)` | 转义 XML 属性值 |
+
+### XMLDocument 方法
+
+| 方法 | 说明 |
+|------|------|
+| `doc.root()` | 获取根节点 |
+| `doc.find(path)` | 按路径查找节点，返回数组 |
+| `doc.findFirst(path)` | 查找第一个匹配节点 |
+| `doc.findElement(path)` | findFirst 的别名 |
+| `doc.toString()` | 转换为 XML 字符串 |
+| `doc.toIndented()` | 转换为格式化 XML |
+| `doc.save(path)` | 保存到文件 |
+| `doc.toMap()` | 转换为 Map |
+| `doc.version()` | 获取 XML 版本 |
+| `doc.encoding()` | 获取 XML 编码 |
+
+### XMLNode 方法
+
+| 方法 | 说明 |
+|------|------|
+| `node.name()` | 获取节点名称 |
+| `node.setName(str)` | 设置节点名称 |
+| `node.text()` | 获取文本内容 |
+| `node.setText(str)` | 设置文本内容 |
+| `node.attr(name)` | 获取属性值 |
+| `node.setAttr(name, val)` | 设置属性 |
+| `node.delAttr(name)` | 删除属性 |
+| `node.attrs()` | 获取所有属性（Map） |
+| `node.children()` | 获取所有子节点 |
+| `node.childCount()` | 获取子节点数量 |
+| `node.parent()` | 获取父节点 |
+| `node.addChild(child)` | 添加子节点 |
+| `node.removeChild(index)` | 按索引删除子节点 |
+| `node.clear()` | 删除所有子节点 |
+| `node.find(path)` | 从此节点查找节点 |
+| `node.findFirst(path)` | 从此节点查找第一个 |
+| `node.toMap()` | 转换为 Map |
+| `node.toString()` | 转换为 XML 字符串 |
+| `node.toIndented()` | 转换为格式化 XML |
+
+### 路径搜索语法
+
+支持类似 XPath 的表达式：
+
+| 表达式 | 说明 |
+|--------|------|
+| `/root/child` | 从根开始的绝对路径 |
+| `//element` | 任意深度搜索 |
+| `[@attr='value']` | 按属性过滤 |
+| `[0]` | 按索引选择 |
+| `*` | 通配符（任意元素） |
+
+### 使用示例
 
 ```xxl
 import "xml"
 
-var xmlStr = `<book id="123">
-    <title>学习 Xxlang</title>
-    <author>张三</author>
-</book>`
+// 解析 XML
+var xmlStr = "<bookstore><book category=\"web\"><title>学习 XML</title><price>39.95</price></book><book category=\"programming\"><title>Go 编程</title><price>49.99</price></book></bookstore>"
 
-var data = xml.parse(xmlStr)
-// data 为: {"book": {"@attributes": {"id": "123"}, "title": {"@text": "学习 Xxlang"}, ...}}
-```
+var doc = xml.parse(xmlStr)
 
-#### stringify(rootName, obj, indent?)
-将 Xxlang 对象转换为 XML 字符串。
+// 路径搜索
+var books = doc.find("//book")              // 所有书籍
+var titles = doc.find("/bookstore/book/title")  // 所有标题
+var webBooks = doc.find("//book[@category='web']")  // 按属性过滤
 
-```xxl
-var obj = {
-    "@attributes": {"version": "1.0"},
-    "@text": "一些内容",
-    "name": {"@text": "测试"}
-}
-var xmlStr = xml.stringify("root", obj, 2)  // 2空格缩进
-```
+// 获取内容
+var title = doc.findFirst("//title").text()
+var category = books[0].attr("category")
 
-#### encode(rootName, obj)
-将 Xxlang 对象转换为紧凑的 XML 字符串（无缩进）。
+// 节点操作
+var book = books[0]
+pln("子节点数: ", book.childCount())
+var children = book.children()
 
-```xxl
-var xmlStr = xml.encode("root", {"@text": "你好"})
-// <root>你好</root>
-```
+// 创建 XML
+var newDoc = xml.create("root")
+var root = newDoc.root()
+root.setAttr("version", "1.0")
 
-#### decode(xmlStr)
-`parse()` 的别名。解析 XML 字符串。
+var item = xml.newNode("item")
+item.setText("你好")
+item.setAttr("id", "1")
+root.addChild(item)
 
-### 文件操作
+pln(newDoc.toIndented())
 
-#### readFile(path)
-读取 XML 文件并解析。
+// XML 转 Map
+var mapData = doc.root().toMap()
 
-```xxl
-var data = xml.readFile("config.xml")
-pln(data["config"]["setting"]["@text"])
-```
-
-#### writeFile(path, rootName, obj, indent?)
-将 Xxlang 对象写入 XML 文件（包含 XML 声明）。
-
-```xxl
-xml.writeFile("output.xml", "config", data, 2)
-```
-
-### 元素提取
-
-#### getAttr(element, attrName)
-从 XML 元素获取属性值。
-
-```xxl
-var book = xml.getElement(data, "book")
-var id = xml.getAttr(book, "id")  // "123"
-```
-
-#### getText(element)
-从 XML 元素获取文本内容。
-
-```xxl
-var title = xml.getElement(book, "title")
-var text = xml.getText(title)  // "学习 Xxlang"
-```
-
-#### getElement(element, name)
-按名称获取子元素。未找到返回 null。
-
-```xxl
-var author = xml.getElement(book, "author")
-```
-
-#### getElements(element, name)
-获取所有指定名称的子元素（用于重复元素）。始终返回数组。
-
-```xxl
-var chapters = xml.getElements(book, "chapter")
-for (ch in chapters) {
-    pln(xml.getText(ch))
-}
-```
-
-### 元素修改
-
-#### setAttr(element, name, value)
-设置 XML 元素的属性。返回带有新属性的元素。
-
-```xxl
-var updated = xml.setAttr(book, "lang", "zh")
-```
-
-#### setText(element, text)
-设置 XML 元素的文本内容。返回新元素。
-
-```xxl
-var updated = xml.setText(title, "新标题")
-```
-
-#### addElement(parent, name, child)
-向 XML 元素添加子元素。返回新元素。
-
-```xxl
-var updated = xml.addElement(book, "publisher", {"@text": "科技出版社"})
-```
-
-#### newElement(name, text?, attributes?)
-创建新的 XML 元素。
-
-```xxl
-var elem = xml.newElement("item", "你好", {"type": "greeting"})
-```
-
-### 工具函数
-
-#### isValid(xmlStr)
-检查字符串是否为有效的 XML。返回布尔值。
-
-```xxl
-if (xml.isValid(xmlStr)) {
-    var data = xml.parse(xmlStr)
-}
-```
-
-#### escape(str)
-转义特殊 XML 字符（<, >, &, ", '）。
-
-```xxl
-var escaped = xml.escape("<tag>文本 & 更多</tag>")
-// "&lt;tag&gt;文本 &amp; 更多&lt;/tag&gt;"
-```
-
-#### unescape(str)
-反转义 XML 实体。
-
-```xxl
-var text = xml.unescape("&lt;tag&gt;")
-// "<tag>"
-```
-
-### XML 结构
-
-解析后的 XML 表示为带有特殊键的映射：
-
-- `@attributes` - 元素属性映射
-- `@text` - 元素的文本内容
-- `@declaration` - XML 声明（如果存在）
-- 子元素以其标签名作为键存储
-
-```xxl
-// XML: <book id="123" lang="zh"><title>你好</title></book>
-// 变为:
-{
-    "book": {
-        "@attributes": {"id": "123", "lang": "zh"},
-        "title": {"@text": "你好"}
-    }
-}
+// Map 转 XML
+var data = {"@id": "123", "name": "产品"}
+var xmlStr = xml.encode(data, "product")
 ```
 
 ---
