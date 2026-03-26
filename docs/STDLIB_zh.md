@@ -2658,6 +2658,44 @@ csv.appendRow(data, ["x", "y"])
 csv.prependRow(data, ["header"])
 ```
 
+#### 列操作
+
+列可以通过整数索引（从0开始）或列名访问。使用列名时需要提供表头数组。
+
+```xxlang
+var data = csv.parse("name,age,city\nAlice,30,Beijing\nBob,25,Shanghai")
+var header = csv.getHeader(data)
+
+// 通过索引获取列
+var ages = csv.column(data, 1)  // ["age", "30", "25"]
+
+// 通过列名获取列
+var names = csv.column(data, "name", header)  // ["name", "Alice", "Bob"]
+
+// 列工具函数
+csv.colIndex(header, "age")    // 1
+csv.colName(header, 2)         // "city"
+csv.colCount(data)             // 3
+
+// 列修改
+var updated = csv.setColumn(data, "age", "99", header)  // 设置所有 age 值
+var inserted = csv.insertColumn(data, 1, "NEW")          // 在索引处插入列
+var removed = csv.removeColumn(data, "city", header)     // 按名称删除列
+var newHeader = csv.renameColumn(header, "city", "location")  // 重命名列
+```
+
+| 函数 | 说明 |
+|------|------|
+| `column(data, col, [header])` | 获取列，`col` 可以是索引或列名 |
+| `getHeader(data)` | 获取第一行作为表头 |
+| `colIndex(header, name)` | 按名称获取列索引（从0开始），未找到返回-1 |
+| `colName(header, index)` | 按索引获取列名 |
+| `colCount(data)` | 获取列数 |
+| `setColumn(data, col, value, [header])` | 设置列的所有值 |
+| `insertColumn(data, index, value)` | 在指定位置插入新列 |
+| `removeColumn(data, col, [header])` | 删除列，`col` 可以是索引或列名 |
+| `renameColumn(header, oldName, newName)` | 重命名表头中的列名 |
+
 ---
 
 ### env 模块

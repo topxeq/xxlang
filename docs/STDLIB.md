@@ -1816,6 +1816,59 @@ csv.write("output.csv", rows)
 | `parse(str)` | Parse CSV string |
 | `stringify(data)` | Convert to CSV string |
 
+### Column Operations
+
+CSV columns can be accessed by integer index (0-based) or by name when a header is provided.
+
+```xxl
+var data = csv.parse("name,age,city\nAlice,30,Beijing\nBob,25,Shanghai")
+var header = csv.getHeader(data)
+
+// Get column by index
+var ages = csv.column(data, 1)  // ["age", "30", "25"]
+
+// Get column by name
+var names = csv.column(data, "name", header)  // ["name", "Alice", "Bob"]
+
+// Column utilities
+csv.colIndex(header, "age")    // 1
+csv.colName(header, 2)         // "city"
+csv.colCount(data)             // 3
+
+// Column modification
+var updated = csv.setColumn(data, "age", "99", header)  // Set all age values
+var inserted = csv.insertColumn(data, 1, "NEW")          // Insert column at index
+var removed = csv.removeColumn(data, "city", header)     // Remove column by name
+var newHeader = csv.renameColumn(header, "city", "location")  // Rename column
+```
+
+#### column(data, col, [header])
+Get a column from CSV data. `col` can be an integer index or string name. When using a string name, provide the header array.
+
+#### getHeader(data)
+Get the first row as header array.
+
+#### colIndex(header, name)
+Get column index (0-based) by name. Returns -1 if not found.
+
+#### colName(header, index)
+Get column name by index.
+
+#### colCount(data)
+Get number of columns in CSV data.
+
+#### setColumn(data, col, value, [header])
+Set all values in a column. `col` can be index or name.
+
+#### insertColumn(data, index, value)
+Insert a new column at the specified index with the given value.
+
+#### removeColumn(data, col, [header])
+Remove a column. `col` can be index or name.
+
+#### renameColumn(header, oldName, newName)
+Rename a column in the header row.
+
 ---
 
 ## regex

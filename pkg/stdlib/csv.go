@@ -11,6 +11,17 @@ import (
 	"github.com/topxeq/xxlang/pkg/objects"
 )
 
+// findColumnIndex finds the column index by name in a header row.
+// Returns -1 if not found.
+func findColumnIndex(header *objects.Array, name string) int {
+	for i, elem := range header.Elements {
+		if str, ok := elem.(*objects.String); ok && str.Value == name {
+			return i
+		}
+	}
+	return -1
+}
+
 func init() {
 	Register(&Module{
 		Name: "csv",
@@ -213,146 +224,113 @@ func init() {
 
 			// Get column from parsed CSV
 			"column": BuiltinFunc(func(args ...objects.Object) objects.Object {
-				if len(args) != 2 {
-					return Error("column() takes exactly 2 arguments")
+				if len(args) < 2 || len(args) > 3 {
+					return Error("column() takes 2 or 3 arguments")
 				}
 				arr, ok := args[0].(*objects.Array)
 				if !ok {
 					return Error("column() requires an array as first argument")
 				}
-				colIndex, ok := args[1].(*objects.Int)
-				if !ok {
-					return Error("column() requires an integer column index")
+
+				// Check if column identifier is int or string
+				var colIdx int = -1
+				switch v := args[1].(type) {
+				case *objects.Int:
+					colIdx = int(v.Value)
+				case *objects.String:
+					// Column by name - need header
+					if len(args) < 3 {
+						return Error("column() by name requires header array as third argument")
+					}
+					header, ok := args[2].(*objects.Array)
+					if !ok {
+						return Error("column() header must be an array")
+					}
+					colIdx = findColumnIndex(header, v.Value)
+					if colIdx < 0 {
+						return Error("column() column name not found: " + v.Value)
+					}
+				default:
+					return Error("column() requires integer index or string name")
 				}
+
 				result := []objects.Object{}
 				for _, row := range arr.Elements {
 					rowArr, ok := row.(*objects.Array)
 					if !ok {
 						continue
 					}
-					idx := int(colIndex.Value)
-					if idx >= 0 && idx < len(rowArr.Elements) {
-						result = append(result, rowArr.Elements[idx])
+					if colIdx >= 0 && colIdx < len(rowArr.Elements) {
+						result = append(result, rowArr.Elements[colIdx])
 					}
 				}
 				return Array(result...)
 			}),
 
-			// Get row from parsed CSV
-			"row": BuiltinFunc(func(args ...objects.Object) objects.Object {
-				if len(args) != 2 {
-					return Error("row() takes exactly 2 arguments")
-				}
-				arr, ok := args[0].(*objects.Array)
-				if !ok {
-					return Error("row() requires an array as first argument")
-				}
-				rowIndex, ok := args[1].(*objects.Int)
-				if !ok {
-					return Error("row() requires an integer row index")
-				}
-				idx := int(rowIndex.Value)
-				if idx < 0 || idx >= len(arr.Elements) {
-					return Error("row() index out of range")
-				}
-				return arr.Elements[idx]
-			}),
-
-			// Transpose CSV data
-			"transpose": BuiltinFunc(func(args ...objects.Object) objects.Object {
+			// Get header (first row) from CSV data
+			"getHeader": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				if len(args) != 1 {
-					return Error("transpose() takes exactly 1 argument")
+					return Error("getHeader() takes exactly 1 argument")
 				}
 				arr, ok := args[0].(*objects.Array)
 				if !ok {
-					return Error("transpose() requires an array argument")
+					return Error("getHeader() requires an array argument")
 				}
 				if len(arr.Elements) == 0 {
 					return Array()
 				}
-				// Get max columns
-				maxCols := 0
-				for _, row := range arr.Elements {
-					if rowArr, ok := row.(*objects.Array); ok {
-						if len(rowArr.Elements) > maxCols {
-							maxCols = len(rowArr.Elements)
-						}
-					}
+				rowArr, ok := arr.Elements[0].(*objects.Array)
+				if !ok {
+					return Array()
 				}
-				// Transpose
-				result := make([]objects.Object, maxCols)
-				for i := 0; i < maxCols; i++ {
-					col := []objects.Object{}
-					for _, row := range arr.Elements {
-						if rowArr, ok := row.(*objects.Array); ok {
-							if i < len(rowArr.Elements) {
-								col = append(col, rowArr.Elements[i])
-							} else {
-								col = append(col, String(""))
-							}
-						}
-					}
-					result[i] = Array(col...)
-				}
-				return Array(result...)
+				return rowArr
 			}),
 
-			// Filter rows
-			"filterRows": BuiltinFunc(func(args ...objects.Object) objects.Object {
+			// Get column index by name from header
+			"colIndex": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				if len(args) != 2 {
-					return Error("filterRows() takes exactly 2 arguments")
+					return Error("colIndex() takes exactly 2 arguments")
 				}
-				arr, ok := args[0].(*objects.Array)
+				header, ok := args[0].(*objects.Array)
 				if !ok {
-					return Error("filterRows() requires an array as first argument")
+					return Error("colIndex() requires header array as first argument")
 				}
-				pred, ok := args[1].(*objects.Builtin)
+				colName, ok := args[1].(*objects.String)
 				if !ok {
-					return Error("filterRows() requires a function as second argument")
+					return Error("colIndex() requires string column name as second argument")
 				}
-				result := []objects.Object{}
-				for _, row := range arr.Elements {
-					res := pred.Fn(row)
-					if b, ok := res.(*objects.Bool); ok && b.Value {
-						result = append(result, row)
-					}
+				idx := findColumnIndex(header, colName.Value)
+				if idx < 0 {
+					return Error("colIndex() column not found: " + colName.Value)
 				}
-				return Array(result...)
+				return Int(int64(idx))
 			}),
 
-			// Map rows
-			"mapRows": BuiltinFunc(func(args ...objects.Object) objects.Object {
+			// Get column name by index from header
+			"colName": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				if len(args) != 2 {
-					return Error("mapRows() takes exactly 2 arguments")
+					return Error("colName() takes exactly 2 arguments")
 				}
-				arr, ok := args[0].(*objects.Array)
+				header, ok := args[0].(*objects.Array)
 				if !ok {
-					return Error("mapRows() requires an array as first argument")
+					return Error("colName() requires header array as first argument")
 				}
-				fn, ok := args[1].(*objects.Builtin)
+				colIdx, ok := args[1].(*objects.Int)
 				if !ok {
-					return Error("mapRows() requires a function as second argument")
+					return Error("colName() requires integer column index as second argument")
 				}
-				result := make([]objects.Object, len(arr.Elements))
-				for i, row := range arr.Elements {
-					result[i] = fn.Fn(row)
+				idx := int(colIdx.Value)
+				if idx < 0 || idx >= len(header.Elements) {
+					return Error("colName() index out of range")
 				}
-				return Array(result...)
+				str, ok := header.Elements[idx].(*objects.String)
+				if !ok {
+					return String(header.Elements[idx].Inspect())
+				}
+				return str
 			}),
 
-			// Count rows
-			"rowCount": BuiltinFunc(func(args ...objects.Object) objects.Object {
-				if len(args) != 1 {
-					return Error("rowCount() takes exactly 1 argument")
-				}
-				arr, ok := args[0].(*objects.Array)
-				if !ok {
-					return Error("rowCount() requires an array argument")
-				}
-				return Int(int64(len(arr.Elements)))
-			}),
-
-			// Count columns (uses first row)
+			// Get column count
 			"colCount": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				if len(args) != 1 {
 					return Error("colCount() takes exactly 1 argument")
@@ -371,89 +349,176 @@ func init() {
 				return Int(int64(len(rowArr.Elements)))
 			}),
 
-			// Skip rows
-			"skip": BuiltinFunc(func(args ...objects.Object) objects.Object {
-				if len(args) != 2 {
-					return Error("skip() takes exactly 2 arguments")
+			// Set column value for all rows
+			"setColumn": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 3 || len(args) > 4 {
+					return Error("setColumn() takes 3 or 4 arguments")
 				}
 				arr, ok := args[0].(*objects.Array)
 				if !ok {
-					return Error("skip() requires an array as first argument")
+					return Error("setColumn() requires an array as first argument")
 				}
-				n, ok := args[1].(*objects.Int)
-				if !ok {
-					return Error("skip() requires an integer as second argument")
-				}
-				start := int(n.Value)
-				if start < 0 {
-					start = 0
-				}
-				if start >= len(arr.Elements) {
-					return Array()
-				}
-				return Array(arr.Elements[start:]...)
-			}),
 
-			// Take rows
-			"take": BuiltinFunc(func(args ...objects.Object) objects.Object {
-				if len(args) != 2 {
-					return Error("take() takes exactly 2 arguments")
+				var colIdx int = -1
+				switch v := args[1].(type) {
+				case *objects.Int:
+					colIdx = int(v.Value)
+				case *objects.String:
+					if len(args) < 4 {
+						return Error("setColumn() by name requires header array as fourth argument")
+					}
+					header, ok := args[3].(*objects.Array)
+					if !ok {
+						return Error("setColumn() header must be an array")
+					}
+					colIdx = findColumnIndex(header, v.Value)
+					if colIdx < 0 {
+						return Error("setColumn() column name not found: " + v.Value)
+					}
+				default:
+					return Error("setColumn() requires integer index or string name")
 				}
-				arr, ok := args[0].(*objects.Array)
-				if !ok {
-					return Error("take() requires an array as first argument")
-				}
-				n, ok := args[1].(*objects.Int)
-				if !ok {
-					return Error("take() requires an integer as second argument")
-				}
-				count := int(n.Value)
-				if count < 0 {
-					count = 0
-				}
-				if count > len(arr.Elements) {
-					count = len(arr.Elements)
-				}
-				return Array(arr.Elements[:count]...)
-			}),
 
-			// Append row
-			"appendRow": BuiltinFunc(func(args ...objects.Object) objects.Object {
-				if len(args) != 2 {
-					return Error("appendRow() takes exactly 2 arguments")
+				value := args[2]
+
+				result := make([]objects.Object, len(arr.Elements))
+				for i, row := range arr.Elements {
+					rowArr, ok := row.(*objects.Array)
+					if !ok {
+						result[i] = row
+						continue
+					}
+					newRow := make([]objects.Object, len(rowArr.Elements))
+					copy(newRow, rowArr.Elements)
+					if colIdx >= 0 && colIdx < len(newRow) {
+						newRow[colIdx] = value
+					} else if colIdx >= len(newRow) {
+						// Extend row
+						extended := make([]objects.Object, colIdx+1)
+						copy(extended, newRow)
+						for j := len(newRow); j < colIdx; j++ {
+							extended[j] = String("")
+						}
+						extended[colIdx] = value
+						newRow = extended
+					}
+					result[i] = Array(newRow...)
 				}
-				arr, ok := args[0].(*objects.Array)
-				if !ok {
-					return Error("appendRow() requires an array as first argument")
-				}
-				row, ok := args[1].(*objects.Array)
-				if !ok {
-					return Error("appendRow() requires an array as second argument")
-				}
-				result := make([]objects.Object, len(arr.Elements)+1)
-				copy(result, arr.Elements)
-				result[len(arr.Elements)] = row
 				return Array(result...)
 			}),
 
-			// Prepend row
-			"prependRow": BuiltinFunc(func(args ...objects.Object) objects.Object {
-				if len(args) != 2 {
-					return Error("prependRow() takes exactly 2 arguments")
+			// Insert column at position
+			"insertColumn": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 3 {
+					return Error("insertColumn() takes exactly 3 arguments")
 				}
 				arr, ok := args[0].(*objects.Array)
 				if !ok {
-					return Error("prependRow() requires an array as first argument")
+					return Error("insertColumn() requires an array as first argument")
 				}
-				row, ok := args[1].(*objects.Array)
+				colIdx, ok := args[1].(*objects.Int)
 				if !ok {
-					return Error("prependRow() requires an array as second argument")
+					return Error("insertColumn() requires integer column index")
 				}
-				result := make([]objects.Object, len(arr.Elements)+1)
-				result[0] = row
-				copy(result[1:], arr.Elements)
+				value := args[2]
+
+				idx := int(colIdx.Value)
+				result := make([]objects.Object, len(arr.Elements))
+				for i, row := range arr.Elements {
+					rowArr, ok := row.(*objects.Array)
+					if !ok {
+						result[i] = row
+						continue
+					}
+					newRow := make([]objects.Object, len(rowArr.Elements)+1)
+					if idx > len(rowArr.Elements) {
+						idx = len(rowArr.Elements)
+					}
+					copy(newRow, rowArr.Elements[:idx])
+					newRow[idx] = value
+					copy(newRow[idx+1:], rowArr.Elements[idx:])
+					result[i] = Array(newRow...)
+				}
 				return Array(result...)
 			}),
+
+			// Remove column at position
+			"removeColumn": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 2 || len(args) > 3 {
+					return Error("removeColumn() takes 2 or 3 arguments")
+				}
+				arr, ok := args[0].(*objects.Array)
+				if !ok {
+					return Error("removeColumn() requires an array as first argument")
+				}
+
+				var colIdx int = -1
+				switch v := args[1].(type) {
+				case *objects.Int:
+					colIdx = int(v.Value)
+				case *objects.String:
+					if len(args) < 3 {
+						return Error("removeColumn() by name requires header array as third argument")
+					}
+					header, ok := args[2].(*objects.Array)
+					if !ok {
+						return Error("removeColumn() header must be an array")
+					}
+					colIdx = findColumnIndex(header, v.Value)
+					if colIdx < 0 {
+						return Error("removeColumn() column name not found: " + v.Value)
+					}
+				default:
+					return Error("removeColumn() requires integer index or string name")
+				}
+
+				result := make([]objects.Object, len(arr.Elements))
+				for i, row := range arr.Elements {
+					rowArr, ok := row.(*objects.Array)
+					if !ok || colIdx < 0 || colIdx >= len(rowArr.Elements) {
+						result[i] = row
+						continue
+					}
+					newRow := make([]objects.Object, len(rowArr.Elements)-1)
+					copy(newRow, rowArr.Elements[:colIdx])
+					copy(newRow[colIdx:], rowArr.Elements[colIdx+1:])
+					result[i] = Array(newRow...)
+				}
+				return Array(result...)
+			}),
+
+			// Rename column in header
+			"renameColumn": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 3 {
+					return Error("renameColumn() takes exactly 3 arguments")
+				}
+				header, ok := args[0].(*objects.Array)
+				if !ok {
+					return Error("renameColumn() requires header array as first argument")
+				}
+				oldName, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("renameColumn() requires string old name")
+				}
+				newName, ok := args[2].(*objects.String)
+				if !ok {
+					return Error("renameColumn() requires string new name")
+				}
+
+				idx := findColumnIndex(header, oldName.Value)
+				if idx < 0 {
+					return Error("renameColumn() column not found: " + oldName.Value)
+				}
+
+				newHeader := make([]objects.Object, len(header.Elements))
+				copy(newHeader, header.Elements)
+				newHeader[idx] = newName
+				return Array(newHeader...)
+			}),
+
+			// ============================================================
+			// Row operations
+			// ============================================================
 
 			// ============================================================
 			// File-based CSV operations
