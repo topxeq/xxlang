@@ -520,6 +520,200 @@ func init() {
 			// Row operations
 			// ============================================================
 
+			// Get a specific row from CSV data
+			"row": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 2 {
+					return Error("row() takes exactly 2 arguments")
+				}
+				arr, ok := args[0].(*objects.Array)
+				if !ok {
+					return Error("row() requires an array as first argument")
+				}
+				rowIdx, ok := args[1].(*objects.Int)
+				if !ok {
+					return Error("row() requires integer row index")
+				}
+				idx := int(rowIdx.Value)
+				if idx < 0 || idx >= len(arr.Elements) {
+					return Error("row() index out of range")
+				}
+				return arr.Elements[idx]
+			}),
+
+			// Get row count
+			"rowCount": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("rowCount() takes exactly 1 argument")
+				}
+				arr, ok := args[0].(*objects.Array)
+				if !ok {
+					return Error("rowCount() requires an array argument")
+				}
+				return Int(int64(len(arr.Elements)))
+			}),
+
+			// Skip first n rows
+			"skip": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 2 {
+					return Error("skip() takes exactly 2 arguments")
+				}
+				arr, ok := args[0].(*objects.Array)
+				if !ok {
+					return Error("skip() requires an array as first argument")
+				}
+				n, ok := args[1].(*objects.Int)
+				if !ok {
+					return Error("skip() requires integer count")
+				}
+				count := int(n.Value)
+				if count < 0 {
+					count = 0
+				}
+				if count >= len(arr.Elements) {
+					return Array()
+				}
+				return Array(arr.Elements[count:]...)
+			}),
+
+			// Take first n rows
+			"take": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 2 {
+					return Error("take() takes exactly 2 arguments")
+				}
+				arr, ok := args[0].(*objects.Array)
+				if !ok {
+					return Error("take() requires an array as first argument")
+				}
+				n, ok := args[1].(*objects.Int)
+				if !ok {
+					return Error("take() requires integer count")
+				}
+				count := int(n.Value)
+				if count < 0 {
+					count = 0
+				}
+				if count >= len(arr.Elements) {
+					return arr
+				}
+				return Array(arr.Elements[:count]...)
+			}),
+
+			// Append a row to CSV data
+			"appendRow": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 2 {
+					return Error("appendRow() takes exactly 2 arguments")
+				}
+				arr, ok := args[0].(*objects.Array)
+				if !ok {
+					return Error("appendRow() requires an array as first argument")
+				}
+				newRow := args[1]
+				result := make([]objects.Object, len(arr.Elements)+1)
+				copy(result, arr.Elements)
+				result[len(arr.Elements)] = newRow
+				return Array(result...)
+			}),
+
+			// Prepend a row to CSV data
+			"prependRow": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 2 {
+					return Error("prependRow() takes exactly 2 arguments")
+				}
+				arr, ok := args[0].(*objects.Array)
+				if !ok {
+					return Error("prependRow() requires an array as first argument")
+				}
+				newRow := args[1]
+				result := make([]objects.Object, len(arr.Elements)+1)
+				result[0] = newRow
+				copy(result[1:], arr.Elements)
+				return Array(result...)
+			}),
+
+			// Transpose CSV data (rows become columns)
+			"transpose": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("transpose() takes exactly 1 argument")
+				}
+				arr, ok := args[0].(*objects.Array)
+				if !ok {
+					return Error("transpose() requires an array argument")
+				}
+				if len(arr.Elements) == 0 {
+					return Array()
+				}
+
+				// Find max columns
+				maxCols := 0
+				for _, row := range arr.Elements {
+					if rowArr, ok := row.(*objects.Array); ok {
+						if len(rowArr.Elements) > maxCols {
+							maxCols = len(rowArr.Elements)
+						}
+					}
+				}
+
+				// Create transposed result
+				result := make([]objects.Object, maxCols)
+				for col := 0; col < maxCols; col++ {
+					newRow := make([]objects.Object, len(arr.Elements))
+					for row := 0; row < len(arr.Elements); row++ {
+						if rowArr, ok := arr.Elements[row].(*objects.Array); ok && col < len(rowArr.Elements) {
+							newRow[row] = rowArr.Elements[col]
+						} else {
+							newRow[row] = String("")
+						}
+					}
+					result[col] = Array(newRow...)
+				}
+				return Array(result...)
+			}),
+
+			// Filter rows by predicate function
+			"filterRows": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 2 {
+					return Error("filterRows() takes exactly 2 arguments")
+				}
+				arr, ok := args[0].(*objects.Array)
+				if !ok {
+					return Error("filterRows() requires an array as first argument")
+				}
+				pred, ok := args[1].(*objects.Builtin)
+				if !ok {
+					return Error("filterRows() requires a function as second argument")
+				}
+
+				result := []objects.Object{}
+				for _, row := range arr.Elements {
+					res := pred.Fn(row)
+					if b, ok := res.(*objects.Bool); ok && b.Value {
+						result = append(result, row)
+					}
+				}
+				return Array(result...)
+			}),
+
+			// Map rows by function
+			"mapRows": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 2 {
+					return Error("mapRows() takes exactly 2 arguments")
+				}
+				arr, ok := args[0].(*objects.Array)
+				if !ok {
+					return Error("mapRows() requires an array as first argument")
+				}
+				fn, ok := args[1].(*objects.Builtin)
+				if !ok {
+					return Error("mapRows() requires a function as second argument")
+				}
+
+				result := make([]objects.Object, len(arr.Elements))
+				for i, row := range arr.Elements {
+					result[i] = fn.Fn(row)
+				}
+				return Array(result...)
+			}),
+
 			// ============================================================
 			// File-based CSV operations
 			// ============================================================
