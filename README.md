@@ -460,7 +460,7 @@ push([1, 2], 3)     // [1, 2, 3]
 ## CLI Commands
 
 ```bash
-xxl                           # Start REPL (uses register VM by default)
+xxl                           # Start REPL (or run auto.xxl if exists in current directory)
 xxl script.xxl                # Run local script (shortcut)
 xxl run script.xxl            # Run source script
 xxl run script.xxb            # Run compiled bytecode
@@ -472,6 +472,23 @@ xxl compile -o out.xxb --bytecode script.xxl   # Compile with output path
 xxl update                    # Self-update to latest version
 xxl version                   # Show version
 xxl help                      # Show help
+```
+
+### Auto-execution
+
+When `xxl` is run without arguments, it first checks for a file named `auto.xxl` in the current directory. If found, it executes that file instead of starting the REPL. This is useful for:
+
+- **Project automation**: Place build/test scripts in `auto.xxl` and just run `xxl`
+- **Configuration scripts**: Auto-configure environment settings
+- **Quick tasks**: Common operations that run with a single `xxl` command
+
+```bash
+# Create auto.xxl in your project
+echo 'pln("Building project...")' > auto.xxl
+
+# Just run xxl to execute it
+xxl
+# Output: Building project...
 ```
 
 ### Direct Code Execution (-e flag)

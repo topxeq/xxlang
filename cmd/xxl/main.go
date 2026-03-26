@@ -118,8 +118,15 @@ func main() {
 		return
 	}
 
-	// No arguments - start REPL
+	// No arguments - check for auto.xxl or start REPL
 	if len(os.Args) < 2 {
+		// Check if auto.xxl exists in current directory
+		autoPath := "auto.xxl"
+		if _, err := os.Stat(autoPath); err == nil {
+			// auto.xxl exists, run it
+			runFile(autoPath)
+			return
+		}
 		startREPL()
 		return
 	}
@@ -369,7 +376,7 @@ func printUsage() {
 	}
 	fmt.Println()
 	fmt.Println("Usage:")
-	fmt.Println("  xxl                         Start interactive REPL")
+	fmt.Println("  xxl                         Start interactive REPL (or run auto.xxl if exists)")
 	fmt.Println("  xxl <file|url> [-- args...] Execute a .xxl file or script from URL")
 	fmt.Println("  xxl -e <code>               Execute code directly from command line")
 	fmt.Println("  echo 'code' | xxl -pipe     Execute code from stdin")

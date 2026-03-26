@@ -8,6 +8,13 @@ import "io"
 // Read all content from stdin
 var strT = io.readStdin()
 
+// Check if stdin is empty (script run without pipe)
+if (strT == "") {
+    pln("Error: No input from stdin")
+    pln("Usage: echo \"//TXDEF#<hex>\" | xxl 24_decrypt_stdin.xxl -code=mykey")
+    io.exit(1)
+}
+
 // Get encryption code from command line args (default: "char")
 var codeT = trim(getSwitch(argsG, "-code=", "char"))
 

@@ -87,7 +87,8 @@ pln("\n--- 9. dbQueryOrdered ---")
 ordered := dbQueryOrdered(db, "SELECT name, salary FROM employees ORDER BY salary DESC LIMIT 3")
 pln("Top 3 salaries (ordered):")
 for (row in ordered) {
-    pln("  ", row[0][1], "=", row[1][1])
+    // dbQueryOrdered returns OrderedMap objects - access by column name
+    pln("  ", row["name"], "=", row["salary"])
 }
 
 // 10. Test dbQueryMap

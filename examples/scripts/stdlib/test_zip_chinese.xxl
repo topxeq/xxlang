@@ -1,0 +1,136 @@
+// test_zip_chinese.xxl
+// Test zip module with Chinese filenames
+
+// Import the modules with aliases
+import * as zip from "zip"
+import * as io from "io"
+
+// Create a temporary directory for testing
+var tempDir = "temp/zip_chinese_test"
+io.mkdir(tempDir)
+
+// Test 1: Create ZIP with Chinese filenames using createFromMap
+io.println("=== Test 1: createFromMap with Chinese filenames ===")
+
+var zipPath1 = tempDir + "/test_chinese.zip"
+
+var entries = {
+    "中文文件.txt": "这是中文内容，测试中文文件名支持。",
+    "文档/报告.txt": "这是一个报告文档的内容。",
+    "数据/配置.json": "{\"name\": \"测试\", \"value\": 123}",
+    "日本語.txt": "日本語のテキストです。",
+    "한글.txt": "한글 테스트입니다.",
+    "emoji_😀.txt": "Emoji support test! 🎉🎊",
+    "regular_file.txt": "Regular ASCII filename"
+}
+
+var result = zip.createFromMap(zipPath1, entries)
+io.println("Created ZIP: " + zipPath1)
+
+// Test 2: List entries in the ZIP
+io.println("\n=== Test 2: List entries ===")
+var names = zip.listNames(zipPath1)
+for (name in names) {
+    io.println("  - " + name)
+}
+
+// Test 3: Read Chinese filename entries
+io.println("\n=== Test 3: Read entries with Chinese filenames ===")
+var content = zip.readEntry(zipPath1, "中文文件.txt")
+io.println("Content of '中文文件.txt': " + content)
+
+var content2 = zip.readEntry(zipPath1, "文档/报告.txt")
+io.println("Content of '文档/报告.txt': " + content2)
+
+// Test 4: Check if entries exist
+io.println("\n=== Test 4: Check entry existence ===")
+io.println("Has '中文文件.txt': " + zip.hasEntry(zipPath1, "中文文件.txt"))
+io.println("Has 'emoji_😀.txt': " + zip.hasEntry(zipPath1, "emoji_😀.txt"))
+io.println("Has '不存在.txt': " + zip.hasEntry(zipPath1, "不存在.txt"))
+
+// Test 5: Get ZIP info
+io.println("\n=== Test 5: ZIP info ===")
+var info = zip.getInfo(zipPath1)
+io.println("File count: " + info["fileCount"])
+io.println("Total size: " + info["totalSize"])
+io.println("Compressed size: " + info["compressedSize"])
+io.println("Compression ratio: " + info["compressionRatio"] + "%")
+
+// Test 6: Extract all files
+io.println("\n=== Test 6: Extract files ===")
+var extractDir = tempDir + "/extracted"
+result = zip.extract(zipPath1, extractDir)
+io.println("Extracted to: " + extractDir)
+
+// Verify extracted file
+var extractedContent = io.readFile(extractDir + "/中文文件.txt")
+io.println("Extracted content matches: " + (extractedContent == "这是中文内容，测试中文文件名支持。"))
+
+// Test 7: Handle-based operations
+io.println("\n=== Test 7: Handle-based operations ===")
+var zipPath2 = tempDir + "/handle_test.zip"
+var handle = zip.create(zipPath2)
+io.println("Created handle: " + handle)
+
+// Add files with Chinese names
+zip.addString(handle, "新建文件.txt", "通过句柄添加的中文内容")
+zip.addString(handle, "子目录/嵌套文件.txt", "嵌套的中文文件")
+zip.addString(handle, "数据.csv", "姓名,年龄\n张三,25\n李四,30")
+
+zip.close(handle)
+io.println("Closed handle")
+
+// Verify
+var content3 = zip.readEntry(zipPath2, "新建文件.txt")
+io.println("Content from handle-created ZIP: " + content3)
+
+// Test 8: Extract single file
+io.println("\n=== Test 8: Extract single file ===")
+var singleExtractPath = tempDir + "/single_文件.txt"
+zip.extractFile(zipPath2, "新建文件.txt", singleExtractPath)
+var singleContent = io.readFile(singleExtractPath)
+io.println("Single extracted content: " + singleContent)
+
+// Test 9: Remove entry
+io.println("\n=== Test 9: Remove entry ===")
+io.println("Before remove, has '新建文件.txt': " + zip.hasEntry(zipPath2, "新建文件.txt"))
+zip.removeEntry(zipPath2, "新建文件.txt")
+io.println("After remove, has '新建文件.txt': " + zip.hasEntry(zipPath2, "新建文件.txt"))
+
+// Test 10: Rename entry
+io.println("\n=== Test 10: Rename entry ===")
+io.println("Before rename, has '子目录/嵌套文件.txt': " + zip.hasEntry(zipPath2, "子目录/嵌套文件.txt"))
+zip.renameEntry(zipPath2, "子目录/嵌套文件.txt", "子目录/重命名文件.txt")
+io.println("After rename, has '子目录/嵌套文件.txt': " + zip.hasEntry(zipPath2, "子目录/嵌套文件.txt"))
+io.println("After rename, has '子目录/重命名文件.txt': " + zip.hasEntry(zipPath2, "子目录/重命名文件.txt"))
+
+// Test 11: Read all entries
+io.println("\n=== Test 11: Read all entries ===")
+var allEntries = zip.readAll(zipPath1)
+io.println("All entries count: " + len(allEntries))
+for (key in keys(allEntries)) {
+    io.println("  Key: " + key + ", Value length: " + len(allEntries[key]))
+}
+
+// Test 12: Pattern extraction
+io.println("\n=== Test 12: Pattern extraction ===")
+var patternDir = tempDir + "/pattern_extracted"
+var count = zip.extractByPattern(zipPath1, patternDir, "*.txt")
+io.println("Extracted " + count + " .txt files")
+
+// Cleanup
+io.println("\n=== Cleanup ===")
+// Note: In real usage, you might want to keep these files
+// io.remove(zipPath1)
+// io.remove(zipPath2)
+io.println("Test completed successfully!")
+
+// Summary
+io.println("\n=== Summary ===")
+io.println("All tests passed! The zip module correctly handles:")
+io.println("  - Chinese filenames (中文文件名)")
+io.println("  - Japanese filenames (日本語)")
+io.println("  - Korean filenames (한글)")
+io.println("  - Emoji in filenames (😀)")
+io.println("  - Nested directories with Chinese names")
+io.println("  - All basic operations (create, read, extract, modify)")

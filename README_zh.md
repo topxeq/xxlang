@@ -144,7 +144,7 @@ xxl
 ## 命令行工具
 
 ```bash
-xxl                                # 启动 REPL（默认使用寄存器 VM）
+xxl                                # 启动 REPL（或执行当前目录下的 auto.xxl）
 xxl script.xxl                     # 运行本地脚本（快捷方式）
 xxl run script.xxl                 # 运行源代码
 xxl run script.xxb                 # 运行字节码
@@ -156,6 +156,23 @@ xxl compile -o out.xxb --bytecode script.xxl   # 指定输出路径
 xxl update                         # 自我更新到最新版本
 xxl version                        # 显示版本
 xxl help                           # 显示帮助
+```
+
+### 自动执行（auto.xxl）
+
+当 `xxl` 不带参数运行时，会先检查当前目录下是否存在 `auto.xxl` 文件。如果存在，则执行该文件，而不是启动 REPL。这在以下场景非常有用：
+
+- **项目自动化**：将构建/测试脚本放在 `auto.xxl` 中，只需运行 `xxl`
+- **配置脚本**：自动配置环境设置
+- **快速任务**：常用操作只需一个 `xxl` 命令即可运行
+
+```bash
+# 在项目中创建 auto.xxl
+echo 'pln("构建项目中...")' > auto.xxl
+
+# 直接运行 xxl 即可执行
+xxl
+# 输出: 构建项目中...
 ```
 
 ### 直接执行代码（-e 参数）
