@@ -97,6 +97,11 @@ const (
 	PPTXSlideLayoutType ObjectType = "PPTX_SLIDE_LAYOUT"
 	PPTXSlideMasterType ObjectType = "PPTX_SLIDE_MASTER"
 	PPTXThemeType      ObjectType = "PPTX_THEME"
+	// PDF types
+	PDFType            ObjectType = "PDF"
+	PDFDocumentType    ObjectType = "PDF_DOCUMENT"
+	PDFPageType        ObjectType = "PDF_PAGE"
+	PDFInfoType        ObjectType = "PDF_INFO"
 )
 
 // TypeTag is a fast integer type identifier for hot path checks
@@ -193,6 +198,11 @@ const (
 	TagPPTXSlideLayout
 	TagPPTXSlideMaster
 	TagPPTXTheme
+	// PDF tags
+	TagPDF
+	TagPDFDocument
+	TagPDFPage
+	TagPDFInfo
 	TagUnknown
 )
 
