@@ -51,6 +51,15 @@ var TypeMethods = map[ObjectType]map[string]*Builtin{
 	SetType:   setMethods,
 	// XLSX
 	XLSXType: xlsxMethods,
+	// PPTX
+	PPTXDocumentType:  pptxDocumentMethods,
+	PPTXSlideType:     pptxSlideMethods,
+	PPTXTextFrameType: pptxTextFrameMethods,
+	PPTXTextRunType:   pptxTextRunMethods,
+	PPTXShapeType:     pptxShapeMethods,
+	PPTXTableType:     pptxTableMethods,
+	PPTXChartType:     pptxChartMethods,
+	PPTXImageType:     pptxImageMethods,
 	// XML
 	XMLDocumentType: xmlDocumentMethods,
 	XMLNodeType:     xmlNodeMethods,

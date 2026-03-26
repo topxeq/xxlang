@@ -59,6 +59,44 @@ const (
 	XLSXType            ObjectType = "XLSX"
 	XMLDocumentType     ObjectType = "XML_DOCUMENT"
 	XMLNodeType         ObjectType = "XML_NODE"
+	DocxDocumentType    ObjectType = "DOCX_DOCUMENT"
+	DocxParagraphType   ObjectType = "DOCX_PARAGRAPH"
+	DocxRunType         ObjectType = "DOCX_RUN"
+	DocxTableType       ObjectType = "DOCX_TABLE"
+	DocxTableRowType    ObjectType = "DOCX_TABLE_ROW"
+	DocxTableCellType   ObjectType = "DOCX_TABLE_CELL"
+	DocxImageType       ObjectType = "DOCX_IMAGE"
+	DocxSectionType     ObjectType = "DOCX_SECTION"
+	DocxHeaderType      ObjectType = "DOCX_HEADER"
+	DocxFooterType      ObjectType = "DOCX_FOOTER"
+	DocxStyleType       ObjectType = "DOCX_STYLE"
+	DocxHyperlinkType   ObjectType = "DOCX_HYPERLINK"
+	DocxBookmarkType    ObjectType = "DOCX_BOOKMARK"
+	DocxTOCType         ObjectType = "DOCX_TOC"
+	DocxTextBoxType     ObjectType = "DOCX_TEXT_BOX"
+	DocxShapeType       ObjectType = "DOCX_SHAPE"
+	DocxChartType       ObjectType = "DOCX_CHART"
+	DocxCommentType     ObjectType = "DOCX_COMMENT"
+	DocxRevisionType    ObjectType = "DOCX_REVISION"
+	DocxFootnoteType    ObjectType = "DOCX_FOOTNOTE"
+	DocxEndnoteType     ObjectType = "DOCX_ENDNOTE"
+	// PPTX types
+	PPTXDocumentType   ObjectType = "PPTX_DOCUMENT"
+	PPTXSlideType      ObjectType = "PPTX_SLIDE"
+	PPTXTextFrameType  ObjectType = "PPTX_TEXT_FRAME"
+	PPTXParagraphType  ObjectType = "PPTX_PARAGRAPH"
+	PPTXTextRunType    ObjectType = "PPTX_TEXT_RUN"
+	PPTXShapeType      ObjectType = "PPTX_SHAPE"
+	PPTXTableType      ObjectType = "PPTX_TABLE"
+	PPTXTableCellType  ObjectType = "PPTX_TABLE_CELL"
+	PPTXChartType      ObjectType = "PPTX_CHART"
+	PPTXChartSeriesType ObjectType = "PPTX_CHART_SERIES"
+	PPTXImageType      ObjectType = "PPTX_IMAGE"
+	PPTXVideoType      ObjectType = "PPTX_VIDEO"
+	PPTXAudioType      ObjectType = "PPTX_AUDIO"
+	PPTXSlideLayoutType ObjectType = "PPTX_SLIDE_LAYOUT"
+	PPTXSlideMasterType ObjectType = "PPTX_SLIDE_MASTER"
+	PPTXThemeType      ObjectType = "PPTX_THEME"
 )
 
 // TypeTag is a fast integer type identifier for hot path checks
@@ -117,6 +155,44 @@ const (
 	TagXLSX
 	TagXMLDocument
 	TagXMLNode
+	TagDocxDocument
+	TagDocxParagraph
+	TagDocxRun
+	TagDocxTable
+	TagDocxTableRow
+	TagDocxTableCell
+	TagDocxImage
+	TagDocxSection
+	TagDocxHeader
+	TagDocxFooter
+	TagDocxStyle
+	TagDocxHyperlink
+	TagDocxBookmark
+	TagDocxTOC
+	TagDocxTextBox
+	TagDocxShape
+	TagDocxChart
+	TagDocxComment
+	TagDocxRevision
+	TagDocxFootnote
+	TagDocxEndnote
+	// PPTX tags
+	TagPPTXDocument
+	TagPPTXSlide
+	TagPPTXTextFrame
+	TagPPTXParagraph
+	TagPPTXTextRun
+	TagPPTXShape
+	TagPPTXTable
+	TagPPTXTableCell
+	TagPPTXChart
+	TagPPTXChartSeries
+	TagPPTXImage
+	TagPPTXVideo
+	TagPPTXAudio
+	TagPPTXSlideLayout
+	TagPPTXSlideMaster
+	TagPPTXTheme
 	TagUnknown
 )
 

@@ -58,6 +58,8 @@ var Builtins = map[string]*Builtin{
 				return NewInt(int64(len(arg.Elements)))
 			case *Map:
 				return NewInt(int64(len(arg.Pairs)))
+			case *OrderedMap:
+				return NewInt(int64(arg.Len()))
 			default:
 				return newError("argument to 'len' not supported, got %s", args[0].Type())
 			}
@@ -1613,6 +1615,15 @@ var Builtins = map[string]*Builtin{
 			return &Bool{Value: ok}
 		},
 	},
+	"isOrderedMap": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for isOrderedMap. got=%d, want=1", len(args))
+			}
+			_, ok := args[0].(*OrderedMap)
+			return &Bool{Value: ok}
+		},
+	},
 	"isBool": {
 		Fn: func(args ...Object) Object {
 			if len(args) != 1 {
@@ -2842,8 +2853,56 @@ var Builtins = map[string]*Builtin{
 				pairs := make(map[HashKey]MapPair, capacity)
 				return NewMap(pairs)
 
+			case "orderedMap", "OrderedMap":
+				capacity := int64(16)
+				if len(args) >= 2 {
+					c, ok := args[1].(*Int)
+					if !ok {
+						return newError("second argument to 'make' must be INT, got %s", args[1].Type())
+					}
+					capacity = c.Value
+				}
+				return NewOrderedMapWithCapacity(int(capacity))
+
 			default:
-				return newError("make: unsupported type '%s'. Use 'array' or 'map'", typeArg.Value)
+				return newError("make: unsupported type '%s'. Use 'array', 'map', or 'orderedMap'", typeArg.Value)
+			}
+		},
+	},
+	// newOrderedMap - create a new OrderedMap, optionally from a Map or another OrderedMap
+	"newOrderedMap": {
+		Fn: func(args ...Object) Object {
+			if len(args) > 1 {
+				return newError("wrong number of arguments for newOrderedMap. got=%d, want=0 or 1", len(args))
+			}
+
+			if len(args) == 0 {
+				return NewOrderedMap()
+			}
+
+			// Create from existing map or orderedMap
+			switch src := args[0].(type) {
+			case *OrderedMap:
+				// Clone the source OrderedMap
+				return src.Clone()
+			case *Map:
+				// Create OrderedMap from regular Map
+				om := NewOrderedMapWithCapacity(len(src.Pairs))
+				for _, pair := range src.Pairs {
+					om.Set(pair.Key, pair.Value)
+				}
+				return om
+			case *Array:
+				// Create OrderedMap from array of [key, value] pairs
+				om := NewOrderedMapWithCapacity(len(src.Elements))
+				for _, elem := range src.Elements {
+					if arr, ok := elem.(*Array); ok && len(arr.Elements) >= 2 {
+						om.Set(arr.Elements[0], arr.Elements[1])
+					}
+				}
+				return om
+			default:
+				return newError("newOrderedMap: cannot create OrderedMap from type %s", args[0].Type())
 			}
 		},
 	},
@@ -4272,6 +4331,13 @@ var Builtins = map[string]*Builtin{
 	"dbQueryRowTyped":   BuiltinDbQueryRowTyped,
 	"dbQueryArrayTyped": BuiltinDbQueryArrayTyped,
 	"dbQueryValueTyped": BuiltinDbQueryValueTyped,
+
+	// ============================================================
+	// System Command Functions
+	// ============================================================
+	"systemCmd":         BuiltinSystemCmd,
+	"systemCmdDetached": BuiltinSystemCmdDetached,
+	"systemStart":       BuiltinSystemStart,
 }
 
 // RunCodeImpl is the implementation function for runCode, set by the VM

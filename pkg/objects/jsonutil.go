@@ -141,6 +141,53 @@ func objectToJSONRecursive(obj Object, indent, sortKeys bool, indentStr string, 
 		}
 		buf.WriteString("}")
 		return []byte(buf.String()), nil
+	case *OrderedMap:
+		var buf strings.Builder
+		buf.WriteString("{")
+		if indent {
+			buf.WriteString("\n")
+		}
+
+		// Iterate in insertion order (ignore sortKeys for OrderedMap)
+		for i, pair := range o.orderSlice {
+			if indent {
+				for j := 0; j <= level; j++ {
+					buf.WriteString(indentStr)
+				}
+			}
+			// Write key (must be string for JSON)
+			if keyStr, ok := pair.Key.(*String); ok {
+				keyData, _ := json.Marshal(keyStr.Value)
+				buf.Write(keyData)
+			} else {
+				// Non-string keys: use Inspect()
+				keyData, _ := json.Marshal(pair.Key.Inspect())
+				buf.Write(keyData)
+			}
+			buf.WriteString(":")
+			if indent {
+				buf.WriteString(" ")
+			}
+			// Write value recursively
+			data, err := objectToJSONRecursive(pair.Value, indent, sortKeys, indentStr, level+1)
+			if err != nil {
+				return nil, err
+			}
+			buf.Write(data)
+			if i < len(o.orderSlice)-1 {
+				buf.WriteString(",")
+			}
+			if indent {
+				buf.WriteString("\n")
+			}
+		}
+		if indent {
+			for j := 0; j < level; j++ {
+				buf.WriteString(indentStr)
+			}
+		}
+		buf.WriteString("}")
+		return []byte(buf.String()), nil
 	default:
 		// For other types, use Inspect as string
 		data, err := json.Marshal(o.Inspect())
@@ -235,6 +282,22 @@ func ObjectToGoValue(obj Object) (interface{}, error) {
 	case *Map:
 		result := make(map[string]interface{})
 		for _, pair := range o.Pairs {
+			key, ok := pair.Key.(*String)
+			if !ok {
+				// Skip non-string keys
+				continue
+			}
+			val, err := ObjectToGoValue(pair.Value)
+			if err != nil {
+				return nil, err
+			}
+			result[key.Value] = val
+		}
+		return result, nil
+	case *OrderedMap:
+		// Note: Go's map doesn't preserve order, but json.Marshal in Go 1.14+ preserves insertion order
+		result := make(map[string]interface{})
+		for _, pair := range o.orderSlice {
 			key, ok := pair.Key.(*String)
 			if !ok {
 				// Skip non-string keys

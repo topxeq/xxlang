@@ -24,6 +24,7 @@ io.println("Hello, World!")
 - [xml](#xml) - XML encoding/decoding
 - [csv](#csv) - CSV file reading and writing
 - [xlsx](#xlsx-module) - Excel file handling
+- [pptx](#pptx-module) - PowerPoint file handling
 - [regex](#regex) - Regular expressions
 - [crypto](#crypto) - Cryptographic functions
 - [time](#time) - Time and date functions
@@ -3413,5 +3414,161 @@ xlsx.colToIndex("AA")      // 27
 xlsx.indexToCol(1)         // "A"
 xlsx.indexToCol(27)        // "AA"
 xlsx.parseCellRef("A1")    // ["A", 1]
+```
+
+---
+
+### pptx Module
+
+PowerPoint file handling for creating, reading, and modifying PPTX presentations.
+
+#### Module Functions
+
+| Function | Description |
+|----------|-------------|
+| `pptx.create()` | Create a new empty presentation |
+| `pptx.open(path)` | Open an existing pptx file |
+| `pptx.fromBytes(data)` | Open pptx from byte data |
+| `pptx.isPPTX(obj)` | Check if object is a PPTX document |
+| `pptx.isSlide(obj)` | Check if object is a PPTX slide |
+| `pptx.isTextFrame(obj)` | Check if object is a PPTX text frame |
+| `pptx.isShape(obj)` | Check if object is a PPTX shape |
+| `pptx.isTable(obj)` | Check if object is a PPTX table |
+| `pptx.isChart(obj)` | Check if object is a PPTX chart |
+| `pptx.isImage(obj)` | Check if object is a PPTX image |
+| `pptx.inchesToEMU(inches)` | Convert inches to EMUs |
+| `pptx.emuToInches(emu)` | Convert EMUs to inches |
+| `pptx.pointsToEMU(points)` | Convert points to EMUs |
+| `pptx.emuToPoints(emu)` | Convert EMUs to points |
+| `pptx.pixelsToEMU(pixels)` | Convert pixels to EMUs (96 DPI) |
+| `pptx.emuToPixels(emu)` | Convert EMUs to pixels (96 DPI) |
+
+#### Presentation Methods (PPTXDocument)
+
+| Method | Description |
+|--------|-------------|
+| `doc.getSlideCount()` | Get number of slides |
+| `doc.getSlide(index)` | Get slide by 1-based index |
+| `doc.addSlide()` | Add new slide, returns slide object |
+| `doc.save(path)` | Save presentation to file |
+| `doc.toBytes()` | Get presentation as byte array |
+| `doc.close()` | Close presentation |
+
+#### Slide Methods (PPTXSlide)
+
+| Method | Description |
+|--------|-------------|
+| `slide.addText(text, options)` | Add text frame with options |
+| `slide.addShape(type, options)` | Add shape (rect, ellipse, etc.) |
+| `slide.addTable(rows, cols, options)` | Add table |
+| `slide.addChart(type, data, options)` | Add chart |
+| `slide.addImage(path, options)` | Add image from file |
+| `slide.getAllText()` | Get all text content as string |
+| `slide.setNotes(text)` | Set speaker notes |
+| `slide.getNotes()` | Get speaker notes |
+
+#### TextFrame Methods
+
+| Method | Description |
+|--------|-------------|
+| `tf.getText()` | Get text content |
+| `tf.setText(text)` | Set text content |
+| `tf.setFont(name)` | Set font family |
+| `tf.setFontSize(size)` | Set font size in points |
+| `tf.setBold(bool)` | Set bold style |
+| `tf.setItalic(bool)` | Set italic style |
+| `tf.setColor(hex)` | Set text color (e.g., "FF0000") |
+
+#### Table Methods (PPTXTable)
+
+| Method | Description |
+|--------|-------------|
+| `table.setValue(row, col, value)` | Set cell value |
+| `table.getValue(row, col)` | Get cell value |
+| `table.getRowCount()` | Get number of rows |
+| `table.getColCount()` | Get number of columns |
+
+#### Unit Conversion
+
+PPTX uses EMUs (English Metric Units) for positioning:
+- 1 inch = 914,400 EMUs
+- 1 point = 12,700 EMUs
+- 1 pixel (96 DPI) = 9,525 EMUs
+
+```xxl
+pptx.inchesToEMU(1)     // 914400
+pptx.emuToInches(914400)  // 1.0
+pptx.pointsToEMU(12)    // 152400
+```
+
+#### Example Usage
+
+```xxlang
+import "pptx"
+import "fmt"
+
+// Create a new presentation
+var doc = pptx.create()
+
+// Add slides
+var slide1 = doc.addSlide()
+var slide2 = doc.addSlide()
+
+// Add text
+var textFrame = slide1.addText("Welcome to Xxlang PPTX!", {
+    "x": pptx.inchesToEMU(1),
+    "y": pptx.inchesToEMU(1),
+    "width": pptx.inchesToEMU(8),
+    "height": pptx.inchesToEMU(1)
+})
+textFrame.setFontSize(32)
+textFrame.setBold(true)
+textFrame.setColor("4472C4")
+
+// Add shape
+var shape = slide1.addShape("rect", {
+    "x": pptx.inchesToEMU(1),
+    "y": pptx.inchesToEMU(2.5),
+    "width": pptx.inchesToEMU(3),
+    "height": pptx.inchesToEMU(1),
+    "fill": "4472C4"
+})
+
+// Add table
+var table = slide2.addTable(3, 4, {
+    "x": pptx.inchesToEMU(0.5),
+    "y": pptx.inchesToEMU(1)
+})
+
+// Set table headers
+table.setValue(1, 1, "Name")
+table.setValue(1, 2, "Age")
+table.setValue(1, 3, "City")
+table.setValue(1, 4, "Score")
+
+// Set table data
+table.setValue(2, 1, "Alice")
+table.setValue(2, 2, "25")
+table.setValue(2, 3, "Beijing")
+table.setValue(2, 4, "95")
+
+table.setValue(3, 1, "Bob")
+table.setValue(3, 2, "30")
+table.setValue(3, 3, "Shanghai")
+table.setValue(3, 4, "88")
+
+// Add speaker notes
+slide1.setNotes("This is the welcome slide")
+
+// Save presentation
+doc.save("output.pptx")
+
+// Close document
+doc.close()
+
+// Reopen and verify
+var doc2 = pptx.open("output.pptx")
+fmt.print("Slide count: ", doc2.getSlideCount().toStr(), "\n")
+doc2.close()
 ```
 

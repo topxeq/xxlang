@@ -24,6 +24,7 @@ io.println("你好，世界！")
 - [xml](#xml) - XML 编解码
 - [csv](#csv-模块) - CSV 文件读写
 - [xlsx](#xlsx-模块) - Excel 文件处理
+- [pptx](#pptx-模块) - PowerPoint 文件处理
 - [regex](#regex) - 正则表达式
 - [crypto](#crypto) - 加密函数
 - [time](#time) - 时间日期函数
@@ -3355,4 +3356,160 @@ xlsx.colToIndex("AA")      // 27
 xlsx.indexToCol(1)         // "A"
 xlsx.indexToCol(27)        // "AA"
 xlsx.parseCellRef("A1")    // ["A", 1]
+```
+
+---
+
+### pptx 模块
+
+PowerPoint 文件处理，用于创建、读取和修改 PPTX 演示文稿。
+
+#### 模块函数
+
+| 函数 | 说明 |
+|------|------|
+| `pptx.create()` | 创建新的空演示文稿 |
+| `pptx.open(path)` | 打开现有的 pptx 文件 |
+| `pptx.fromBytes(data)` | 从字节数据打开 pptx |
+| `pptx.isPPTX(obj)` | 检查对象是否为 PPTX 文档 |
+| `pptx.isSlide(obj)` | 检查对象是否为 PPTX 幻灯片 |
+| `pptx.isTextFrame(obj)` | 检查对象是否为 PPTX 文本框 |
+| `pptx.isShape(obj)` | 检查对象是否为 PPTX 形状 |
+| `pptx.isTable(obj)` | 检查对象是否为 PPTX 表格 |
+| `pptx.isChart(obj)` | 检查对象是否为 PPTX 图表 |
+| `pptx.isImage(obj)` | 检查对象是否为 PPTX 图片 |
+| `pptx.inchesToEMU(inches)` | 将英寸转换为 EMU |
+| `pptx.emuToInches(emu)` | 将 EMU 转换为英寸 |
+| `pptx.pointsToEMU(points)` | 将磅转换为 EMU |
+| `pptx.emuToPoints(emu)` | 将 EMU 转换为磅 |
+| `pptx.pixelsToEMU(pixels)` | 将像素转换为 EMU（96 DPI） |
+| `pptx.emuToPixels(emu)` | 将 EMU 转换为像素（96 DPI） |
+
+#### 演示文稿方法（PPTXDocument）
+
+| 方法 | 说明 |
+|------|------|
+| `doc.getSlideCount()` | 获取幻灯片数量 |
+| `doc.getSlide(index)` | 按1开始的索引获取幻灯片 |
+| `doc.addSlide()` | 添加新幻灯片，返回幻灯片对象 |
+| `doc.save(path)` | 保存演示文稿到文件 |
+| `doc.toBytes()` | 获取演示文稿为字节数组 |
+| `doc.close()` | 关闭演示文稿 |
+
+#### 幻灯片方法（PPTXSlide）
+
+| 方法 | 说明 |
+|------|------|
+| `slide.addText(text, options)` | 添加带选项的文本框 |
+| `slide.addShape(type, options)` | 添加形状（rect、ellipse 等） |
+| `slide.addTable(rows, cols, options)` | 添加表格 |
+| `slide.addChart(type, data, options)` | 添加图表 |
+| `slide.addImage(path, options)` | 从文件添加图片 |
+| `slide.getAllText()` | 获取所有文本内容为字符串 |
+| `slide.setNotes(text)` | 设置演讲者备注 |
+| `slide.getNotes()` | 获取演讲者备注 |
+
+#### 文本框方法
+
+| 方法 | 说明 |
+|------|------|
+| `tf.getText()` | 获取文本内容 |
+| `tf.setText(text)` | 设置文本内容 |
+| `tf.setFont(name)` | 设置字体名称 |
+| `tf.setFontSize(size)` | 设置字号（磅） |
+| `tf.setBold(bool)` | 设置粗体样式 |
+| `tf.setItalic(bool)` | 设置斜体样式 |
+| `tf.setColor(hex)` | 设置文本颜色（如 "FF0000"） |
+
+#### 表格方法（PPTXTable）
+
+| 方法 | 说明 |
+|------|------|
+| `table.setValue(row, col, value)` | 设置单元格值 |
+| `table.getValue(row, col)` | 获取单元格值 |
+| `table.getRowCount()` | 获取行数 |
+| `table.getColCount()` | 获取列数 |
+
+#### 单位转换
+
+PPTX 使用 EMU（英制公制单位）进行定位：
+- 1 英寸 = 914,400 EMU
+- 1 磅 = 12,700 EMU
+- 1 像素（96 DPI）= 9,525 EMU
+
+```xxl
+pptx.inchesToEMU(1)     // 914400
+pptx.emuToInches(914400)  // 1.0
+pptx.pointsToEMU(12)    // 152400
+```
+
+#### 使用示例
+
+```xxlang
+import "pptx"
+import "fmt"
+
+// 创建新演示文稿
+var doc = pptx.create()
+
+// 添加幻灯片
+var slide1 = doc.addSlide()
+var slide2 = doc.addSlide()
+
+// 添加文本
+var textFrame = slide1.addText("欢迎使用 Xxlang PPTX！", {
+    "x": pptx.inchesToEMU(1),
+    "y": pptx.inchesToEMU(1),
+    "width": pptx.inchesToEMU(8),
+    "height": pptx.inchesToEMU(1)
+})
+textFrame.setFontSize(32)
+textFrame.setBold(true)
+textFrame.setColor("4472C4")
+
+// 添加形状
+var shape = slide1.addShape("rect", {
+    "x": pptx.inchesToEMU(1),
+    "y": pptx.inchesToEMU(2.5),
+    "width": pptx.inchesToEMU(3),
+    "height": pptx.inchesToEMU(1),
+    "fill": "4472C4"
+})
+
+// 添加表格
+var table = slide2.addTable(3, 4, {
+    "x": pptx.inchesToEMU(0.5),
+    "y": pptx.inchesToEMU(1)
+})
+
+// 设置表格表头
+table.setValue(1, 1, "姓名")
+table.setValue(1, 2, "年龄")
+table.setValue(1, 3, "城市")
+table.setValue(1, 4, "分数")
+
+// 设置表格数据
+table.setValue(2, 1, "张三")
+table.setValue(2, 2, "25")
+table.setValue(2, 3, "北京")
+table.setValue(2, 4, "95")
+
+table.setValue(3, 1, "李四")
+table.setValue(3, 2, "30")
+table.setValue(3, 3, "上海")
+table.setValue(3, 4, "88")
+
+// 添加演讲者备注
+slide1.setNotes("这是欢迎幻灯片")
+
+// 保存演示文稿
+doc.save("output.pptx")
+
+// 关闭文档
+doc.close()
+
+// 重新打开并验证
+var doc2 = pptx.open("output.pptx")
+fmt.print("幻灯片数量: ", doc2.getSlideCount().toStr(), "\n")
+doc2.close()
 ```
