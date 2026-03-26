@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net/http"
@@ -110,6 +112,12 @@ func splitArgs(args []string) (interpreterArgs []string, scriptArgs []string) {
 }
 
 func main() {
+	// First, check if this executable has embedded bytecode
+	if hasEmbeddedBytecode() {
+		runEmbeddedBytecode()
+		return
+	}
+
 	// No arguments - start REPL
 	if len(os.Args) < 2 {
 		startREPL()
@@ -227,6 +235,130 @@ func parseFlags(args []string) []string {
 		}
 	}
 	return result
+}
+
+// Embedded bytecode magic marker (must match compile_cmd.go)
+const embeddedBytecodeMagic = "XXLANG_BYTECODE_V1"
+
+// hasEmbeddedBytecode checks if this executable has embedded bytecode
+func hasEmbeddedBytecode() bool {
+	exePath, err := os.Executable()
+	if err != nil {
+		return false
+	}
+
+	exeData, err := os.ReadFile(exePath)
+	if err != nil {
+		return false
+	}
+
+	// Search for the magic marker using LastIndex to find the one we appended
+	magicIdx := bytes.LastIndex(exeData, []byte(embeddedBytecodeMagic))
+	if magicIdx < 0 {
+		return false
+	}
+
+	// Verify that there's room for the length field and at least some bytecode
+	lengthStart := magicIdx + len(embeddedBytecodeMagic)
+	if lengthStart+8 > len(exeData) {
+		return false
+	}
+
+	// Read the bytecode length and verify it's reasonable
+	bytecodeLength := binary.LittleEndian.Uint64(exeData[lengthStart : lengthStart+8])
+	bytecodeStart := lengthStart + 8
+	bytecodeEnd := bytecodeStart + int(bytecodeLength)
+
+	// The bytecode should end exactly at the end of the file
+	// and should be a reasonable size (at least some bytes)
+	if bytecodeEnd != len(exeData) || bytecodeLength < 10 {
+		return false
+	}
+
+	return true
+}
+
+// runEmbeddedBytecode extracts and runs the embedded bytecode
+func runEmbeddedBytecode() {
+	exePath, err := os.Executable()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error getting executable path: %v\n", err)
+		os.Exit(1)
+	}
+
+	exeData, err := os.ReadFile(exePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading executable: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Find the magic marker
+	magicIdx := bytes.LastIndex(exeData, []byte(embeddedBytecodeMagic))
+	if magicIdx < 0 {
+		fmt.Fprintf(os.Stderr, "Error: embedded bytecode magic marker not found\n")
+		os.Exit(1)
+	}
+
+	// Read bytecode length (8 bytes after magic marker)
+	lengthStart := magicIdx + len(embeddedBytecodeMagic)
+	if lengthStart+8 > len(exeData) {
+		fmt.Fprintf(os.Stderr, "Error: invalid embedded bytecode format\n")
+		os.Exit(1)
+	}
+
+	bytecodeLength := binary.LittleEndian.Uint64(exeData[lengthStart : lengthStart+8])
+	bytecodeStart := lengthStart + 8
+	bytecodeEnd := bytecodeStart + int(bytecodeLength)
+
+	if bytecodeEnd > len(exeData) {
+		fmt.Fprintf(os.Stderr, "Error: embedded bytecode length exceeds file size\n")
+		os.Exit(1)
+	}
+
+	bytecodeData := exeData[bytecodeStart:bytecodeEnd]
+
+	// Deserialize the bytecode
+	bytecode, err := compiler.Deserialize(bytecodeData)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error deserializing bytecode: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Run the bytecode
+	runEmbeddedBytecodeVM(bytecode)
+}
+
+// runEmbeddedBytecodeVM runs bytecode from an embedded executable
+func runEmbeddedBytecodeVM(bytecode *compiler.Bytecode) {
+	// Create globals array - argsG is at index 0, scriptPathG is at index 1
+	globals := make([]vm.Value, compiler.GlobalsSize)
+
+	// Set argsG - command line arguments as string array (index 0)
+	argsElements := make([]objects.Object, len(os.Args))
+	for i, arg := range os.Args {
+		argsElements[i] = &objects.String{Value: arg}
+	}
+	globals[0] = vm.NewObject(&objects.Array{Elements: argsElements})
+
+	// Set scriptPathG - executable path (index 1)
+	exePath, _ := os.Executable()
+	globals[1] = vm.NewObject(&objects.String{Value: exePath})
+
+	// Create main module for exports
+	mainModule := &objects.Module{
+		Name:    exePath,
+		Exports: make(map[string]objects.Object),
+	}
+
+	// Create and run VM
+	v := vm.NewRegVMWithGlobals(bytecode, globals)
+	v.SetSourcePath(exePath)
+	v.SetCurrentModule(mainModule)
+
+	if err := v.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 func printUsage() {

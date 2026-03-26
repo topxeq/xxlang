@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"os"
@@ -18,7 +19,11 @@ type compileFlags struct {
 	output   string
 	target   string
 	bytecode bool
+	gui      bool // Windows only: create GUI executable (no console)
 }
+
+// Magic marker for embedded bytecode
+const bytecodeMagic = "XXLANG_BYTECODE_V1"
 
 // compileCmd implements the compile subcommand
 func compileCmd(args []string) error {
@@ -28,6 +33,7 @@ func compileCmd(args []string) error {
 	fs.StringVar(&flags.output, "o", "", "Output file path")
 	fs.StringVar(&flags.target, "", "", "Cross-compile target (os/arch)")
 	fs.BoolVar(&flags.bytecode, "bytecode", false, "Output as bytecode (.xxb) instead of executable")
+	fs.BoolVar(&flags.gui, "gui", false, "Create GUI executable (Windows only, no console window)")
 
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("error parsing flags: %v", err)
@@ -39,12 +45,14 @@ func compileCmd(args []string) error {
 		fmt.Println("Options:")
 		fmt.Println("  -o, --output path     Output file path")
 		fmt.Println("      --target os/arch  Cross-compile for target OS/architecture")
-		fmt.Println("      --bytecode         Output as bytecode (.xxb) instead of executable")
+		fmt.Println("      --bytecode        Output as bytecode (.xxb) instead of executable")
+		fmt.Println("      --gui             Create GUI executable (Windows only, no console)")
 		fmt.Println()
 		fmt.Println("Examples:")
 		fmt.Println("  xxlang compile script.xxl")
 		fmt.Println("  xxlang compile -o program script.xxl")
 		fmt.Println("  xxlang compile -o program.exe --target windows/amd64 script.xxl")
+		fmt.Println("  xxlang compile --gui -o app.exe script.xxl    # GUI app, no console")
 		fmt.Println("  xxlang compile --bytecode script.xxl")
 		return nil
 	}
@@ -77,7 +85,7 @@ func compileCmd(args []string) error {
 			outputPath = baseName + ".xxb"
 		} else {
 			outputPath = baseName
-			if runtime.GOOS == "windows" {
+			if runtime.GOOS == "windows" || strings.Contains(flags.target, "windows") {
 				outputPath += ".exe"
 			}
 		}
@@ -92,12 +100,12 @@ func compileCmd(args []string) error {
 		return fmt.Errorf("parse errors in %s", formatErrors(p.Errors()))
 	}
 
-	// Compile
-	c := compiler.New()
+	// Compile using the register compiler (same as the default VM)
+	c := compiler.NewRegCompiler()
 	// Define preset global variables before compilation
-	c.DefineGlobal("argsG")
-	c.DefineGlobal("scriptPathG")
-	if err := c.Compile(program); err != nil {
+	c.SymbolTable().Define("argsG")
+	c.SymbolTable().Define("scriptPathG")
+	if _, err := c.Compile(program); err != nil {
 		return fmt.Errorf("compile error: %v", err)
 	}
 	bytecode := c.Bytecode()
@@ -110,108 +118,91 @@ func compileCmd(args []string) error {
 		}
 		fmt.Printf("Compiled %s -> %s (bytecode)\n", inputPath, outputPath)
 	} else {
-		// Create executable with embedded launcher
-		if err := createExecutable(bytecode, outputPath, flags.target); err != nil {
+		// Create executable with embedded bytecode
+		isGUI, err := createEmbeddedExecutable(bytecode, outputPath, flags.target, flags.gui)
+		if err != nil {
 			return fmt.Errorf("error creating executable: %v", err)
 		}
-		fmt.Printf("Compiled %s -> %s (executable)\n", inputPath, outputPath)
+		exeType := "executable"
+		if isGUI {
+			exeType = "GUI executable (no console)"
+		}
+		fmt.Printf("Compiled %s -> %s (%s)\n", inputPath, outputPath, exeType)
 	}
 
 	return nil
 }
 
-// createExecutable generates a standalone executable from bytecode
-// This approach creates a shell script launcher that runs xxlang with the bytecode
-func createExecutable(bytecode *compiler.Bytecode, outputPath, target string) error {
+// createEmbeddedExecutable creates a standalone executable with embedded bytecode
+// by appending the bytecode to a copy of the xxlang binary
+// Returns true if the output is a GUI executable (no console window)
+func createEmbeddedExecutable(bytecode *compiler.Bytecode, outputPath, target string, gui bool) (bool, error) {
 	// Serialize bytecode to data
 	bytecodeData, err := bytecode.Serialize()
 	if err != nil {
-		return fmt.Errorf("error serializing bytecode: %v", err)
+		return false, fmt.Errorf("error serializing bytecode: %v", err)
 	}
 
-	// Get path to xxlang binary
+	// Get path to current xxlang binary
 	xxlangPath, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("error getting xxlang path: %v", err)
+		return false, fmt.Errorf("error getting xxlang path: %v", err)
 	}
 
-	// Write bytecode to a file next to the executable
-	bytecodeFile := outputPath + ".xxb"
-	if err := os.WriteFile(bytecodeFile, bytecodeData, 0644); err != nil {
-		return fmt.Errorf("error writing bytecode file: %v", err)
+	// Check if we need GUI mode on Windows
+	isGUI := gui || isGUIExecutable(xxlangPath)
+
+	// Read the current executable
+	exeData, err := os.ReadFile(xxlangPath)
+	if err != nil {
+		return false, fmt.Errorf("error reading executable: %v", err)
 	}
 
-	// Create a shell script launcher that runs xxlang with the bytecode file
-	var launcherScript string
-	if runtime.GOOS == "windows" {
-		// Windows batch script
-		launcherScript = fmt.Sprintf(`@echo off
-"%s" run "%%~dp0.xxb"
-`, filepath.Base(xxlangPath))
-	} else {
-		// Unix shell script
-		launcherScript = `#!/bin/sh
-exec "$(dirname "$0")/` + filepath.Base(xxlangPath) + `" run "$(dirname "$0")/` + filepath.Base(outputPath) + `.xxb"
-`
+	// Create the output file
+	outFile, err := os.Create(outputPath)
+	if err != nil {
+		return false, fmt.Errorf("error creating output file: %v", err)
+	}
+	defer outFile.Close()
+
+	// Write the executable data
+	if _, err := outFile.Write(exeData); err != nil {
+		return false, fmt.Errorf("error writing executable data: %v", err)
 	}
 
-	if err := os.WriteFile(outputPath, []byte(launcherScript), 0755); err != nil {
-		return fmt.Errorf("error writing launcher script: %v", err)
+	// Write the magic marker
+	if _, err := outFile.Write([]byte(bytecodeMagic)); err != nil {
+		return false, fmt.Errorf("error writing magic marker: %v", err)
+	}
+
+	// Write bytecode length (8 bytes, little-endian)
+	lengthBuf := make([]byte, 8)
+	binary.LittleEndian.PutUint64(lengthBuf, uint64(len(bytecodeData)))
+	if _, err := outFile.Write(lengthBuf); err != nil {
+		return false, fmt.Errorf("error writing bytecode length: %v", err)
+	}
+
+	// Write the bytecode
+	if _, err := outFile.Write(bytecodeData); err != nil {
+		return false, fmt.Errorf("error writing bytecode: %v", err)
 	}
 
 	// Make it executable on Unix
 	if runtime.GOOS != "windows" {
 		if err := os.Chmod(outputPath, 0755); err != nil {
-			return fmt.Errorf("error making executable: %v", err)
+			return false, fmt.Errorf("error making executable: %v", err)
 		}
 	}
 
-	return nil
+	return isGUI, nil
 }
 
-// generateBytecodeData generates Go source for embedded bytecode data
-func generateBytecodeData(data []byte) string {
-	var sb strings.Builder
-	sb.WriteString("// Code generated by xxlang compile. DO NOT EDIT.\n")
-	sb.WriteString("package main\n\n")
-	sb.WriteString("import (\n")
-	sb.WriteString("\t\"fmt\"\n")
-	sb.WriteString("\t\"os\"\n\n")
-	sb.WriteString("\t\"github.com/topxeq/xxlang/pkg/compiler\"\n")
-	sb.WriteString("\t\"github.com/topxeq/xxlang/pkg/vm\"\n")
-	sb.WriteString(")\n\n")
-	sb.WriteString("var bytecodeData = []byte{\n")
-	for _, b := range data {
-		sb.WriteString(fmt.Sprintf("\t0x%02x,\n", b))
-	}
-	sb.WriteString("}\n\n")
-	sb.WriteString("func main() {\n")
-	sb.WriteString("\t// Load and run the bytecode\n")
-	sb.WriteString("\tbytecode, err := compiler.Deserialize(bytecodeData)\n")
-	sb.WriteString("\tif err != nil {\n")
-	sb.WriteString("\t\tfmt.Fprintf(os.Stderr, \"Error loading bytecode: %%v\\n\", err)\n")
-	sb.WriteString("\t\tos.Exit(1)\n")
-	sb.WriteString("\t}\n\n")
-	sb.WriteString("\tv := vm.New(bytecode)\n")
-	sb.WriteString("\tif err := v.Run(); err != nil {\n")
-	sb.WriteString("\t\tfmt.Fprintf(os.Stderr, \"Runtime error: %%v\\n\", err)\n")
-	sb.WriteString("\t\tos.Exit(1)\n")
-	sb.WriteString("\t}\n")
-	sb.WriteString("}\n")
-
-	return sb.String()
+// isGUIExecutable checks if the current executable is a GUI (no console) version
+func isGUIExecutable(path string) bool {
+	// Check if the executable name contains 'w' before the extension (e.g., xxlw.exe)
+	base := filepath.Base(path)
+	return strings.HasPrefix(base, "xxlw") || strings.Contains(strings.ToLower(base), "xxlw")
 }
-
-// launcherTemplate is the template for the generated launcher (not used with shell approach)
-const launcherTemplate = `// Code generated by xxlang compile. DO NOT EDIT.
-// This file is replaced by data.go which contains the actual bytecode.
-
-package main
-
-func main() {
-	// Main entry point - bytecode is in data.go
-}
-`
 
 // formatErrors formats parser errors into a single error
 func formatErrors(errors []string) error {
