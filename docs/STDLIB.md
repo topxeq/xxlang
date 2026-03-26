@@ -3273,16 +3273,31 @@ xlsx.isXLSX(wb)  // true
 // ========== Workbook Operations ==========
 
 wb.getSheetList()                // ["Sheet1", "Sheet2"]
+wb.getSheetCount()               // Number of sheets
+wb.getSheetName(1)               // Get sheet name by 1-based index
 wb.newSheet("Data")              // Create new sheet
-wb.deleteSheet("Sheet1")         // Delete sheet
+
+// Delete sheet - supports both name and index
+wb.deleteSheet("Sheet1")         // Delete by name
+wb.deleteSheet(1)                // Delete by index
+
 wb.save("output.xlsx")           // Save to file
 wb.close()                       // Close workbook
 
+// ========== Sheet Index Support ==========
+
+// All methods that take a sheet name also accept a 1-based index:
+wb.getCell(1, "A1")              // Get cell from sheet 1 by index
+wb.setCell(2, "A1", "Hello")     // Set cell in sheet 2 by index
+wb.getRow(1, 1)                  // Get row from sheet 1
+wb.getRowCount(1)                // Get row count of sheet 1
+
 // ========== Cell Operations ==========
 
-// Read cells
+// Read cells - sheet can be name or index
 wb.getCell("Sheet1", "A1")       // By reference
 wb.getCell("Sheet1", 1, 1)       // By row/col (1-based)
+wb.getCell(1, "A1")              // Using sheet index
 
 // Write cells
 wb.setCell("Sheet1", "A1", "Hello")    // String
@@ -3292,8 +3307,9 @@ wb.setCell("Sheet1", 2, 1, "World")    // By row/col
 
 // ========== Row/Column Operations ==========
 
-// Read row/column
+// Read row/column - sheet can be name or index
 wb.getRow("Sheet1", 1)           // [A1, B1, C1, ...]
+wb.getRow(1, 1)                  // From sheet 1 by index
 wb.getCol("Sheet1", 1)           // [A1, A2, A3, ...]
 wb.getRange("Sheet1", "A1:C3")   // 2D array
 

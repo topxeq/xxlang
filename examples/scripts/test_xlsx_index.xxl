@@ -1,0 +1,73 @@
+// test_xlsx_index.xxl
+// Test XLSX sheet index operations
+
+import "xlsx"
+
+pln("=== Testing XLSX Sheet Index Operations ===")
+
+// Create a new workbook
+var wb = xlsx.create()
+pln("Created workbook")
+
+// Add sheets
+wb.newSheet("First")
+wb.newSheet("Second")
+wb.newSheet("Third")
+pln("Added 3 sheets")
+
+// Test getSheetCount
+pln("Sheet count: ", wb.getSheetCount())
+
+// Test getSheetName by index
+pln("Sheet 1 name: ", wb.getSheetName(1))
+pln("Sheet 2 name: ", wb.getSheetName(2))
+pln("Sheet 3 name: ", wb.getSheetName(3))
+
+// Write data using sheet index
+wb.setCell(1, "A1", "Data in First sheet")
+wb.setCell(2, "A1", "Data in Second sheet")
+wb.setCell(3, "A1", "Data in Third sheet")
+pln("Wrote data using sheet index")
+
+// Read data using sheet index
+pln("Read from sheet 1: ", wb.getCell(1, "A1"))
+pln("Read from sheet 2: ", wb.getCell(2, "A1"))
+pln("Read from sheet 3: ", wb.getCell(3, "A1"))
+
+// Test row/col with sheet index
+wb.setCell(1, 1, 1, "ID")
+wb.setCell(1, 1, 2, "Name")
+wb.setCell(1, 2, 1, 101)
+wb.setCell(1, 2, 2, "Alice")
+pln("Row from sheet 1: ", wb.getRow(1, 2))
+
+// Test getRowCount with sheet index
+pln("Row count of sheet 1: ", wb.getRowCount(1))
+
+// Save the file
+var savePath = "D:/aiprjs/xxlang/repo/temp/test_index.xlsx"
+wb.save(savePath)
+pln("Saved to: ", savePath)
+
+pln("")
+pln("=== Testing Read with Sheet Index ===")
+
+// Open the file
+var wb2 = xlsx.open(savePath)
+pln("Opened workbook")
+pln("Sheet count: ", wb2.getSheetCount())
+
+// Read using sheet index
+pln("Sheet 1 A1: ", wb2.getCell(1, "A1"))
+pln("Sheet 2 A1: ", wb2.getCell(2, "A1"))
+pln("Sheet 3 A1: ", wb2.getCell(3, "A1"))
+
+// Test mixed: name and index
+pln("Sheet 'First' A1 (by name): ", wb2.getCell("First", "A1"))
+pln("Sheet 1 A1 (by index): ", wb2.getCell(1, "A1"))
+
+wb2.close()
+pln("Closed workbook")
+
+pln("")
+pln("All tests completed!")

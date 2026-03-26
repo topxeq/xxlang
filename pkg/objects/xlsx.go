@@ -421,6 +421,27 @@ func (x *XLSX) GetSheetList() []string {
 	return x.sheetOrder
 }
 
+// GetSheetCount returns the number of sheets.
+func (x *XLSX) GetSheetCount() int {
+	return len(x.sheetOrder)
+}
+
+// GetSheetName returns the sheet name by index (1-based).
+func (x *XLSX) GetSheetName(index int) string {
+	if index < 1 || index > len(x.sheetOrder) {
+		return ""
+	}
+	return x.sheetOrder[index-1]
+}
+
+// GetSheetByIndex returns a sheet by index (1-based).
+func (x *XLSX) GetSheetByIndex(index int) *Sheet {
+	if index < 1 || index > len(x.sheetOrder) {
+		return nil
+	}
+	return x.sheets[x.sheetOrder[index-1]]
+}
+
 // GetSheet returns a sheet by name.
 func (x *XLSX) GetSheet(name string) *Sheet {
 	return x.sheets[name]

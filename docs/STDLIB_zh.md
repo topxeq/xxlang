@@ -3229,16 +3229,31 @@ xlsx.isXLSX(wb)  // true
 // ========== 工作簿操作 ==========
 
 wb.getSheetList()                // ["Sheet1", "Sheet2"]
+wb.getSheetCount()               // 工作表数量
+wb.getSheetName(1)               // 按1开始的索引获取工作表名称
 wb.newSheet("Data")              // 创建新工作表
-wb.deleteSheet("Sheet1")         // 删除工作表
+
+// 删除工作表 - 支持名称和索引
+wb.deleteSheet("Sheet1")         // 按名称删除
+wb.deleteSheet(1)                // 按索引删除
+
 wb.save("output.xlsx")           // 保存文件
 wb.close()                       // 关闭工作簿
 
+// ========== 工作表索引支持 ==========
+
+// 所有接受工作表名称的方法也接受1开始的索引：
+wb.getCell(1, "A1")              // 按索引从第1个工作表获取单元格
+wb.setCell(2, "A1", "你好")       // 按索引在第2个工作表设置单元格
+wb.getRow(1, 1)                  // 从第1个工作表获取行
+wb.getRowCount(1)                // 获取第1个工作表的行数
+
 // ========== 单元格操作 ==========
 
-// 读取单元格
+// 读取单元格 - 工作表参数可以是名称或索引
 wb.getCell("Sheet1", "A1")       // 按引用
 wb.getCell("Sheet1", 1, 1)       // 按行列索引（从1开始）
+wb.getCell(1, "A1")              // 使用工作表索引
 
 // 写入单元格
 wb.setCell("Sheet1", "A1", "你好")    // 字符串
@@ -3248,8 +3263,9 @@ wb.setCell("Sheet1", 2, 1, "世界")     // 按行列索引
 
 // ========== 行列操作 ==========
 
-// 读取行/列
+// 读取行/列 - 工作表参数可以是名称或索引
 wb.getRow("Sheet1", 1)           // [A1, B1, C1, ...]
+wb.getRow(1, 1)                  // 按索引从第1个工作表获取
 wb.getCol("Sheet1", 1)           // [A1, A2, A3, ...]
 wb.getRange("Sheet1", "A1:C3")   // 二维数组
 

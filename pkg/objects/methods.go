@@ -3995,6 +3995,34 @@ var xlsxMethods = map[string]*Builtin{
 		}
 		return &Array{Elements: elements}
 	}},
+	"getSheetCount": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getSheetCount. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for getSheetCount must be XLSX, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.GetSheetCount()))
+	}},
+	"getSheetName": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for getSheetName. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*XLSX)
+		if !ok {
+			return newError("receiver for getSheetName must be XLSX, got %s", args[0].Type())
+		}
+		idx, ok := args[1].(*Int)
+		if !ok {
+			return newError("index must be INT, got %s", args[1].Type())
+		}
+		name := self.GetSheetName(int(idx.Value))
+		if name == "" {
+			return newError("sheet index out of range: %d", idx.Value)
+		}
+		return &String{Value: name}
+	}},
 	"newSheet": {Fn: func(args ...Object) Object {
 		if len(args) != 2 {
 			return newError("wrong number of arguments for newSheet. got=%d, want=2", len(args))
@@ -4017,11 +4045,20 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for deleteSheet must be XLSX, got %s", args[0].Type())
 		}
-		name, ok := args[1].(*String)
-		if !ok {
-			return newError("argument for deleteSheet must be STRING, got %s", args[1].Type())
+		// Support both string name and integer index
+		var sheetName string
+		switch v := args[1].(type) {
+		case *String:
+			sheetName = v.Value
+		case *Int:
+			sheetName = self.GetSheetName(int(v.Value))
+			if sheetName == "" {
+				return newError("sheet index out of range: %d", v.Value)
+			}
+		default:
+			return newError("argument for deleteSheet must be STRING or INT, got %s", args[1].Type())
 		}
-		return &Bool{Value: self.DeleteSheet(name.Value)}
+		return &Bool{Value: self.DeleteSheet(sheetName)}
 	}},
 	"getCell": {Fn: func(args ...Object) Object {
 		if len(args) < 3 {
@@ -4031,13 +4068,22 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for getCell must be XLSX, got %s", args[0].Type())
 		}
-		sheet, ok := args[1].(*String)
-		if !ok {
-			return newError("sheet name must be STRING")
+		// Resolve sheet name from string or integer index
+		var sheetName string
+		switch v := args[1].(type) {
+		case *String:
+			sheetName = v.Value
+		case *Int:
+			sheetName = self.GetSheetName(int(v.Value))
+			if sheetName == "" {
+				return newError("sheet index out of range: %d", v.Value)
+			}
+		default:
+			return newError("sheet must be STRING or INT")
 		}
 		// Args[2] can be string ref or row number
 		if ref, ok := args[2].(*String); ok {
-			return self.GetCell(sheet.Value, ref.Value)
+			return self.GetCell(sheetName, ref.Value)
 		}
 		// Row, col form
 		if len(args) < 4 {
@@ -4048,7 +4094,7 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok1 || !ok2 {
 			return newError("row and col must be INT")
 		}
-		return self.GetCellByIndex(sheet.Value, int(row.Value), int(col.Value))
+		return self.GetCellByIndex(sheetName, int(row.Value), int(col.Value))
 	}},
 	"setCell": {Fn: func(args ...Object) Object {
 		if len(args) < 4 {
@@ -4058,16 +4104,25 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for setCell must be XLSX, got %s", args[0].Type())
 		}
-		sheet, ok := args[1].(*String)
-		if !ok {
-			return newError("sheet name must be STRING")
+		// Resolve sheet name from string or integer index
+		var sheetName string
+		switch v := args[1].(type) {
+		case *String:
+			sheetName = v.Value
+		case *Int:
+			sheetName = self.GetSheetName(int(v.Value))
+			if sheetName == "" {
+				return newError("sheet index out of range: %d", v.Value)
+			}
+		default:
+			return newError("sheet must be STRING or INT")
 		}
 		// Args[2] can be string ref or row number
 		if ref, ok := args[2].(*String); ok {
 			if len(args) < 4 {
 				return newError("missing value argument")
 			}
-			if err := self.SetCell(sheet.Value, ref.Value, args[3]); err != nil {
+			if err := self.SetCell(sheetName, ref.Value, args[3]); err != nil {
 				return newError("%s", err.Error())
 			}
 			return NULL
@@ -4081,7 +4136,7 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok1 || !ok2 {
 			return newError("row and col must be INT")
 		}
-		if err := self.SetCellByIndex(sheet.Value, int(row.Value), int(col.Value), args[4]); err != nil {
+		if err := self.SetCellByIndex(sheetName, int(row.Value), int(col.Value), args[4]); err != nil {
 			return newError("%s", err.Error())
 		}
 		return NULL
@@ -4094,15 +4149,24 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for getRow must be XLSX, got %s", args[0].Type())
 		}
-		sheet, ok := args[1].(*String)
-		if !ok {
-			return newError("sheet name must be STRING")
+		// Resolve sheet name from string or integer index
+		var sheetName string
+		switch v := args[1].(type) {
+		case *String:
+			sheetName = v.Value
+		case *Int:
+			sheetName = self.GetSheetName(int(v.Value))
+			if sheetName == "" {
+				return newError("sheet index out of range: %d", v.Value)
+			}
+		default:
+			return newError("sheet must be STRING or INT")
 		}
 		row, ok := args[2].(*Int)
 		if !ok {
 			return newError("row must be INT")
 		}
-		return self.GetRow(sheet.Value, int(row.Value))
+		return self.GetRow(sheetName, int(row.Value))
 	}},
 	"setRow": {Fn: func(args ...Object) Object {
 		if len(args) != 4 {
@@ -4112,9 +4176,18 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for setRow must be XLSX, got %s", args[0].Type())
 		}
-		sheet, ok := args[1].(*String)
-		if !ok {
-			return newError("sheet name must be STRING")
+		// Resolve sheet name from string or integer index
+		var sheetName string
+		switch v := args[1].(type) {
+		case *String:
+			sheetName = v.Value
+		case *Int:
+			sheetName = self.GetSheetName(int(v.Value))
+			if sheetName == "" {
+				return newError("sheet index out of range: %d", v.Value)
+			}
+		default:
+			return newError("sheet must be STRING or INT")
 		}
 		row, ok := args[2].(*Int)
 		if !ok {
@@ -4124,7 +4197,7 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok {
 			return newError("values must be ARRAY")
 		}
-		if err := self.SetRow(sheet.Value, int(row.Value), values); err != nil {
+		if err := self.SetRow(sheetName, int(row.Value), values); err != nil {
 			return newError("%s", err.Error())
 		}
 		return NULL
@@ -4137,15 +4210,24 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for getCol must be XLSX, got %s", args[0].Type())
 		}
-		sheet, ok := args[1].(*String)
-		if !ok {
-			return newError("sheet name must be STRING")
+		// Resolve sheet name from string or integer index
+		var sheetName string
+		switch v := args[1].(type) {
+		case *String:
+			sheetName = v.Value
+		case *Int:
+			sheetName = self.GetSheetName(int(v.Value))
+			if sheetName == "" {
+				return newError("sheet index out of range: %d", v.Value)
+			}
+		default:
+			return newError("sheet must be STRING or INT")
 		}
 		col, ok := args[2].(*Int)
 		if !ok {
 			return newError("col must be INT")
 		}
-		return self.GetCol(sheet.Value, int(col.Value))
+		return self.GetCol(sheetName, int(col.Value))
 	}},
 	"getRange": {Fn: func(args ...Object) Object {
 		if len(args) != 3 {
@@ -4155,15 +4237,24 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for getRange must be XLSX, got %s", args[0].Type())
 		}
-		sheet, ok := args[1].(*String)
-		if !ok {
-			return newError("sheet name must be STRING")
+		// Resolve sheet name from string or integer index
+		var sheetName string
+		switch v := args[1].(type) {
+		case *String:
+			sheetName = v.Value
+		case *Int:
+			sheetName = self.GetSheetName(int(v.Value))
+			if sheetName == "" {
+				return newError("sheet index out of range: %d", v.Value)
+			}
+		default:
+			return newError("sheet must be STRING or INT")
 		}
 		rng, ok := args[2].(*String)
 		if !ok {
 			return newError("range must be STRING")
 		}
-		return self.GetRange(sheet.Value, rng.Value)
+		return self.GetRange(sheetName, rng.Value)
 	}},
 	"getRowCount": {Fn: func(args ...Object) Object {
 		if len(args) != 2 {
@@ -4173,11 +4264,20 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for getRowCount must be XLSX, got %s", args[0].Type())
 		}
-		sheet, ok := args[1].(*String)
-		if !ok {
-			return newError("sheet name must be STRING")
+		// Resolve sheet name from string or integer index
+		var sheetName string
+		switch v := args[1].(type) {
+		case *String:
+			sheetName = v.Value
+		case *Int:
+			sheetName = self.GetSheetName(int(v.Value))
+			if sheetName == "" {
+				return newError("sheet index out of range: %d", v.Value)
+			}
+		default:
+			return newError("sheet must be STRING or INT")
 		}
-		return NewInt(int64(self.GetRowCount(sheet.Value)))
+		return NewInt(int64(self.GetRowCount(sheetName)))
 	}},
 	"getColCount": {Fn: func(args ...Object) Object {
 		if len(args) != 2 {
@@ -4187,11 +4287,20 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for getColCount must be XLSX, got %s", args[0].Type())
 		}
-		sheet, ok := args[1].(*String)
-		if !ok {
-			return newError("sheet name must be STRING")
+		// Resolve sheet name from string or integer index
+		var sheetName string
+		switch v := args[1].(type) {
+		case *String:
+			sheetName = v.Value
+		case *Int:
+			sheetName = self.GetSheetName(int(v.Value))
+			if sheetName == "" {
+				return newError("sheet index out of range: %d", v.Value)
+			}
+		default:
+			return newError("sheet must be STRING or INT")
 		}
-		return NewInt(int64(self.GetColCount(sheet.Value)))
+		return NewInt(int64(self.GetColCount(sheetName)))
 	}},
 	"insertRow": {Fn: func(args ...Object) Object {
 		if len(args) != 3 {
@@ -4201,15 +4310,24 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for insertRow must be XLSX, got %s", args[0].Type())
 		}
-		sheet, ok := args[1].(*String)
-		if !ok {
-			return newError("sheet name must be STRING")
+		// Resolve sheet name from string or integer index
+		var sheetName string
+		switch v := args[1].(type) {
+		case *String:
+			sheetName = v.Value
+		case *Int:
+			sheetName = self.GetSheetName(int(v.Value))
+			if sheetName == "" {
+				return newError("sheet index out of range: %d", v.Value)
+			}
+		default:
+			return newError("sheet must be STRING or INT")
 		}
 		row, ok := args[2].(*Int)
 		if !ok {
 			return newError("row must be INT")
 		}
-		if err := self.InsertRow(sheet.Value, int(row.Value)); err != nil {
+		if err := self.InsertRow(sheetName, int(row.Value)); err != nil {
 			return newError("%s", err.Error())
 		}
 		return NULL
@@ -4222,15 +4340,24 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for deleteRow must be XLSX, got %s", args[0].Type())
 		}
-		sheet, ok := args[1].(*String)
-		if !ok {
-			return newError("sheet name must be STRING")
+		// Resolve sheet name from string or integer index
+		var sheetName string
+		switch v := args[1].(type) {
+		case *String:
+			sheetName = v.Value
+		case *Int:
+			sheetName = self.GetSheetName(int(v.Value))
+			if sheetName == "" {
+				return newError("sheet index out of range: %d", v.Value)
+			}
+		default:
+			return newError("sheet must be STRING or INT")
 		}
 		row, ok := args[2].(*Int)
 		if !ok {
 			return newError("row must be INT")
 		}
-		if err := self.DeleteRow(sheet.Value, int(row.Value)); err != nil {
+		if err := self.DeleteRow(sheetName, int(row.Value)); err != nil {
 			return newError("%s", err.Error())
 		}
 		return NULL
@@ -4243,15 +4370,24 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for insertCol must be XLSX, got %s", args[0].Type())
 		}
-		sheet, ok := args[1].(*String)
-		if !ok {
-			return newError("sheet name must be STRING")
+		// Resolve sheet name from string or integer index
+		var sheetName string
+		switch v := args[1].(type) {
+		case *String:
+			sheetName = v.Value
+		case *Int:
+			sheetName = self.GetSheetName(int(v.Value))
+			if sheetName == "" {
+				return newError("sheet index out of range: %d", v.Value)
+			}
+		default:
+			return newError("sheet must be STRING or INT")
 		}
 		col, ok := args[2].(*Int)
 		if !ok {
 			return newError("col must be INT")
 		}
-		if err := self.InsertCol(sheet.Value, int(col.Value)); err != nil {
+		if err := self.InsertCol(sheetName, int(col.Value)); err != nil {
 			return newError("%s", err.Error())
 		}
 		return NULL
@@ -4264,15 +4400,24 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for deleteCol must be XLSX, got %s", args[0].Type())
 		}
-		sheet, ok := args[1].(*String)
-		if !ok {
-			return newError("sheet name must be STRING")
+		// Resolve sheet name from string or integer index
+		var sheetName string
+		switch v := args[1].(type) {
+		case *String:
+			sheetName = v.Value
+		case *Int:
+			sheetName = self.GetSheetName(int(v.Value))
+			if sheetName == "" {
+				return newError("sheet index out of range: %d", v.Value)
+			}
+		default:
+			return newError("sheet must be STRING or INT")
 		}
 		col, ok := args[2].(*Int)
 		if !ok {
 			return newError("col must be INT")
 		}
-		if err := self.DeleteCol(sheet.Value, int(col.Value)); err != nil {
+		if err := self.DeleteCol(sheetName, int(col.Value)); err != nil {
 			return newError("%s", err.Error())
 		}
 		return NULL
@@ -4285,9 +4430,18 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for mergeCell must be XLSX, got %s", args[0].Type())
 		}
-		sheet, ok := args[1].(*String)
-		if !ok {
-			return newError("sheet name must be STRING")
+		// Resolve sheet name from string or integer index
+		var sheetName string
+		switch v := args[1].(type) {
+		case *String:
+			sheetName = v.Value
+		case *Int:
+			sheetName = self.GetSheetName(int(v.Value))
+			if sheetName == "" {
+				return newError("sheet index out of range: %d", v.Value)
+			}
+		default:
+			return newError("sheet must be STRING or INT")
 		}
 		start, ok := args[2].(*String)
 		if !ok {
@@ -4297,7 +4451,7 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok {
 			return newError("end ref must be STRING")
 		}
-		if err := self.MergeCell(sheet.Value, start.Value, end.Value); err != nil {
+		if err := self.MergeCell(sheetName, start.Value, end.Value); err != nil {
 			return newError("%s", err.Error())
 		}
 		return NULL
@@ -4310,15 +4464,24 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for unmergeCell must be XLSX, got %s", args[0].Type())
 		}
-		sheet, ok := args[1].(*String)
-		if !ok {
-			return newError("sheet name must be STRING")
+		// Resolve sheet name from string or integer index
+		var sheetName string
+		switch v := args[1].(type) {
+		case *String:
+			sheetName = v.Value
+		case *Int:
+			sheetName = self.GetSheetName(int(v.Value))
+			if sheetName == "" {
+				return newError("sheet index out of range: %d", v.Value)
+			}
+		default:
+			return newError("sheet must be STRING or INT")
 		}
 		ref, ok := args[2].(*String)
 		if !ok {
 			return newError("ref must be STRING")
 		}
-		if err := self.UnmergeCell(sheet.Value, ref.Value); err != nil {
+		if err := self.UnmergeCell(sheetName, ref.Value); err != nil {
 			return newError("%s", err.Error())
 		}
 		return NULL
@@ -4331,11 +4494,20 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for getMerges must be XLSX, got %s", args[0].Type())
 		}
-		sheet, ok := args[1].(*String)
-		if !ok {
-			return newError("sheet name must be STRING")
+		// Resolve sheet name from string or integer index
+		var sheetName string
+		switch v := args[1].(type) {
+		case *String:
+			sheetName = v.Value
+		case *Int:
+			sheetName = self.GetSheetName(int(v.Value))
+			if sheetName == "" {
+				return newError("sheet index out of range: %d", v.Value)
+			}
+		default:
+			return newError("sheet must be STRING or INT")
 		}
-		return self.GetMerges(sheet.Value)
+		return self.GetMerges(sheetName)
 	}},
 	"getImages": {Fn: func(args ...Object) Object {
 		if len(args) != 2 {
@@ -4345,11 +4517,20 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for getImages must be XLSX, got %s", args[0].Type())
 		}
-		sheet, ok := args[1].(*String)
-		if !ok {
-			return newError("sheet name must be STRING")
+		// Resolve sheet name from string or integer index
+		var sheetName string
+		switch v := args[1].(type) {
+		case *String:
+			sheetName = v.Value
+		case *Int:
+			sheetName = self.GetSheetName(int(v.Value))
+			if sheetName == "" {
+				return newError("sheet index out of range: %d", v.Value)
+			}
+		default:
+			return newError("sheet must be STRING or INT")
 		}
-		return self.GetImages(sheet.Value)
+		return self.GetImages(sheetName)
 	}},
 	"extractImage": {Fn: func(args ...Object) Object {
 		if len(args) != 4 {
@@ -4359,9 +4540,18 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for extractImage must be XLSX, got %s", args[0].Type())
 		}
-		sheet, ok := args[1].(*String)
-		if !ok {
-			return newError("sheet name must be STRING")
+		// Resolve sheet name from string or integer index
+		var sheetName string
+		switch v := args[1].(type) {
+		case *String:
+			sheetName = v.Value
+		case *Int:
+			sheetName = self.GetSheetName(int(v.Value))
+			if sheetName == "" {
+				return newError("sheet index out of range: %d", v.Value)
+			}
+		default:
+			return newError("sheet must be STRING or INT")
 		}
 		imageIdx, ok := args[2].(*Int)
 		if !ok {
@@ -4371,7 +4561,7 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok {
 			return newError("output path must be STRING")
 		}
-		if err := self.ExtractImage(sheet.Value, int(imageIdx.Value), outputPath.Value); err != nil {
+		if err := self.ExtractImage(sheetName, int(imageIdx.Value), outputPath.Value); err != nil {
 			return newError("%s", err.Error())
 		}
 		return NULL
@@ -4384,15 +4574,24 @@ var xlsxMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for getImageData must be XLSX, got %s", args[0].Type())
 		}
-		sheet, ok := args[1].(*String)
-		if !ok {
-			return newError("sheet name must be STRING")
+		// Resolve sheet name from string or integer index
+		var sheetName string
+		switch v := args[1].(type) {
+		case *String:
+			sheetName = v.Value
+		case *Int:
+			sheetName = self.GetSheetName(int(v.Value))
+			if sheetName == "" {
+				return newError("sheet index out of range: %d", v.Value)
+			}
+		default:
+			return newError("sheet must be STRING or INT")
 		}
 		imageIdx, ok := args[2].(*Int)
 		if !ok {
 			return newError("image index must be INT")
 		}
-		data, err := self.GetImageData(sheet.Value, int(imageIdx.Value))
+		data, err := self.GetImageData(sheetName, int(imageIdx.Value))
 		if err != nil {
 			return newError("%s", err.Error())
 		}
