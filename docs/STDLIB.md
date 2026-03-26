@@ -23,6 +23,7 @@ io.println("Hello, World!")
 - [json](#json) - JSON encoding/decoding
 - [xml](#xml) - XML encoding/decoding
 - [csv](#csv) - CSV file reading and writing
+- [xlsx](#xlsx-module) - Excel file handling
 - [regex](#regex) - Regular expressions
 - [crypto](#crypto) - Cryptographic functions
 - [time](#time) - Time and date functions
@@ -3256,7 +3257,74 @@ d.equals(e)        // true
 
 ### xlsx Module
 
-Excel file handling for reading and writing xlsx files.
+Excel file handling for reading and writing xlsx files. Supports both sheet name and 1-based sheet index for all operations.
+
+#### Module Functions
+
+| Function | Description |
+|----------|-------------|
+| `xlsx.create()` | Create a new empty workbook |
+| `xlsx.open(path)` | Open an existing xlsx file |
+| `xlsx.isXLSX(obj)` | Check if object is an XLSX workbook |
+| `xlsx.colToIndex(col)` | Convert column letter to index (A=1, AA=27) |
+| `xlsx.indexToCol(idx)` | Convert index to column letter (1=A, 27=AA) |
+| `xlsx.parseCellRef(ref)` | Parse cell reference, returns [col, row] |
+
+#### Workbook Methods
+
+| Method | Description |
+|--------|-------------|
+| `wb.getSheetList()` | Get array of sheet names |
+| `wb.getSheetCount()` | Get number of sheets |
+| `wb.getSheetName(idx)` | Get sheet name by 1-based index |
+| `wb.newSheet(name)` | Create new sheet, returns true on success |
+| `wb.deleteSheet(sheet)` | Delete sheet by name or index |
+| `wb.save(path)` | Save workbook to file |
+| `wb.close()` | Close workbook |
+
+#### Cell Operations
+
+All sheet parameters can be either sheet name (string) or sheet index (int, 1-based).
+
+| Method | Description |
+|--------|-------------|
+| `wb.getCell(sheet, ref)` | Get cell value by reference (e.g., "A1") |
+| `wb.getCell(sheet, row, col)` | Get cell value by row/col (1-based) |
+| `wb.setCell(sheet, ref, value)` | Set cell value by reference |
+| `wb.setCell(sheet, row, col, value)` | Set cell value by row/col |
+
+#### Row/Column Operations
+
+| Method | Description |
+|--------|-------------|
+| `wb.getRow(sheet, row)` | Get row as array |
+| `wb.setRow(sheet, row, values)` | Set row from array |
+| `wb.getCol(sheet, col)` | Get column as array |
+| `wb.getRange(sheet, range)` | Get range as 2D array (e.g., "A1:C3") |
+| `wb.getRowCount(sheet)` | Get number of rows |
+| `wb.getColCount(sheet)` | Get number of columns |
+| `wb.insertRow(sheet, row)` | Insert row at position |
+| `wb.deleteRow(sheet, row)` | Delete row |
+| `wb.insertCol(sheet, col)` | Insert column at position |
+| `wb.deleteCol(sheet, col)` | Delete column |
+
+#### Merge Operations
+
+| Method | Description |
+|--------|-------------|
+| `wb.mergeCell(sheet, start, end)` | Merge cell range |
+| `wb.unmergeCell(sheet, ref)` | Unmerge cells |
+| `wb.getMerges(sheet)` | Get array of merge ranges |
+
+#### Image Operations
+
+| Method | Description |
+|--------|-------------|
+| `wb.getImages(sheet)` | Get array of image info maps |
+| `wb.extractImage(sheet, idx, path)` | Extract image to file |
+| `wb.getImageData(sheet, idx)` | Get image data as base64 string |
+
+#### Example Usage
 
 ```xxlang
 load("xlsx")

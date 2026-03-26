@@ -22,6 +22,8 @@ io.println("你好，世界！")
 - [array](#array) - 数组工具
 - [json](#json) - JSON 编解码
 - [xml](#xml) - XML 编解码
+- [csv](#csv-模块) - CSV 文件读写
+- [xlsx](#xlsx-模块) - Excel 文件处理
 - [regex](#regex) - 正则表达式
 - [crypto](#crypto) - 加密函数
 - [time](#time) - 时间日期函数
@@ -3212,7 +3214,74 @@ d.equals(e)        // true（相等）
 
 ### xlsx 模块
 
-Excel 文件读写处理。
+Excel 文件读写处理。所有操作均支持使用工作表名称或1开始的索引。
+
+#### 模块函数
+
+| 函数 | 说明 |
+|------|------|
+| `xlsx.create()` | 创建新的空工作簿 |
+| `xlsx.open(path)` | 打开现有的xlsx文件 |
+| `xlsx.isXLSX(obj)` | 检查对象是否为XLSX工作簿 |
+| `xlsx.colToIndex(col)` | 列字母转索引（A=1, AA=27） |
+| `xlsx.indexToCol(idx)` | 索引转列字母（1=A, 27=AA） |
+| `xlsx.parseCellRef(ref)` | 解析单元格引用，返回[列, 行] |
+
+#### 工作簿方法
+
+| 方法 | 说明 |
+|------|------|
+| `wb.getSheetList()` | 获取工作表名称数组 |
+| `wb.getSheetCount()` | 获取工作表数量 |
+| `wb.getSheetName(idx)` | 按1开始的索引获取工作表名称 |
+| `wb.newSheet(name)` | 创建新工作表，成功返回true |
+| `wb.deleteSheet(sheet)` | 按名称或索引删除工作表 |
+| `wb.save(path)` | 保存工作簿到文件 |
+| `wb.close()` | 关闭工作簿 |
+
+#### 单元格操作
+
+所有sheet参数可以是工作表名称（字符串）或工作表索引（整数，从1开始）。
+
+| 方法 | 说明 |
+|------|------|
+| `wb.getCell(sheet, ref)` | 按引用获取单元格值（如"A1"） |
+| `wb.getCell(sheet, row, col)` | 按行列索引获取单元格值（从1开始） |
+| `wb.setCell(sheet, ref, value)` | 按引用设置单元格值 |
+| `wb.setCell(sheet, row, col, value)` | 按行列索引设置单元格值 |
+
+#### 行列操作
+
+| 方法 | 说明 |
+|------|------|
+| `wb.getRow(sheet, row)` | 获取行，返回数组 |
+| `wb.setRow(sheet, row, values)` | 设置行，从数组写入 |
+| `wb.getCol(sheet, col)` | 获取列，返回数组 |
+| `wb.getRange(sheet, range)` | 获取范围，返回二维数组（如"A1:C3"） |
+| `wb.getRowCount(sheet)` | 获取行数 |
+| `wb.getColCount(sheet)` | 获取列数 |
+| `wb.insertRow(sheet, row)` | 在指定位置插入行 |
+| `wb.deleteRow(sheet, row)` | 删除行 |
+| `wb.insertCol(sheet, col)` | 在指定位置插入列 |
+| `wb.deleteCol(sheet, col)` | 删除列 |
+
+#### 合并操作
+
+| 方法 | 说明 |
+|------|------|
+| `wb.mergeCell(sheet, start, end)` | 合并单元格范围 |
+| `wb.unmergeCell(sheet, ref)` | 取消合并 |
+| `wb.getMerges(sheet)` | 获取合并范围数组 |
+
+#### 图片操作
+
+| 方法 | 说明 |
+|------|------|
+| `wb.getImages(sheet)` | 获取图片信息数组 |
+| `wb.extractImage(sheet, idx, path)` | 提取图片到文件 |
+| `wb.getImageData(sheet, idx)` | 获取图片Base64数据 |
+
+#### 使用示例
 
 ```xxlang
 load("xlsx")
