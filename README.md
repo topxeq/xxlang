@@ -80,7 +80,8 @@ sudo mv xxl /usr/local/bin/
 
 # Windows (PowerShell)
 # Download from: https://github.com/topxeq/xxlang/releases/latest/download/xxlang-windows-amd64.zip
-# Extract xxl.exe and add to PATH
+# Extract xxl.exe (console) and xxlw.exe (GUI, no console window) and add to PATH
+# Use xxlw.exe for GUI applications to avoid console window
 
 # macOS (amd64)
 wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-darwin-amd64.tar.gz

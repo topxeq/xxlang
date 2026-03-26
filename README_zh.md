@@ -79,7 +79,8 @@ sudo mv xxl /usr/local/bin/
 
 # Windows (PowerShell)
 # 下载: https://github.com/topxeq/xxlang/releases/latest/download/xxlang-windows-amd64.zip
-# 解压得到 xxl.exe 并添加到 PATH
+# 解压得到 xxl.exe（控制台版）和 xxlw.exe（GUI 版，无控制台窗口）并添加到 PATH
+# GUI 程序请使用 xxlw.exe 以避免显示控制台窗口
 
 # macOS (amd64)
 wget https://github.com/topxeq/xxlang/releases/latest/download/xxlang-darwin-amd64.tar.gz

@@ -51,11 +51,18 @@ jobs:
 
             cd dist
             if [ "$os" = "windows" ]; then
-              zip "xxlang-$os-$arch.zip" xxl.exe
+              # Build GUI version (no console window) for Windows
+              echo "Building GUI version (xxlw.exe) for $os/$arch..."
+              cd ..
+              GOOS=$os GOARCH=$arch go build -ldflags="-s -w -H windowsgui -X main.Version=$VERSION" -o "dist/xxlw.exe" ./cmd/xxl
+              cd dist
+              # Create zip with both console and GUI versions
+              zip "xxlang-$os-$arch.zip" xxl.exe xxlw.exe
+              rm -f xxl.exe xxlw.exe
             else
               tar -czf "xxlang-$os-$arch.tar.gz" xxl
+              rm -f xxl
             fi
-            rm -f xxl xxl.exe
             cd ..
           done
 

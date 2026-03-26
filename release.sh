@@ -82,6 +82,12 @@ build_platform() {
 
     go build -ldflags="-s -w -X main.Version=${version}" -o "${build_dir}/${binary_name}" ./cmd/xxl
 
+    # For Windows, also build the GUI version (no console window)
+    if [ "$os" = "windows" ]; then
+        info "Building GUI version (xxlw.exe) for $os/$arch..."
+        go build -ldflags="-s -w -H windowsgui -X main.Version=${version}" -o "${build_dir}/xxlw.exe" ./cmd/xxl
+    fi
+
     # Create archive
     info "Creating archive: $archive_name"
 
@@ -89,8 +95,8 @@ build_platform() {
     local archive_path="$(cd "$output_dir" && pwd)/${archive_name}"
 
     if [ "$os" = "windows" ]; then
-        # Create zip for Windows
-        (cd "$build_dir" && zip -q "$archive_path" "$binary_name")
+        # Create zip for Windows (includes both xxl.exe and xxlw.exe)
+        (cd "$build_dir" && zip -q "$archive_path" xxl.exe xxlw.exe)
     else
         # Create tar.gz for Linux/macOS
         (cd "$build_dir" && tar -czf "$archive_path" "$binary_name")
@@ -128,7 +134,7 @@ main() {
     build_platform "darwin" "amd64" "$output_dir"
     build_platform "darwin" "arm64" "$output_dir"
 
-    # Windows
+    # Windows (includes both console and GUI versions)
     build_platform "windows" "amd64" "$output_dir"
     build_platform "windows" "arm64" "$output_dir"
 
@@ -136,6 +142,10 @@ main() {
     success "Release build complete!"
     echo ""
     echo "Archives created in: $output_dir/"
+    echo ""
+    echo "Note: Windows packages include both:"
+    echo "  - xxl.exe  (console version)"
+    echo "  - xxlw.exe (GUI version, no console window)"
     echo ""
     ls -lh "$output_dir"
     echo ""
