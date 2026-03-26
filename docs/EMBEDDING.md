@@ -65,39 +65,6 @@ Enables all standard library modules (io, string, math, json, etc.).
 interp := interpreter.New(interpreter.WithStdlib())
 ```
 
-### WithVMType(vmType) / WithStackVM()
-
-Selects which VM to use. By default, Xxlang uses the **register-based VM** for best performance.
-
-```go
-// Default: Register VM (recommended for best performance)
-interp := interpreter.New(interpreter.WithStdlib())
-
-// Explicitly use Register VM
-interp := interpreter.New(
-    interpreter.WithStdlib(),
-    interpreter.WithVMType(interpreter.RegisterVM),
-)
-
-// Use Stack VM (for compatibility or complex function usage)
-interp := interpreter.New(
-    interpreter.WithStdlib(),
-    interpreter.WithStackVM(),
-    // or: interpreter.WithVMType(interpreter.StackVM)
-)
-```
-
-**Performance comparison:**
-
-| Benchmark | Stack VM | Register VM | Speedup |
-|-----------|----------|-------------|---------|
-| Fibonacci(15) | 971 µs | 52 µs | **18.6x** |
-| Factorial | 400 µs | 52 µs | **7.7x** |
-| Function Calls | 534 µs | 78 µs | **6.8x** |
-| Loop(1000) | 687 µs | 267 µs | **2.6x** |
-
-**Note**: The register VM has limited support for user-defined functions. For complex function usage, use the stack VM instead.
-
 ### WithGlobals(globals)
 
 Provides initial global variables.

@@ -543,21 +543,11 @@ xxl -view https://example.com/script.xxl
 
 ### VM Selection
 
-Xxlang supports two virtual machines:
-
-| VM | Description | Performance |
-|----|-------------|-------------|
-| **Register VM** (default) | Modern, optimized | ~21% faster on average |
-| Stack VM | Traditional, compatible | Baseline |
+Xxlang uses a modern register-based virtual machine:
 
 ```bash
-xxl script.xxl                  # Register VM (default, recommended)
-xxl --vm=register script.xxl    # Explicitly use register VM
-xxl --vm=stack script.xxl       # Use stack VM (for compatibility)
-xxl --stack-vm script.xxl       # Same as --vm=stack
+xxl script.xxl                  # Run with register VM (default)
 ```
-
-**Note**: The register VM has limited support for method call syntax (e.g., `obj.method()`). For scripts using such features, use `--vm=stack`.
 
 ## Cloud Script Execution
 
@@ -683,28 +673,25 @@ Xxlang uses a register-based bytecode VM with JIT compilation, achieving near-na
 - **JIT vs VM**: 93x faster than bytecode interpreter for recursive calls
 - **Pure Go JIT**: No CGO dependencies required
 
-### Register VM vs Stack VM
+### Register VM Performance
 
-| Benchmark | Stack VM (µs) | Register VM (µs) | Speedup |
-|-----------|--------------:|-----------------:|--------:|
-| Fibonacci(15) | 908 | 872 | 1.04x |
-| Fibonacci(20) | 5,219 | 4,785 | 1.09x |
-| **For Loop(1000)** | 813 | **474** | **1.72x** |
-| **Intensive Arithmetic(1000)** | 897 | **595** | **1.51x** |
-| Function Calls(200) | 556 | 526 | 1.06x |
+| Benchmark | Register VM (µs) | Go (µs) | Python (µs) |
+|-----------|-----------------:|--------:|------------:|
+| Fibonacci(15) | 872 | 3.5 | 178 |
+| Fibonacci(20) | 4,785 | 39 | 1,980 |
+| For Loop(1000) | 474 | ~0.33 | 43.7 |
+| Intensive Arithmetic(1000) | 595 | ~0.65 | 139 |
+| Function Calls(200) | 526 | ~0.04 | 17.7 |
 
-- Register VM provides **average 21% speedup** over Stack VM
-- Memory allocations reduced by **25.5%**
+### Memory Efficiency
 
-### Memory Allocation Optimization
-
-| Benchmark | Stack VM (allocs) | Register VM (allocs) | Reduction |
-|-----------|------------------:|---------------------:|----------:|
-| Fibonacci(15) | 212 | 173 | 18.4% |
-| Fibonacci Iterative | 244 | 193 | 20.9% |
-| For Loop(1000) | 716 | 137 | **80.9%** |
-| Function Calls | 289 | 230 | 20.4% |
-| Intensive Arithmetic | 194 | 156 | 19.6% |
+| Benchmark | Register VM (allocs) |
+|-----------|---------------------:|
+| Fibonacci(15) | 173 |
+| Fibonacci Iterative | 193 |
+| For Loop(1000) | 137 |
+| Function Calls | 230 |
+| Intensive Arithmetic | 156 |
 
 ### fib(35) Benchmark Comparison
 
