@@ -1,0 +1,96 @@
+// test_xml.xxl
+// Test XML module
+
+import "xml"
+
+pln("=== Testing XML Parsing ===")
+
+var xmlStr = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><bookstore><book category=\"web\"><title lang=\"en\">Learning XML</title><author>Erik T. Ray</author><price>39.95</price></book><book category=\"programming\"><title lang=\"en\">Go Programming</title><author>John Doe</author><price>49.99</price></book></bookstore>"
+
+var doc = xml.parse(xmlStr)
+pln("Parsed document: ", doc)
+pln("Version: ", doc.version())
+pln("Encoding: ", doc.encoding())
+
+// Test root
+var root = doc.root()
+pln("Root: ", root)
+pln("Root name: ", root.name())
+
+pln("")
+pln("=== Testing Path Search ===")
+
+// Find all books
+var books = doc.find("//book")
+pln("Books found: ", books.len())
+
+// Find titles
+var titles = doc.find("/bookstore/book/title")
+pln("Titles: ", titles.len())
+
+// Find first
+var firstTitle = doc.findFirst("//title")
+pln("First title: ", firstTitle.text())
+
+// Find with attribute filter
+var webBooks = doc.find("//book[@category='web']")
+pln("Web books: ", webBooks.len())
+
+// Get first book
+var book = books[0]
+pln("First book category: ", book.attr("category"))
+
+// Get children
+var children = book.children()
+pln("Book children count: ", book.childCount())
+
+pln("")
+pln("=== Testing XML Creation ===")
+
+var newDoc = xml.create("root")
+var newRoot = newDoc.root()
+newRoot.setAttr("version", "1.0")
+
+var item1 = xml.newNode("item")
+item1.setText("Hello")
+item1.setAttr("id", "1")
+
+var item2 = xml.newNode("item")
+item2.setText("World")
+item2.setAttr("id", "2")
+
+newRoot.addChild(item1)
+newRoot.addChild(item2)
+
+pln("Created XML:")
+pln(newDoc.toIndented())
+
+pln("")
+pln("=== Testing XML to Map ===")
+
+var dataMap = root.toMap()
+pln("Root as map: ", dataMap)
+
+pln("")
+pln("=== Testing Map to XML ===")
+
+var mapData = {
+    "@id": "123",
+    "name": "Product",
+    "price": "99.99"
+}
+
+var encoded = xml.encode(mapData, "product")
+pln("Encoded from map:")
+pln(encoded)
+
+pln("")
+pln("=== Testing XML Escape ===")
+
+var raw = "<script>alert('xss')</script>"
+pln("Raw: ", raw)
+pln("Escaped: ", xml.escape(raw))
+pln("Escaped attr: ", xml.escapeAttr(raw))
+
+pln("")
+pln("All tests completed!")

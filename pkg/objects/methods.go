@@ -51,6 +51,9 @@ var TypeMethods = map[ObjectType]map[string]*Builtin{
 	SetType:   setMethods,
 	// XLSX
 	XLSXType: xlsxMethods,
+	// XML
+	XMLDocumentType: xmlDocumentMethods,
+	XMLNodeType:     xmlNodeMethods,
 }
 
 // GetMethod returns the builtin method for the given object type and method name
@@ -4596,5 +4599,398 @@ var xlsxMethods = map[string]*Builtin{
 			return newError("%s", err.Error())
 		}
 		return &String{Value: data}
+	}},
+}
+
+// ============================================================
+// XML Document Methods
+// ============================================================
+
+var xmlDocumentMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"root": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for root. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*XMLDocument)
+		if !ok {
+			return newError("receiver for root must be XMLDocument, got %s", args[0].Type())
+		}
+		root := self.Root()
+		if root == nil {
+			return NULL
+		}
+		return root
+	}},
+	"find": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for find. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*XMLDocument)
+		if !ok {
+			return newError("receiver for find must be XMLDocument, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("path must be STRING")
+		}
+		return self.Find(path.Value)
+	}},
+	"findFirst": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for findFirst. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*XMLDocument)
+		if !ok {
+			return newError("receiver for findFirst must be XMLDocument, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("path must be STRING")
+		}
+		node := self.FindFirst(path.Value)
+		if node == nil {
+			return NULL
+		}
+		return node
+	}},
+	"findElement": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for findElement. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*XMLDocument)
+		if !ok {
+			return newError("receiver for findElement must be XMLDocument, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("path must be STRING")
+		}
+		node := self.FindElement(path.Value)
+		if node == nil {
+			return NULL
+		}
+		return node
+	}},
+	"toString": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toString. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*XMLDocument)
+		if !ok {
+			return newError("receiver for toString must be XMLDocument, got %s", args[0].Type())
+		}
+		return NewString(self.ToString())
+	}},
+	"toIndented": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toIndented. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*XMLDocument)
+		if !ok {
+			return newError("receiver for toIndented must be XMLDocument, got %s", args[0].Type())
+		}
+		return NewString(self.ToIndented())
+	}},
+	"save": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for save. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*XMLDocument)
+		if !ok {
+			return newError("receiver for save must be XMLDocument, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("path must be STRING")
+		}
+		if err := self.Save(path.Value); err != nil {
+			return newError("save failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"toMap": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toMap. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*XMLDocument)
+		if !ok {
+			return newError("receiver for toMap must be XMLDocument, got %s", args[0].Type())
+		}
+		return self.ToMap()
+	}},
+	"version": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for version. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*XMLDocument)
+		if !ok {
+			return newError("receiver for version must be XMLDocument, got %s", args[0].Type())
+		}
+		return NewString(self.Version())
+	}},
+	"encoding": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for encoding. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*XMLDocument)
+		if !ok {
+			return newError("receiver for encoding must be XMLDocument, got %s", args[0].Type())
+		}
+		return NewString(self.Encoding())
+	}},
+}
+
+// ============================================================
+// XML Node Methods
+// ============================================================
+
+var xmlNodeMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"name": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for name. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*XMLNode)
+		if !ok {
+			return newError("receiver for name must be XMLNode, got %s", args[0].Type())
+		}
+		return NewString(self.Name())
+	}},
+	"setName": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for setName. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*XMLNode)
+		if !ok {
+			return newError("receiver for setName must be XMLNode, got %s", args[0].Type())
+		}
+		name, ok := args[1].(*String)
+		if !ok {
+			return newError("name must be STRING")
+		}
+		self.SetName(name.Value)
+		return NULL
+	}},
+	"text": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for text. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*XMLNode)
+		if !ok {
+			return newError("receiver for text must be XMLNode, got %s", args[0].Type())
+		}
+		return NewString(self.Text())
+	}},
+	"setText": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for setText. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*XMLNode)
+		if !ok {
+			return newError("receiver for setText must be XMLNode, got %s", args[0].Type())
+		}
+		text, ok := args[1].(*String)
+		if !ok {
+			return newError("text must be STRING")
+		}
+		self.SetText(text.Value)
+		return NULL
+	}},
+	"attr": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for attr. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*XMLNode)
+		if !ok {
+			return newError("receiver for attr must be XMLNode, got %s", args[0].Type())
+		}
+		name, ok := args[1].(*String)
+		if !ok {
+			return newError("name must be STRING")
+		}
+		return NewString(self.Attr(name.Value))
+	}},
+	"setAttr": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for setAttr. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*XMLNode)
+		if !ok {
+			return newError("receiver for setAttr must be XMLNode, got %s", args[0].Type())
+		}
+		name, ok := args[1].(*String)
+		if !ok {
+			return newError("name must be STRING")
+		}
+		value, ok := args[2].(*String)
+		if !ok {
+			return newError("value must be STRING")
+		}
+		self.SetAttr(name.Value, value.Value)
+		return NULL
+	}},
+	"delAttr": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for delAttr. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*XMLNode)
+		if !ok {
+			return newError("receiver for delAttr must be XMLNode, got %s", args[0].Type())
+		}
+		name, ok := args[1].(*String)
+		if !ok {
+			return newError("name must be STRING")
+		}
+		self.DelAttr(name.Value)
+		return NULL
+	}},
+	"attrs": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for attrs. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*XMLNode)
+		if !ok {
+			return newError("receiver for attrs must be XMLNode, got %s", args[0].Type())
+		}
+		return self.Attrs()
+	}},
+	"children": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for children. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*XMLNode)
+		if !ok {
+			return newError("receiver for children must be XMLNode, got %s", args[0].Type())
+		}
+		return self.Children()
+	}},
+	"childCount": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for childCount. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*XMLNode)
+		if !ok {
+			return newError("receiver for childCount must be XMLNode, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.ChildCount()))
+	}},
+	"parent": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for parent. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*XMLNode)
+		if !ok {
+			return newError("receiver for parent must be XMLNode, got %s", args[0].Type())
+		}
+		p := self.Parent()
+		if p == nil {
+			return NULL
+		}
+		return p
+	}},
+	"addChild": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for addChild. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*XMLNode)
+		if !ok {
+			return newError("receiver for addChild must be XMLNode, got %s", args[0].Type())
+		}
+		child, ok := args[1].(*XMLNode)
+		if !ok {
+			return newError("child must be XMLNode")
+		}
+		self.AddChild(child)
+		return NULL
+	}},
+	"removeChild": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for removeChild. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*XMLNode)
+		if !ok {
+			return newError("receiver for removeChild must be XMLNode, got %s", args[0].Type())
+		}
+		index, ok := args[1].(*Int)
+		if !ok {
+			return newError("index must be INT")
+		}
+		return &Bool{Value: self.RemoveChild(int(index.Value))}
+	}},
+	"clear": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for clear. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*XMLNode)
+		if !ok {
+			return newError("receiver for clear must be XMLNode, got %s", args[0].Type())
+		}
+		self.Clear()
+		return NULL
+	}},
+	"find": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for find. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*XMLNode)
+		if !ok {
+			return newError("receiver for find must be XMLNode, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("path must be STRING")
+		}
+		return self.Find(path.Value)
+	}},
+	"findFirst": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for findFirst. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*XMLNode)
+		if !ok {
+			return newError("receiver for findFirst must be XMLNode, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("path must be STRING")
+		}
+		node := self.FindFirst(path.Value)
+		if node == nil {
+			return NULL
+		}
+		return node
+	}},
+	"toMap": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toMap. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*XMLNode)
+		if !ok {
+			return newError("receiver for toMap must be XMLNode, got %s", args[0].Type())
+		}
+		return self.ToMap()
+	}},
+	"toString": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toString. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*XMLNode)
+		if !ok {
+			return newError("receiver for toString must be XMLNode, got %s", args[0].Type())
+		}
+		return NewString(self.ToString())
+	}},
+	"toIndented": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toIndented. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*XMLNode)
+		if !ok {
+			return newError("receiver for toIndented must be XMLNode, got %s", args[0].Type())
+		}
+		return NewString(self.ToIndented())
 	}},
 }

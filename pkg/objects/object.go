@@ -57,6 +57,8 @@ const (
 	QueueType           ObjectType = "QUEUE"
 	SetType             ObjectType = "SET"
 	XLSXType            ObjectType = "XLSX"
+	XMLDocumentType     ObjectType = "XML_DOCUMENT"
+	XMLNodeType         ObjectType = "XML_NODE"
 )
 
 // TypeTag is a fast integer type identifier for hot path checks
@@ -113,6 +115,8 @@ const (
 	TagQueue
 	TagSet
 	TagXLSX
+	TagXMLDocument
+	TagXMLNode
 	TagUnknown
 )
 
