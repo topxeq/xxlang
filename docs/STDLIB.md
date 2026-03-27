@@ -22,6 +22,7 @@ io.println("Hello, World!")
 - [array](#array) - Array utilities
 - [json](#json) - JSON encoding/decoding
 - [xml](#xml) - XML encoding/decoding
+- [html](#html) - HTML document handling
 - [csv](#csv) - CSV file reading and writing
 - [xlsx](#xlsx-module) - Excel file handling
 - [pptx](#pptx-module) - PowerPoint file handling
@@ -1778,6 +1779,422 @@ var mapData = doc.root().toMap()
 // Map to XML
 var data = {"@id": "123", "name": "Product"}
 var xmlStr = xml.encode(data, "product")
+```
+
+---
+
+## html
+
+HTML document handling with DOM-like operations and CSS selector support.
+
+### Module Functions
+
+| Function | Description |
+|----------|-------------|
+| `html.parse(str)` | Parse HTML string, return HTMLDocument |
+| `html.parseFile(path)` | Parse HTML file, return HTMLDocument |
+| `html.parseFragment(str)` | Parse HTML fragment, return array of elements |
+| `html.newDocument()` | Create new HTML document with html/head/body |
+| `html.newDocumentWithTitle(title)` | Create new HTML document with title |
+| `html.newElement(tagName)` | Create new HTML element |
+| `html.newTextNode(text)` | Create new text node |
+| `html.newComment(text)` | Create new comment node |
+| `html.createElement(tagName)` | Alias for newElement |
+| `html.createTextNode(text)` | Alias for newTextNode |
+| `html.escape(str)` | Escape special HTML characters |
+| `html.escapeAttr(str)` | Escape for HTML attribute |
+| `html.unescape(str)` | Unescape HTML entities |
+| `html.stripTags(str)` | Remove all HTML tags |
+| `html.sanitize(str)` | Remove dangerous HTML content |
+| `html.isHTMLDocument(obj)` | Check if object is HTMLDocument |
+| `html.isHTMLElement(obj)` | Check if object is HTMLElement |
+| `html.encode(obj, rootName?)` | Convert object to HTML string |
+
+### HTMLDocument Methods
+
+| Method | Description |
+|--------|-------------|
+| `doc.docType()` | Get document type declaration |
+| `doc.root()` | Get root element |
+| `doc.setRoot(elem)` | Set root element |
+| `doc.head()` | Get head element |
+| `doc.body()` | Get body element |
+| `doc.title()` | Get document title |
+| `doc.setTitle(title)` | Set document title |
+| `doc.getElementById(id)` | Get element by ID |
+| `doc.getElementsByTagName(tag)` | Get elements by tag name |
+| `doc.getElementsByClassName(class)` | Get elements by class name |
+| `doc.querySelector(selector)` | Get first element matching CSS selector |
+| `doc.querySelectorAll(selector)` | Get all elements matching CSS selector |
+| `doc.find(selector)` | Alias for querySelectorAll |
+| `doc.findFirst(selector)` | Alias for querySelector |
+| `doc.toString()` | Convert to HTML string |
+| `doc.toIndented()` | Convert to formatted HTML string |
+| `doc.save(path)` | Save to file |
+| `doc.setMeta(name, content)` | Set meta tag in head |
+| `doc.addStyle(css)` | Add style tag to head |
+| `doc.addScript(js, src?)` | Add script tag to body |
+| `doc.toMap()` | Convert to Map |
+
+### HTMLElement Methods
+
+#### Basic Properties
+
+| Method | Description |
+|--------|-------------|
+| `elem.tagName()` | Get tag name |
+| `elem.setTagName(name)` | Set tag name |
+| `elem.nodeType()` | Get node type (element/text/comment) |
+| `elem.text()` | Get text content (alias for textContent) |
+| `elem.textContent()` | Get text content |
+| `elem.setTextContent(text)` | Set text content |
+| `elem.innerHTML()` | Get inner HTML |
+| `elem.setInnerHTML(html)` | Set inner HTML (parses string) |
+| `elem.outerHTML()` | Get outer HTML |
+
+#### Attributes
+
+| Method | Description |
+|--------|-------------|
+| `elem.attribute(name)` | Get attribute value |
+| `elem.setAttribute(name, value)` | Set attribute |
+| `elem.hasAttribute(name)` | Check if attribute exists |
+| `elem.removeAttribute(name)` | Remove attribute |
+| `elem.attributes()` | Get all attributes as Map |
+| `elem.id()` | Get id attribute |
+| `elem.setID(id)` | Set id attribute |
+
+#### Class Operations
+
+| Method | Description |
+|--------|-------------|
+| `elem.class()` | Get class attribute |
+| `elem.setClass(class)` | Set class attribute |
+| `elem.addClass(class)` | Add class to element |
+| `elem.removeClass(class)` | Remove class from element |
+| `elem.hasClass(class)` | Check if element has class |
+| `elem.toggleClass(class)` | Toggle class on element |
+
+#### DOM Traversal
+
+| Method | Description |
+|--------|-------------|
+| `elem.children()` | Get all child elements |
+| `elem.childCount()` | Get number of children |
+| `elem.firstChild()` | Get first child element |
+| `elem.lastChild()` | Get last child element |
+| `elem.parent()` | Get parent element |
+
+#### DOM Manipulation
+
+| Method | Description |
+|--------|-------------|
+| `elem.appendChild(child)` | Append child element |
+| `elem.removeChild(index)` | Remove child by index |
+| `elem.insertBefore(new, ref)` | Insert before reference element |
+| `elem.insertAfter(new, ref)` | Insert after reference element |
+| `elem.replaceChild(new, old)` | Replace child element |
+| `elem.clear()` | Remove all children |
+| `elem.remove()` | Remove element from parent |
+| `elem.clone()` | Deep clone element |
+
+#### Query
+
+| Method | Description |
+|--------|-------------|
+| `elem.querySelector(selector)` | Get first matching element |
+| `elem.querySelectorAll(selector)` | Get all matching elements |
+| `elem.find(selector)` | Alias for querySelectorAll |
+| `elem.findFirst(selector)` | Alias for querySelector |
+
+#### Serialization
+
+| Method | Description |
+|--------|-------------|
+| `elem.toString()` | Convert to HTML string |
+| `elem.toIndented()` | Convert to formatted HTML |
+| `elem.toMap()` | Convert to Map |
+
+### CSS Selector Support
+
+Supports CSS-like selectors for querying elements:
+
+| Selector | Description | Example |
+|----------|-------------|---------|
+| `tag` | Select by tag name | `div` |
+| `#id` | Select by ID | `#main` |
+| `.class` | Select by class | `.container` |
+| `tag.class` | Combined selector | `div.header` |
+| `tag#id` | Combined selector | `div#main` |
+| `parent child` | Descendant selector | `div p` |
+| `[attr]` | Has attribute | `[disabled]` |
+| `[attr=value]` | Attribute equals | `[type="text"]` |
+| `selector, selector` | Multiple selectors | `div, span` |
+
+### Example Usage
+
+```xxlang
+import "html"
+
+// ========== Parsing HTML ==========
+
+// Parse HTML string
+var htmlStr = `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Page</title>
+</head>
+<body>
+    <div id="main" class="container">
+        <h1>Hello World</h1>
+        <p class="text">This is a paragraph.</p>
+        <p class="text">Another paragraph.</p>
+        <ul>
+            <li>Item 1</li>
+            <li>Item 2</li>
+        </ul>
+    </div>
+</body>
+</html>
+`
+
+var doc = html.parse(htmlStr)
+
+// Parse HTML file
+var doc2 = html.parseFile("page.html")
+
+// Parse HTML fragment
+var fragment = html.parseFragment("<span>Hello</span><span>World</span>")
+// Returns: [HTMLElement(span), HTMLElement(span)]
+
+// ========== Document Properties ==========
+
+pln(doc.docType())   // "<!DOCTYPE html>"
+pln(doc.title())     // "Test Page"
+
+var root = doc.root()
+pln(root.tagName())  // "html"
+
+var head = doc.head()
+var body = doc.body()
+
+// ========== Element Selection ==========
+
+// Get element by ID
+var mainDiv = doc.getElementById("main")
+pln(mainDiv.tagName())  // "div"
+
+// Get elements by tag name
+var paragraphs = doc.getElementsByTagName("p")
+pln(len(paragraphs))    // 2
+
+// Get elements by class name
+var texts = doc.getElementsByClassName("text")
+pln(len(texts))         // 2
+
+// CSS selector queries
+var h1 = doc.querySelector("h1")           // First h1
+var items = doc.querySelectorAll("li")     // All li elements
+var mainContent = doc.querySelector("#main")  // By ID
+var containers = doc.querySelectorAll(".container")  // By class
+
+// Chained queries
+var firstItem = mainDiv.querySelector("li")
+var allPs = mainDiv.querySelectorAll("p")
+
+// ========== Element Attributes ==========
+
+var div = doc.getElementById("main")
+
+// Get/set attributes
+pln(div.attribute("id"))       // "main"
+pln(div.attribute("class"))    // "container"
+div.setAttribute("data-value", "123")
+pln(div.hasAttribute("id"))    // true
+div.removeAttribute("data-value")
+
+// ID operations
+pln(div.id())                  // "main"
+div.setID("content")
+
+// Class operations
+div.addClass("active")
+div.removeClass("container")
+pln(div.hasClass("active"))    // true
+div.toggleClass("active")
+
+// Get all attributes
+var attrs = div.attributes()
+for (k in keys(attrs)) {
+    pln(k + "=" + attrs[k])
+}
+
+// ========== Element Content ==========
+
+// Text content
+var h1 = doc.querySelector("h1")
+pln(h1.textContent())    // "Hello World"
+h1.setTextContent("New Title")
+
+// Inner HTML
+pln(div.innerHTML())
+div.setInnerHTML("<span>New content</span>")
+
+// Outer HTML
+pln(div.outerHTML())
+
+// ========== DOM Manipulation ==========
+
+// Create new elements
+var newDiv = html.newElement("div")
+newDiv.setID("new-content")
+newDiv.setClass("section")
+
+var span = html.newElement("span")
+span.setTextContent("Hello from span")
+newDiv.appendChild(span)
+
+// Create text node
+var textNode = html.newTextNode("Some text")
+
+// Create comment
+var comment = html.newComment("This is a comment")
+
+// Append to body
+body.appendChild(newDiv)
+
+// Insert before/after
+var p1 = doc.querySelector("p")
+body.insertBefore(html.newElement("p"), p1)
+body.insertAfter(html.newElement("p"), p1)
+
+// Remove element
+newDiv.remove()
+
+// Remove child by index
+body.removeChild(0)
+
+// Clear all children
+body.clear()
+
+// Clone element
+var clone = div.clone()
+
+// ========== Creating New Documents ==========
+
+// Create empty document
+var newDoc = html.newDocument()
+// Creates: <!DOCTYPE html><html><head></head><body></body></html>
+
+// Create document with title
+var docWithTitle = html.newDocumentWithTitle("My Page")
+
+// Set title after creation
+newDoc.setTitle("Dynamic Title")
+
+// Add meta tag
+newDoc.setMeta("viewport", "width=device-width, initial-scale=1")
+newDoc.setMeta("description", "A web page")
+
+// Add CSS
+newDoc.addStyle("body { margin: 0; padding: 20px; }")
+
+// Add inline JavaScript
+newDoc.addScript("console.log('Hello');")
+
+// Add external JavaScript
+newDoc.addScript("", "app.js")
+
+// Build document content
+var main = html.newElement("main")
+main.setID("app")
+
+var header = html.newElement("header")
+header.setTextContent("Welcome")
+main.appendChild(header)
+
+newDoc.body().appendChild(main)
+
+// ========== Serialization ==========
+
+// Convert to string
+var htmlOutput = newDoc.toString()
+
+// Convert with indentation
+var prettyHtml = newDoc.toIndented()
+
+// Save to file
+newDoc.save("output.html")
+
+// Element to string
+var elemStr = main.toString()
+var elemPretty = main.toIndented()
+
+// ========== HTML Utilities ==========
+
+// Escape HTML characters
+var escaped = html.escape("<script>alert('xss')</script>")
+// "&lt;script&gt;alert('xss')&lt;/script&gt;"
+
+// Escape for attribute
+var attrEscaped = html.escapeAttr("value with \"quotes\"")
+// "value with &quot;quotes&quot;"
+
+// Unescape HTML entities
+var unescaped = html.unescape("&lt;div&gt;Hello&lt;/div&gt;")
+// "<div>Hello</div>"
+
+// Strip all tags
+var text = html.stripTags("<p>Hello <b>World</b></p>")
+// "Hello World"
+
+// Sanitize dangerous HTML
+var safe = html.sanitize("<script>alert('xss')</script><p>Safe content</p>")
+// "<p>Safe content</p>"
+
+// ========== Object to HTML Encoding ==========
+
+// Encode Map to HTML
+var data = {
+    "tagName": "div",
+    "id": "container",
+    "class": "wrapper",
+    "children": [
+        {"tagName": "h1", "text": "Title"},
+        {"tagName": "p", "text": "Paragraph"}
+    ]
+}
+var htmlFromMap = html.encode(data, "div")
+
+// Encode string to HTML element
+var simple = html.encode("Hello", "span")
+// <span>Hello</span>
+
+// ========== Type Checking ==========
+
+pln(html.isHTMLDocument(doc))    // true
+pln(html.isHTMLElement(div))     // true
+pln(html.isHTMLElement("text"))  // false
+
+// ========== Map Conversion ==========
+
+// Convert element to Map
+var mapData = div.toMap()
+// {
+//   "tagName": "div",
+//   "textContent": "...",
+//   "attributes": {...},
+//   "children": [...]
+// }
+
+// Convert document to Map
+var docMap = doc.toMap()
+// {
+//   "docType": "<!DOCTYPE html>",
+//   "title": "Test Page",
+//   "root": {...}
+// }
 ```
 
 ---

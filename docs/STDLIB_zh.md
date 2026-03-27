@@ -22,6 +22,7 @@ io.println("你好，世界！")
 - [array](#array) - 数组工具
 - [json](#json) - JSON 编解码
 - [xml](#xml) - XML 编解码
+- [html](#html) - HTML 文档处理
 - [csv](#csv-模块) - CSV 文件读写
 - [xlsx](#xlsx-模块) - Excel 文件处理
 - [pptx](#pptx-模块) - PowerPoint 文件处理
@@ -1772,6 +1773,422 @@ var mapData = doc.root().toMap()
 // Map 转 XML
 var data = {"@id": "123", "name": "产品"}
 var xmlStr = xml.encode(data, "product")
+```
+
+---
+
+## html
+
+HTML 文档处理，支持类似 DOM 的操作和 CSS 选择器。
+
+### 模块函数
+
+| 函数 | 说明 |
+|------|------|
+| `html.parse(str)` | 解析 HTML 字符串，返回 HTMLDocument |
+| `html.parseFile(path)` | 解析 HTML 文件，返回 HTMLDocument |
+| `html.parseFragment(str)` | 解析 HTML 片段，返回元素数组 |
+| `html.newDocument()` | 创建新的 HTML 文档（包含 html/head/body） |
+| `html.newDocumentWithTitle(title)` | 创建带标题的 HTML 文档 |
+| `html.newElement(tagName)` | 创建新的 HTML 元素 |
+| `html.newTextNode(text)` | 创建新的文本节点 |
+| `html.newComment(text)` | 创建新的注释节点 |
+| `html.createElement(tagName)` | newElement 的别名 |
+| `html.createTextNode(text)` | newTextNode 的别名 |
+| `html.escape(str)` | 转义 HTML 特殊字符 |
+| `html.escapeAttr(str)` | 转义 HTML 属性值 |
+| `html.unescape(str)` | 反转义 HTML 实体 |
+| `html.stripTags(str)` | 移除所有 HTML 标签 |
+| `html.sanitize(str)` | 移除危险的 HTML 内容 |
+| `html.isHTMLDocument(obj)` | 检查对象是否为 HTMLDocument |
+| `html.isHTMLElement(obj)` | 检查对象是否为 HTMLElement |
+| `html.encode(obj, rootName?)` | 将对象转换为 HTML 字符串 |
+
+### HTMLDocument 方法
+
+| 方法 | 说明 |
+|------|------|
+| `doc.docType()` | 获取文档类型声明 |
+| `doc.root()` | 获取根元素 |
+| `doc.setRoot(elem)` | 设置根元素 |
+| `doc.head()` | 获取 head 元素 |
+| `doc.body()` | 获取 body 元素 |
+| `doc.title()` | 获取文档标题 |
+| `doc.setTitle(title)` | 设置文档标题 |
+| `doc.getElementById(id)` | 通过 ID 获取元素 |
+| `doc.getElementsByTagName(tag)` | 通过标签名获取元素 |
+| `doc.getElementsByClassName(class)` | 通过类名获取元素 |
+| `doc.querySelector(selector)` | 获取第一个匹配 CSS 选择器的元素 |
+| `doc.querySelectorAll(selector)` | 获取所有匹配 CSS 选择器的元素 |
+| `doc.find(selector)` | querySelectorAll 的别名 |
+| `doc.findFirst(selector)` | querySelector 的别名 |
+| `doc.toString()` | 转换为 HTML 字符串 |
+| `doc.toIndented()` | 转换为格式化 HTML |
+| `doc.save(path)` | 保存到文件 |
+| `doc.setMeta(name, content)` | 在 head 中设置 meta 标签 |
+| `doc.addStyle(css)` | 在 head 中添加 style 标签 |
+| `doc.addScript(js, src?)` | 在 body 中添加 script 标签 |
+| `doc.toMap()` | 转换为 Map |
+
+### HTMLElement 方法
+
+#### 基本属性
+
+| 方法 | 说明 |
+|------|------|
+| `elem.tagName()` | 获取标签名 |
+| `elem.setTagName(name)` | 设置标签名 |
+| `elem.nodeType()` | 获取节点类型（element/text/comment） |
+| `elem.text()` | 获取文本内容（textContent 的别名） |
+| `elem.textContent()` | 获取文本内容 |
+| `elem.setTextContent(text)` | 设置文本内容 |
+| `elem.innerHTML()` | 获取内部 HTML |
+| `elem.setInnerHTML(html)` | 设置内部 HTML（解析字符串） |
+| `elem.outerHTML()` | 获取外部 HTML |
+
+#### 属性操作
+
+| 方法 | 说明 |
+|------|------|
+| `elem.attribute(name)` | 获取属性值 |
+| `elem.setAttribute(name, value)` | 设置属性 |
+| `elem.hasAttribute(name)` | 检查属性是否存在 |
+| `elem.removeAttribute(name)` | 移除属性 |
+| `elem.attributes()` | 获取所有属性（Map） |
+| `elem.id()` | 获取 id 属性 |
+| `elem.setID(id)` | 设置 id 属性 |
+
+#### 类名操作
+
+| 方法 | 说明 |
+|------|------|
+| `elem.class()` | 获取 class 属性 |
+| `elem.setClass(class)` | 设置 class 属性 |
+| `elem.addClass(class)` | 添加类名 |
+| `elem.removeClass(class)` | 移除类名 |
+| `elem.hasClass(class)` | 检查是否有指定类名 |
+| `elem.toggleClass(class)` | 切换类名 |
+
+#### DOM 遍历
+
+| 方法 | 说明 |
+|------|------|
+| `elem.children()` | 获取所有子元素 |
+| `elem.childCount()` | 获取子元素数量 |
+| `elem.firstChild()` | 获取第一个子元素 |
+| `elem.lastChild()` | 获取最后一个子元素 |
+| `elem.parent()` | 获取父元素 |
+
+#### DOM 操作
+
+| 方法 | 说明 |
+|------|------|
+| `elem.appendChild(child)` | 添加子元素 |
+| `elem.removeChild(index)` | 按索引移除子元素 |
+| `elem.insertBefore(new, ref)` | 在参考元素前插入 |
+| `elem.insertAfter(new, ref)` | 在参考元素后插入 |
+| `elem.replaceChild(new, old)` | 替换子元素 |
+| `elem.clear()` | 移除所有子元素 |
+| `elem.remove()` | 从父元素中移除自己 |
+| `elem.clone()` | 深拷贝元素 |
+
+#### 查询
+
+| 方法 | 说明 |
+|------|------|
+| `elem.querySelector(selector)` | 获取第一个匹配元素 |
+| `elem.querySelectorAll(selector)` | 获取所有匹配元素 |
+| `elem.find(selector)` | querySelectorAll 的别名 |
+| `elem.findFirst(selector)` | querySelector 的别名 |
+
+#### 序列化
+
+| 方法 | 说明 |
+|------|------|
+| `elem.toString()` | 转换为 HTML 字符串 |
+| `elem.toIndented()` | 转换为格式化 HTML |
+| `elem.toMap()` | 转换为 Map |
+
+### CSS 选择器支持
+
+支持类似 CSS 的选择器来查询元素：
+
+| 选择器 | 说明 | 示例 |
+|--------|------|------|
+| `tag` | 按标签名选择 | `div` |
+| `#id` | 按 ID 选择 | `#main` |
+| `.class` | 按类名选择 | `.container` |
+| `tag.class` | 组合选择器 | `div.header` |
+| `tag#id` | 组合选择器 | `div#main` |
+| `parent child` | 后代选择器 | `div p` |
+| `[attr]` | 有指定属性 | `[disabled]` |
+| `[attr=value]` | 属性等于指定值 | `[type="text"]` |
+| `selector, selector` | 多个选择器 | `div, span` |
+
+### 使用示例
+
+```xxl
+import "html"
+
+// ========== 解析 HTML ==========
+
+// 解析 HTML 字符串
+var htmlStr = `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>测试页面</title>
+</head>
+<body>
+    <div id="main" class="container">
+        <h1>你好世界</h1>
+        <p class="text">这是一个段落。</p>
+        <p class="text">另一个段落。</p>
+        <ul>
+            <li>项目 1</li>
+            <li>项目 2</li>
+        </ul>
+    </div>
+</body>
+</html>
+`
+
+var doc = html.parse(htmlStr)
+
+// 解析 HTML 文件
+var doc2 = html.parseFile("page.html")
+
+// 解析 HTML 片段
+var fragment = html.parseFragment("<span>你好</span><span>世界</span>")
+// 返回: [HTMLElement(span), HTMLElement(span)]
+
+// ========== 文档属性 ==========
+
+pln(doc.docType())   // "<!DOCTYPE html>"
+pln(doc.title())     // "测试页面"
+
+var root = doc.root()
+pln(root.tagName())  // "html"
+
+var head = doc.head()
+var body = doc.body()
+
+// ========== 元素选择 ==========
+
+// 通过 ID 获取元素
+var mainDiv = doc.getElementById("main")
+pln(mainDiv.tagName())  // "div"
+
+// 通过标签名获取元素
+var paragraphs = doc.getElementsByTagName("p")
+pln(len(paragraphs))    // 2
+
+// 通过类名获取元素
+var texts = doc.getElementsByClassName("text")
+pln(len(texts))         // 2
+
+// CSS 选择器查询
+var h1 = doc.querySelector("h1")           // 第一个 h1
+var items = doc.querySelectorAll("li")     // 所有 li 元素
+var mainContent = doc.querySelector("#main")  // 按 ID
+var containers = doc.querySelectorAll(".container")  // 按类名
+
+// 链式查询
+var firstItem = mainDiv.querySelector("li")
+var allPs = mainDiv.querySelectorAll("p")
+
+// ========== 元素属性 ==========
+
+var div = doc.getElementById("main")
+
+// 获取/设置属性
+pln(div.attribute("id"))       // "main"
+pln(div.attribute("class"))    // "container"
+div.setAttribute("data-value", "123")
+pln(div.hasAttribute("id"))    // true
+div.removeAttribute("data-value")
+
+// ID 操作
+pln(div.id())                  // "main"
+div.setID("content")
+
+// 类名操作
+div.addClass("active")
+div.removeClass("container")
+pln(div.hasClass("active"))    // true
+div.toggleClass("active")
+
+// 获取所有属性
+var attrs = div.attributes()
+for (k in keys(attrs)) {
+    pln(k + "=" + attrs[k])
+}
+
+// ========== 元素内容 ==========
+
+// 文本内容
+var h1 = doc.querySelector("h1")
+pln(h1.textContent())    // "你好世界"
+h1.setTextContent("新标题")
+
+// 内部 HTML
+pln(div.innerHTML())
+div.setInnerHTML("<span>新内容</span>")
+
+// 外部 HTML
+pln(div.outerHTML())
+
+// ========== DOM 操作 ==========
+
+// 创建新元素
+var newDiv = html.newElement("div")
+newDiv.setID("new-content")
+newDiv.setClass("section")
+
+var span = html.newElement("span")
+span.setTextContent("来自 span 的问候")
+newDiv.appendChild(span)
+
+// 创建文本节点
+var textNode = html.newTextNode("一些文本")
+
+// 创建注释
+var comment = html.newComment("这是一个注释")
+
+// 添加到 body
+body.appendChild(newDiv)
+
+// 前后插入
+var p1 = doc.querySelector("p")
+body.insertBefore(html.newElement("p"), p1)
+body.insertAfter(html.newElement("p"), p1)
+
+// 移除元素
+newDiv.remove()
+
+// 按索引移除子元素
+body.removeChild(0)
+
+// 清除所有子元素
+body.clear()
+
+// 克隆元素
+var clone = div.clone()
+
+// ========== 创建新文档 ==========
+
+// 创建空文档
+var newDoc = html.newDocument()
+// 创建: <!DOCTYPE html><html><head></head><body></body></html>
+
+// 创建带标题的文档
+var docWithTitle = html.newDocumentWithTitle("我的页面")
+
+// 创建后设置标题
+newDoc.setTitle("动态标题")
+
+// 添加 meta 标签
+newDoc.setMeta("viewport", "width=device-width, initial-scale=1")
+newDoc.setMeta("description", "一个网页")
+
+// 添加 CSS
+newDoc.addStyle("body { margin: 0; padding: 20px; }")
+
+// 添加内联 JavaScript
+newDoc.addScript("console.log('你好');")
+
+// 添加外部 JavaScript
+newDoc.addScript("", "app.js")
+
+// 构建文档内容
+var main = html.newElement("main")
+main.setID("app")
+
+var header = html.newElement("header")
+header.setTextContent("欢迎")
+main.appendChild(header)
+
+newDoc.body().appendChild(main)
+
+// ========== 序列化 ==========
+
+// 转换为字符串
+var htmlOutput = newDoc.toString()
+
+// 转换为格式化字符串
+var prettyHtml = newDoc.toIndented()
+
+// 保存到文件
+newDoc.save("output.html")
+
+// 元素转字符串
+var elemStr = main.toString()
+var elemPretty = main.toIndented()
+
+// ========== HTML 工具函数 ==========
+
+// 转义 HTML 字符
+var escaped = html.escape("<script>alert('xss')</script>")
+// "&lt;script&gt;alert('xss')&lt;/script&gt;"
+
+// 转义属性值
+var attrEscaped = html.escapeAttr("带\"引号\"的值")
+// "带&quot;引号&quot;的值"
+
+// 反转义 HTML 实体
+var unescaped = html.unescape("&lt;div&gt;你好&lt;/div&gt;")
+// "<div>你好</div>"
+
+// 移除所有标签
+var text = html.stripTags("<p>你好 <b>世界</b></p>")
+// "你好 世界"
+
+// 清理危险的 HTML
+var safe = html.sanitize("<script>alert('xss')</script><p>安全内容</p>")
+// "<p>安全内容</p>"
+
+// ========== 对象转 HTML 编码 ==========
+
+// 将 Map 编码为 HTML
+var data = {
+    "tagName": "div",
+    "id": "container",
+    "class": "wrapper",
+    "children": [
+        {"tagName": "h1", "text": "标题"},
+        {"tagName": "p", "text": "段落"}
+    ]
+}
+var htmlFromMap = html.encode(data, "div")
+
+// 将字符串编码为 HTML 元素
+var simple = html.encode("你好", "span")
+// <span>你好</span>
+
+// ========== 类型检查 ==========
+
+pln(html.isHTMLDocument(doc))    // true
+pln(html.isHTMLElement(div))     // true
+pln(html.isHTMLElement("文本"))  // false
+
+// ========== Map 转换 ==========
+
+// 将元素转换为 Map
+var mapData = div.toMap()
+// {
+//   "tagName": "div",
+//   "textContent": "...",
+//   "attributes": {...},
+//   "children": [...]
+// }
+
+// 将文档转换为 Map
+var docMap = doc.toMap()
+// {
+//   "docType": "<!DOCTYPE html>",
+//   "title": "测试页面",
+//   "root": {...}
+// }
 ```
 
 ---
