@@ -2,6 +2,7 @@
 package objects
 
 import (
+	"fmt"
 	"math"
 	"path/filepath"
 	"sort"
@@ -26,16 +27,16 @@ var TypeMethods = map[ObjectType]map[string]*Builtin{
 	BytesBufferType:   bytesBufferMethods,
 	WebSocketType:     webSocketMethods,
 	// Concurrency types
-	MutexType:      mutexMethods,
-	RWMutexType:    rwMutexMethods,
-	WaitGroupType:  waitGroupMethods,
-	AtomicIntType:  atomicIntMethods,
-	TubeType:       tubeMethods,
-	OnceType:       onceMethods,
-	CondType:       condMethods,
-	ContextType:    contextMethods,
+	MutexType:     mutexMethods,
+	RWMutexType:   rwMutexMethods,
+	WaitGroupType: waitGroupMethods,
+	AtomicIntType: atomicIntMethods,
+	TubeType:      tubeMethods,
+	OnceType:      onceMethods,
+	CondType:      condMethods,
+	ContextType:   contextMethods,
 	// File upload types
-	FileUploadType:      fileUploadMethods,
+	FileUploadType:       fileUploadMethods,
 	FileUploadResultType: fileUploadResultMethods,
 	// File types
 	FileType:     fileMethods,
@@ -70,6 +71,13 @@ var TypeMethods = map[ObjectType]map[string]*Builtin{
 	UdpSocketType:  udpSocketMethods,
 	// LineEditor
 	LineEditorType: lineEditorMethods,
+	// SSH
+	SSHClientType: sshClientMethods,
+	// FTP/SFTP
+	FtpClientType:  ftpClientMethods,
+	FtpServerType:  ftpServerMethods,
+	SftpClientType: sftpClientMethods,
+	SftpServerType: sftpServerMethods,
 }
 
 // GetMethod returns the builtin method for the given object type and method name
@@ -5236,6 +5244,525 @@ var lineEditorMethods = map[string]*Builtin{
 }
 
 // ============================================================
+// SSHClient Methods
+// ============================================================
+
+var sshClientMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+
+	// Connection Management
+	"isConnected": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for isConnected. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for isConnected must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.IsConnected()}
+	}},
+	"close": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for close. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for close must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		if err := self.Close(); err != nil {
+			return newError("close failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"getHost": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getHost. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for getHost must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		return NewString(self.GetHost())
+	}},
+	"getPort": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getPort. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for getPort must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.GetPort()))
+	}},
+	"getUser": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getUser. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for getUser must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		return NewString(self.GetUser())
+	}},
+
+	// Command Execution
+	"exec": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for exec. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for exec must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		cmd, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for exec must be STRING, got %s", args[1].Type())
+		}
+		output, err := self.Exec(cmd.Value)
+		if err != nil {
+			return newError("exec failed: %s", err.Error())
+		}
+		return NewString(output)
+	}},
+	"execFull": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for execFull. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for execFull must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		cmd, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for execFull must be STRING, got %s", args[1].Type())
+		}
+		result, err := self.ExecFull(cmd.Value)
+		if err != nil {
+			return newError("execFull failed: %s", err.Error())
+		}
+		// Convert result map to Xxlang map
+		pairs := make([]Object, 0, len(result))
+		for k, v := range result {
+			var valObj Object
+			switch vv := v.(type) {
+			case string:
+				valObj = NewString(vv)
+			case int:
+				valObj = NewInt(int64(vv))
+			case int64:
+				valObj = NewInt(vv)
+			default:
+				valObj = NewString(fmt.Sprintf("%v", vv))
+			}
+			pairs = append(pairs, &Array{Elements: []Object{NewString(k), valObj}})
+		}
+		return NewArray(pairs)
+	}},
+	"runScript": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for runScript. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for runScript must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		scriptPath, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for runScript must be STRING, got %s", args[1].Type())
+		}
+		output, err := self.RunScript(scriptPath.Value)
+		if err != nil {
+			return newError("runScript failed: %s", err.Error())
+		}
+		return NewString(output)
+	}},
+	"runScriptStr": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for runScriptStr. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for runScriptStr must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		scriptStr, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for runScriptStr must be STRING, got %s", args[1].Type())
+		}
+		output, err := self.RunScriptStr(scriptStr.Value)
+		if err != nil {
+			return newError("runScriptStr failed: %s", err.Error())
+		}
+		return NewString(output)
+	}},
+
+	// File Operations
+	"readFile": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for readFile. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for readFile must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for readFile must be STRING, got %s", args[1].Type())
+		}
+		content, err := self.ReadFile(remotePath.Value)
+		if err != nil {
+			return newError("readFile failed: %s", err.Error())
+		}
+		return NewString(content)
+	}},
+	"writeFile": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for writeFile. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for writeFile must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("first argument for writeFile must be STRING, got %s", args[1].Type())
+		}
+		content, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for writeFile must be STRING, got %s", args[2].Type())
+		}
+		if err := self.WriteFile(remotePath.Value, content.Value); err != nil {
+			return newError("writeFile failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"upload": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for upload. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for upload must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		localPath, ok := args[1].(*String)
+		if !ok {
+			return newError("first argument for upload must be STRING, got %s", args[1].Type())
+		}
+		remotePath, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for upload must be STRING, got %s", args[2].Type())
+		}
+		if err := self.Upload(localPath.Value, remotePath.Value); err != nil {
+			return newError("upload failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"download": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for download. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for download must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("first argument for download must be STRING, got %s", args[1].Type())
+		}
+		localPath, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for download must be STRING, got %s", args[2].Type())
+		}
+		if err := self.Download(remotePath.Value, localPath.Value); err != nil {
+			return newError("download failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"uploadDir": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for uploadDir. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for uploadDir must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		localDir, ok := args[1].(*String)
+		if !ok {
+			return newError("first argument for uploadDir must be STRING, got %s", args[1].Type())
+		}
+		remoteDir, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for uploadDir must be STRING, got %s", args[2].Type())
+		}
+		if err := self.UploadDir(localDir.Value, remoteDir.Value); err != nil {
+			return newError("uploadDir failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"downloadDir": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for downloadDir. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for downloadDir must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		remoteDir, ok := args[1].(*String)
+		if !ok {
+			return newError("first argument for downloadDir must be STRING, got %s", args[1].Type())
+		}
+		localDir, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for downloadDir must be STRING, got %s", args[2].Type())
+		}
+		if err := self.DownloadDir(remoteDir.Value, localDir.Value); err != nil {
+			return newError("downloadDir failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"mkdir": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for mkdir. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for mkdir must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for mkdir must be STRING, got %s", args[1].Type())
+		}
+		if err := self.Mkdir(path.Value); err != nil {
+			return newError("mkdir failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"mkdirAll": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for mkdirAll. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for mkdirAll must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for mkdirAll must be STRING, got %s", args[1].Type())
+		}
+		if err := self.MkdirAll(path.Value); err != nil {
+			return newError("mkdirAll failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"remove": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for remove. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for remove must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for remove must be STRING, got %s", args[1].Type())
+		}
+		if err := self.Remove(path.Value); err != nil {
+			return newError("remove failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"removeDir": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for removeDir. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for removeDir must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for removeDir must be STRING, got %s", args[1].Type())
+		}
+		if err := self.RemoveDir(path.Value); err != nil {
+			return newError("removeDir failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"rename": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for rename. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for rename must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		oldPath, ok := args[1].(*String)
+		if !ok {
+			return newError("first argument for rename must be STRING, got %s", args[1].Type())
+		}
+		newPath, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for rename must be STRING, got %s", args[2].Type())
+		}
+		if err := self.Rename(oldPath.Value, newPath.Value); err != nil {
+			return newError("rename failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"stat": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for stat. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for stat must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for stat must be STRING, got %s", args[1].Type())
+		}
+		info, err := self.Stat(path.Value)
+		if err != nil {
+			return newError("stat failed: %s", err.Error())
+		}
+		pairs := make([]Object, 0, len(info))
+		for k, v := range info {
+			var valObj Object
+			switch vv := v.(type) {
+			case string:
+				valObj = NewString(vv)
+			case int:
+				valObj = NewInt(int64(vv))
+			case int64:
+				valObj = NewInt(vv)
+			case bool:
+				valObj = &Bool{Value: vv}
+			default:
+				valObj = NewString(fmt.Sprintf("%v", vv))
+			}
+			pairs = append(pairs, &Array{Elements: []Object{NewString(k), valObj}})
+		}
+		return NewArray(pairs)
+	}},
+	"exists": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for exists. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for exists must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for exists must be STRING, got %s", args[1].Type())
+		}
+		return &Bool{Value: self.Exists(path.Value)}
+	}},
+	"isDir": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for isDir. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for isDir must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for isDir must be STRING, got %s", args[1].Type())
+		}
+		return &Bool{Value: self.IsDir(path.Value)}
+	}},
+	"isFile": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for isFile. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for isFile must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for isFile must be STRING, got %s", args[1].Type())
+		}
+		return &Bool{Value: self.IsFile(path.Value)}
+	}},
+	"listDir": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for listDir. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for listDir must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for listDir must be STRING, got %s", args[1].Type())
+		}
+		files, err := self.ListDir(path.Value)
+		if err != nil {
+			return newError("listDir failed: %s", err.Error())
+		}
+		elements := make([]Object, len(files))
+		for i, file := range files {
+			pairs := make([]Object, 0, len(file))
+			for k, v := range file {
+				var valObj Object
+				switch vv := v.(type) {
+				case string:
+					valObj = NewString(vv)
+				case int:
+					valObj = NewInt(int64(vv))
+				case int64:
+					valObj = NewInt(vv)
+				case bool:
+					valObj = &Bool{Value: vv}
+				default:
+					valObj = NewString(fmt.Sprintf("%v", vv))
+				}
+				pairs = append(pairs, &Array{Elements: []Object{NewString(k), valObj}})
+			}
+			elements[i] = NewArray(pairs)
+		}
+		return NewArray(elements)
+	}},
+	"walkDir": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for walkDir. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SSHClient)
+		if !ok {
+			return newError("receiver for walkDir must be SSH_CLIENT, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for walkDir must be STRING, got %s", args[1].Type())
+		}
+		files, err := self.WalkDir(path.Value)
+		if err != nil {
+			return newError("walkDir failed: %s", err.Error())
+		}
+		elements := make([]Object, len(files))
+		for i, file := range files {
+			pairs := make([]Object, 0, len(file))
+			for k, v := range file {
+				var valObj Object
+				switch vv := v.(type) {
+				case string:
+					valObj = NewString(vv)
+				case bool:
+					valObj = &Bool{Value: vv}
+				default:
+					valObj = NewString(fmt.Sprintf("%v", vv))
+				}
+				pairs = append(pairs, &Array{Elements: []Object{NewString(k), valObj}})
+			}
+			elements[i] = NewArray(pairs)
+		}
+		return NewArray(elements)
+	}},
+}
+
+// ============================================================
 // XLSX Methods
 // ============================================================
 
@@ -6732,5 +7259,878 @@ var udpSocketMethods = map[string]*Builtin{
 			return newError("receiver for isClosed must be UdpSocket, got %s", args[0].Type())
 		}
 		return &Bool{Value: self.IsClosed()}
+	}},
+}
+
+// ============================================================
+// FTP Client Methods
+// ============================================================
+
+var ftpClientMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+
+	"isConnected": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for isConnected. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FtpClient)
+		if !ok {
+			return newError("receiver for isConnected must be FTP_CLIENT, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.IsConnected()}
+	}},
+	"close": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for close. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FtpClient)
+		if !ok {
+			return newError("receiver for close must be FTP_CLIENT, got %s", args[0].Type())
+		}
+		if err := self.Close(); err != nil {
+			return newError("close failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"getHost": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getHost. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FtpClient)
+		if !ok {
+			return newError("receiver for getHost must be FTP_CLIENT, got %s", args[0].Type())
+		}
+		return NewString(self.GetHost())
+	}},
+	"getPort": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getPort. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FtpClient)
+		if !ok {
+			return newError("receiver for getPort must be FTP_CLIENT, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.GetPort()))
+	}},
+	"getUser": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getUser. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FtpClient)
+		if !ok {
+			return newError("receiver for getUser must be FTP_CLIENT, got %s", args[0].Type())
+		}
+		return NewString(self.GetUser())
+	}},
+	"upload": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for upload. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*FtpClient)
+		if !ok {
+			return newError("receiver for upload must be FTP_CLIENT, got %s", args[0].Type())
+		}
+		localPath, ok := args[1].(*String)
+		if !ok {
+			return newError("first argument for upload must be STRING, got %s", args[1].Type())
+		}
+		remotePath, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for upload must be STRING, got %s", args[2].Type())
+		}
+		if err := self.Upload(localPath.Value, remotePath.Value); err != nil {
+			return newError("upload failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"download": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for download. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*FtpClient)
+		if !ok {
+			return newError("receiver for download must be FTP_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("first argument for download must be STRING, got %s", args[1].Type())
+		}
+		localPath, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for download must be STRING, got %s", args[2].Type())
+		}
+		if err := self.Download(remotePath.Value, localPath.Value); err != nil {
+			return newError("download failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"delete": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for delete. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*FtpClient)
+		if !ok {
+			return newError("receiver for delete must be FTP_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for delete must be STRING, got %s", args[1].Type())
+		}
+		if err := self.Delete(remotePath.Value); err != nil {
+			return newError("delete failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"rename": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for rename. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*FtpClient)
+		if !ok {
+			return newError("receiver for rename must be FTP_CLIENT, got %s", args[0].Type())
+		}
+		oldPath, ok := args[1].(*String)
+		if !ok {
+			return newError("first argument for rename must be STRING, got %s", args[1].Type())
+		}
+		newPath, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for rename must be STRING, got %s", args[2].Type())
+		}
+		if err := self.Rename(oldPath.Value, newPath.Value); err != nil {
+			return newError("rename failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"mkdir": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for mkdir. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*FtpClient)
+		if !ok {
+			return newError("receiver for mkdir must be FTP_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for mkdir must be STRING, got %s", args[1].Type())
+		}
+		if err := self.Mkdir(remotePath.Value); err != nil {
+			return newError("mkdir failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"mkdirAll": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for mkdirAll. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*FtpClient)
+		if !ok {
+			return newError("receiver for mkdirAll must be FTP_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for mkdirAll must be STRING, got %s", args[1].Type())
+		}
+		if err := self.MkdirAll(remotePath.Value); err != nil {
+			return newError("mkdirAll failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"rmdir": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for rmdir. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*FtpClient)
+		if !ok {
+			return newError("receiver for rmdir must be FTP_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for rmdir must be STRING, got %s", args[1].Type())
+		}
+		if err := self.Rmdir(remotePath.Value); err != nil {
+			return newError("rmdir failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"rmdirAll": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for rmdirAll. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*FtpClient)
+		if !ok {
+			return newError("receiver for rmdirAll must be FTP_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for rmdirAll must be STRING, got %s", args[1].Type())
+		}
+		if err := self.RmdirAll(remotePath.Value); err != nil {
+			return newError("rmdirAll failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"listDir": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for listDir. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*FtpClient)
+		if !ok {
+			return newError("receiver for listDir must be FTP_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for listDir must be STRING, got %s", args[1].Type())
+		}
+		files, err := self.ListDir(remotePath.Value)
+		if err != nil {
+			return newError("listDir failed: %s", err.Error())
+		}
+		elements := make([]Object, len(files))
+		for i, file := range files {
+			m := NewMapWithCapacity(3)
+			nameKey := NewString("name")
+			sizeKey := NewString("size")
+			isDirKey := NewString("isDir")
+			m.Pairs[nameKey.HashKey()] = MapPair{Key: nameKey, Value: NewString(file.Name)}
+			m.Pairs[sizeKey.HashKey()] = MapPair{Key: sizeKey, Value: NewInt(file.Size)}
+			m.Pairs[isDirKey.HashKey()] = MapPair{Key: isDirKey, Value: &Bool{Value: file.IsDir}}
+			elements[i] = m
+		}
+		return NewArray(elements)
+	}},
+	"changeDir": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for changeDir. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*FtpClient)
+		if !ok {
+			return newError("receiver for changeDir must be FTP_CLIENT, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for changeDir must be STRING, got %s", args[1].Type())
+		}
+		if err := self.ChangeDir(path.Value); err != nil {
+			return newError("changeDir failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"currentDir": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for currentDir. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FtpClient)
+		if !ok {
+			return newError("receiver for currentDir must be FTP_CLIENT, got %s", args[0].Type())
+		}
+		dir, err := self.CurrentDir()
+		if err != nil {
+			return newError("currentDir failed: %s", err.Error())
+		}
+		return NewString(dir)
+	}},
+	"size": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for size. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*FtpClient)
+		if !ok {
+			return newError("receiver for size must be FTP_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for size must be STRING, got %s", args[1].Type())
+		}
+		size, err := self.Size(remotePath.Value)
+		if err != nil {
+			return newError("size failed: %s", err.Error())
+		}
+		return NewInt(size)
+	}},
+	"exists": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for exists. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*FtpClient)
+		if !ok {
+			return newError("receiver for exists must be FTP_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for exists must be STRING, got %s", args[1].Type())
+		}
+		return &Bool{Value: self.Exists(remotePath.Value)}
+	}},
+	"isDir": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for isDir. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*FtpClient)
+		if !ok {
+			return newError("receiver for isDir must be FTP_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for isDir must be STRING, got %s", args[1].Type())
+		}
+		return &Bool{Value: self.IsDir(remotePath.Value)}
+	}},
+	"isFile": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for isFile. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*FtpClient)
+		if !ok {
+			return newError("receiver for isFile must be FTP_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for isFile must be STRING, got %s", args[1].Type())
+		}
+		return &Bool{Value: self.IsFile(remotePath.Value)}
+	}},
+	"setType": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for setType. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*FtpClient)
+		if !ok {
+			return newError("receiver for setType must be FTP_CLIENT, got %s", args[0].Type())
+		}
+		transferType, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for setType must be STRING, got %s", args[1].Type())
+		}
+		if err := self.SetType(transferType.Value); err != nil {
+			return newError("setType failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"setPassive": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for setPassive. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*FtpClient)
+		if !ok {
+			return newError("receiver for setPassive must be FTP_CLIENT, got %s", args[0].Type())
+		}
+		enabled, ok := args[1].(*Bool)
+		if !ok {
+			return newError("argument for setPassive must be BOOL, got %s", args[1].Type())
+		}
+		if err := self.SetPassive(enabled.Value); err != nil {
+			return newError("setPassive failed: %s", err.Error())
+		}
+		return NULL
+	}},
+}
+
+// ============================================================
+// FTP Server Methods
+// ============================================================
+
+var ftpServerMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+
+	"start": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for start. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FtpServer)
+		if !ok {
+			return newError("receiver for start must be FTP_SERVER, got %s", args[0].Type())
+		}
+		if err := self.Start(); err != nil {
+			return newError("start failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"stop": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for stop. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FtpServer)
+		if !ok {
+			return newError("receiver for stop must be FTP_SERVER, got %s", args[0].Type())
+		}
+		if err := self.Stop(); err != nil {
+			return newError("stop failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"addUser": {Fn: func(args ...Object) Object {
+		if len(args) != 4 {
+			return newError("wrong number of arguments for addUser. got=%d, want=4", len(args))
+		}
+		self, ok := args[0].(*FtpServer)
+		if !ok {
+			return newError("receiver for addUser must be FTP_SERVER, got %s", args[0].Type())
+		}
+		username, ok := args[1].(*String)
+		if !ok {
+			return newError("first argument for addUser must be STRING, got %s", args[1].Type())
+		}
+		password, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for addUser must be STRING, got %s", args[2].Type())
+		}
+		homeDir, ok := args[3].(*String)
+		if !ok {
+			return newError("third argument for addUser must be STRING, got %s", args[3].Type())
+		}
+		if err := self.AddUser(username.Value, password.Value, homeDir.Value); err != nil {
+			return newError("addUser failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"removeUser": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for removeUser. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*FtpServer)
+		if !ok {
+			return newError("receiver for removeUser must be FTP_SERVER, got %s", args[0].Type())
+		}
+		username, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for removeUser must be STRING, got %s", args[1].Type())
+		}
+		if err := self.RemoveUser(username.Value); err != nil {
+			return newError("removeUser failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"isRunning": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for isRunning. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*FtpServer)
+		if !ok {
+			return newError("receiver for isRunning must be FTP_SERVER, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.IsRunning()}
+	}},
+}
+
+// ============================================================
+// SFTP Client Methods
+// ============================================================
+
+var sftpClientMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+
+	"isConnected": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for isConnected. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*SftpClient)
+		if !ok {
+			return newError("receiver for isConnected must be SFTP_CLIENT, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.IsConnected()}
+	}},
+	"close": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for close. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*SftpClient)
+		if !ok {
+			return newError("receiver for close must be SFTP_CLIENT, got %s", args[0].Type())
+		}
+		if err := self.Close(); err != nil {
+			return newError("close failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"getHost": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getHost. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*SftpClient)
+		if !ok {
+			return newError("receiver for getHost must be SFTP_CLIENT, got %s", args[0].Type())
+		}
+		return NewString(self.GetHost())
+	}},
+	"getPort": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getPort. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*SftpClient)
+		if !ok {
+			return newError("receiver for getPort must be SFTP_CLIENT, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.GetPort()))
+	}},
+	"getUser": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getUser. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*SftpClient)
+		if !ok {
+			return newError("receiver for getUser must be SFTP_CLIENT, got %s", args[0].Type())
+		}
+		return NewString(self.GetUser())
+	}},
+	"upload": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for upload. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*SftpClient)
+		if !ok {
+			return newError("receiver for upload must be SFTP_CLIENT, got %s", args[0].Type())
+		}
+		localPath, ok := args[1].(*String)
+		if !ok {
+			return newError("first argument for upload must be STRING, got %s", args[1].Type())
+		}
+		remotePath, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for upload must be STRING, got %s", args[2].Type())
+		}
+		if err := self.Upload(localPath.Value, remotePath.Value); err != nil {
+			return newError("upload failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"download": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for download. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*SftpClient)
+		if !ok {
+			return newError("receiver for download must be SFTP_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("first argument for download must be STRING, got %s", args[1].Type())
+		}
+		localPath, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for download must be STRING, got %s", args[2].Type())
+		}
+		if err := self.Download(remotePath.Value, localPath.Value); err != nil {
+			return newError("download failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"delete": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for delete. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SftpClient)
+		if !ok {
+			return newError("receiver for delete must be SFTP_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for delete must be STRING, got %s", args[1].Type())
+		}
+		if err := self.Delete(remotePath.Value); err != nil {
+			return newError("delete failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"rename": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for rename. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*SftpClient)
+		if !ok {
+			return newError("receiver for rename must be SFTP_CLIENT, got %s", args[0].Type())
+		}
+		oldPath, ok := args[1].(*String)
+		if !ok {
+			return newError("first argument for rename must be STRING, got %s", args[1].Type())
+		}
+		newPath, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for rename must be STRING, got %s", args[2].Type())
+		}
+		if err := self.Rename(oldPath.Value, newPath.Value); err != nil {
+			return newError("rename failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"mkdir": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for mkdir. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SftpClient)
+		if !ok {
+			return newError("receiver for mkdir must be SFTP_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for mkdir must be STRING, got %s", args[1].Type())
+		}
+		if err := self.Mkdir(remotePath.Value); err != nil {
+			return newError("mkdir failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"mkdirAll": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for mkdirAll. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SftpClient)
+		if !ok {
+			return newError("receiver for mkdirAll must be SFTP_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for mkdirAll must be STRING, got %s", args[1].Type())
+		}
+		if err := self.MkdirAll(remotePath.Value); err != nil {
+			return newError("mkdirAll failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"rmdir": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for rmdir. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SftpClient)
+		if !ok {
+			return newError("receiver for rmdir must be SFTP_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for rmdir must be STRING, got %s", args[1].Type())
+		}
+		if err := self.Rmdir(remotePath.Value); err != nil {
+			return newError("rmdir failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"rmdirAll": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for rmdirAll. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SftpClient)
+		if !ok {
+			return newError("receiver for rmdirAll must be SFTP_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for rmdirAll must be STRING, got %s", args[1].Type())
+		}
+		if err := self.RmdirAll(remotePath.Value); err != nil {
+			return newError("rmdirAll failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"listDir": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for listDir. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SftpClient)
+		if !ok {
+			return newError("receiver for listDir must be SFTP_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for listDir must be STRING, got %s", args[1].Type())
+		}
+		files, err := self.ListDir(remotePath.Value)
+		if err != nil {
+			return newError("listDir failed: %s", err.Error())
+		}
+		elements := make([]Object, len(files))
+		for i, file := range files {
+			m := NewMapWithCapacity(3)
+			nameKey := NewString("name")
+			sizeKey := NewString("size")
+			isDirKey := NewString("isDir")
+			m.Pairs[nameKey.HashKey()] = MapPair{Key: nameKey, Value: NewString(file.Name)}
+			m.Pairs[sizeKey.HashKey()] = MapPair{Key: sizeKey, Value: NewInt(file.Size)}
+			m.Pairs[isDirKey.HashKey()] = MapPair{Key: isDirKey, Value: &Bool{Value: file.IsDir}}
+			elements[i] = m
+		}
+		return NewArray(elements)
+	}},
+	"stat": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for stat. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SftpClient)
+		if !ok {
+			return newError("receiver for stat must be SFTP_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for stat must be STRING, got %s", args[1].Type())
+		}
+		info, err := self.Stat(remotePath.Value)
+		if err != nil {
+			return newError("stat failed: %s", err.Error())
+		}
+		m := NewMapWithCapacity(3)
+		nameKey := NewString("name")
+		sizeKey := NewString("size")
+		isDirKey := NewString("isDir")
+		m.Pairs[nameKey.HashKey()] = MapPair{Key: nameKey, Value: NewString(remotePath.Value)}
+		m.Pairs[sizeKey.HashKey()] = MapPair{Key: sizeKey, Value: NewInt(info.Size)}
+		m.Pairs[isDirKey.HashKey()] = MapPair{Key: isDirKey, Value: &Bool{Value: info.IsDir}}
+		return m
+	}},
+	"exists": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for exists. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SftpClient)
+		if !ok {
+			return newError("receiver for exists must be SFTP_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for exists must be STRING, got %s", args[1].Type())
+		}
+		return &Bool{Value: self.Exists(remotePath.Value)}
+	}},
+	"isDir": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for isDir. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SftpClient)
+		if !ok {
+			return newError("receiver for isDir must be SFTP_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for isDir must be STRING, got %s", args[1].Type())
+		}
+		return &Bool{Value: self.IsDir(remotePath.Value)}
+	}},
+	"isFile": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for isFile. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SftpClient)
+		if !ok {
+			return newError("receiver for isFile must be SFTP_CLIENT, got %s", args[0].Type())
+		}
+		remotePath, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for isFile must be STRING, got %s", args[1].Type())
+		}
+		return &Bool{Value: self.IsFile(remotePath.Value)}
+	}},
+}
+
+// ============================================================
+// SFTP Server Methods
+// ============================================================
+
+var sftpServerMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+
+	"start": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for start. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*SftpServer)
+		if !ok {
+			return newError("receiver for start must be SFTP_SERVER, got %s", args[0].Type())
+		}
+		if err := self.Start(); err != nil {
+			return newError("start failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"stop": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for stop. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*SftpServer)
+		if !ok {
+			return newError("receiver for stop must be SFTP_SERVER, got %s", args[0].Type())
+		}
+		if err := self.Stop(); err != nil {
+			return newError("stop failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"addUser": {Fn: func(args ...Object) Object {
+		if len(args) != 4 {
+			return newError("wrong number of arguments for addUser. got=%d, want=4", len(args))
+		}
+		self, ok := args[0].(*SftpServer)
+		if !ok {
+			return newError("receiver for addUser must be SFTP_SERVER, got %s", args[0].Type())
+		}
+		username, ok := args[1].(*String)
+		if !ok {
+			return newError("first argument for addUser must be STRING, got %s", args[1].Type())
+		}
+		password, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for addUser must be STRING, got %s", args[2].Type())
+		}
+		homeDir, ok := args[3].(*String)
+		if !ok {
+			return newError("third argument for addUser must be STRING, got %s", args[3].Type())
+		}
+		if err := self.AddUser(username.Value, password.Value, homeDir.Value); err != nil {
+			return newError("addUser failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"addUserWithKey": {Fn: func(args ...Object) Object {
+		if len(args) != 4 {
+			return newError("wrong number of arguments for addUserWithKey. got=%d, want=4", len(args))
+		}
+		self, ok := args[0].(*SftpServer)
+		if !ok {
+			return newError("receiver for addUserWithKey must be SFTP_SERVER, got %s", args[0].Type())
+		}
+		username, ok := args[1].(*String)
+		if !ok {
+			return newError("first argument for addUserWithKey must be STRING, got %s", args[1].Type())
+		}
+		keyStr, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for addUserWithKey must be STRING, got %s", args[2].Type())
+		}
+		homeDir, ok := args[3].(*String)
+		if !ok {
+			return newError("third argument for addUserWithKey must be STRING, got %s", args[3].Type())
+		}
+		if err := self.AddUserWithKey(username.Value, keyStr.Value, homeDir.Value); err != nil {
+			return newError("addUserWithKey failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"removeUser": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for removeUser. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*SftpServer)
+		if !ok {
+			return newError("receiver for removeUser must be SFTP_SERVER, got %s", args[0].Type())
+		}
+		username, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for removeUser must be STRING, got %s", args[1].Type())
+		}
+		if err := self.RemoveUser(username.Value); err != nil {
+			return newError("removeUser failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"isRunning": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for isRunning. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*SftpServer)
+		if !ok {
+			return newError("receiver for isRunning must be SFTP_SERVER, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.IsRunning()}
 	}},
 }
