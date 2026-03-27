@@ -21,6 +21,7 @@ io.println("Hello, World!")
 - [math](#math) - Mathematical functions
 - [array](#array) - Array utilities
 - [json](#json) - JSON encoding/decoding
+- [yaml](#yaml) - YAML encoding/decoding (full YAML 1.2 support)
 - [xml](#xml) - XML encoding/decoding
 - [html](#html) - HTML document handling
 - [csv](#csv) - CSV file reading and writing
@@ -1663,6 +1664,532 @@ var updated = json.set("$.store.book[0].price", data, 12.99)
 
 // Delete a book
 var fewer = json.delete("$.store.book[1]", data)
+```
+
+---
+
+## yaml
+
+YAML encoding/decoding with full YAML 1.2 specification support. This module provides comprehensive YAML parsing and serialization without any third-party dependencies or CGO.
+
+### Features
+
+- **Full YAML 1.2 Support**: All scalar types, collections, block scalars, anchors, tags
+- **Type Detection**: Automatic detection of strings, integers, floats, booleans, null
+- **Block Scalars**: Literal (`|`) and folded (`>`) styles with chomping indicators
+- **Anchors & Aliases**: `&anchor` and `*alias` with merge key support
+- **Type Tags**: `!!str`, `!!int`, `!!float`, `!!bool`, `!!null`, `!!timestamp`, `!!binary`, `!!set`, `!!omap`
+- **Multi-document**: Support for `---` and `...` document separators
+- **Comments**: Inline and block comments
+- **Complex Keys**: Explicit key syntax `?`, sequences and maps as keys
+
+### Basic Functions
+
+#### parse(yamlString)
+Parses YAML string to Xxlang value.
+
+```xxl
+import "yaml"
+
+var data = yaml.parse("name: Alice\nage: 30")
+pln(data["name"])  // "Alice"
+
+var list = yaml.parse("- one\n- two\n- three")
+pln(list[0])  // "one"
+```
+
+#### stringify(value, indent)
+Converts Xxlang value to YAML string.
+
+```xxl
+var obj = {"name": "Alice", "age": 30}
+pln(yaml.stringify(obj))      // name: Alice\nage: 30
+pln(yaml.stringify(obj, 4))   // With 4-space indent
+```
+
+#### encode(value)
+Alias for stringify without indent.
+
+```xxl
+yaml.encode({"a": 1, "b": 2})
+// a: 1
+// b: 2
+```
+
+#### decode(yamlString)
+Alias for parse.
+
+```xxl
+yaml.decode("key: value")["key"]  // "value"
+```
+
+### File Operations
+
+#### readFile(path)
+Reads and parses a YAML file.
+
+```xxl
+var config = yaml.readFile("config.yaml")
+pln(config["server"]["host"])
+```
+
+#### writeFile(path, obj, indent)
+Writes object to YAML file.
+
+```xxl
+var data = {"database": {"host": "localhost", "port": 5432}}
+yaml.writeFile("output.yaml", data)
+yaml.writeFile("output.yaml", data, 4)  // With 4-space indent
+```
+
+### Validation
+
+#### isValid(yamlString)
+Returns true if the string is valid YAML.
+
+```xxl
+yaml.isValid("name: test")      // true
+yaml.isValid("invalid: [unclosed")  // false
+```
+
+#### getType(yamlString)
+Returns the type of YAML value: "object", "array", "string", "number", "boolean", "null", or "invalid".
+
+```xxl
+yaml.getType("name: test")  // "object"
+yaml.getType("- a\n- b")    // "array"
+yaml.getType("42")          // "number"
+```
+
+### Conversion Functions
+
+#### toJson(yamlString)
+Converts YAML string to JSON string.
+
+```xxl
+var jsonStr = yaml.toJson("name: Alice\nage: 30")
+pln(jsonStr)  // {"name":"Alice","age":30}
+```
+
+#### fromJson(jsonString)
+Converts JSON string to YAML string.
+
+```xxl
+var yamlStr = yaml.fromJson('{"name":"Alice","age":30}')
+pln(yamlStr)
+// name: Alice
+// age: 30
+```
+
+### Path Operations
+
+#### get(obj, path)
+Gets a value at the specified path (dot notation).
+
+```xxl
+var data = yaml.parse("server:\n  host: localhost\n  port: 8080")
+pln(yaml.get(data, "server.host"))  // "localhost"
+pln(yaml.get(data, "server.port"))  // 8080
+```
+
+#### has(obj, path)
+Returns true if the path exists.
+
+```xxl
+yaml.has(data, "server.host")     // true
+yaml.has(data, "server.ssl")      // false
+```
+
+#### set(obj, path, value)
+Sets a value at the specified path.
+
+```xxl
+var newData = yaml.set(data, "server.port", 9090)
+```
+
+### Merge Operations
+
+#### merge(map1, map2)
+Shallow merges two maps (map2 overwrites map1).
+
+```xxl
+var a = yaml.parse("x: 1\ny: 2")
+var b = yaml.parse("y: 3\nz: 4")
+var merged = yaml.merge(a, b)
+// {x: 1, y: 3, z: 4}
+```
+
+#### deepMerge(map1, map2)
+Deep merges two maps recursively.
+
+```xxl
+var a = yaml.parse("server:\n  host: localhost\n  port: 8080")
+var b = yaml.parse("server:\n  port: 9090\n  ssl: true")
+var merged = yaml.deepMerge(a, b)
+// {server: {host: localhost, port: 9090, ssl: true}}
+```
+
+### Multi-document Support
+
+#### parseDocuments(yamlString)
+Parses multiple YAML documents and returns an array.
+
+```xxl
+var yamlStr = `---
+name: doc1
+---
+name: doc2
+---
+name: doc3`
+
+var docs = yaml.parseDocuments(yamlStr)
+pln(len(docs))       // 3
+pln(docs[0]["name"]) // "doc1"
+```
+
+#### joinDocuments(docs, indent)
+Joins multiple documents into a multi-document YAML string.
+
+```xxl
+var docs = [
+    {"name": "doc1"},
+    {"name": "doc2"}
+]
+var yamlStr = yaml.joinDocuments(docs, 2)
+// ---
+// name: doc1
+// ---
+// name: doc2
+```
+
+### Utility Functions
+
+#### diff(doc1, doc2)
+Compares two YAML documents and returns differences.
+
+```xxl
+var d1 = yaml.parse("a: 1\nb: 2")
+var d2 = yaml.parse("a: 1\nb: 3\nc: 4")
+var diffs = yaml.diff(d1, d2)
+// Returns array of {path, type, oldValue, newValue}
+```
+
+#### flatten(obj, separator)
+Flattens nested object to dot-notation paths.
+
+```xxl
+var data = yaml.parse("server:\n  host: localhost\n  port: 8080")
+var flat = yaml.flatten(data)
+// {"server.host": "localhost", "server.port": 8080}
+```
+
+#### expand(flat, separator)
+Expands flattened paths back to nested structure.
+
+```xxl
+var flat = {"server.host": "localhost", "server.port": 8080}
+var nested = yaml.expand(flat)
+// {server: {host: localhost, port: 8080}}
+```
+
+#### clone(obj)
+Deep copies a YAML object.
+
+```xxl
+var original = yaml.parse("a: 1\nb: {c: 2}")
+var copy = yaml.clone(original)
+```
+
+#### equals(obj1, obj2)
+Deep compares two YAML objects.
+
+```xxl
+var a = yaml.parse("x: 1")
+var b = yaml.parse("x: 1")
+yaml.equals(a, b)  // true
+```
+
+#### paths(obj)
+Returns all paths in a YAML object.
+
+```xxl
+var data = yaml.parse("a:\n  b: 1\n  c: 2\nd: 3")
+var p = yaml.paths(data)
+// ["a", "a.b", "a.c", "d"]
+```
+
+#### find(obj, pattern)
+Finds values matching a pattern (supports `*` wildcard).
+
+```xxl
+var data = yaml.parse(`
+server:
+  host: localhost
+  port: 8080
+database:
+  host: db.example.com
+  port: 5432
+`)
+var hosts = yaml.find(data, "*.host")
+// [{path: "server.host", value: "localhost"}, {path: "database.host", value: "db.example.com"}]
+```
+
+### Supported YAML 1.2 Features
+
+#### Scalar Types
+
+| Type | Examples |
+|------|----------|
+| String | `hello`, `"quoted"`, `'single'` |
+| Integer | `42`, `-10`, `+5`, `0xFF`, `0o755`, `0b1010`, `1_000_000` |
+| Float | `3.14`, `-2.5`, `1.5e+10`, `.inf`, `-.inf`, `.nan` |
+| Boolean | `true`, `false`, `yes`, `no`, `on`, `off` |
+| Null | `null`, `Null`, `NULL`, `~`, (empty) |
+| Timestamp | `2024-01-15`, `2024-01-15T10:30:00Z` |
+| Sexagesimal | `1:30`, `1:30:45` |
+
+#### Collections
+
+```yaml
+# Block sequence
+- item1
+- item2
+
+# Flow sequence
+items: [a, b, c]
+
+# Block mapping
+key1: value1
+key2: value2
+
+# Flow mapping
+config: {host: localhost, port: 8080}
+
+# Nested collections
+users:
+  - name: alice
+    roles: [admin, user]
+```
+
+#### Block Scalars
+
+```yaml
+# Literal block (preserves newlines)
+text: |
+  line 1
+  line 2
+  line 3
+
+# Literal with strip chomping (no trailing newline)
+text: |-
+  line 1
+  line 2
+
+# Literal with keep chomping (keep all trailing newlines)
+text: |+
+  line 1
+  line 2
+  
+
+# Folded block (folds newlines to spaces)
+text: >
+  This is a long
+  paragraph that should
+  be folded into one line.
+
+# With explicit indent indicator
+text: |2
+    indented content
+```
+
+#### Anchors and Aliases
+
+```yaml
+# Define anchor
+defaults: &defaults
+  adapter: postgres
+  host: localhost
+
+# Reference anchor
+development:
+  <<: *defaults  # Merge key
+  database: dev
+
+# Multiple merge
+common: &common
+  timeout: 30
+logging: &logging
+  level: info
+production:
+  <<: [*common, *logging]
+  env: prod
+```
+
+#### Type Tags
+
+```yaml
+# Force string type
+value: !!str 123
+
+# Force integer type
+value: !!int "456"
+
+# Force float type
+value: !!float 3
+
+# Force boolean type
+value: !!bool "yes"
+
+# Null
+value: !!null anything
+
+# Timestamp
+value: !!timestamp 2024-01-15T10:30:00Z
+
+# Binary (base64)
+value: !!binary SGVsbG8gV29ybGQ=
+
+# Set (unique values)
+!!set
+? a
+? b
+? c
+
+# Ordered map
+!!omap
+- key1: value1
+- key2: value2
+
+# Local tags
+value: !custom data
+```
+
+#### Complex Keys
+
+```yaml
+# Explicit key
+? my key
+: my value
+
+# Sequence as key
+? - item1
+  - item2
+: value
+
+# Mapping as key
+? name: alice
+  age: 30
+: person
+```
+
+#### Multi-document
+
+```yaml
+---
+doc: 1
+...
+---
+doc: 2
+...
+---
+doc: 3
+```
+
+#### Comments
+
+```yaml
+# Full line comment
+key: value  # Inline comment
+# Another comment
+- item1
+# Comment between items
+- item2
+```
+
+#### Escape Sequences (Double-quoted)
+
+| Escape | Description |
+|--------|-------------|
+| `\n` | Newline |
+| `\t` | Tab |
+| `\r` | Carriage return |
+| `\\` | Backslash |
+| `\"` | Double quote |
+| `\uXXXX` | Unicode character |
+| `\xXX` | Hex escape |
+| `\0` | Null byte |
+
+#### Multiline Strings
+
+```yaml
+# Double-quoted with continuation
+text: "first \
+  second line"
+
+# Single-quoted multiline
+text: 'line1
+line2'
+
+# Single-quoted with escaped quote
+text: 'it''s working'
+```
+
+### Example Usage
+
+```xxl
+import "yaml"
+import "io"
+
+// Parse configuration file
+var config = yaml.readFile("config.yaml")
+
+// Access nested values
+pln(config["database"]["host"])
+pln(config["database"]["port"])
+
+// Modify configuration
+config["database"]["port"] = 5433
+
+// Add new section
+config["cache"] = {
+    "enabled": true,
+    "ttl": 3600
+}
+
+// Save modified configuration
+yaml.writeFile("config.new.yaml", config, 2)
+
+// Parse multi-document YAML
+var docs = yaml.parseDocuments(`
+---
+apiVersion: v1
+kind: Service
+---
+apiVersion: v1
+kind: Deployment
+`)
+
+pln("Found ", len(docs), " documents")
+
+// Use with anchors
+var yamlStr = `
+defaults: &defaults
+  adapter: postgres
+  pool: 5
+
+production:
+  <<: *defaults
+  database: prod
+  pool: 20
+`
+
+var cfg = yaml.parse(yamlStr)
+pln(cfg["production"]["adapter"])  // "postgres"
+pln(cfg["production"]["pool"])     // 20 (overridden)
+
+// Convert between YAML and JSON
+var jsonStr = yaml.toJson(yamlStr)
+var backToYaml = yaml.fromJson(jsonStr)
 ```
 
 ---

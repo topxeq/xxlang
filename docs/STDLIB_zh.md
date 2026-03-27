@@ -21,6 +21,7 @@ io.println("你好，世界！")
 - [math](#math) - 数学函数
 - [array](#array) - 数组工具
 - [json](#json) - JSON 编解码
+- [yaml](#yaml) - YAML 编解码（完整 YAML 1.2 支持）
 - [xml](#xml) - XML 编解码
 - [html](#html) - HTML 文档处理
 - [csv](#csv-模块) - CSV 文件读写
@@ -1657,6 +1658,531 @@ var updated = json.set("$.store.book[0].price", data, 12.99)
 
 // 删除一本书
 var fewer = json.delete("$.store.book[1]", data)
+```
+
+---
+
+## yaml
+
+YAML 编解码模块，完整支持 YAML 1.2 规范。无需第三方依赖或 CGO。
+
+### 特性
+
+- **完整 YAML 1.2 支持**：所有标量类型、集合、块标量、锚点、标签
+- **自动类型检测**：字符串、整数、浮点数、布尔值、空值
+- **块标量**：字面量（`|`）和折叠（`>`）风格，支持截断指示符
+- **锚点和别名**：`&anchor` 和 `*alias`，支持合并键
+- **类型标签**：`!!str`、`!!int`、`!!float`、`!!bool`、`!!null`、`!!timestamp`、`!!binary`、`!!set`、`!!omap`
+- **多文档**：支持 `---` 和 `...` 文档分隔符
+- **注释**：行内注释和块注释
+- **复杂键**：显式键语法 `?`，序列和映射作为键
+
+### 基础函数
+
+#### parse(yamlString)
+解析 YAML 字符串为 Xxlang 值。
+
+```xxl
+import "yaml"
+
+var data = yaml.parse("name: Alice\nage: 30")
+pln(data["name"])  // "Alice"
+
+var list = yaml.parse("- one\n- two\n- three")
+pln(list[0])  // "one"
+```
+
+#### stringify(value, indent)
+将 Xxlang 值转换为 YAML 字符串。
+
+```xxl
+var obj = {"name": "Alice", "age": 30}
+pln(yaml.stringify(obj))      // name: Alice\nage: 30
+pln(yaml.stringify(obj, 4))   // 使用 4 空格缩进
+```
+
+#### encode(value)
+无缩进版本的 stringify 别名。
+
+```xxl
+yaml.encode({"a": 1, "b": 2})
+// a: 1
+// b: 2
+```
+
+#### decode(yamlString)
+parse 的别名。
+
+```xxl
+yaml.decode("key: value")["key"]  // "value"
+```
+
+### 文件操作
+
+#### readFile(path)
+读取并解析 YAML 文件。
+
+```xxl
+var config = yaml.readFile("config.yaml")
+pln(config["server"]["host"])
+```
+
+#### writeFile(path, obj, indent)
+将对象写入 YAML 文件。
+
+```xxl
+var data = {"database": {"host": "localhost", "port": 5432}}
+yaml.writeFile("output.yaml", data)
+yaml.writeFile("output.yaml", data, 4)  // 使用 4 空格缩进
+```
+
+### 验证函数
+
+#### isValid(yamlString)
+检查字符串是否为有效的 YAML。
+
+```xxl
+yaml.isValid("name: test")       // true
+yaml.isValid("invalid: [unclosed")  // false
+```
+
+#### getType(yamlString)
+返回 YAML 值的类型："object"、"array"、"string"、"number"、"boolean"、"null" 或 "invalid"。
+
+```xxl
+yaml.getType("name: test")  // "object"
+yaml.getType("- a\n- b")    // "array"
+yaml.getType("42")          // "number"
+```
+
+### 转换函数
+
+#### toJson(yamlString)
+将 YAML 字符串转换为 JSON 字符串。
+
+```xxl
+var jsonStr = yaml.toJson("name: Alice\nage: 30")
+pln(jsonStr)  // {"name":"Alice","age":30}
+```
+
+#### fromJson(jsonString)
+将 JSON 字符串转换为 YAML 字符串。
+
+```xxl
+var yamlStr = yaml.fromJson('{"name":"Alice","age":30}')
+pln(yamlStr)
+// name: Alice
+// age: 30
+```
+
+### 路径操作
+
+#### get(obj, path)
+获取指定路径的值（点号分隔）。
+
+```xxl
+var data = yaml.parse("server:\n  host: localhost\n  port: 8080")
+pln(yaml.get(data, "server.host"))  // "localhost"
+pln(yaml.get(data, "server.port"))  // 8080
+```
+
+#### has(obj, path)
+检查路径是否存在。
+
+```xxl
+yaml.has(data, "server.host")     // true
+yaml.has(data, "server.ssl")      // false
+```
+
+#### set(obj, path, value)
+设置指定路径的值。
+
+```xxl
+var newData = yaml.set(data, "server.port", 9090)
+```
+
+### 合并操作
+
+#### merge(map1, map2)
+浅合并两个映射（map2 覆盖 map1）。
+
+```xxl
+var a = yaml.parse("x: 1\ny: 2")
+var b = yaml.parse("y: 3\nz: 4")
+var merged = yaml.merge(a, b)
+// {x: 1, y: 3, z: 4}
+```
+
+#### deepMerge(map1, map2)
+递归深度合并两个映射。
+
+```xxl
+var a = yaml.parse("server:\n  host: localhost\n  port: 8080")
+var b = yaml.parse("server:\n  port: 9090\n  ssl: true")
+var merged = yaml.deepMerge(a, b)
+// {server: {host: localhost, port: 9090, ssl: true}}
+```
+
+### 多文档支持
+
+#### parseDocuments(yamlString)
+解析多个 YAML 文档并返回数组。
+
+```xxl
+var yamlStr = `---
+name: doc1
+---
+name: doc2
+---
+name: doc3`
+
+var docs = yaml.parseDocuments(yamlStr)
+pln(len(docs))       // 3
+pln(docs[0]["name"]) // "doc1"
+```
+
+#### joinDocuments(docs, indent)
+将多个文档合并为多文档 YAML 字符串。
+
+```xxl
+var docs = [
+    {"name": "doc1"},
+    {"name": "doc2"}
+]
+var yamlStr = yaml.joinDocuments(docs, 2)
+// ---
+// name: doc1
+// ---
+// name: doc2
+```
+
+### 工具函数
+
+#### diff(doc1, doc2)
+比较两个 YAML 文档并返回差异。
+
+```xxl
+var d1 = yaml.parse("a: 1\nb: 2")
+var d2 = yaml.parse("a: 1\nb: 3\nc: 4")
+var diffs = yaml.diff(d1, d2)
+// 返回 {path, type, oldValue, newValue} 数组
+```
+
+#### flatten(obj, separator)
+将嵌套对象展平为点号分隔路径。
+
+```xxl
+var data = yaml.parse("server:\n  host: localhost\n  port: 8080")
+var flat = yaml.flatten(data)
+// {"server.host": "localhost", "server.port": 8080}
+```
+
+#### expand(flat, separator)
+将展平的路径还原为嵌套结构。
+
+```xxl
+var flat = {"server.host": "localhost", "server.port": 8080}
+var nested = yaml.expand(flat)
+// {server: {host: localhost, port: 8080}}
+```
+
+#### clone(obj)
+深度复制 YAML 对象。
+
+```xxl
+var original = yaml.parse("a: 1\nb: {c: 2}")
+var copy = yaml.clone(original)
+```
+
+#### equals(obj1, obj2)
+深度比较两个 YAML 对象。
+
+```xxl
+var a = yaml.parse("x: 1")
+var b = yaml.parse("x: 1")
+yaml.equals(a, b)  // true
+```
+
+#### paths(obj)
+返回 YAML 对象中的所有路径。
+
+```xxl
+var data = yaml.parse("a:\n  b: 1\n  c: 2\nd: 3")
+var p = yaml.paths(data)
+// ["a", "a.b", "a.c", "d"]
+```
+
+#### find(obj, pattern)
+查找匹配模式的值（支持 `*` 通配符）。
+
+```xxl
+var data = yaml.parse(`
+server:
+  host: localhost
+  port: 8080
+database:
+  host: db.example.com
+  port: 5432
+`)
+var hosts = yaml.find(data, "*.host")
+// [{path: "server.host", value: "localhost"}, {path: "database.host", value: "db.example.com"}]
+```
+
+### 支持的 YAML 1.2 特性
+
+#### 标量类型
+
+| 类型 | 示例 |
+|------|------|
+| 字符串 | `hello`, `"引号"`, `'单引号'` |
+| 整数 | `42`, `-10`, `+5`, `0xFF`, `0o755`, `0b1010`, `1_000_000` |
+| 浮点数 | `3.14`, `-2.5`, `1.5e+10`, `.inf`, `-.inf`, `.nan` |
+| 布尔值 | `true`, `false`, `yes`, `no`, `on`, `off` |
+| 空值 | `null`, `Null`, `NULL`, `~`, (空) |
+| 时间戳 | `2024-01-15`, `2024-01-15T10:30:00Z` |
+| 六十进制 | `1:30`, `1:30:45` |
+
+#### 集合
+
+```yaml
+# 块序列
+- 项目1
+- 项目2
+
+# 流序列
+items: [a, b, c]
+
+# 块映射
+key1: value1
+key2: value2
+
+# 流映射
+config: {host: localhost, port: 8080}
+
+# 嵌套集合
+users:
+  - name: alice
+    roles: [admin, user]
+```
+
+#### 块标量
+
+```yaml
+# 字面量块（保留换行）
+text: |
+  第一行
+  第二行
+  第三行
+
+# 带截断指示符的字面量块（无尾随换行）
+text: |-
+  第一行
+  第二行
+
+# 带保留指示符的字面量块（保留所有尾随换行）
+text: |+
+  第一行
+  第二行
+  
+
+# 折叠块（将换行折叠为空格）
+text: >
+  这是一个长段落
+  应该被折叠成一行。
+
+# 带显式缩进指示符
+text: |2
+    缩进内容
+```
+
+#### 锚点和别名
+
+```yaml
+# 定义锚点
+defaults: &defaults
+  adapter: postgres
+  host: localhost
+
+# 引用锚点
+development:
+  <<: *defaults  # 合并键
+  database: dev
+
+# 多重合并
+common: &common
+  timeout: 30
+logging: &logging
+  level: info
+production:
+  <<: [*common, *logging]
+  env: prod
+```
+
+#### 类型标签
+
+```yaml
+# 强制字符串类型
+value: !!str 123
+
+# 强制整数类型
+value: !!int "456"
+
+# 强制浮点数类型
+value: !!float 3
+
+# 强制布尔类型
+value: !!bool "yes"
+
+# 空值
+value: !!null anything
+
+# 时间戳
+value: !!timestamp 2024-01-15T10:30:00Z
+
+# 二进制（Base64）
+value: !!binary SGVsbG8gV29ybGQ=
+
+# 集合（唯一值）
+!!set
+? a
+? b
+? c
+
+# 有序映射
+!!omap
+- key1: value1
+- key2: value2
+
+# 本地标签
+value: !custom data
+```
+
+#### 复杂键
+
+```yaml
+# 显式键
+? 我的键
+: 我的值
+
+# 序列作为键
+? - 项目1
+  - 项目2
+: 值
+
+# 映射作为键
+? name: alice
+  age: 30
+: person
+```
+
+#### 多文档
+
+```yaml
+---
+doc: 1
+...
+---
+doc: 2
+...
+---
+doc: 3
+```
+
+#### 注释
+
+```yaml
+# 整行注释
+key: value  # 行内注释
+# 另一个注释
+- 项目1
+# 项目之间的注释
+- 项目2
+```
+
+#### 转义序列（双引号内）
+
+| 转义 | 说明 |
+|------|------|
+| `\n` | 换行 |
+| `\t` | 制表符 |
+| `\r` | 回车 |
+| `\\` | 反斜杠 |
+| `\"` | 双引号 |
+| `\uXXXX` | Unicode 字符 |
+| `\xXX` | 十六进制转义 |
+| `\0` | 空字节 |
+
+#### 多行字符串
+
+```yaml
+# 双引号续行
+text: "第一行 \
+  第二行"
+
+# 单引号多行
+text: '第一行
+第二行'
+
+# 单引号转义引号
+text: 'it''s working'
+```
+
+### 示例
+
+```xxl
+import "yaml"
+import "io"
+
+// 解析配置文件
+var config = yaml.readFile("config.yaml")
+
+// 访问嵌套值
+pln(config["database"]["host"])
+pln(config["database"]["port"])
+
+// 修改配置
+config["database"]["port"] = 5433
+
+// 添加新节
+config["cache"] = {
+    "enabled": true,
+    "ttl": 3600
+}
+
+// 保存修改后的配置
+yaml.writeFile("config.new.yaml", config, 2)
+
+// 解析多文档 YAML
+var docs = yaml.parseDocuments(`
+---
+apiVersion: v1
+kind: Service
+---
+apiVersion: v1
+kind: Deployment
+`)
+
+pln("找到 ", len(docs), " 个文档")
+
+// 使用锚点
+var yamlStr = `
+defaults: &defaults
+  adapter: postgres
+  pool: 5
+
+production:
+  <<: *defaults
+  database: prod
+  pool: 20
+`
+
+var cfg = yaml.parse(yamlStr)
+pln(cfg["production"]["adapter"])  // "postgres"
+pln(cfg["production"]["pool"])     // 20（已覆盖）
+
+// YAML 和 JSON 互转
+var jsonStr = yaml.toJson(yamlStr)
+var backToYaml = yaml.fromJson(jsonStr)
 ```
 
 ---
