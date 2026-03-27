@@ -116,6 +116,9 @@ const (
 	FtpServerType  ObjectType = "FTP_SERVER"
 	SftpClientType ObjectType = "SFTP_CLIENT"
 	SftpServerType ObjectType = "SFTP_SERVER"
+	// HTML types
+	HTMLDocumentType ObjectType = "HTML_DOCUMENT"
+	HTMLElementType  ObjectType = "HTML_ELEMENT"
 )
 
 // TypeTag is a fast integer type identifier for hot path checks
@@ -231,6 +234,9 @@ const (
 	TagFtpServer
 	TagSftpClient
 	TagSftpServer
+	// HTML tags
+	TagHTMLDocument
+	TagHTMLElement
 	TagUnknown
 )
 

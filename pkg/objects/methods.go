@@ -78,6 +78,9 @@ var TypeMethods = map[ObjectType]map[string]*Builtin{
 	FtpServerType:  ftpServerMethods,
 	SftpClientType: sftpClientMethods,
 	SftpServerType: sftpServerMethods,
+	// HTML
+	HTMLDocumentType: htmlDocumentMethods,
+	HTMLElementType:  htmlElementMethods,
 }
 
 // GetMethod returns the builtin method for the given object type and method name
@@ -8132,5 +8135,865 @@ var sftpServerMethods = map[string]*Builtin{
 			return newError("receiver for isRunning must be SFTP_SERVER, got %s", args[0].Type())
 		}
 		return &Bool{Value: self.IsRunning()}
+	}},
+}
+
+// ============================================================
+// HTML Document Methods
+// ============================================================
+
+var htmlDocumentMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"root": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for root. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLDocument)
+		if !ok {
+			return newError("receiver for root must be HTMLDocument, got %s", args[0].Type())
+		}
+		root := self.Root()
+		if root == nil {
+			return NULL
+		}
+		return root
+	}},
+	"head": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for head. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLDocument)
+		if !ok {
+			return newError("receiver for head must be HTMLDocument, got %s", args[0].Type())
+		}
+		head := self.Head()
+		if head == nil {
+			return NULL
+		}
+		return head
+	}},
+	"body": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for body. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLDocument)
+		if !ok {
+			return newError("receiver for body must be HTMLDocument, got %s", args[0].Type())
+		}
+		body := self.Body()
+		if body == nil {
+			return NULL
+		}
+		return body
+	}},
+	"title": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for title. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLDocument)
+		if !ok {
+			return newError("receiver for title must be HTMLDocument, got %s", args[0].Type())
+		}
+		return NewString(self.Title())
+	}},
+	"setTitle": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for setTitle. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLDocument)
+		if !ok {
+			return newError("receiver for setTitle must be HTMLDocument, got %s", args[0].Type())
+		}
+		title, ok := args[1].(*String)
+		if !ok {
+			return newError("title must be STRING")
+		}
+		self.SetTitle(title.Value)
+		return NULL
+	}},
+	"docType": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for docType. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLDocument)
+		if !ok {
+			return newError("receiver for docType must be HTMLDocument, got %s", args[0].Type())
+		}
+		return NewString(self.DocType())
+	}},
+	"getElementById": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for getElementById. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLDocument)
+		if !ok {
+			return newError("receiver for getElementById must be HTMLDocument, got %s", args[0].Type())
+		}
+		id, ok := args[1].(*String)
+		if !ok {
+			return newError("id must be STRING")
+		}
+		elem := self.GetElementById(id.Value)
+		if elem == nil {
+			return NULL
+		}
+		return elem
+	}},
+	"getElementsByTagName": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for getElementsByTagName. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLDocument)
+		if !ok {
+			return newError("receiver for getElementsByTagName must be HTMLDocument, got %s", args[0].Type())
+		}
+		tag, ok := args[1].(*String)
+		if !ok {
+			return newError("tag must be STRING")
+		}
+		return self.GetElementsByTagName(tag.Value)
+	}},
+	"getElementsByClass": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for getElementsByClass. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLDocument)
+		if !ok {
+			return newError("receiver for getElementsByClass must be HTMLDocument, got %s", args[0].Type())
+		}
+		className, ok := args[1].(*String)
+		if !ok {
+			return newError("className must be STRING")
+		}
+		return self.GetElementsByClassName(className.Value)
+	}},
+	"querySelector": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for querySelector. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLDocument)
+		if !ok {
+			return newError("receiver for querySelector must be HTMLDocument, got %s", args[0].Type())
+		}
+		selector, ok := args[1].(*String)
+		if !ok {
+			return newError("selector must be STRING")
+		}
+		elem := self.QuerySelector(selector.Value)
+		if elem == nil {
+			return NULL
+		}
+		return elem
+	}},
+	"querySelectorAll": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for querySelectorAll. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLDocument)
+		if !ok {
+			return newError("receiver for querySelectorAll must be HTMLDocument, got %s", args[0].Type())
+		}
+		selector, ok := args[1].(*String)
+		if !ok {
+			return newError("selector must be STRING")
+		}
+		return self.QuerySelectorAll(selector.Value)
+	}},
+	"find": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for find. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLDocument)
+		if !ok {
+			return newError("receiver for find must be HTMLDocument, got %s", args[0].Type())
+		}
+		selector, ok := args[1].(*String)
+		if !ok {
+			return newError("selector must be STRING")
+		}
+		return self.Find(selector.Value)
+	}},
+	"findFirst": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for findFirst. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLDocument)
+		if !ok {
+			return newError("receiver for findFirst must be HTMLDocument, got %s", args[0].Type())
+		}
+		selector, ok := args[1].(*String)
+		if !ok {
+			return newError("selector must be STRING")
+		}
+		elem := self.FindFirst(selector.Value)
+		if elem == nil {
+			return NULL
+		}
+		return elem
+	}},
+	"toString": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toString. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLDocument)
+		if !ok {
+			return newError("receiver for toString must be HTMLDocument, got %s", args[0].Type())
+		}
+		return NewString(self.ToString())
+	}},
+	"toIndented": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toIndented. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLDocument)
+		if !ok {
+			return newError("receiver for toIndented must be HTMLDocument, got %s", args[0].Type())
+		}
+		return NewString(self.ToIndented())
+	}},
+	"save": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for save. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLDocument)
+		if !ok {
+			return newError("receiver for save must be HTMLDocument, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("path must be STRING")
+		}
+		if err := self.Save(path.Value); err != nil {
+			return newError("save failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"setMeta": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for setMeta. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*HTMLDocument)
+		if !ok {
+			return newError("receiver for setMeta must be HTMLDocument, got %s", args[0].Type())
+		}
+		name, ok := args[1].(*String)
+		if !ok {
+			return newError("name must be STRING")
+		}
+		content, ok := args[2].(*String)
+		if !ok {
+			return newError("content must be STRING")
+		}
+		self.SetMeta(name.Value, content.Value)
+		return NULL
+	}},
+	"addStyle": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for addStyle. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLDocument)
+		if !ok {
+			return newError("receiver for addStyle must be HTMLDocument, got %s", args[0].Type())
+		}
+		css, ok := args[1].(*String)
+		if !ok {
+			return newError("css must be STRING")
+		}
+		self.AddStyle(css.Value)
+		return NULL
+	}},
+	"addScript": {Fn: func(args ...Object) Object {
+		if len(args) < 2 || len(args) > 3 {
+			return newError("wrong number of arguments for addScript. got=%d, want=2 or 3", len(args))
+		}
+		self, ok := args[0].(*HTMLDocument)
+		if !ok {
+			return newError("receiver for addScript must be HTMLDocument, got %s", args[0].Type())
+		}
+		js, ok := args[1].(*String)
+		if !ok {
+			return newError("js must be STRING")
+		}
+		src := ""
+		if len(args) == 3 {
+			srcStr, ok := args[2].(*String)
+			if !ok {
+				return newError("src must be STRING")
+			}
+			src = srcStr.Value
+		}
+		self.AddScript(js.Value, src)
+		return NULL
+	}},
+	"toMap": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toMap. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLDocument)
+		if !ok {
+			return newError("receiver for toMap must be HTMLDocument, got %s", args[0].Type())
+		}
+		return self.ToMap()
+	}},
+}
+
+// ============================================================
+// HTML Element Methods
+// ============================================================
+
+var htmlElementMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"tagName": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for tagName. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for tagName must be HTMLElement, got %s", args[0].Type())
+		}
+		return NewString(self.TagName())
+	}},
+	"setTagName": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for setTagName. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for setTagName must be HTMLElement, got %s", args[0].Type())
+		}
+		name, ok := args[1].(*String)
+		if !ok {
+			return newError("name must be STRING")
+		}
+		self.SetTagName(name.Value)
+		return NULL
+	}},
+	"text": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for text. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for text must be HTMLElement, got %s", args[0].Type())
+		}
+		return NewString(self.TextContent())
+	}},
+	"setText": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for setText. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for setText must be HTMLElement, got %s", args[0].Type())
+		}
+		text, ok := args[1].(*String)
+		if !ok {
+			return newError("text must be STRING")
+		}
+		self.SetTextContent(text.Value)
+		return NULL
+	}},
+	"html": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for html. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for html must be HTMLElement, got %s", args[0].Type())
+		}
+		return NewString(self.InnerHTML())
+	}},
+	"setHtml": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for setHtml. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for setHtml must be HTMLElement, got %s", args[0].Type())
+		}
+		html, ok := args[1].(*String)
+		if !ok {
+			return newError("html must be STRING")
+		}
+		if err := self.SetInnerHTML(html.Value); err != nil {
+			return newError("setHtml failed: %s", err.Error())
+		}
+		return NULL
+	}},
+	"outerHtml": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for outerHtml. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for outerHtml must be HTMLElement, got %s", args[0].Type())
+		}
+		return NewString(self.OuterHTML())
+	}},
+	"attr": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for attr. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for attr must be HTMLElement, got %s", args[0].Type())
+		}
+		name, ok := args[1].(*String)
+		if !ok {
+			return newError("name must be STRING")
+		}
+		return NewString(self.Attribute(name.Value))
+	}},
+	"setAttr": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for setAttr. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for setAttr must be HTMLElement, got %s", args[0].Type())
+		}
+		name, ok := args[1].(*String)
+		if !ok {
+			return newError("name must be STRING")
+		}
+		value, ok := args[2].(*String)
+		if !ok {
+			return newError("value must be STRING")
+		}
+		self.SetAttribute(name.Value, value.Value)
+		return NULL
+	}},
+	"hasAttr": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for hasAttr. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for hasAttr must be HTMLElement, got %s", args[0].Type())
+		}
+		name, ok := args[1].(*String)
+		if !ok {
+			return newError("name must be STRING")
+		}
+		return &Bool{Value: self.HasAttribute(name.Value)}
+	}},
+	"removeAttr": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for removeAttr. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for removeAttr must be HTMLElement, got %s", args[0].Type())
+		}
+		name, ok := args[1].(*String)
+		if !ok {
+			return newError("name must be STRING")
+		}
+		self.RemoveAttribute(name.Value)
+		return NULL
+	}},
+	"attrs": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for attrs. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for attrs must be HTMLElement, got %s", args[0].Type())
+		}
+		return self.Attributes()
+	}},
+	"id": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for id. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for id must be HTMLElement, got %s", args[0].Type())
+		}
+		return NewString(self.ID())
+	}},
+	"setId": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for setId. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for setId must be HTMLElement, got %s", args[0].Type())
+		}
+		id, ok := args[1].(*String)
+		if !ok {
+			return newError("id must be STRING")
+		}
+		self.SetID(id.Value)
+		return NULL
+	}},
+	"class": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for class. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for class must be HTMLElement, got %s", args[0].Type())
+		}
+		return NewString(self.Class())
+	}},
+	"setClass": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for setClass. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for setClass must be HTMLElement, got %s", args[0].Type())
+		}
+		class, ok := args[1].(*String)
+		if !ok {
+			return newError("class must be STRING")
+		}
+		self.SetClass(class.Value)
+		return NULL
+	}},
+	"addClass": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for addClass. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for addClass must be HTMLElement, got %s", args[0].Type())
+		}
+		className, ok := args[1].(*String)
+		if !ok {
+			return newError("className must be STRING")
+		}
+		self.AddClass(className.Value)
+		return NULL
+	}},
+	"removeClass": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for removeClass. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for removeClass must be HTMLElement, got %s", args[0].Type())
+		}
+		className, ok := args[1].(*String)
+		if !ok {
+			return newError("className must be STRING")
+		}
+		self.RemoveClass(className.Value)
+		return NULL
+	}},
+	"hasClass": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for hasClass. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for hasClass must be HTMLElement, got %s", args[0].Type())
+		}
+		className, ok := args[1].(*String)
+		if !ok {
+			return newError("className must be STRING")
+		}
+		return &Bool{Value: self.HasClass(className.Value)}
+	}},
+	"toggleClass": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for toggleClass. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for toggleClass must be HTMLElement, got %s", args[0].Type())
+		}
+		className, ok := args[1].(*String)
+		if !ok {
+			return newError("className must be STRING")
+		}
+		self.ToggleClass(className.Value)
+		return NULL
+	}},
+	"children": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for children. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for children must be HTMLElement, got %s", args[0].Type())
+		}
+		return self.Children()
+	}},
+	"childCount": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for childCount. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for childCount must be HTMLElement, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.ChildCount()))
+	}},
+	"firstChild": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for firstChild. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for firstChild must be HTMLElement, got %s", args[0].Type())
+		}
+		child := self.FirstChild()
+		if child == nil {
+			return NULL
+		}
+		return child
+	}},
+	"lastChild": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for lastChild. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for lastChild must be HTMLElement, got %s", args[0].Type())
+		}
+		child := self.LastChild()
+		if child == nil {
+			return NULL
+		}
+		return child
+	}},
+	"parent": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for parent. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for parent must be HTMLElement, got %s", args[0].Type())
+		}
+		parent := self.Parent()
+		if parent == nil {
+			return NULL
+		}
+		return parent
+	}},
+	"appendChild": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for appendChild. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for appendChild must be HTMLElement, got %s", args[0].Type())
+		}
+		child, ok := args[1].(*HTMLElement)
+		if !ok {
+			return newError("child must be HTMLElement")
+		}
+		self.AppendChild(child)
+		return NULL
+	}},
+	"removeChild": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for removeChild. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for removeChild must be HTMLElement, got %s", args[0].Type())
+		}
+		index, ok := args[1].(*Int)
+		if !ok {
+			return newError("index must be INT")
+		}
+		if !self.RemoveChild(int(index.Value)) {
+			return newError("removeChild failed: invalid index")
+		}
+		return NULL
+	}},
+	"insertBefore": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for insertBefore. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for insertBefore must be HTMLElement, got %s", args[0].Type())
+		}
+		newElem, ok := args[1].(*HTMLElement)
+		if !ok {
+			return newError("newElem must be HTMLElement")
+		}
+		refElem, ok := args[2].(*HTMLElement)
+		if !ok {
+			return newError("refElem must be HTMLElement")
+		}
+		if !self.InsertBefore(newElem, refElem) {
+			return newError("insertBefore failed: reference element not found")
+		}
+		return NULL
+	}},
+	"insertAfter": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for insertAfter. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for insertAfter must be HTMLElement, got %s", args[0].Type())
+		}
+		newElem, ok := args[1].(*HTMLElement)
+		if !ok {
+			return newError("newElem must be HTMLElement")
+		}
+		refElem, ok := args[2].(*HTMLElement)
+		if !ok {
+			return newError("refElem must be HTMLElement")
+		}
+		if !self.InsertAfter(newElem, refElem) {
+			return newError("insertAfter failed: reference element not found")
+		}
+		return NULL
+	}},
+	"replaceChild": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for replaceChild. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for replaceChild must be HTMLElement, got %s", args[0].Type())
+		}
+		newElem, ok := args[1].(*HTMLElement)
+		if !ok {
+			return newError("newElem must be HTMLElement")
+		}
+		oldElem, ok := args[2].(*HTMLElement)
+		if !ok {
+			return newError("oldElem must be HTMLElement")
+		}
+		if !self.ReplaceChild(newElem, oldElem) {
+			return newError("replaceChild failed: old element not found")
+		}
+		return NULL
+	}},
+	"clear": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for clear. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for clear must be HTMLElement, got %s", args[0].Type())
+		}
+		self.Clear()
+		return NULL
+	}},
+	"remove": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for remove. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for remove must be HTMLElement, got %s", args[0].Type())
+		}
+		self.Remove()
+		return NULL
+	}},
+	"clone": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for clone. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for clone must be HTMLElement, got %s", args[0].Type())
+		}
+		return self.Clone()
+	}},
+	"querySelector": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for querySelector. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for querySelector must be HTMLElement, got %s", args[0].Type())
+		}
+		selector, ok := args[1].(*String)
+		if !ok {
+			return newError("selector must be STRING")
+		}
+		elem := self.QuerySelector(selector.Value)
+		if elem == nil {
+			return NULL
+		}
+		return elem
+	}},
+	"querySelectorAll": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for querySelectorAll. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for querySelectorAll must be HTMLElement, got %s", args[0].Type())
+		}
+		selector, ok := args[1].(*String)
+		if !ok {
+			return newError("selector must be STRING")
+		}
+		return self.QuerySelectorAll(selector.Value)
+	}},
+	"find": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for find. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for find must be HTMLElement, got %s", args[0].Type())
+		}
+		selector, ok := args[1].(*String)
+		if !ok {
+			return newError("selector must be STRING")
+		}
+		return self.Find(selector.Value)
+	}},
+	"findFirst": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for findFirst. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for findFirst must be HTMLElement, got %s", args[0].Type())
+		}
+		selector, ok := args[1].(*String)
+		if !ok {
+			return newError("selector must be STRING")
+		}
+		elem := self.FindFirst(selector.Value)
+		if elem == nil {
+			return NULL
+		}
+		return elem
+	}},
+	"toString": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toString. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for toString must be HTMLElement, got %s", args[0].Type())
+		}
+		return NewString(self.ToString())
+	}},
+	"toIndented": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toIndented. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for toIndented must be HTMLElement, got %s", args[0].Type())
+		}
+		return NewString(self.ToIndented())
+	}},
+	"toMap": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toMap. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HTMLElement)
+		if !ok {
+			return newError("receiver for toMap must be HTMLElement, got %s", args[0].Type())
+		}
+		return self.ToMap()
 	}},
 }
