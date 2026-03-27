@@ -54,6 +54,18 @@ func (a *SocketAddr) Port() int {
 }
 
 // ToStr returns the address in "host:port" format.
+// For IPv6 addresses, the host is wrapped in brackets.
 func (a *SocketAddr) ToStr() string {
+	// Check if the host contains a colon (IPv6 address)
+	if len(a.host) > 0 && a.host[0] == ':' {
+		// IPv6 address, wrap in brackets
+		return fmt.Sprintf("[%s]:%d", a.host, a.port)
+	}
+	for i := 0; i < len(a.host); i++ {
+		if a.host[i] == ':' {
+			// IPv6 address, wrap in brackets
+			return fmt.Sprintf("[%s]:%d", a.host, a.port)
+		}
+	}
 	return fmt.Sprintf("%s:%d", a.host, a.port)
 }
