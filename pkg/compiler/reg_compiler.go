@@ -22,9 +22,9 @@ type RegCompiler struct {
 	scopeStack []regScopeState
 
 	// Register allocation
-	nextTempReg  int
-	maxReg       int
-	freeRegs     []int // List of freed registers available for reuse
+	nextTempReg int
+	maxReg      int
+	freeRegs    []int // List of freed registers available for reuse
 
 	// Source mapping
 	sourceMap  *SourceMap
@@ -3190,11 +3190,21 @@ func (c *RegCompiler) emitRegTailCall(funcReg, numArgs int) {
 }
 
 func (c *RegCompiler) emitRegBuiltin(builtinIdx, numArgs int) {
-	c.instructions = append(c.instructions, MakeRegInstruction2(OpRegBuiltin, builtinIdx, numArgs)...)
+	c.instructions = append(c.instructions, []byte{
+		byte(OpRegBuiltin),
+		byte(builtinIdx >> 8),
+		byte(builtinIdx),
+		byte(numArgs),
+	}...)
 }
 
 func (c *RegCompiler) emitRegLoadBuiltin(dst, builtinIdx int) {
-	c.instructions = append(c.instructions, MakeRegInstruction2(OpRegLoadBuiltin, dst, builtinIdx)...)
+	c.instructions = append(c.instructions, []byte{
+		byte(OpRegLoadBuiltin),
+		byte(dst),
+		byte(builtinIdx >> 8),
+		byte(builtinIdx),
+	}...)
 }
 
 func (c *RegCompiler) emitRegReturn(reg int) {

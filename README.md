@@ -22,7 +22,7 @@ Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language impleme
 - **Microservice Mode** - Built-in HTTP/HTTPS server, REST API support, WebSocket
 - **Database Support** - SQLite, MySQL, PostgreSQL, Oracle, MSSQL Server (pure Go drivers, no CGO)
 - **Plugin System** - WASM plugins for high-performance operations (Windows compatible, no CGO required)
-- **Rich Built-ins** - 200+ built-in functions for string, math, array, map, HTTP, concurrency, crypto and more
+- **Rich Built-ins** - 460+ built-in functions for string, math, array, map, HTTP, concurrency, crypto and more
 - **REPL** - Interactive REPL with multi-line support and persistent state
 - **Embeddable** - Can be used as a library in other Go projects
 - **Compilable** - Compile to standalone executable or cross-platform bytecode
@@ -803,7 +803,7 @@ See [docs/EMBEDDING.md](docs/EMBEDDING.md) for complete examples.
 
 ## Built-in Functions List
 
-Xxlang provides 200+ built-in functions:
+Xxlang provides 460+ built-in functions:
 
 | Category | Functions |
 |----------|-----------|

@@ -50,15 +50,15 @@ const (
 	OpPopScope  // Pop scope
 
 	// Superinstructions (combined operations for performance)
-	OpGetLocalAdd     // Get two locals and add
-	OpGetLocalSub     // Get two locals and subtract
-	OpGetLocalMul     // Get two locals and multiply
-	OpConstantAdd     // Load two constants and add
-	OpConstantSub     // Load two constants and subtract
-	OpConstantMul     // Load two constants and multiply
-	OpGetLocalLess    // Get two locals and compare less
-	OpGetLocalGreater // Get two locals and compare greater
-	OpGetLocalEqual   // Get two locals and compare equal
+	OpGetLocalAdd      // Get two locals and add
+	OpGetLocalSub      // Get two locals and subtract
+	OpGetLocalMul      // Get two locals and multiply
+	OpConstantAdd      // Load two constants and add
+	OpConstantSub      // Load two constants and subtract
+	OpConstantMul      // Load two constants and multiply
+	OpGetLocalLess     // Get two locals and compare less
+	OpGetLocalGreater  // Get two locals and compare greater
+	OpGetLocalEqual    // Get two locals and compare equal
 	OpGetLocalNotEqual // Get two locals and compare not equal
 
 	// New superinstructions for local + constant operations (very common in loops)
@@ -149,11 +149,11 @@ const (
 	OpValueNeg // Negate a Value
 
 	// Value-based comparisons
-	OpValueLess        // Compare two Values for less than
-	OpValueGreater     // Compare two Values for greater than
-	OpValueEqual       // Compare two Values for equality
-	OpValueNotEqual    // Compare two Values for inequality
-	OpValueLessEqual   // Compare two Values for less or equal
+	OpValueLess         // Compare two Values for less than
+	OpValueGreater      // Compare two Values for greater than
+	OpValueEqual        // Compare two Values for equality
+	OpValueNotEqual     // Compare two Values for inequality
+	OpValueLessEqual    // Compare two Values for less or equal
 	OpValueGreaterEqual // Compare two Values for greater or equal
 
 	// Value-based local operations (combined for zero allocation)
@@ -180,29 +180,29 @@ const (
 	// Extended format: opcode(8) | reg(8) | const_idx(16)
 
 	// Register arithmetic: R[dst] = R[src1] op R[src2]
-	OpRegAdd    // R[dst] = R[src1] + R[src2]
-	OpRegSub    // R[dst] = R[src1] - R[src2]
-	OpRegMul    // R[dst] = R[src1] * R[src2]
-	OpRegDiv    // R[dst] = R[src1] / R[src2]
-	OpRegMod    // R[dst] = R[src1] % R[src2]
-	OpRegNeg    // R[dst] = -R[src1] (src2 unused)
-	OpRegAnd    // R[dst] = R[src1] && R[src2]
-	OpRegOr     // R[dst] = R[src1] || R[src2]
-	OpRegNot    // R[dst] = !R[src1] (src2 unused)
+	OpRegAdd // R[dst] = R[src1] + R[src2]
+	OpRegSub // R[dst] = R[src1] - R[src2]
+	OpRegMul // R[dst] = R[src1] * R[src2]
+	OpRegDiv // R[dst] = R[src1] / R[src2]
+	OpRegMod // R[dst] = R[src1] % R[src2]
+	OpRegNeg // R[dst] = -R[src1] (src2 unused)
+	OpRegAnd // R[dst] = R[src1] && R[src2]
+	OpRegOr  // R[dst] = R[src1] || R[src2]
+	OpRegNot // R[dst] = !R[src1] (src2 unused)
 
 	// Register comparison: R[dst] = R[src1] op R[src2] (result is boolean)
-	OpRegLess        // R[dst] = R[src1] < R[src2]
-	OpRegLessEqual   // R[dst] = R[src1] <= R[src2]
-	OpRegGreater     // R[dst] = R[src1] > R[src2]
+	OpRegLess         // R[dst] = R[src1] < R[src2]
+	OpRegLessEqual    // R[dst] = R[src1] <= R[src2]
+	OpRegGreater      // R[dst] = R[src1] > R[src2]
 	OpRegGreaterEqual // R[dst] = R[src1] >= R[src2]
-	OpRegEqual       // R[dst] = R[src1] == R[src2]
-	OpRegNotEqual    // R[dst] = R[src1] != R[src2]
+	OpRegEqual        // R[dst] = R[src1] == R[src2]
+	OpRegNotEqual     // R[dst] = R[src1] != R[src2]
 
 	// Register data movement (extended format: opcode | reg(8) | idx(16))
-	OpRegLoadConst  // R[dst] = Constants[idx]
-	OpRegLoadGlobal // R[dst] = Globals[idx]
+	OpRegLoadConst   // R[dst] = Constants[idx]
+	OpRegLoadGlobal  // R[dst] = Globals[idx]
 	OpRegStoreGlobal // Globals[idx] = R[src]
-	OpRegMove       // R[dst] = R[src] (src2 unused, but format consistent)
+	OpRegMove        // R[dst] = R[src] (src2 unused, but format consistent)
 
 	// Register local variable operations
 	OpRegLoadLocal  // R[dst] = Locals[idx]
@@ -222,17 +222,17 @@ const (
 	OpRegReturn // Return value in R[reg]
 
 	// Register closure and function operations
-	OpRegClosure   // Create closure from constant function
-	OpRegLoadFunc  // Load function from constant pool into register
+	OpRegClosure  // Create closure from constant function
+	OpRegLoadFunc // Load function from constant pool into register
 
 	// Register collection operations
-	OpRegArray     // R[dst] = Array from R[src1..src1+src2-1]
-	OpRegMap       // R[dst] = Map from pairs starting at R[src1]
-	OpRegIndex     // R[dst] = R[obj][R[key]]
-	OpRegSetIndex  // R[obj][R[key]] = R[val]
-	OpRegSlice     // R[dst] = R[obj][R[start]:R[end]]
-	OpRegPush      // Push R[src] to temp stack (for complex exprs)
-	OpRegPop       // Pop to R[dst] from temp stack
+	OpRegArray    // R[dst] = Array from R[src1..src1+src2-1]
+	OpRegMap      // R[dst] = Map from pairs starting at R[src1]
+	OpRegIndex    // R[dst] = R[obj][R[key]]
+	OpRegSetIndex // R[obj][R[key]] = R[val]
+	OpRegSlice    // R[dst] = R[obj][R[start]:R[end]]
+	OpRegPush     // Push R[src] to temp stack (for complex exprs)
+	OpRegPop      // Pop to R[dst] from temp stack
 
 	// Register method/field operations (extended format for name index)
 	OpRegGetMethod  // R[dst] = R[obj].method(name_idx)
@@ -246,8 +246,8 @@ const (
 	OpRegSuper // Super method call: method_idx, num_args
 
 	// Register built-in call
-	OpRegBuiltin      // Call builtin, args in R0-R7, result in RRet
-	OpRegLoadBuiltin  // Load builtin function object into register
+	OpRegBuiltin     // Call builtin, args in R0-R7, result in RRet
+	OpRegLoadBuiltin // Load builtin function object into register
 
 	// Register null/true/false literals
 	OpRegNull  // R[dst] = null
@@ -261,11 +261,11 @@ const (
 	OpRegEndFinally  // end of finally block, check for pending exception
 
 	// Register superinstructions for common patterns
-	OpRegAddConst    // R[dst] = R[src1] + Constants[idx]
-	OpRegSubConst    // R[dst] = R[src1] - Constants[idx]
-	OpRegMulConst    // R[dst] = R[src1] * Constants[idx]
-	OpRegIncLocal    // Locals[idx]++
-	OpRegDecLocal    // Locals[idx]--
+	OpRegAddConst // R[dst] = R[src1] + Constants[idx]
+	OpRegSubConst // R[dst] = R[src1] - Constants[idx]
+	OpRegMulConst // R[dst] = R[src1] * Constants[idx]
+	OpRegIncLocal // Locals[idx]++
+	OpRegDecLocal // Locals[idx]--
 
 	// Register module operations
 	OpRegLoadModule // R[dst] = LoadModule(Constants[idx])
@@ -474,7 +474,7 @@ var definitions = map[Opcode]*Definition{
 	OpCallMethod: {"OpCallMethod", []int{1}}, // 1-byte argument count
 
 	// Built-in operations
-	OpBuiltin: {"OpBuiltin", []int{1}}, // 1-byte built-in index
+	OpBuiltin: {"OpBuiltin", []int{2}}, // 2-byte built-in index
 
 	// Literal operations
 	OpNull:  {"OpNull", []int{}},
@@ -512,9 +512,9 @@ var definitions = map[Opcode]*Definition{
 	OpConstantMul: {"OpConstantMul", []int{2, 2}},
 
 	// Comparison superinstructions
-	OpGetLocalLess:    {"OpGetLocalLess", []int{1, 1}},    // 2x 1-byte local indices
-	OpGetLocalGreater: {"OpGetLocalGreater", []int{1, 1}}, // 2x 1-byte local indices
-	OpGetLocalEqual:   {"OpGetLocalEqual", []int{1, 1}},   // 2x 1-byte local indices
+	OpGetLocalLess:     {"OpGetLocalLess", []int{1, 1}},     // 2x 1-byte local indices
+	OpGetLocalGreater:  {"OpGetLocalGreater", []int{1, 1}},  // 2x 1-byte local indices
+	OpGetLocalEqual:    {"OpGetLocalEqual", []int{1, 1}},    // 2x 1-byte local indices
 	OpGetLocalNotEqual: {"OpGetLocalNotEqual", []int{1, 1}}, // 2x 1-byte local indices
 
 	// Local + Constant superinstructions (very common in loops)
@@ -553,11 +553,11 @@ var definitions = map[Opcode]*Definition{
 	OpValueNeg: {"OpValueNeg", []int{}},
 
 	// Value-based comparisons
-	OpValueLess:        {"OpValueLess", []int{}},
-	OpValueGreater:     {"OpValueGreater", []int{}},
-	OpValueEqual:       {"OpValueEqual", []int{}},
-	OpValueNotEqual:    {"OpValueNotEqual", []int{}},
-	OpValueLessEqual:   {"OpValueLessEqual", []int{}},
+	OpValueLess:         {"OpValueLess", []int{}},
+	OpValueGreater:      {"OpValueGreater", []int{}},
+	OpValueEqual:        {"OpValueEqual", []int{}},
+	OpValueNotEqual:     {"OpValueNotEqual", []int{}},
+	OpValueLessEqual:    {"OpValueLessEqual", []int{}},
 	OpValueGreaterEqual: {"OpValueGreaterEqual", []int{}},
 
 	// Value-based local operations
@@ -570,7 +570,7 @@ var definitions = map[Opcode]*Definition{
 	OpValueMulLocalConst: {"OpValueMulLocalConst", []int{1, 2}},
 
 	// Value-based superinstructions
-	OpValueGetLocalAdd:     {"OpValueGetLocalAdd", []int{1, 1}},     // 2x 1-byte local indices
+	OpValueGetLocalAdd:     {"OpValueGetLocalAdd", []int{1, 1}}, // 2x 1-byte local indices
 	OpValueGetLocalSub:     {"OpValueGetLocalSub", []int{1, 1}},
 	OpValueGetLocalMul:     {"OpValueGetLocalMul", []int{1, 1}},
 	OpValueGetLocalLess:    {"OpValueGetLocalLess", []int{1, 1}},
@@ -582,23 +582,23 @@ var definitions = map[Opcode]*Definition{
 	// ============================================================================
 
 	// Register arithmetic: 4-byte format - dst, src1, src2
-	OpRegAdd:    {"OpRegAdd", []int{1, 1, 1}},    // dst, src1, src2
-	OpRegSub:    {"OpRegSub", []int{1, 1, 1}},    // dst, src1, src2
-	OpRegMul:    {"OpRegMul", []int{1, 1, 1}},    // dst, src1, src2
-	OpRegDiv:    {"OpRegDiv", []int{1, 1, 1}},    // dst, src1, src2
-	OpRegMod:    {"OpRegMod", []int{1, 1, 1}},    // dst, src1, src2
-	OpRegNeg:    {"OpRegNeg", []int{1, 1}},       // dst, src
-	OpRegAnd:    {"OpRegAnd", []int{1, 1, 1}},    // dst, src1, src2
-	OpRegOr:     {"OpRegOr", []int{1, 1, 1}},     // dst, src1, src2
-	OpRegNot:    {"OpRegNot", []int{1, 1}},       // dst, src
+	OpRegAdd: {"OpRegAdd", []int{1, 1, 1}}, // dst, src1, src2
+	OpRegSub: {"OpRegSub", []int{1, 1, 1}}, // dst, src1, src2
+	OpRegMul: {"OpRegMul", []int{1, 1, 1}}, // dst, src1, src2
+	OpRegDiv: {"OpRegDiv", []int{1, 1, 1}}, // dst, src1, src2
+	OpRegMod: {"OpRegMod", []int{1, 1, 1}}, // dst, src1, src2
+	OpRegNeg: {"OpRegNeg", []int{1, 1}},    // dst, src
+	OpRegAnd: {"OpRegAnd", []int{1, 1, 1}}, // dst, src1, src2
+	OpRegOr:  {"OpRegOr", []int{1, 1, 1}},  // dst, src1, src2
+	OpRegNot: {"OpRegNot", []int{1, 1}},    // dst, src
 
 	// Register comparison: 4-byte format
-	OpRegLess:         {"OpRegLess", []int{1, 1, 1}},        // dst, src1, src2
-	OpRegLessEqual:    {"OpRegLessEqual", []int{1, 1, 1}},   // dst, src1, src2
-	OpRegGreater:      {"OpRegGreater", []int{1, 1, 1}},     // dst, src1, src2
+	OpRegLess:         {"OpRegLess", []int{1, 1, 1}},         // dst, src1, src2
+	OpRegLessEqual:    {"OpRegLessEqual", []int{1, 1, 1}},    // dst, src1, src2
+	OpRegGreater:      {"OpRegGreater", []int{1, 1, 1}},      // dst, src1, src2
 	OpRegGreaterEqual: {"OpRegGreaterEqual", []int{1, 1, 1}}, // dst, src1, src2
-	OpRegEqual:        {"OpRegEqual", []int{1, 1, 1}},       // dst, src1, src2
-	OpRegNotEqual:     {"OpRegNotEqual", []int{1, 1, 1}},    // dst, src1, src2
+	OpRegEqual:        {"OpRegEqual", []int{1, 1, 1}},        // dst, src1, src2
+	OpRegNotEqual:     {"OpRegNotEqual", []int{1, 1, 1}},     // dst, src1, src2
 
 	// Register data movement (extended format: reg(8), idx(16))
 	OpRegLoadConst:   {"OpRegLoadConst", []int{1, 2}},   // dst, const_idx
@@ -613,13 +613,13 @@ var definitions = map[Opcode]*Definition{
 	OpRegStoreFree:  {"OpRegStoreFree", []int{1, 1}},  // src, free_idx
 
 	// Register control flow (extended format for 16-bit offset)
-	OpRegJump:        {"OpRegJump", []int{1, 2}},       // unused_byte, offset (16-bit signed) - 4 bytes total
+	OpRegJump:        {"OpRegJump", []int{1, 2}},        // unused_byte, offset (16-bit signed) - 4 bytes total
 	OpRegJumpIfTrue:  {"OpRegJumpIfTrue", []int{1, 2}},  // cond, offset
 	OpRegJumpIfFalse: {"OpRegJumpIfFalse", []int{1, 2}}, // cond, offset
 
 	// Register function operations
-	OpRegCall:   {"OpRegCall", []int{1, 1}},   // func_reg, num_args
-	OpRegReturn: {"OpRegReturn", []int{1}},    // return_reg
+	OpRegCall:   {"OpRegCall", []int{1, 1}}, // func_reg, num_args
+	OpRegReturn: {"OpRegReturn", []int{1}},  // return_reg
 
 	// Register closure and function operations
 	OpRegClosure:  {"OpRegClosure", []int{1, 2, 1, 1}}, // dst, func_idx(16-bit), num_free, start_reg
@@ -642,12 +642,12 @@ var definitions = map[Opcode]*Definition{
 
 	// Register class operations
 	OpRegClass: {"OpRegClass", []int{1, 2, 1, 1, 1}}, // dst, name_idx, superclass_reg, fields_reg, methods_reg
-	OpRegNew:   {"OpRegNew", []int{1, 1, 1}},          // dst, class_reg, num_args
-	OpRegSuper: {"OpRegSuper", []int{2, 1}},           // method_idx, num_args
+	OpRegNew:   {"OpRegNew", []int{1, 1, 1}},         // dst, class_reg, num_args
+	OpRegSuper: {"OpRegSuper", []int{2, 1}},          // method_idx, num_args
 
 	// Register built-in call
-	OpRegBuiltin:     {"OpRegBuiltin", []int{1, 1}},     // builtin_idx, num_args
-	OpRegLoadBuiltin: {"OpRegLoadBuiltin", []int{1, 1}}, // dst, builtin_idx
+	OpRegBuiltin:     {"OpRegBuiltin", []int{2, 1}},     // builtin_idx (2 bytes), num_args (1 byte)
+	OpRegLoadBuiltin: {"OpRegLoadBuiltin", []int{1, 2}}, // dst (1 byte), builtin_idx (2 bytes)
 
 	// Register literals
 	OpRegNull:  {"OpRegNull", []int{1}},  // dst
@@ -655,10 +655,10 @@ var definitions = map[Opcode]*Definition{
 	OpRegFalse: {"OpRegFalse", []int{1}}, // dst
 
 	// Register exception handling
-	OpRegThrow:       {"OpRegThrow", []int{1}},           // src
-	OpRegPushHandler: {"OpRegPushHandler", []int{2, 2}},  // catch_addr, finally_addr
-	OpRegPopHandler:  {"OpRegPopHandler", []int{}},       // no operands
-	OpRegEndFinally:  {"OpRegEndFinally", []int{}},       // no operands
+	OpRegThrow:       {"OpRegThrow", []int{1}},          // src
+	OpRegPushHandler: {"OpRegPushHandler", []int{2, 2}}, // catch_addr, finally_addr
+	OpRegPopHandler:  {"OpRegPopHandler", []int{}},      // no operands
+	OpRegEndFinally:  {"OpRegEndFinally", []int{}},      // no operands
 
 	// Register superinstructions
 	OpRegAddConst: {"OpRegAddConst", []int{1, 1, 2}}, // dst, src, const_idx
@@ -668,9 +668,9 @@ var definitions = map[Opcode]*Definition{
 	OpRegDecLocal: {"OpRegDecLocal", []int{1}},       // local_idx
 
 	// Register module operations
-	OpRegLoadModule: {"OpRegLoadModule", []int{1, 2}}, // dst, const_idx
+	OpRegLoadModule: {"OpRegLoadModule", []int{1, 2}},   // dst, const_idx
 	OpRegGetExport:  {"OpRegGetExport", []int{1, 1, 2}}, // dst, module_reg, name_idx
-	OpRegSetExport:  {"OpRegSetExport", []int{1, 2}}, // src, name_idx
+	OpRegSetExport:  {"OpRegSetExport", []int{1, 2}},    // src, name_idx
 
 	// Register iterator operations
 	OpRegIterKey:   {"OpRegIterKey", []int{1, 1, 1}},   // dst, iter_reg, index_reg
@@ -678,51 +678,51 @@ var definitions = map[Opcode]*Definition{
 
 	// Register array building (for large arrays)
 	OpRegArrayEmpty:  {"OpRegArrayEmpty", []int{1}},        // dst
-	OpRegArrayAppend: {"OpRegArrayAppend", []int{1, 1, 1}},   // dst, arr_reg, elem_reg
-	OpRegMapEmpty:    {"OpRegMapEmpty", []int{1}},            // dst
-	OpRegMapSet:      {"OpRegMapSet", []int{1, 1, 1, 1}},     // dst, map_reg, key_reg, val_reg
+	OpRegArrayAppend: {"OpRegArrayAppend", []int{1, 1, 1}}, // dst, arr_reg, elem_reg
+	OpRegMapEmpty:    {"OpRegMapEmpty", []int{1}},          // dst
+	OpRegMapSet:      {"OpRegMapSet", []int{1, 1, 1, 1}},   // dst, map_reg, key_reg, val_reg
 
 	// Tail call optimization
-	OpRegTailCall:       {"OpRegTailCall", []int{1, 1}},                         // func_reg, num_args
+	OpRegTailCall:       {"OpRegTailCall", []int{1, 1}},          // func_reg, num_args
 	OpRegTailCallMethod: {"OpRegTailCallMethod", []int{1, 2, 1}}, // obj, name_idx(16-bit), num_args
 
 	// Loop-optimized superinstructions
 	OpRegLoopCountAdd:  {"OpRegLoopCountAdd", []int{1, 1, 2, 2, 2}}, // acc_reg, counter_reg, start, limit, step
-	OpRegLoopIncCheck: {"OpRegLoopIncCheck", []int{1, 2, 2}},       // counter_reg, limit_const, jump_offset
-	OpRegAddLocalCheck: {"OpRegAddLocalCheck", []int{1, 1, 2, 2}},  // acc_reg, counter_reg, limit_const, jump_offset
-	OpRegLoopBodyAdd:  {"OpRegLoopBodyAdd", []int{1, 1, 2, 2}},     // acc_reg, counter_reg, limit_const, jump_offset
-	OpRegLoopMulCheck: {"OpRegLoopMulCheck", []int{1, 1, 2}},       // i_reg, n_reg, jump_out_offset
+	OpRegLoopIncCheck:  {"OpRegLoopIncCheck", []int{1, 2, 2}},       // counter_reg, limit_const, jump_offset
+	OpRegAddLocalCheck: {"OpRegAddLocalCheck", []int{1, 1, 2, 2}},   // acc_reg, counter_reg, limit_const, jump_offset
+	OpRegLoopBodyAdd:   {"OpRegLoopBodyAdd", []int{1, 1, 2, 2}},     // acc_reg, counter_reg, limit_const, jump_offset
+	OpRegLoopMulCheck:  {"OpRegLoopMulCheck", []int{1, 1, 2}},       // i_reg, n_reg, jump_out_offset
 
 	// Prime check optimized instructions
-	OpRegPrimeInnerLoop:  {"OpRegPrimeInnerLoop", []int{1, 1, 1, 2}},  // n_reg, i_reg, result_reg, jump_done_offset
-	OpRegModCheckZero:    {"OpRegModCheckZero", []int{1, 1, 1}},       // result_reg, n_reg, i_reg
-	OpRegInnerLoopPrime:  {"OpRegInnerLoopPrime", []int{1, 1, 1, 2, 2}}, // n_reg, i_reg, result_reg, jump_is_prime, jump_done
+	OpRegPrimeInnerLoop: {"OpRegPrimeInnerLoop", []int{1, 1, 1, 2}},    // n_reg, i_reg, result_reg, jump_done_offset
+	OpRegModCheckZero:   {"OpRegModCheckZero", []int{1, 1, 1}},         // result_reg, n_reg, i_reg
+	OpRegInnerLoopPrime: {"OpRegInnerLoopPrime", []int{1, 1, 1, 2, 2}}, // n_reg, i_reg, result_reg, jump_is_prime, jump_done
 
 	// Complete prime check superinstruction
-	OpRegPrimeCheck:       {"OpRegPrimeCheck", []int{1, 1}},           // n_reg, result_reg
-	OpRegPrimeCheckRange:  {"OpRegPrimeCheckRange", []int{1, 1, 1}},   // start_reg, end_reg, count_reg
+	OpRegPrimeCheck:      {"OpRegPrimeCheck", []int{1, 1}},         // n_reg, result_reg
+	OpRegPrimeCheckRange: {"OpRegPrimeCheckRange", []int{1, 1, 1}}, // start_reg, end_reg, count_reg
 
 	// Nested loop optimized superinstructions
-	OpRegNestedLoopMul:     {"OpRegNestedLoopMul", []int{1, 1, 2, 2, 1}},      // arr_a, arr_b, n_const, m_const, result
-	OpRegMatrixMulElement:  {"OpRegMatrixMulElement", []int{1, 1, 1, 1, 2, 1}}, // a, b, i, j, k_limit, result
+	OpRegNestedLoopMul:    {"OpRegNestedLoopMul", []int{1, 1, 2, 2, 1}},       // arr_a, arr_b, n_const, m_const, result
+	OpRegMatrixMulElement: {"OpRegMatrixMulElement", []int{1, 1, 1, 1, 2, 1}}, // a, b, i, j, k_limit, result
 
 	// Concurrency operations
-	OpRegRunStart:    {"OpRegRunStart", []int{1, 1}},   // func_reg, num_args
-	OpRegRunWait:     {"OpRegRunWait", []int{1}},       // goroutine_reg
-	OpRegMakeTube:    {"OpRegMakeTube", []int{1, 2}},   // dst, buffer_const_idx
-	OpRegTubeSend:    {"OpRegTubeSend", []int{1, 1}},   // tube_reg, value_reg
-	OpRegTubeRecv:    {"OpRegTubeRecv", []int{1, 1}},   // dst_reg, tube_reg
-	OpRegTubeClose:   {"OpRegTubeClose", []int{1}},     // tube_reg
-	OpRegSelectStart: {"OpRegSelectStart", []int{1}},   // num_cases
+	OpRegRunStart:    {"OpRegRunStart", []int{1, 1}},      // func_reg, num_args
+	OpRegRunWait:     {"OpRegRunWait", []int{1}},          // goroutine_reg
+	OpRegMakeTube:    {"OpRegMakeTube", []int{1, 2}},      // dst, buffer_const_idx
+	OpRegTubeSend:    {"OpRegTubeSend", []int{1, 1}},      // tube_reg, value_reg
+	OpRegTubeRecv:    {"OpRegTubeRecv", []int{1, 1}},      // dst_reg, tube_reg
+	OpRegTubeClose:   {"OpRegTubeClose", []int{1}},        // tube_reg
+	OpRegSelectStart: {"OpRegSelectStart", []int{1}},      // num_cases
 	OpRegSelectCase:  {"OpRegSelectCase", []int{1, 1, 1}}, // dir, tube_reg, value_reg
-	OpRegSelectEnd:   {"OpRegSelectEnd", []int{}},      // jump_table...
-	OpRegMutexLock:   {"OpRegMutexLock", []int{1}},     // mutex_reg
-	OpRegMutexUnlock: {"OpRegMutexUnlock", []int{1}},   // mutex_reg
-	OpRegWGAdd:       {"OpRegWGAdd", []int{1, 2}},      // wg_reg, delta_const
-	OpRegWGWait:      {"OpRegWGWait", []int{1}},        // wg_reg
-	OpRegWGDone:      {"OpRegWGDone", []int{1}},        // wg_reg
+	OpRegSelectEnd:   {"OpRegSelectEnd", []int{}},         // jump_table...
+	OpRegMutexLock:   {"OpRegMutexLock", []int{1}},        // mutex_reg
+	OpRegMutexUnlock: {"OpRegMutexUnlock", []int{1}},      // mutex_reg
+	OpRegWGAdd:       {"OpRegWGAdd", []int{1, 2}},         // wg_reg, delta_const
+	OpRegWGWait:      {"OpRegWGWait", []int{1}},           // wg_reg
+	OpRegWGDone:      {"OpRegWGDone", []int{1}},           // wg_reg
 	OpRegAtomicAdd:   {"OpRegAtomicAdd", []int{1, 1, 2}},  // dst, atomic_reg, delta_const
-	OpRegAtomicLoad:  {"OpRegAtomicLoad", []int{1, 1}},   // dst, atomic_reg
+	OpRegAtomicLoad:  {"OpRegAtomicLoad", []int{1, 1}},    // dst, atomic_reg
 	OpRegAtomicSwap:  {"OpRegAtomicSwap", []int{1, 1, 2}}, // dst, atomic_reg, new_const
 }
 

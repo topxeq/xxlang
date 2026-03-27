@@ -26,6 +26,12 @@ This document provides a comprehensive reference for all built-in functions in X
 - [BigInt/BigFloat Functions](#bigintbigfloat-functions)
 - [Reader/Writer Functions](#readerwriter-functions)
 - [System Command Functions](#system-command-functions)
+- [Collection Functions](#collection-functions)
+- [String Processing Functions](#string-processing-functions)
+- [Bitwise Functions](#bitwise-functions)
+- [Check/Validation Functions](#checkvalidation-functions)
+- [Bytes Functions](#bytes-functions)
+- [Miscellaneous Functions](#miscellaneous-functions)
 - [Type Methods](#type-methods)
 - [Standard Library Modules](#standard-library-modules)
 
@@ -3248,6 +3254,1467 @@ pln(info)
 // Arguments:
 //   [0]: test (type: STRING)
 //   [1]: 42 (type: INT)
+```
+
+---
+
+## Collection Functions (Batch 11)
+
+High-order functions for array manipulation.
+
+### mapArray(array, fn)
+
+Applies a function to each element and returns a new array.
+
+```xxl
+func double(x) { return x * 2 }
+var arr = [1, 2, 3, 4, 5]
+var doubled = mapArray(arr, double)
+// [2, 4, 6, 8, 10]
+```
+
+### filterArray(array, fn)
+
+Filters array elements that satisfy the predicate function.
+
+```xxl
+func isEven(x) { return x % 2 == 0 }
+var arr = [1, 2, 3, 4, 5]
+var evens = filterArray(arr, isEven)
+// [2, 4]
+```
+
+### reduceArray(array, fn, initial?)
+
+Reduces array to a single value using an accumulator function.
+
+```xxl
+func add(a, b) { return a + b }
+var arr = [1, 2, 3, 4, 5]
+var sum = reduceArray(arr, add, 0)
+// 15
+```
+
+### forEach(array, fn)
+
+Iterates over array elements, calling the function for each.
+
+```xxl
+forEach([1, 2, 3], func(x, i) {
+    pln("Index:", i, "Value:", x)
+})
+```
+
+### flatMap(array, fn)
+
+Maps each element and flattens the result.
+
+```xxl
+func duplicate(x) { return [x, x] }
+var result = flatMap([1, 2, 3], duplicate)
+// [1, 1, 2, 2, 3, 3]
+```
+
+### every(array, fn)
+
+Returns true if all elements satisfy the predicate.
+
+```xxl
+every([2, 4, 6], func(x) { return x % 2 == 0 })  // true
+every([2, 3, 4], func(x) { return x % 2 == 0 })  // false
+```
+
+### some(array, fn)
+
+Returns true if any element satisfies the predicate.
+
+```xxl
+some([1, 3, 5], func(x) { return x > 4 })  // true
+some([1, 3, 5], func(x) { return x > 6 })  // false
+```
+
+### groupBy(array, fn)
+
+Groups array elements by the key returned from the function.
+
+```xxl
+var people = [
+    {"name": "Alice", "age": 30},
+    {"name": "Bob", "age": 25},
+    {"name": "Charlie", "age": 30}
+]
+var grouped = groupBy(people, func(p) { return p["age"] })
+// {"25": [...], "30": [...]}
+```
+
+### partition(array, fn)
+
+Splits array into two groups based on predicate.
+
+```xxl
+var nums = [1, 2, 3, 4, 5, 6]
+var result = partition(nums, func(x) { return x % 2 == 0 })
+// [[2, 4, 6], [1, 3, 5]]
+```
+
+### zip(array1, array2, ...)
+
+Combines multiple arrays into an array of tuples.
+
+```xxl
+var names = ["Alice", "Bob"]
+var ages = [30, 25]
+zip(names, ages)
+// [["Alice", 30], ["Bob", 25]]
+```
+
+### unzip(array)
+
+Splits an array of tuples into separate arrays.
+
+```xxl
+unzip([["Alice", 30], ["Bob", 25]])
+// [["Alice", "Bob"], [30, 25]]
+```
+
+### fill(array, value, start?, end?)
+
+Fills array elements with a value in the specified range.
+
+```xxl
+fill([1, 2, 3, 4, 5], 0)        // [0, 0, 0, 0, 0]
+fill([1, 2, 3, 4, 5], 0, 1, 3)   // [1, 0, 0, 4, 5]
+```
+
+### rangeNum(end) / rangeNum(start, end, step?)
+
+Generates an array of numbers in a range.
+
+```xxl
+rangeNum(5)           // [0, 1, 2, 3, 4]
+rangeNum(1, 5)        // [1, 2, 3, 4]
+rangeNum(0, 10, 2)    // [0, 2, 4, 6, 8]
+```
+
+### intersection(arr1, arr2)
+
+Returns elements common to both arrays.
+
+```xxl
+intersection([1, 2, 3], [2, 3, 4])
+// [2, 3]
+```
+
+### difference(arr1, arr2)
+
+Returns elements in arr1 but not in arr2.
+
+```xxl
+difference([1, 2, 3], [2, 3, 4])
+// [1]
+```
+
+### union(arr1, arr2)
+
+Returns unique elements from both arrays.
+
+```xxl
+union([1, 2, 3], [2, 3, 4])
+// [1, 2, 3, 4]
+```
+
+### countBy(array, fn)
+
+Counts elements grouped by the key function.
+
+```xxl
+countBy([1, 2, 3, 4, 5], func(x) {
+    return x % 2 == 0 ? "even" : "odd"
+})
+// {"even": 2, "odd": 3}
+```
+
+### sortBy(array, fn)
+
+Sorts array by the value returned from the function.
+
+```xxl
+var users = [{"name": "Bob"}, {"name": "Alice"}]
+sortBy(users, func(u) { return u["name"] })
+// [{"name": "Alice"}, {"name": "Bob"}]
+```
+
+---
+
+## Utility Functions (Batch 12)
+
+General-purpose utility functions.
+
+### sprintf(format, args...)
+
+Formats a string and returns the result.
+
+```xxl
+sprintf("Hello %s, you are %d years old", "Alice", 25)
+// "Hello Alice, you are 25 years old"
+```
+
+### toBool(value)
+
+Converts a value to boolean.
+
+```xxl
+toBool(0)      // false
+toBool(1)      // true
+toBool("")     // false
+toBool("hello") // true
+```
+
+### toInt(value, base?)
+
+Converts a value to integer.
+
+```xxl
+toInt("123")       // 123
+toInt("ff", 16)     // 255
+toInt(3.14)         // 3
+```
+
+### toFloat(value)
+
+Converts a value to float.
+
+```xxl
+toFloat("3.14")   // 3.14
+toFloat(42)        // 42.0
+```
+
+### isUndefined(value) / isNull(value)
+
+Returns true if value is null/undefined.
+
+```xxl
+isNull(null)     // true
+isNull(0)        // false
+```
+
+### isCallable(value)
+
+Returns true if value is a callable function.
+
+```xxl
+isCallable(len)         // true (builtin)
+isCallable(func(){})    // true (user function)
+isCallable([1,2,3])     // false
+```
+
+### isIterable(value)
+
+Returns true if value can be iterated.
+
+```xxl
+isIterable([1,2,3])   // true
+isIterable("hello")   // true
+isIterable(123)       // false
+```
+
+### isError(value)
+
+Returns true if value is an error object.
+
+```xxl
+isError(error("test"))  // true
+isError("hello")        // false
+```
+
+### error(message)
+
+Creates an error object.
+
+```xxl
+var e = error("something went wrong")
+pln(e)  // ERROR: something went wrong
+```
+
+### getErrStr(value)
+
+Extracts error message from error object.
+
+```xxl
+getErrStr(error("failed"))  // "failed"
+```
+
+### isErrStr(value)
+
+Returns true if string is an error message.
+
+```xxl
+isErrStr("ERROR: failed")   // true
+isErrStr("hello")           // false
+```
+
+### typeCode(value)
+
+Returns the type code of an object.
+
+```xxl
+typeCode(123)       // 1 (INT)
+typeCode("hello")   // 3 (STRING)
+typeCode([1,2,3])   // 6 (ARRAY)
+```
+
+### clone(value)
+
+Creates a deep copy of an object.
+
+```xxl
+var arr = [1, 2, 3]
+var arr2 = clone(arr)
+arr2[0] = 99
+pln(arr[0])   // 1 (original unchanged)
+```
+
+### swap(array, i, j)
+
+Returns a new array with elements at indices i and j swapped.
+
+```xxl
+swap([1, 2, 3, 4, 5], 0, 4)
+// [5, 2, 3, 4, 1]
+```
+
+### coalesce(values...)
+
+Returns the first non-null/non-error value.
+
+```xxl
+coalesce(null, null, "first", "second")
+// "first"
+```
+
+### defaultVal(value, default)
+
+Returns value if not null/error, otherwise returns default.
+
+```xxl
+defaultVal(null, "default")     // "default"
+defaultVal("actual", "default") // "actual"
+```
+
+---
+
+## String Processing Functions (Batch 13)
+
+Enhanced string manipulation functions.
+
+### strSplitLines(str)
+
+Splits a string into lines.
+
+```xxl
+strSplitLines("a\nb\nc")
+// ["a", "b", "c"]
+```
+
+### strContainsAny(str, chars)
+
+Returns true if string contains any of the specified characters.
+
+```xxl
+strContainsAny("hello", "aeiou")  // true
+strContainsAny("xyz", "aeiou")     // false
+```
+
+### strIndex(str, substr)
+
+Returns the index of substring, or -1 if not found.
+
+```xxl
+strIndex("hello world", "world")  // 6
+strIndex("hello", "xyz")           // -1
+```
+
+### strLastIndex(str, substr)
+
+Returns the last index of substring.
+
+```xxl
+strLastIndex("hello hello", "hello")  // 6
+```
+
+### strSplitN(str, sep, n)
+
+Splits string with a limit on number of parts.
+
+```xxl
+strSplitN("a,b,c,d", ",", 2)
+// ["a", "b,c,d"]
+```
+
+### strPad(str, length, padStr?, padRight?)
+
+Pads string to specified length.
+
+```xxl
+strPad("abc", 10)              // "       abc"
+strPad("abc", 10, "-")         // "-------abc"
+strPad("abc", 10, "-", true)   // "abc-------"
+```
+
+### strSub(str, start, end?)
+
+Extracts substring with Unicode support.
+
+```xxl
+strSub("hello world", 0, 5)  // "hello"
+strSub("hello world", -5)     // "world"
+```
+
+### intToStr(n, base?)
+
+Converts integer to string.
+
+```xxl
+intToStr(123)       // "123"
+intToStr(255, 16)   // "ff"
+```
+
+### floatToStr(f, precision?)
+
+Converts float to string.
+
+```xxl
+floatToStr(3.14159)     // "3.14159"
+floatToStr(3.14159, 2)  // "3.14"
+```
+
+### charCode(str, index?)
+
+Returns the Unicode code point of a character.
+
+```xxl
+charCode("ABC")      // 65
+charCode("ABC", 1)   // 66
+```
+
+### charFromCode(code)
+
+Creates a character from a Unicode code point.
+
+```xxl
+charFromCode(65)   // "A"
+charFromCode(20013) // "中"
+```
+
+### reverseMap(map)
+
+Returns a new map with keys and values swapped.
+
+```xxl
+reverseMap({"a": "1", "b": "2"})
+// {"1": "a", "2": "b"}
+```
+
+### simpleStrToMap(str, sep1?, sep2?)
+
+Parses a simple string to a map.
+
+```xxl
+simpleStrToMap("a=1,b=2,c=3")
+// {"a": "1", "b": "2", "c": "3"}
+```
+
+### mapToStr(map, sep1?, sep2?)
+
+Converts a map to a simple string.
+
+```xxl
+mapToStr({"a": "1", "b": "2"})
+// "a=1,b=2"
+```
+
+### Bitwise Functions
+
+```xxl
+bitNot(5)           // -6
+bitAnd(15, 7)       // 7
+bitOr(8, 3)         // 11
+bitXor(12, 10)      // 6
+bitShiftLeft(4, 2)   // 16
+bitShiftRight(16, 2) // 4
+```
+
+---
+
+## Check/Validation Functions (Batch 14)
+
+Functions for checking and validating values.
+
+### isNil(value) / isNull(value)
+
+Returns true if value is null.
+
+```xxl
+isNull(null)  // true
+isNull(0)     // false
+```
+
+### isNilOrEmpty(value)
+
+Returns true if value is null or empty.
+
+```xxl
+isNilOrEmpty(null)    // true
+isNilOrEmpty("")      // true
+isNilOrEmpty([])      // true
+isNilOrEmpty("hello") // false
+```
+
+### isNilOrErr(value)
+
+Returns true if value is null or an error.
+
+```xxl
+isNilOrErr(null)            // true
+isNilOrErr(error("test"))   // true
+isNilOrErr(123)             // false
+```
+
+### isBytes(value)
+
+Returns true if value is a bytes object.
+
+```xxl
+isBytes(bytes(1,2,3))  // false (returns array)
+isBytes([1,2,3])       // false
+```
+
+### isChars(value)
+
+Returns true if value is a chars object.
+
+```xxl
+isChars(toChars("hello"))  // true
+isChars("hello")           // false
+```
+
+### pass()
+
+Does nothing and returns null. Useful as a placeholder.
+
+```xxl
+pass()  // null
+```
+
+### errStrf(format, args...)
+
+Creates a formatted error string.
+
+```xxl
+errStrf("failed: %s", "timeout")
+// "ERROR: failed: timeout"
+```
+
+### errf(format, args...)
+
+Creates a formatted error object.
+
+```xxl
+var e = errf("error: %d", 123)
+isError(e)  // true
+```
+
+### errToEmpty(value)
+
+Converts error to empty string, passes through other values.
+
+```xxl
+errToEmpty(error("test"))   // ""
+errToEmpty("hello")         // "hello"
+errToEmpty("ERROR: bad")    // ""
+```
+
+### sscanf(str, format)
+
+Parses string according to format.
+
+```xxl
+sscanf("name:Alice age:25", "name:%s age:%d")
+// ["Alice", 25]
+```
+
+### bytesStartsWith(data, prefix)
+
+Checks if bytes data starts with prefix.
+
+```xxl
+bytesStartsWith(bytes(72,101,108,108,111), bytes(72,101))
+// true
+```
+
+### bytesEndsWith(data, suffix)
+
+Checks if bytes data ends with suffix.
+
+```xxl
+bytesEndsWith(bytes(72,101,108,108,111), bytes(108,111))
+// true
+```
+
+### bytesContains(data, sub)
+
+Checks if bytes data contains sub.
+
+```xxl
+bytesContains(bytes(1,2,3,4,5), bytes(3,4))
+// true
+```
+
+### bytesIndex(data, sub)
+
+Returns index of sub in bytes data.
+
+```xxl
+bytesIndex(bytes(1,2,3,4,5), bytes(3,4))
+// 2
+```
+
+### compareBytes(a, b)
+
+Compares two byte arrays. Returns -1, 0, or 1.
+
+```xxl
+compareBytes("abc", "abd")   // -1
+compareBytes("abc", "abc")   // 0
+compareBytes("abd", "abc")   // 1
+```
+
+### compareText(a, b)
+
+Compares two text values. Returns -1, 0, or 1.
+
+```xxl
+compareText(123, 124)   // -1
+compareText("a", "a")   // 0
+```
+
+---
+
+## Random/Temp/URL Functions (Batch 15)
+
+Random number generation, temporary files, and URL utilities.
+
+### getRandomInt(max) / getRandomInt(min, max)
+
+Returns a random integer.
+
+```xxl
+getRandomInt(100)      // 0-99
+getRandomInt(50, 100)  // 50-100
+```
+
+### getRandomFloat()
+
+Returns a random float between 0 and 1.
+
+```xxl
+getRandomFloat()  // 0.0 <= x < 1.0
+```
+
+### getRandomStr(length, charset?)
+
+Generates a random string.
+
+```xxl
+getRandomStr(16)                     // "aB3dE5fG7hI9jK1m"
+getRandomStr(8, "0123456789")         // "12345678"
+```
+
+### createTempDir(dir?, pattern?)
+
+Creates a temporary directory.
+
+```xxl
+var tmpDir = createTempDir()
+// "/tmp/xxlang_123456"
+```
+
+### createTempFile(dir?, pattern?)
+
+Creates a temporary file.
+
+```xxl
+var tmpFile = createTempFile()
+// "/tmp/xxlang_789012"
+```
+
+### changeDir(path)
+
+Changes the current working directory.
+
+```xxl
+changeDir("/home/user")
+```
+
+### lookPath(name)
+
+Finds an executable in PATH.
+
+```xxl
+lookPath("go")   // "/usr/local/go/bin/go"
+lookPath("xyz")  // null
+```
+
+### joinUrlPath(base, elements...)
+
+Joins URL path components.
+
+```xxl
+joinUrlPath("https://example.com", "api", "v1", "users")
+// "https://example.com/api/v1/users"
+```
+
+### parseUrl(urlStr)
+
+Parses a URL into its components.
+
+```xxl
+var u = parseUrl("https://example.com/path?q=hello#frag")
+u["scheme"]    // "https"
+u["host"]      // "example.com"
+u["path"]      // "/path"
+u["rawQuery"]  // "q=hello"
+u["fragment"]  // "frag"
+```
+
+### parseQuery(queryStr)
+
+Parses a URL query string.
+
+```xxl
+var q = parseQuery("a=1&b=2&c=3")
+q["a"]  // "1"
+q["b"]  // "2"
+```
+
+### isHttps(urlStr)
+
+Returns true if URL uses HTTPS.
+
+```xxl
+isHttps("https://example.com")  // true
+isHttps("http://example.com")   // false
+```
+
+### genToken(length?)
+
+Generates a random token.
+
+```xxl
+genToken()      // 32-character base64 token
+genToken(16)    // 16-byte token
+```
+
+### genOtpCode(secret, digits?)
+
+Generates a simple OTP code.
+
+```xxl
+var code = genOtpCode("mysecret")
+// "502718"
+```
+
+### checkOtpCode(secret, code, digits?)
+
+Validates an OTP code.
+
+```xxl
+checkOtpCode("mysecret", "502718")
+// true
+```
+
+---
+
+## Collection Functions
+
+### mapArray(arr, fn)
+
+Applies a function to each element and returns a new array.
+
+```xxl
+mapArray([1, 2, 3], func(x) { return x * 2 })  // [2, 4, 6]
+```
+
+### filterArray(arr, fn)
+
+Filters array elements that satisfy the condition.
+
+```xxl
+filterArray([1, 2, 3, 4, 5], func(x) { return x > 2 })  // [3, 4, 5]
+```
+
+### reduceArray(arr, fn, initial?)
+
+Reduces array to a single value.
+
+```xxl
+reduceArray([1, 2, 3, 4], func(acc, x) { return acc + x })      // 10
+reduceArray([1, 2, 3, 4], func(acc, x) { return acc + x }, 0)   // 10
+```
+
+### forEach(arr, fn)
+
+Iterates over array elements.
+
+```xxl
+forEach([1, 2, 3], func(x, i) { pln(i, ":", x) })
+```
+
+### flatMap(arr, fn)
+
+Maps then flattens the result.
+
+```xxl
+flatMap([1, 2, 3], func(x) { return [x, x * 2] })  // [1, 2, 2, 4, 3, 6]
+```
+
+### every(arr, fn)
+
+Checks if all elements satisfy the condition.
+
+```xxl
+every([2, 4, 6], func(x) { return x % 2 == 0 })  // true
+every([2, 3, 4], func(x) { return x % 2 == 0 })  // false
+```
+
+### some(arr, fn)
+
+Checks if any element satisfies the condition.
+
+```xxl
+some([1, 3, 5], func(x) { return x % 2 == 0 })  // false
+some([1, 2, 3], func(x) { return x % 2 == 0 })  // true
+```
+
+### groupBy(arr, fn)
+
+Groups array elements by key function.
+
+```xxl
+var users = [{"name": "Alice", "dept": "Eng"}, {"name": "Bob", "dept": "Sales"}]
+groupBy(users, func(u) { return u["dept"] })
+// {"Eng": [...], "Sales": [...]}
+```
+
+### partition(arr, fn)
+
+Splits array into two groups by condition.
+
+```xxl
+partition([1, 2, 3, 4, 5], func(x) { return x > 2 })
+// [[3, 4, 5], [1, 2]]
+```
+
+### zip(arr1, arr2, ...)
+
+Combines multiple arrays into array of pairs.
+
+```xxl
+zip([1, 2, 3], ["a", "b", "c"])  // [[1, "a"], [2, "b"], [3, "c"]]
+```
+
+### unzip(arr)
+
+Splits array of pairs into separate arrays.
+
+```xxl
+unzip([[1, "a"], [2, "b"]])  // [[1, 2], ["a", "b"]]
+```
+
+### fill(arr, value, start?, end?)
+
+Fills array range with value.
+
+```xxl
+fill([1, 2, 3, 4], 0)         // [0, 0, 0, 0]
+fill([1, 2, 3, 4], 0, 1, 3)   // [1, 0, 0, 4]
+```
+
+### rangeNum(end) or rangeNum(start, end, step?)
+
+Generates a range of numbers (exclusive end).
+
+```xxl
+rangeNum(5)           // [0, 1, 2, 3, 4]
+rangeNum(1, 5)        // [1, 2, 3, 4]
+rangeNum(0, 10, 2)    // [0, 2, 4, 6, 8]
+```
+
+### intersection(arr1, arr2)
+
+Finds intersection of two arrays.
+
+```xxl
+intersection([1, 2, 3], [2, 3, 4])  // [2, 3]
+```
+
+### difference(arr1, arr2)
+
+Finds elements in arr1 but not in arr2.
+
+```xxl
+difference([1, 2, 3], [2, 3, 4])  // [1]
+```
+
+### union(arr1, arr2)
+
+Returns union of two arrays (unique elements).
+
+```xxl
+union([1, 2], [2, 3])  // [1, 2, 3]
+```
+
+### countBy(arr, fn)
+
+Counts elements by key function.
+
+```xxl
+countBy([1, 2, 3, 4, 5], func(x) { return x % 2 == 0 ? "even" : "odd" })
+// {"even": 2, "odd": 3}
+```
+
+### sortBy(arr, fn)
+
+Sorts array by key function.
+
+```xxl
+sortBy([3, 1, 2], func(x) { return x })  // [1, 2, 3]
+sortBy(["banana", "apple"], func(x) { return len(x) })  // ["apple", "banana"]
+```
+
+---
+
+## String Processing Functions
+
+### strSplitLines(str)
+
+Splits string by lines.
+
+```xxl
+strSplitLines("line1\nline2\nline3")  // ["line1", "line2", "line3"]
+```
+
+### strContainsAny(str, chars)
+
+Checks if string contains any of the characters.
+
+```xxl
+strContainsAny("hello", "aeiou")  // true (contains 'e' and 'o')
+```
+
+### strIndex(str, substr)
+
+Finds index of substring.
+
+```xxl
+strIndex("hello world", "world")  // 6
+```
+
+### strLastIndex(str, substr)
+
+Finds last index of substring.
+
+```xxl
+strLastIndex("hello hello", "hello")  // 6
+```
+
+### strSplitN(str, sep, n)
+
+Splits string with limit.
+
+```xxl
+strSplitN("a,b,c,d", ",", 2)  // ["a", "b,c,d"]
+```
+
+### strPad(str, length, padStr?, padRight?)
+
+Pads string to specified length.
+
+```xxl
+strPad("5", 5)              // "    5"
+strPad("5", 5, "0")         // "00005"
+strPad("5", 5, "0", true)   // "50000"
+```
+
+### strSub(str, start, end?)
+
+Gets substring (character-aware).
+
+```xxl
+strSub("hello world", 0, 5)  // "hello"
+strSub("你好世界", 1, 3)       // "好世"
+```
+
+### intToStr(n, base?)
+
+Converts integer to string.
+
+```xxl
+intToStr(42)      // "42"
+intToStr(255, 16) // "ff"
+```
+
+### floatToStr(f, prec?)
+
+Converts float to string.
+
+```xxl
+floatToStr(3.14159)     // "3.14159"
+floatToStr(3.14159, 2)  // "3.14"
+```
+
+### charCode(str, index?)
+
+Gets character code (Unicode code point).
+
+```xxl
+charCode("A")      // 65
+charCode("你好", 0)  // 20320
+```
+
+### charFromCode(code)
+
+Creates character from code point.
+
+```xxl
+charFromCode(65)     // "A"
+charFromCode(20320)  // "你"
+```
+
+### reverseMap(map)
+
+Reverses map keys and values.
+
+```xxl
+reverseMap({"a": 1, "b": 2})  // {1: "a", 2: "b"}
+```
+
+### simpleStrToMap(str, sep1?, sep2?)
+
+Parses simple string to map.
+
+```xxl
+simpleStrToMap("a=1,b=2")            // {"a": "1", "b": "2"}
+simpleStrToMap("a:1;b:2", ";", ":")  // {"a": "1", "b": "2"}
+```
+
+### mapToStr(map, sep1?, sep2?)
+
+Converts map to simple string.
+
+```xxl
+mapToStr({"a": 1, "b": 2})  // "a=1,b=2"
+```
+
+---
+
+## Bitwise Functions
+
+### bitNot(n)
+
+Bitwise NOT.
+
+```xxl
+bitNot(5)  // -6
+```
+
+### bitAnd(a, b)
+
+Bitwise AND.
+
+```xxl
+bitAnd(5, 3)  // 1
+```
+
+### bitOr(a, b)
+
+Bitwise OR.
+
+```xxl
+bitOr(5, 3)  // 7
+```
+
+### bitXor(a, b)
+
+Bitwise XOR.
+
+```xxl
+bitXor(5, 3)  // 6
+```
+
+### bitShiftLeft(n, shift)
+
+Bitwise left shift.
+
+```xxl
+bitShiftLeft(1, 4)  // 16
+```
+
+### bitShiftRight(n, shift)
+
+Bitwise right shift.
+
+```xxl
+bitShiftRight(16, 2)  // 4
+```
+
+---
+
+## Check/Validation Functions
+
+### isNil(value) / isNull(value)
+
+Checks if value is null.
+
+```xxl
+isNil(null)   // true
+isNil(0)      // false
+```
+
+### isNilOrEmpty(value)
+
+Checks if value is null or empty.
+
+```xxl
+isNilOrEmpty(null)   // true
+isNilOrEmpty("")     // true
+isNilOrEmpty([])     // true
+isNilOrEmpty([1])    // false
+```
+
+### isNilOrErr(value)
+
+Checks if value is null or error.
+
+```xxl
+isNilOrErr(null)         // true
+isNilOrErr(error("x"))   // true
+```
+
+### isBytes(value)
+
+Checks if value is bytes.
+
+```xxl
+isBytes(bytes("hello"))  // true
+```
+
+### isChars(value)
+
+Checks if value is chars.
+
+```xxl
+isChars(toChars("hello"))  // true
+```
+
+### isUndefined(value)
+
+Checks if value is undefined/null.
+
+```xxl
+isUndefined(null)  // true
+```
+
+### isCallable(value)
+
+Checks if value is callable.
+
+```xxl
+isCallable(func() {})  // true
+isCallable(len)        // true
+```
+
+### isIterable(value)
+
+Checks if value is iterable.
+
+```xxl
+isIterable([1, 2, 3])  // true
+isIterable("hello")    // true
+```
+
+### isError(value)
+
+Checks if value is an error.
+
+```xxl
+isError(error("failed"))  // true
+```
+
+### error(message)
+
+Creates an error object.
+
+```xxl
+var e = error("something went wrong")
+```
+
+### getErrStr(value)
+
+Gets error string from error object.
+
+```xxl
+getErrStr(error("failed"))  // "failed"
+```
+
+### isErrStr(value)
+
+Checks if string is an error message.
+
+```xxl
+isErrStr("ERROR: failed")  // true
+```
+
+### typeCode(value)
+
+Gets type code of an object.
+
+```xxl
+typeCode(42)     // 2 (INT)
+typeCode("hi")   // 4 (STRING)
+```
+
+### pass()
+
+Does nothing and returns null.
+
+```xxl
+pass()  // null
+```
+
+### errStrf(format, args...)
+
+Formats error string.
+
+```xxl
+errStrf("file not found: %s", "test.txt")  // "ERROR: file not found: test.txt"
+```
+
+### errf(format, args...)
+
+Creates formatted error.
+
+```xxl
+errf("invalid value: %d", 42)  // Error{Message: "invalid value: 42"}
+```
+
+### errToEmpty(value)
+
+Converts error to empty string.
+
+```xxl
+errToEmpty(error("x"))  // ""
+errToEmpty("hello")     // "hello"
+```
+
+### sscanf(str, format)
+
+Parses string according to format.
+
+```xxl
+sscanf("hello 42", "hello %d")  // [42]
+```
+
+### coalesce(val1, val2, ...)
+
+Returns first non-null/non-error value.
+
+```xxl
+coalesce(null, null, "found")  // "found"
+```
+
+### defaultVal(value, default)
+
+Returns default value if null or error.
+
+```xxl
+defaultVal(null, "default")     // "default"
+defaultVal("value", "default")  // "value"
+```
+
+---
+
+## Bytes Functions
+
+### bytesStartsWith(data, prefix)
+
+Checks if bytes starts with prefix.
+
+```xxl
+bytesStartsWith(bytes("hello"), "he")  // true
+```
+
+### bytesEndsWith(data, suffix)
+
+Checks if bytes ends with suffix.
+
+```xxl
+bytesEndsWith(bytes("hello"), "lo")  // true
+```
+
+### bytesContains(data, sub)
+
+Checks if bytes contains substring.
+
+```xxl
+bytesContains(bytes("hello world"), "world")  // true
+```
+
+### bytesIndex(data, sub)
+
+Finds index of bytes in bytes.
+
+```xxl
+bytesIndex(bytes("hello"), "ll")  // 2
+```
+
+### compareBytes(a, b)
+
+Compares two byte arrays. Returns -1, 0, or 1.
+
+```xxl
+compareBytes("abc", "abd")  // -1
+compareBytes("abc", "abc")  // 0
+```
+
+### compareText(a, b)
+
+Compares two text values.
+
+```xxl
+compareText("abc", "abd")  // -1
+```
+
+---
+
+## Miscellaneous Functions
+
+### getRandomInt(min, max) or getRandomInt(max)
+
+Returns random integer in range [min, max] (inclusive).
+
+```xxl
+getRandomInt(10)      // 0-10
+getRandomInt(1, 6)    // 1-6 (dice roll)
+```
+
+### getRandomFloat()
+
+Returns random float in [0, 1).
+
+```xxl
+getRandomFloat()  // e.g., 0.723456
+```
+
+### getRandomStr(length, charset?)
+
+Generates random string.
+
+```xxl
+getRandomStr(8)                    // "aB3dEfGh"
+getRandomStr(4, "0123456789")      // "5273"
+```
+
+### createTempDir(dir?, pattern?)
+
+Creates temporary directory.
+
+```xxl
+createTempDir()                    // "/tmp/xxlang_123456"
+createTempDir("/mydir", "test_*")  // "/mydir/test_789"
+```
+
+### createTempFile(dir?, pattern?)
+
+Creates temporary file.
+
+```xxl
+createTempFile()  // "/tmp/xxlang_123456"
+```
+
+### changeDir(path)
+
+Changes current working directory.
+
+```xxl
+changeDir("/home/user")
+```
+
+### lookPath(name)
+
+Finds executable file in PATH.
+
+```xxl
+lookPath("python")  // "/usr/bin/python"
+```
+
+### joinUrlPath(base, elem...)
+
+Joins URL path components.
+
+```xxl
+joinUrlPath("https://example.com", "api", "users")
+// "https://example.com/api/users"
+```
+
+### parseUrl(urlStr)
+
+Parses URL and returns map.
+
+```xxl
+parseUrl("https://user:pass@example.com:8080/path?q=1")
+// {"scheme": "https", "host": "example.com:8080", ...}
+```
+
+### parseQuery(queryStr)
+
+Parses URL query string.
+
+```xxl
+parseQuery("a=1&b=2")  // {"a": "1", "b": "2"}
+```
+
+### isHttps(urlStr)
+
+Checks if URL is HTTPS.
+
+```xxl
+isHttps("https://example.com")  // true
+```
+
+### genToken(length?)
+
+Generates random token.
+
+```xxl
+genToken()      // 32-byte base64 token
+genToken(16)    // 16-byte token
+```
+
+### genOtpCode(secret, digits?)
+
+Generates simple OTP code.
+
+```xxl
+genOtpCode("mysecret")  // "502718"
+```
+
+### checkOtpCode(secret, code, digits?)
+
+Validates OTP code.
+
+```xxl
+checkOtpCode("mysecret", "502718")  // true
 ```
 
 ---

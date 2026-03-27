@@ -19,13 +19,13 @@ import (
 
 // RegVM is a register-based virtual machine
 type RegVM struct {
-	constants     []Value          // Constant pool (as Values)
-	frames        []*RegFrame      // Call frames
-	frameIndex    int              // Current frame index
-	globals       []Value          // Global variables
-	loader        *module.Loader   // Module loader
-	currentModule *objects.Module  // Current module context
-	sourcePath    string           // Source file path
+	constants     []Value         // Constant pool (as Values)
+	frames        []*RegFrame     // Call frames
+	frameIndex    int             // Current frame index
+	globals       []Value         // Global variables
+	loader        *module.Loader  // Module loader
+	currentModule *objects.Module // Current module context
+	sourcePath    string          // Source file path
 	sourceMap     *compiler.SourceMap
 
 	// Object constants (for non-Value types like strings, arrays, maps)
@@ -603,14 +603,16 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 		return vm.handleRegTailCallMethod(frame, code)
 
 	case compiler.OpRegBuiltin:
-		builtinIdx, numArgs := DecodeReg2(code, frame.IP)
-		frame.IP += 3
-		return vm.handleRegBuiltin(int(builtinIdx), int(numArgs), frame)
+		builtinIdx := int(code[frame.IP+1])<<8 | int(code[frame.IP+2])
+		numArgs := code[frame.IP+3]
+		frame.IP += 4
+		return vm.handleRegBuiltin(builtinIdx, int(numArgs), frame)
 
 	case compiler.OpRegLoadBuiltin:
-		dst, builtinIdx := DecodeReg2(code, frame.IP)
-		frame.IP += 3
-		builtin := getBuiltin(int(builtinIdx))
+		dst := code[frame.IP+1]
+		builtinIdx := int(code[frame.IP+2])<<8 | int(code[frame.IP+3])
+		frame.IP += 4
+		builtin := getBuiltin(builtinIdx)
 		if builtin == nil {
 			return fmt.Errorf("invalid builtin index: %d", builtinIdx)
 		}
@@ -770,6 +772,8 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 			} else {
 				result = pair.Value
 			}
+		case *objects.OrderedMap:
+			result = o.Get(key)
 		case *objects.String:
 			idx, ok := key.(*objects.Int)
 			if !ok {
@@ -833,6 +837,8 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 			hashKey := key.HashKey()
 			o.Pairs[hashKey] = objects.MapPair{Key: key, Value: val}
 			o.InvalidateKeysCache() // Invalidate cached keys
+		case *objects.OrderedMap:
+			o.Set(key, val)
 		default:
 			return fmt.Errorf("cannot set index on type %s", obj.Type())
 		}
@@ -1039,6 +1045,14 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 			} else {
 				result = objects.NULL
 			}
+		case *objects.OrderedMap:
+			// OrderedMap: return key at index in insertion order
+			keys := o.GetOrderedKeys()
+			if int(idxInt.Value) < len(keys) {
+				result = keys[idxInt.Value]
+			} else {
+				result = objects.NULL
+			}
 		default:
 			return fmt.Errorf("cannot iterate over type %s", obj.Type())
 		}
@@ -1076,6 +1090,14 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 				} else {
 					result = objects.NULL
 				}
+			} else {
+				result = objects.NULL
+			}
+		case *objects.OrderedMap:
+			// OrderedMap: return value at index in insertion order
+			values := o.GetOrderedValues()
+			if int(idxInt.Value) < len(values) {
+				result = values[idxInt.Value]
 			} else {
 				result = objects.NULL
 			}
@@ -1344,7 +1366,7 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 			}
 			method = export
 			isMapFunctionValue = true // Module exports are called without receiver
-			_ = mod // avoid unused variable error
+			_ = mod                   // avoid unused variable error
 		} else if obj.TypeTag() <= objects.TagBigFloat {
 			// Handle primitive type methods with inline caching
 			typeTag := obj.TypeTag()
