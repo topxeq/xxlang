@@ -68,6 +68,8 @@ var TypeMethods = map[ObjectType]map[string]*Builtin{
 	TcpServerType:  tcpServerMethods,
 	TcpClientType:  tcpClientMethods,
 	UdpSocketType:  udpSocketMethods,
+	// LineEditor
+	LineEditorType: lineEditorMethods,
 }
 
 // GetMethod returns the builtin method for the given object type and method name
@@ -3957,6 +3959,1279 @@ var setMethods = map[string]*Builtin{
 			return newError("argument for equals must be SET, got %s", args[1].Type())
 		}
 		return &Bool{Value: self.Equals(other)}
+	}},
+}
+
+// ============================================================
+// LineEditor Methods
+// ============================================================
+
+var lineEditorMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+
+	// Basic Operations
+	"lineCount": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for lineCount. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for lineCount must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.LineCount()))
+	}},
+	"isEmpty": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for isEmpty. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for isEmpty must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.IsEmpty()}
+	}},
+	"isModified": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for isModified. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for isModified must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.IsModified()}
+	}},
+	"getLine": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for getLine. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for getLine must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		n, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for getLine must be INT, got %s", args[1].Type())
+		}
+		line, ok := self.GetLine(int(n.Value))
+		if !ok {
+			return newError("line index out of range")
+		}
+		return NewString(line)
+	}},
+	"setLine": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for setLine. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for setLine must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		n, ok := args[1].(*Int)
+		if !ok {
+			return newError("first argument for setLine must be INT, got %s", args[1].Type())
+		}
+		text, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for setLine must be STRING, got %s", args[2].Type())
+		}
+		if !self.SetLine(int(n.Value), text.Value) {
+			return newError("line index out of range")
+		}
+		return args[0] // Return self for chaining
+	}},
+	"addLine": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for addLine. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for addLine must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		text, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for addLine must be STRING, got %s", args[1].Type())
+		}
+		self.AddLine(text.Value)
+		return args[0]
+	}},
+	"insertLine": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for insertLine. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for insertLine must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		n, ok := args[1].(*Int)
+		if !ok {
+			return newError("first argument for insertLine must be INT, got %s", args[1].Type())
+		}
+		text, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for insertLine must be STRING, got %s", args[2].Type())
+		}
+		if !self.InsertLine(int(n.Value), text.Value) {
+			return newError("line index out of range")
+		}
+		return args[0]
+	}},
+	"deleteLine": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for deleteLine. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for deleteLine must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		n, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for deleteLine must be INT, got %s", args[1].Type())
+		}
+		if !self.DeleteLine(int(n.Value)) {
+			return newError("line index out of range")
+		}
+		return args[0]
+	}},
+	"deleteLines": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for deleteLines. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for deleteLines must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		start, ok := args[1].(*Int)
+		if !ok {
+			return newError("first argument for deleteLines must be INT, got %s", args[1].Type())
+		}
+		end, ok := args[2].(*Int)
+		if !ok {
+			return newError("second argument for deleteLines must be INT, got %s", args[2].Type())
+		}
+		if !self.DeleteLines(int(start.Value), int(end.Value)) {
+			return newError("invalid line range")
+		}
+		return args[0]
+	}},
+
+	// Line Range Operations
+	"getLines": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for getLines. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for getLines must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		start, ok := args[1].(*Int)
+		if !ok {
+			return newError("first argument for getLines must be INT, got %s", args[1].Type())
+		}
+		end, ok := args[2].(*Int)
+		if !ok {
+			return newError("second argument for getLines must be INT, got %s", args[2].Type())
+		}
+		lines := self.GetLines(int(start.Value), int(end.Value))
+		if lines == nil {
+			return EMPTY_ARRAY
+		}
+		elements := make([]Object, len(lines))
+		for i, line := range lines {
+			elements[i] = NewString(line)
+		}
+		return NewArray(elements)
+	}},
+	"setLines": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for setLines. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for setLines must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		start, ok := args[1].(*Int)
+		if !ok {
+			return newError("first argument for setLines must be INT, got %s", args[1].Type())
+		}
+		arr, ok := args[2].(*Array)
+		if !ok {
+			return newError("second argument for setLines must be ARRAY, got %s", args[2].Type())
+		}
+		lines := make([]string, len(arr.Elements))
+		for i, elem := range arr.Elements {
+			if s, ok := elem.(*String); ok {
+				lines[i] = s.Value
+			} else {
+				lines[i] = elem.Inspect()
+			}
+		}
+		if !self.SetLines(int(start.Value), lines) {
+			return newError("line index out of range")
+		}
+		return args[0]
+	}},
+	"appendLines": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for appendLines. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for appendLines must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		arr, ok := args[1].(*Array)
+		if !ok {
+			return newError("argument for appendLines must be ARRAY, got %s", args[1].Type())
+		}
+		lines := make([]string, len(arr.Elements))
+		for i, elem := range arr.Elements {
+			if s, ok := elem.(*String); ok {
+				lines[i] = s.Value
+			} else {
+				lines[i] = elem.Inspect()
+			}
+		}
+		self.AppendLines(lines)
+		return args[0]
+	}},
+	"clear": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for clear. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for clear must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		self.Clear()
+		return args[0]
+	}},
+
+	// Search Operations
+	"find": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for find. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for find must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		text, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for find must be STRING, got %s", args[1].Type())
+		}
+		lineNums := self.Find(text.Value)
+		elements := make([]Object, len(lineNums))
+		for i, n := range lineNums {
+			elements[i] = NewInt(int64(n))
+		}
+		return NewArray(elements)
+	}},
+	"findRegex": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for findRegex. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for findRegex must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		pattern, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for findRegex must be STRING, got %s", args[1].Type())
+		}
+		lineNums, err := self.FindRegex(pattern.Value)
+		if err != nil {
+			return newError("invalid regex pattern: %s", err.Error())
+		}
+		elements := make([]Object, len(lineNums))
+		for i, n := range lineNums {
+			elements[i] = NewInt(int64(n))
+		}
+		return NewArray(elements)
+	}},
+	"findAll": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for findAll. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for findAll must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		text, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for findAll must be STRING, got %s", args[1].Type())
+		}
+		lines := self.FindAll(text.Value)
+		elements := make([]Object, len(lines))
+		for i, line := range lines {
+			elements[i] = NewString(line)
+		}
+		return NewArray(elements)
+	}},
+	"findFirst": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for findFirst. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for findFirst must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		text, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for findFirst must be STRING, got %s", args[1].Type())
+		}
+		return NewInt(int64(self.FindFirst(text.Value)))
+	}},
+	"findLast": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for findLast. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for findLast must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		text, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for findLast must be STRING, got %s", args[1].Type())
+		}
+		return NewInt(int64(self.FindLast(text.Value)))
+	}},
+	"grep": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for grep. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for grep must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		text, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for grep must be STRING, got %s", args[1].Type())
+		}
+		return self.Grep(text.Value)
+	}},
+	"grepRegex": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for grepRegex. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for grepRegex must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		pattern, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for grepRegex must be STRING, got %s", args[1].Type())
+		}
+		result, err := self.GrepRegex(pattern.Value)
+		if err != nil {
+			return newError("invalid regex pattern: %s", err.Error())
+		}
+		return result
+	}},
+	"grepNot": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for grepNot. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for grepNot must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		text, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for grepNot must be STRING, got %s", args[1].Type())
+		}
+		return self.GrepNot(text.Value)
+	}},
+	"grepNotRegex": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for grepNotRegex. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for grepNotRegex must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		pattern, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for grepNotRegex must be STRING, got %s", args[1].Type())
+		}
+		result, err := self.GrepNotRegex(pattern.Value)
+		if err != nil {
+			return newError("invalid regex pattern: %s", err.Error())
+		}
+		return result
+	}},
+
+	// Replace Operations
+	"replace": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for replace. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for replace must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		old, ok := args[1].(*String)
+		if !ok {
+			return newError("first argument for replace must be STRING, got %s", args[1].Type())
+		}
+		newStr, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for replace must be STRING, got %s", args[2].Type())
+		}
+		count := self.Replace(old.Value, newStr.Value)
+		return NewInt(int64(count))
+	}},
+	"replaceLine": {Fn: func(args ...Object) Object {
+		if len(args) != 4 {
+			return newError("wrong number of arguments for replaceLine. got=%d, want=4", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for replaceLine must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		n, ok := args[1].(*Int)
+		if !ok {
+			return newError("first argument for replaceLine must be INT, got %s", args[1].Type())
+		}
+		old, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for replaceLine must be STRING, got %s", args[2].Type())
+		}
+		newStr, ok := args[3].(*String)
+		if !ok {
+			return newError("third argument for replaceLine must be STRING, got %s", args[3].Type())
+		}
+		count := self.ReplaceLine(int(n.Value), old.Value, newStr.Value)
+		return NewInt(int64(count))
+	}},
+	"replaceFirst": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for replaceFirst. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for replaceFirst must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		old, ok := args[1].(*String)
+		if !ok {
+			return newError("first argument for replaceFirst must be STRING, got %s", args[1].Type())
+		}
+		newStr, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for replaceFirst must be STRING, got %s", args[2].Type())
+		}
+		return &Bool{Value: self.ReplaceFirst(old.Value, newStr.Value)}
+	}},
+	"replaceLast": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for replaceLast. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for replaceLast must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		old, ok := args[1].(*String)
+		if !ok {
+			return newError("first argument for replaceLast must be STRING, got %s", args[1].Type())
+		}
+		newStr, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for replaceLast must be STRING, got %s", args[2].Type())
+		}
+		return &Bool{Value: self.ReplaceLast(old.Value, newStr.Value)}
+	}},
+	"replaceRegex": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for replaceRegex. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for replaceRegex must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		pattern, ok := args[1].(*String)
+		if !ok {
+			return newError("first argument for replaceRegex must be STRING, got %s", args[1].Type())
+		}
+		newStr, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for replaceRegex must be STRING, got %s", args[2].Type())
+		}
+		count, err := self.ReplaceRegex(pattern.Value, newStr.Value)
+		if err != nil {
+			return newError("invalid regex pattern: %s", err.Error())
+		}
+		return NewInt(int64(count))
+	}},
+	"replaceRange": {Fn: func(args ...Object) Object {
+		if len(args) != 5 {
+			return newError("wrong number of arguments for replaceRange. got=%d, want=5", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for replaceRange must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		start, ok := args[1].(*Int)
+		if !ok {
+			return newError("first argument for replaceRange must be INT, got %s", args[1].Type())
+		}
+		end, ok := args[2].(*Int)
+		if !ok {
+			return newError("second argument for replaceRange must be INT, got %s", args[2].Type())
+		}
+		old, ok := args[3].(*String)
+		if !ok {
+			return newError("third argument for replaceRange must be STRING, got %s", args[3].Type())
+		}
+		newStr, ok := args[4].(*String)
+		if !ok {
+			return newError("fourth argument for replaceRange must be STRING, got %s", args[4].Type())
+		}
+		count := self.ReplaceRange(int(start.Value), int(end.Value), old.Value, newStr.Value)
+		return NewInt(int64(count))
+	}},
+
+	// Sort and Unique Operations
+	"sort": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for sort. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for sort must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		self.Sort()
+		return args[0]
+	}},
+	"sortDesc": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for sortDesc. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for sortDesc must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		self.SortDesc()
+		return args[0]
+	}},
+	"sortNum": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for sortNum. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for sortNum must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		self.SortNum()
+		return args[0]
+	}},
+	"sortNumDesc": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for sortNumDesc. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for sortNumDesc must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		self.SortNumDesc()
+		return args[0]
+	}},
+	"sortByCol": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for sortByCol. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for sortByCol must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		col, ok := args[1].(*Int)
+		if !ok {
+			return newError("first argument for sortByCol must be INT, got %s", args[1].Type())
+		}
+		sep, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for sortByCol must be STRING, got %s", args[2].Type())
+		}
+		self.SortByCol(int(col.Value), sep.Value)
+		return args[0]
+	}},
+	"sortByColNum": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for sortByColNum. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for sortByColNum must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		col, ok := args[1].(*Int)
+		if !ok {
+			return newError("first argument for sortByColNum must be INT, got %s", args[1].Type())
+		}
+		sep, ok := args[2].(*String)
+		if !ok {
+			return newError("second argument for sortByColNum must be STRING, got %s", args[2].Type())
+		}
+		self.SortByColNum(int(col.Value), sep.Value)
+		return args[0]
+	}},
+	"reverse": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for reverse. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for reverse must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		self.Reverse()
+		return args[0]
+	}},
+	"shuffle": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for shuffle. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for shuffle must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		self.Shuffle()
+		return args[0]
+	}},
+	"unique": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for unique. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for unique must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		self.Unique()
+		return args[0]
+	}},
+	"uniqueSorted": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for uniqueSorted. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for uniqueSorted must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		self.UniqueSorted()
+		return args[0]
+	}},
+	"findDupes": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for findDupes. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for findDupes must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		dupes := self.FindDupes()
+		pairs := make([]Object, 0, len(dupes))
+		for line, count := range dupes {
+			pairs = append(pairs, &Array{Elements: []Object{
+				NewString(line),
+				NewInt(int64(count)),
+			}})
+		}
+		return NewArray(pairs)
+	}},
+	"removeDupes": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for removeDupes. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for removeDupes must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		self.RemoveDupes()
+		return args[0]
+	}},
+	"keepDupes": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for keepDupes. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for keepDupes must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		self.KeepDupes()
+		return args[0]
+	}},
+
+	// Text Processing Operations
+	"trim": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for trim. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for trim must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		self.Trim()
+		return args[0]
+	}},
+	"trimLeft": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for trimLeft. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for trimLeft must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		self.TrimLeft()
+		return args[0]
+	}},
+	"trimRight": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for trimRight. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for trimRight must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		self.TrimRight()
+		return args[0]
+	}},
+	"removeEmpty": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for removeEmpty. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for removeEmpty must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		self.RemoveEmpty()
+		return args[0]
+	}},
+	"removeBlank": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for removeBlank. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for removeBlank must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		self.RemoveBlank()
+		return args[0]
+	}},
+	"dedent": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for dedent. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for dedent must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		self.Dedent()
+		return args[0]
+	}},
+	"indent": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for indent. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for indent must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		prefix, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for indent must be STRING, got %s", args[1].Type())
+		}
+		self.Indent(prefix.Value)
+		return args[0]
+	}},
+	"numberLines": {Fn: func(args ...Object) Object {
+		if len(args) != 1 && len(args) != 2 {
+			return newError("wrong number of arguments for numberLines. got=%d, want=1 or 2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for numberLines must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		start := 1
+		if len(args) == 2 {
+			if n, ok := args[1].(*Int); ok {
+				start = int(n.Value)
+			}
+		}
+		self.NumberLines(start)
+		return args[0]
+	}},
+	"join": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for join. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for join must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		sep, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for join must be STRING, got %s", args[1].Type())
+		}
+		return NewString(self.Join(sep.Value))
+	}},
+	"splitLines": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for splitLines. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for splitLines must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		sep, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for splitLines must be STRING, got %s", args[1].Type())
+		}
+		self.SplitLines(sep.Value)
+		return args[0]
+	}},
+	"prefix": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for prefix. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for prefix must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		text, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for prefix must be STRING, got %s", args[1].Type())
+		}
+		self.Prefix(text.Value)
+		return args[0]
+	}},
+	"suffix": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for suffix. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for suffix must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		text, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for suffix must be STRING, got %s", args[1].Type())
+		}
+		self.Suffix(text.Value)
+		return args[0]
+	}},
+	"toUpperCase": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toUpperCase. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for toUpperCase must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		self.ToUpperCase()
+		return args[0]
+	}},
+	"toLowerCase": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toLowerCase. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for toLowerCase must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		self.ToLowerCase()
+		return args[0]
+	}},
+
+	// Export and Save Operations
+	"toText": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toText. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for toText must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		return NewString(self.ToText())
+	}},
+	"toLines": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toLines. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for toLines must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		lines := self.ToLines()
+		elements := make([]Object, len(lines))
+		for i, line := range lines {
+			elements[i] = NewString(line)
+		}
+		return NewArray(elements)
+	}},
+	"save": {Fn: func(args ...Object) Object {
+		if len(args) != 1 && len(args) != 2 {
+			return newError("wrong number of arguments for save. got=%d, want=1 or 2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for save must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		path := ""
+		if len(args) == 2 {
+			if p, ok := args[1].(*String); ok {
+				path = p.Value
+			}
+		}
+		var err error
+		if path != "" {
+			err = self.SaveAs(path)
+		} else {
+			err = self.Save()
+		}
+		if err != nil {
+			return newError("save failed: %s", err.Error())
+		}
+		return args[0]
+	}},
+	"saveAs": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for saveAs. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for saveAs must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for saveAs must be STRING, got %s", args[1].Type())
+		}
+		if err := self.SaveAs(path.Value); err != nil {
+			return newError("saveAs failed: %s", err.Error())
+		}
+		return args[0]
+	}},
+	"close": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for close. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for close must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		self.Close()
+		return NULL
+	}},
+
+	// Statistics Methods
+	"charCount": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for charCount. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for charCount must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.CharCount()))
+	}},
+	"runeCount": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for runeCount. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for runeCount must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.RuneCount()))
+	}},
+	"wordCount": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for wordCount. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for wordCount must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.WordCount()))
+	}},
+	"info": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for info. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for info must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		info := self.Info()
+		pairs := make([]Object, 0, len(info))
+		for k, v := range info {
+			pairs = append(pairs, &Array{Elements: []Object{
+				NewString(k),
+				NewInt(int64(v)),
+			}})
+		}
+		return NewArray(pairs)
+	}},
+
+	// File Operations
+	"appendToFile": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for appendToFile. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for appendToFile must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for appendToFile must be STRING, got %s", args[1].Type())
+		}
+		if err := self.AppendToFile(path.Value); err != nil {
+			return newError("appendToFile failed: %s", err.Error())
+		}
+		return args[0]
+	}},
+	"appendFromFile": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for appendFromFile. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for appendFromFile must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for appendFromFile must be STRING, got %s", args[1].Type())
+		}
+		if err := self.AppendFromFile(path.Value); err != nil {
+			return newError("appendFromFile failed: %s", err.Error())
+		}
+		return args[0]
+	}},
+
+	// Line Operations (Additional)
+	"swapLines": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for swapLines. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for swapLines must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		n1, ok := args[1].(*Int)
+		if !ok {
+			return newError("first argument for swapLines must be INT, got %s", args[1].Type())
+		}
+		n2, ok := args[2].(*Int)
+		if !ok {
+			return newError("second argument for swapLines must be INT, got %s", args[2].Type())
+		}
+		if !self.SwapLines(int(n1.Value), int(n2.Value)) {
+			return newError("line index out of range")
+		}
+		return args[0]
+	}},
+	"moveLine": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for moveLine. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for moveLine must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		from, ok := args[1].(*Int)
+		if !ok {
+			return newError("first argument for moveLine must be INT, got %s", args[1].Type())
+		}
+		to, ok := args[2].(*Int)
+		if !ok {
+			return newError("second argument for moveLine must be INT, got %s", args[2].Type())
+		}
+		if !self.MoveLine(int(from.Value), int(to.Value)) {
+			return newError("line index out of range")
+		}
+		return args[0]
+	}},
+	"duplicateLine": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for duplicateLine. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for duplicateLine must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		n, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for duplicateLine must be INT, got %s", args[1].Type())
+		}
+		if !self.DuplicateLine(int(n.Value)) {
+			return newError("line index out of range")
+		}
+		return args[0]
+	}},
+
+	// Text Processing (Additional)
+	"truncate": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for truncate. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for truncate must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		maxLen, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for truncate must be INT, got %s", args[1].Type())
+		}
+		self.Truncate(int(maxLen.Value))
+		return args[0]
+	}},
+	"truncateWithEllipsis": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for truncateWithEllipsis. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for truncateWithEllipsis must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		maxLen, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for truncateWithEllipsis must be INT, got %s", args[1].Type())
+		}
+		self.TruncateWithEllipsis(int(maxLen.Value))
+		return args[0]
+	}},
+	"padLeft": {Fn: func(args ...Object) Object {
+		if len(args) != 2 && len(args) != 3 {
+			return newError("wrong number of arguments for padLeft. got=%d, want=2 or 3", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for padLeft must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		width, ok := args[1].(*Int)
+		if !ok {
+			return newError("first argument for padLeft must be INT, got %s", args[1].Type())
+		}
+		padChar := " "
+		if len(args) == 3 {
+			if p, ok := args[2].(*String); ok {
+				padChar = p.Value
+			}
+		}
+		self.PadLeft(int(width.Value), padChar)
+		return args[0]
+	}},
+	"padRight": {Fn: func(args ...Object) Object {
+		if len(args) != 2 && len(args) != 3 {
+			return newError("wrong number of arguments for padRight. got=%d, want=2 or 3", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for padRight must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		width, ok := args[1].(*Int)
+		if !ok {
+			return newError("first argument for padRight must be INT, got %s", args[1].Type())
+		}
+		padChar := " "
+		if len(args) == 3 {
+			if p, ok := args[2].(*String); ok {
+				padChar = p.Value
+			}
+		}
+		self.PadRight(int(width.Value), padChar)
+		return args[0]
+	}},
+	"center": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for center. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for center must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		width, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for center must be INT, got %s", args[1].Type())
+		}
+		self.Center(int(width.Value))
+		return args[0]
+	}},
+	"stripPrefix": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for stripPrefix. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for stripPrefix must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		prefix, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for stripPrefix must be STRING, got %s", args[1].Type())
+		}
+		self.StripPrefix(prefix.Value)
+		return args[0]
+	}},
+	"stripSuffix": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for stripSuffix. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for stripSuffix must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		suffix, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for stripSuffix must be STRING, got %s", args[1].Type())
+		}
+		self.StripSuffix(suffix.Value)
+		return args[0]
+	}},
+	"comment": {Fn: func(args ...Object) Object {
+		if len(args) != 1 && len(args) != 2 {
+			return newError("wrong number of arguments for comment. got=%d, want=1 or 2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for comment must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		prefix := "#"
+		if len(args) == 2 {
+			if p, ok := args[1].(*String); ok {
+				prefix = p.Value
+			}
+		}
+		self.Comment(prefix)
+		return args[0]
+	}},
+	"uncomment": {Fn: func(args ...Object) Object {
+		if len(args) != 1 && len(args) != 2 {
+			return newError("wrong number of arguments for uncomment. got=%d, want=1 or 2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for uncomment must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		prefix := "#"
+		if len(args) == 2 {
+			if p, ok := args[1].(*String); ok {
+				prefix = p.Value
+			}
+		}
+		self.Uncomment(prefix)
+		return args[0]
+	}},
+
+	// Sample and Selection
+	"sample": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for sample. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*LineEditor)
+		if !ok {
+			return newError("receiver for sample must be LINE_EDITOR, got %s", args[0].Type())
+		}
+		n, ok := args[1].(*Int)
+		if !ok {
+			return newError("argument for sample must be INT, got %s", args[1].Type())
+		}
+		return self.Sample(int(n.Value))
 	}},
 }
 

@@ -107,6 +107,8 @@ const (
 	TcpServerType    ObjectType = "TCP_SERVER"
 	TcpClientType    ObjectType = "TCP_CLIENT"
 	UdpSocketType    ObjectType = "UDP_SOCKET"
+	// LineEditor type
+	LineEditorType ObjectType = "LINE_EDITOR"
 )
 
 // TypeTag is a fast integer type identifier for hot path checks
@@ -213,6 +215,8 @@ const (
 	TagTcpServer
 	TagTcpClient
 	TagUdpSocket
+	// LineEditor tag
+	TagLineEditor
 	TagUnknown
 )
 
