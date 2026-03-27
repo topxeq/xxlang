@@ -32,6 +32,9 @@ io.println("Hello, World!")
 - [encoding](#encoding) - Base64 and hex encoding/decoding
 - [uuid](#uuid) - UUID generation
 - [debug](#debug) - Debugging utilities
+- [ssh](#ssh) - SSH client and SFTP operations
+- [le](#le) - Line-based text editing
+- [socks](#socks) - SOCKS proxy and encrypted tunnel
 - [Other Modules](#other-modules) - bytes, collections, env, fp, log, net, sort, strconv, text, validate
 
 > **See also:** [File Operations Guide](FILE.md) for comprehensive file handling documentation.
@@ -2595,6 +2598,387 @@ Triggers garbage collection.
 ```xxl
 debug.gc()
 ```
+
+---
+
+## ssh
+
+SSH client module for remote server operations with SFTP support.
+
+### Connection Functions
+
+#### connect(host, port, user, password)
+Connects to SSH server with password authentication.
+
+```xxl
+import "ssh"
+
+var client = ssh.connect("192.168.1.1", 22, "root", "password")
+if (isErr(client)) {
+    pln("Connection failed: " + toStr(client))
+    return
+}
+
+// Execute command
+var result = client.exec("ls -la")
+pln(result)
+
+client.close()
+```
+
+#### connectWithKey(host, port, user, keyPath)
+Connects using private key file.
+
+```xxl
+var client = ssh.connectWithKey("server.com", 22, "user", "/home/user/.ssh/id_rsa")
+```
+
+#### connectWithKeyStr(host, port, user, keyStr)
+Connects using private key string.
+
+```xxl
+var keyStr = "-----BEGIN RSA PRIVATE KEY-----\n..."
+var client = ssh.connectWithKeyStr("server.com", 22, "user", keyStr)
+```
+
+#### connectWithConfig(configMap)
+Connects with full configuration.
+
+```xxl
+var config = {
+    "host": "192.168.1.1",
+    "port": 22,
+    "user": "root",
+    "keyPath": "/home/user/.ssh/id_rsa",
+    "keyPassphrase": "mykeypass",
+    "timeout": 30
+}
+var client = ssh.connectWithConfig(config)
+```
+
+### SSHClient Methods
+
+| Method | Description |
+|--------|-------------|
+| `exec(cmd)` | Execute command, return stdout |
+| `execFull(cmd)` | Execute command, return {stdout, stderr, exitCode} |
+| `upload(local, remote)` | Upload file |
+| `download(remote, local)` | Download file |
+| `readFile(remotePath)` | Read remote file content |
+| `writeFile(remotePath, content)` | Write content to remote file |
+| `mkdir(path)` | Create directory |
+| `mkdirAll(path)` | Create directory with parents |
+| `remove(path)` | Remove file |
+| `rename(old, new)` | Rename/move file |
+| `exists(path)` | Check if path exists |
+| `isDir(path)` | Check if directory |
+| `listDir(path)` | List directory contents |
+| `close()` | Close connection |
+| `isConnected()` | Check connection status |
+
+### Quick Functions
+
+One-time operations without creating SSHClient object.
+
+```xxl
+import "ssh"
+
+// Execute single command
+var output = ssh.exec("server.com", 22, "user", "pass", "uptime")
+pln(output)
+
+// Upload file
+ssh.upload("server.com", 22, "user", "pass", "local.txt", "/remote/file.txt")
+
+// Download file
+ssh.download("server.com", 22, "user", "pass", "/remote/file.txt", "local.txt")
+
+// Upload bytes directly
+var data = bytes.fromString("Hello World")
+ssh.uploadBytes("server.com", 22, "user", "pass", data, "/remote/file.txt")
+
+// Download as bytes
+var data = ssh.downloadBytes("server.com", 22, "user", "pass", "/remote/file.txt")
+
+// Test connection
+if (ssh.testConnection("server.com", 22, "user", "pass")) {
+    pln("Connection OK")
+}
+```
+
+---
+
+## le
+
+Line-based text editing module for processing text files line by line.
+
+### Creation Functions
+
+#### open(path)
+Opens a file and returns a LineEditor object.
+
+```xxl
+import "le"
+
+var editor = le.open("data.txt")
+pln("Lines: " + editor.lineCount().toStr())
+```
+
+#### fromText(text)
+Creates LineEditor from string.
+
+```xxl
+var editor = le.fromText("line1\nline2\nline3")
+```
+
+#### fromLines(arr)
+Creates LineEditor from string array.
+
+```xxl
+var editor = le.fromLines(["line1", "line2", "line3"])
+```
+
+#### create()
+Creates empty LineEditor.
+
+```xxl
+var editor = le.create()
+editor.addLine("First line")
+editor.addLine("Second line")
+editor.saveAs("newfile.txt")
+```
+
+### LineEditor Methods
+
+#### Basic Operations
+
+| Method | Description |
+|--------|-------------|
+| `lineCount()` | Return number of lines |
+| `isEmpty()` | Check if empty |
+| `isModified()` | Check if modified |
+| `getLine(n)` | Get line at index (1-based, negative from end) |
+| `setLine(n, text)` | Set line at index |
+| `addLine(text)` | Add line at end |
+| `insertLine(n, text)` | Insert line before index |
+| `deleteLine(n)` | Delete line at index |
+| `deleteLines(start, end)` | Delete line range |
+
+#### Search and Filter
+
+| Method | Description |
+|--------|-------------|
+| `find(text)` | Find lines containing text, return line numbers |
+| `findRegex(pattern)` | Regex search, return line numbers |
+| `findAll(text)` | Return all matching lines |
+| `grep(text)` | Filter lines containing text |
+| `grepRegex(pattern)` | Regex filter |
+| `grepNot(text)` | Filter lines NOT containing text |
+
+#### Replace
+
+| Method | Description |
+|--------|-------------|
+| `replace(old, new)` | Replace all occurrences |
+| `replaceRegex(pattern, new)` | Regex replace |
+| `replaceLine(n, old, new)` | Replace only in line n |
+
+#### Sort and Unique
+
+| Method | Description |
+|--------|-------------|
+| `sort()` | Sort alphabetically |
+| `sortDesc()` | Sort descending |
+| `sortNum()` | Sort numerically |
+| `reverse()` | Reverse line order |
+| `unique()` | Remove duplicate lines |
+| `findDupes()` | Return duplicates with counts |
+
+#### Text Processing
+
+| Method | Description |
+|--------|-------------|
+| `trim()` | Trim whitespace from each line |
+| `removeEmpty()` | Remove empty lines |
+| `dedent()` | Remove common indentation |
+| `prefix(text)` | Add prefix to each line |
+| `suffix(text)` | Add suffix to each line |
+| `toUpperCase()` | Convert to uppercase |
+| `toLowerCase()` | Convert to lowercase |
+
+#### Export
+
+| Method | Description |
+|--------|-------------|
+| `toText()` | Return full text |
+| `toLines()` | Return line array |
+| `save()` | Save to original file |
+| `saveAs(path)` | Save to new file |
+
+### Quick Functions
+
+```xxl
+import "le"
+
+// Replace in file
+le.replaceInFile("config.txt", "localhost", "127.0.0.1")
+
+// Sort file
+le.sortFile("unsorted.txt")
+le.sortFileTo("unsorted.txt", "sorted.txt")
+
+// Remove duplicates
+le.uniqueFile("data.txt")
+
+// Grep file
+var matches = le.grepFile("log.txt", "ERROR")
+for (line in matches) {
+    pln(line)
+}
+
+// Get first/last lines
+var first10 = le.head("bigfile.txt", 10)
+var last10 = le.tail("bigfile.txt", 10)
+
+// Count lines
+var count = le.countLines("data.txt")
+pln("Total lines: " + count.toStr())
+```
+
+### SSH Integration
+
+Load and save files via SSH:
+
+```xxl
+import "le"
+
+// Load remote file
+var editor = le.loadFromSsh("server.com", 22, "user", "pass", "/etc/hosts")
+
+// Edit
+editor.replace("old.host", "new.host")
+
+// Save back to SSH
+le.saveToSsh(editor, "server.com", 22, "user", "pass", "/etc/hosts.new")
+
+// Append to remote file
+le.appendToSsh(editor, "server.com", 22, "user", "pass", "/var/log/app.log")
+```
+
+---
+
+## socks
+
+SOCKS proxy and encrypted tunnel module.
+
+### SOCKS Proxy Server
+
+#### createServer()
+Creates a SOCKS server object.
+
+#### startServer(port, options...)
+Starts a SOCKS proxy server.
+
+```xxl
+import "socks"
+
+// Start SOCKS5 server
+var server = socks.startServer(1080)
+
+// Start SOCKS4 server
+var server = socks.startServer(1080, "-socks4")
+
+// Start with authentication
+var server = socks.startServer(1080, "-auth=admin:secret")
+
+// Check status
+if (server.isRunning()) {
+    pln("Server running on port " + server.getPort().toStr())
+}
+
+// Stop server
+server.stop()
+```
+
+### SOCKS Proxy Client
+
+#### createClient()
+Creates a SOCKS client object.
+
+#### connect(proxyAddr, targetAddr, options...)
+Connects to target through SOCKS proxy.
+
+```xxl
+import "socks"
+
+// Connect through SOCKS5 proxy
+var client = socks.connect("proxy:1080", "target:80")
+
+// Connect through SOCKS4 proxy
+var client = socks.connect("proxy:1080", "target:80", "-socks4")
+
+// Send/receive data
+client.write(bytes.fromString("GET / HTTP/1.0\r\n\r\n"))
+var response = bytes.alloc(1024)
+var n = client.read(response)
+pln(bytes.toString(response[:n]))
+
+client.close()
+```
+
+#### connectWithAuth(proxyAddr, target, user, pass)
+Connects with authentication.
+
+```xxl
+var client = socks.connectWithAuth("proxy:1080", "target:80", "user", "pass")
+```
+
+### Encrypted Proxy Server
+
+Start an encrypted proxy server (like goconnectit):
+
+```xxl
+import "socks"
+
+// Start encrypted proxy server
+// Clients connect with encrypted tunnel, server forwards to target
+var server = socks.startProxyServer(":8443", "mypassword", true)
+
+pln("Encrypted proxy server on " + server.getListenAddr())
+pln("Connections: " + server.connections().toStr())
+
+// Stop server
+server.stop()
+```
+
+### Encrypted Proxy Client
+
+Start a local proxy that encrypts traffic to remote server:
+
+```xxl
+import "socks"
+
+// Start encrypted proxy client
+// Local clients use HTTP/SOCKS5, traffic is encrypted to server
+var client = socks.startProxyClient(":8080", "server:8443", "mypassword", true)
+
+pln("Local proxy on " + client.getLocalAddr())
+pln("Connected to " + client.getServerAddr())
+
+// Now use as regular HTTP/SOCKS5 proxy:
+// curl -x http://localhost:8080 https://example.com
+// curl -x socks5://localhost:8080 https://example.com
+
+// Stop client
+client.stop()
+```
+
+### Encrypted Proxy Features
+
+- **AES Encryption**: All traffic is encrypted with AES-CTR
+- **Protocol Support**: HTTP, HTTPS (CONNECT), SOCKS5
+- **Auto Detection**: Client automatically detects protocol
+- **Password Auth**: Simple password-based authentication
 
 ---
 

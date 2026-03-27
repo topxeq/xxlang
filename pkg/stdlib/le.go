@@ -366,6 +366,234 @@ func init() {
 				}
 				return &objects.Array{Elements: elements}
 			}),
+
+			// ============================================================
+			// SSH Operations - Load/Save files via SSH
+			// ============================================================
+
+			// loadFromSsh loads a remote file via SSH and returns a LineEditor.
+			// Parameters: host, port, user, password, remotePath
+			// Returns: LineEditor object or Error
+			"loadFromSsh": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 5 {
+					return Error("loadFromSsh takes exactly 5 arguments (host, port, user, password, remotePath)")
+				}
+				host, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("first argument must be a string (host)")
+				}
+				port, ok := args[1].(*objects.Int)
+				if !ok {
+					return Error("second argument must be an integer (port)")
+				}
+				user, ok := args[2].(*objects.String)
+				if !ok {
+					return Error("third argument must be a string (user)")
+				}
+				password, ok := args[3].(*objects.String)
+				if !ok {
+					return Error("fourth argument must be a string (password)")
+				}
+				remotePath, ok := args[4].(*objects.String)
+				if !ok {
+					return Error("fifth argument must be a string (remotePath)")
+				}
+
+				client := objects.NewSSHClient()
+				if err := client.Connect(host.Value, int(port.Value), user.Value, password.Value); err != nil {
+					return Error("SSH connection failed: " + err.Error())
+				}
+				defer client.Close()
+
+				content, err := client.ReadFile(remotePath.Value)
+				if err != nil {
+					return Error("failed to read remote file: " + err.Error())
+				}
+
+				return objects.NewLineEditorFromText(content)
+			}),
+
+			// loadFromSshWithKey loads a remote file via SSH with key authentication.
+			// Parameters: host, port, user, keyPath, remotePath
+			// Returns: LineEditor object or Error
+			"loadFromSshWithKey": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 5 {
+					return Error("loadFromSshWithKey takes exactly 5 arguments (host, port, user, keyPath, remotePath)")
+				}
+				host, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("first argument must be a string (host)")
+				}
+				port, ok := args[1].(*objects.Int)
+				if !ok {
+					return Error("second argument must be an integer (port)")
+				}
+				user, ok := args[2].(*objects.String)
+				if !ok {
+					return Error("third argument must be a string (user)")
+				}
+				keyPath, ok := args[3].(*objects.String)
+				if !ok {
+					return Error("fourth argument must be a string (keyPath)")
+				}
+				remotePath, ok := args[4].(*objects.String)
+				if !ok {
+					return Error("fifth argument must be a string (remotePath)")
+				}
+
+				client := objects.NewSSHClient()
+				if err := client.ConnectWithKey(host.Value, int(port.Value), user.Value, keyPath.Value); err != nil {
+					return Error("SSH connection failed: " + err.Error())
+				}
+				defer client.Close()
+
+				content, err := client.ReadFile(remotePath.Value)
+				if err != nil {
+					return Error("failed to read remote file: " + err.Error())
+				}
+
+				return objects.NewLineEditorFromText(content)
+			}),
+
+			// saveToSsh saves a LineEditor content to a remote file via SSH.
+			// Parameters: lineEditor, host, port, user, password, remotePath
+			// Returns: null on success, Error on failure
+			"saveToSsh": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 6 {
+					return Error("saveToSsh takes exactly 6 arguments (lineEditor, host, port, user, password, remotePath)")
+				}
+				le, ok := args[0].(*objects.LineEditor)
+				if !ok {
+					return Error("first argument must be a LineEditor")
+				}
+				host, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("second argument must be a string (host)")
+				}
+				port, ok := args[2].(*objects.Int)
+				if !ok {
+					return Error("third argument must be an integer (port)")
+				}
+				user, ok := args[3].(*objects.String)
+				if !ok {
+					return Error("fourth argument must be a string (user)")
+				}
+				password, ok := args[4].(*objects.String)
+				if !ok {
+					return Error("fifth argument must be a string (password)")
+				}
+				remotePath, ok := args[5].(*objects.String)
+				if !ok {
+					return Error("sixth argument must be a string (remotePath)")
+				}
+
+				client := objects.NewSSHClient()
+				if err := client.Connect(host.Value, int(port.Value), user.Value, password.Value); err != nil {
+					return Error("SSH connection failed: " + err.Error())
+				}
+				defer client.Close()
+
+				content := le.ToText()
+				if err := client.WriteFile(remotePath.Value, content); err != nil {
+					return Error("failed to write remote file: " + err.Error())
+				}
+
+				return objects.NULL
+			}),
+
+			// saveToSshWithKey saves a LineEditor content to a remote file via SSH with key authentication.
+			// Parameters: lineEditor, host, port, user, keyPath, remotePath
+			// Returns: null on success, Error on failure
+			"saveToSshWithKey": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 6 {
+					return Error("saveToSshWithKey takes exactly 6 arguments (lineEditor, host, port, user, keyPath, remotePath)")
+				}
+				le, ok := args[0].(*objects.LineEditor)
+				if !ok {
+					return Error("first argument must be a LineEditor")
+				}
+				host, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("second argument must be a string (host)")
+				}
+				port, ok := args[2].(*objects.Int)
+				if !ok {
+					return Error("third argument must be an integer (port)")
+				}
+				user, ok := args[3].(*objects.String)
+				if !ok {
+					return Error("fourth argument must be a string (user)")
+				}
+				keyPath, ok := args[4].(*objects.String)
+				if !ok {
+					return Error("fifth argument must be a string (keyPath)")
+				}
+				remotePath, ok := args[5].(*objects.String)
+				if !ok {
+					return Error("sixth argument must be a string (remotePath)")
+				}
+
+				client := objects.NewSSHClient()
+				if err := client.ConnectWithKey(host.Value, int(port.Value), user.Value, keyPath.Value); err != nil {
+					return Error("SSH connection failed: " + err.Error())
+				}
+				defer client.Close()
+
+				content := le.ToText()
+				if err := client.WriteFile(remotePath.Value, content); err != nil {
+					return Error("failed to write remote file: " + err.Error())
+				}
+
+				return objects.NULL
+			}),
+
+			// appendToSsh appends a LineEditor content to a remote file via SSH.
+			// Parameters: lineEditor, host, port, user, password, remotePath
+			// Returns: null on success, Error on failure
+			"appendToSsh": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 6 {
+					return Error("appendToSsh takes exactly 6 arguments (lineEditor, host, port, user, password, remotePath)")
+				}
+				le, ok := args[0].(*objects.LineEditor)
+				if !ok {
+					return Error("first argument must be a LineEditor")
+				}
+				host, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("second argument must be a string (host)")
+				}
+				port, ok := args[2].(*objects.Int)
+				if !ok {
+					return Error("third argument must be an integer (port)")
+				}
+				user, ok := args[3].(*objects.String)
+				if !ok {
+					return Error("fourth argument must be a string (user)")
+				}
+				password, ok := args[4].(*objects.String)
+				if !ok {
+					return Error("fifth argument must be a string (password)")
+				}
+				remotePath, ok := args[5].(*objects.String)
+				if !ok {
+					return Error("sixth argument must be a string (remotePath)")
+				}
+
+				client := objects.NewSSHClient()
+				if err := client.Connect(host.Value, int(port.Value), user.Value, password.Value); err != nil {
+					return Error("SSH connection failed: " + err.Error())
+				}
+				defer client.Close()
+
+				// Read existing content first
+				existingContent, _ := client.ReadFile(remotePath.Value)
+				newContent := existingContent + "\n" + le.ToText()
+				if err := client.WriteFile(remotePath.Value, newContent); err != nil {
+					return Error("failed to append to remote file: " + err.Error())
+				}
+
+				return objects.NULL
+			}),
 		},
 	})
 }

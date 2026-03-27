@@ -409,6 +409,181 @@ func init() {
 				client.Close()
 				return objects.TRUE
 			}),
+
+			// ============================================================
+			// Byte Operations - Upload/Download bytes directly
+			// ============================================================
+
+			// uploadBytes uploads in-memory bytes to a remote path over SSH.
+			// Parameters: host, port, user, password, bytes, remotePath
+			// Returns: null on success, Error on failure
+			"uploadBytes": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 6 {
+					return Error("uploadBytes takes exactly 6 arguments (host, port, user, password, bytes, remotePath)")
+				}
+				host, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("first argument must be a string (host)")
+				}
+				port, ok := args[1].(*objects.Int)
+				if !ok {
+					return Error("second argument must be an integer (port)")
+				}
+				user, ok := args[2].(*objects.String)
+				if !ok {
+					return Error("third argument must be a string (user)")
+				}
+				password, ok := args[3].(*objects.String)
+				if !ok {
+					return Error("fourth argument must be a string (password)")
+				}
+				dataBytes, ok := args[4].(*objects.Bytes)
+				if !ok {
+					return Error("fifth argument must be bytes")
+				}
+				remotePath, ok := args[5].(*objects.String)
+				if !ok {
+					return Error("sixth argument must be a string (remotePath)")
+				}
+
+				client := objects.NewSSHClient()
+				if err := client.Connect(host.Value, int(port.Value), user.Value, password.Value); err != nil {
+					return Error("SSH connection failed: " + err.Error())
+				}
+				defer client.Close()
+
+				// Write bytes to remote file using base64 encoding for binary safety
+				if err := client.WriteFile(remotePath.Value, string(dataBytes.Value)); err != nil {
+					return Error("uploadBytes failed: " + err.Error())
+				}
+				return objects.NULL
+			}),
+
+			// downloadBytes downloads a remote file and returns its content as bytes.
+			// Parameters: host, port, user, password, remotePath
+			// Returns: Bytes object on success, Error on failure
+			"downloadBytes": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 5 {
+					return Error("downloadBytes takes exactly 5 arguments (host, port, user, password, remotePath)")
+				}
+				host, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("first argument must be a string (host)")
+				}
+				port, ok := args[1].(*objects.Int)
+				if !ok {
+					return Error("second argument must be an integer (port)")
+				}
+				user, ok := args[2].(*objects.String)
+				if !ok {
+					return Error("third argument must be a string (user)")
+				}
+				password, ok := args[3].(*objects.String)
+				if !ok {
+					return Error("fourth argument must be a string (password)")
+				}
+				remotePath, ok := args[4].(*objects.String)
+				if !ok {
+					return Error("fifth argument must be a string (remotePath)")
+				}
+
+				client := objects.NewSSHClient()
+				if err := client.Connect(host.Value, int(port.Value), user.Value, password.Value); err != nil {
+					return Error("SSH connection failed: " + err.Error())
+				}
+				defer client.Close()
+
+				content, err := client.ReadFile(remotePath.Value)
+				if err != nil {
+					return Error("downloadBytes failed: " + err.Error())
+				}
+				return &objects.Bytes{Value: []byte(content)}
+			}),
+
+			// uploadBytesWithKey uploads in-memory bytes to a remote path using key authentication.
+			// Parameters: host, port, user, keyPath, bytes, remotePath
+			// Returns: null on success, Error on failure
+			"uploadBytesWithKey": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 6 {
+					return Error("uploadBytesWithKey takes exactly 6 arguments (host, port, user, keyPath, bytes, remotePath)")
+				}
+				host, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("first argument must be a string (host)")
+				}
+				port, ok := args[1].(*objects.Int)
+				if !ok {
+					return Error("second argument must be an integer (port)")
+				}
+				user, ok := args[2].(*objects.String)
+				if !ok {
+					return Error("third argument must be a string (user)")
+				}
+				keyPath, ok := args[3].(*objects.String)
+				if !ok {
+					return Error("fourth argument must be a string (keyPath)")
+				}
+				dataBytes, ok := args[4].(*objects.Bytes)
+				if !ok {
+					return Error("fifth argument must be bytes")
+				}
+				remotePath, ok := args[5].(*objects.String)
+				if !ok {
+					return Error("sixth argument must be a string (remotePath)")
+				}
+
+				client := objects.NewSSHClient()
+				if err := client.ConnectWithKey(host.Value, int(port.Value), user.Value, keyPath.Value); err != nil {
+					return Error("SSH connection failed: " + err.Error())
+				}
+				defer client.Close()
+
+				if err := client.WriteFile(remotePath.Value, string(dataBytes.Value)); err != nil {
+					return Error("uploadBytesWithKey failed: " + err.Error())
+				}
+				return objects.NULL
+			}),
+
+			// downloadBytesWithKey downloads a remote file using key authentication.
+			// Parameters: host, port, user, keyPath, remotePath
+			// Returns: Bytes object on success, Error on failure
+			"downloadBytesWithKey": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 5 {
+					return Error("downloadBytesWithKey takes exactly 5 arguments (host, port, user, keyPath, remotePath)")
+				}
+				host, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("first argument must be a string (host)")
+				}
+				port, ok := args[1].(*objects.Int)
+				if !ok {
+					return Error("second argument must be an integer (port)")
+				}
+				user, ok := args[2].(*objects.String)
+				if !ok {
+					return Error("third argument must be a string (user)")
+				}
+				keyPath, ok := args[3].(*objects.String)
+				if !ok {
+					return Error("fourth argument must be a string (keyPath)")
+				}
+				remotePath, ok := args[4].(*objects.String)
+				if !ok {
+					return Error("fifth argument must be a string (remotePath)")
+				}
+
+				client := objects.NewSSHClient()
+				if err := client.ConnectWithKey(host.Value, int(port.Value), user.Value, keyPath.Value); err != nil {
+					return Error("SSH connection failed: " + err.Error())
+				}
+				defer client.Close()
+
+				content, err := client.ReadFile(remotePath.Value)
+				if err != nil {
+					return Error("downloadBytesWithKey failed: " + err.Error())
+				}
+				return &objects.Bytes{Value: []byte(content)}
+			}),
 		},
 	})
 }
