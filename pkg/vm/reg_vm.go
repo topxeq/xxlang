@@ -2939,17 +2939,24 @@ func (vm *RegVM) callClosure(closure *Closure, numArgs int, callerFrame *RegFram
 		// Convert to []Value for the frame
 		newFrame.Constants = make([]Value, len(closure.Constants))
 		for i, c := range closure.Constants {
-			newFrame.Constants[i] = NewObject(c)
+			if c != nil {
+				newFrame.Constants[i] = NewObject(c)
+			}
 		}
-	} else {
+	} else if callerFrame.Constants != nil {
 		newFrame.Constants = callerFrame.Constants
 	}
 
 	// Use the closure's globals if available, otherwise use caller's globals
-	if closure.Globals != nil {
+	if closure.GlobalsValues != nil {
+		// Use the Value slice directly (for module functions)
+		newFrame.Globals = closure.GlobalsValues
+	} else if closure.Globals != nil {
 		newFrame.Globals = make([]Value, len(closure.Globals))
 		for i, g := range closure.Globals {
-			newFrame.Globals[i] = NewObject(g)
+			if g != nil {
+				newFrame.Globals[i] = NewObject(g)
+			}
 		}
 	} else {
 		newFrame.Globals = callerFrame.Globals
@@ -3735,7 +3742,9 @@ func (vm *RegVM) loadModule(importPath string, frame *RegFrame) (*objects.Module
 	vm.loader.MarkLoading(resolvedPath)
 
 	// Execute the module in an isolated VM context
-	moduleVM := NewRegVMWithGlobals(c.Bytecode(), make([]Value, compiler.GlobalsSize))
+	moduleGlobals := make([]Value, compiler.GlobalsSize)
+	moduleBytecode := c.Bytecode()
+	moduleVM := NewRegVMWithGlobals(moduleBytecode, moduleGlobals)
 	moduleVM.SetLoader(vm.loader)
 	moduleVM.SetSourcePath(resolvedPath)
 	moduleVM.SetCurrentModule(mod)
@@ -3748,10 +3757,43 @@ func (vm *RegVM) loadModule(importPath string, frame *RegFrame) (*objects.Module
 	// Mark as done loading
 	vm.loader.MarkDone(resolvedPath)
 
+	// Get the module's constants (from the bytecode)
+	moduleConstants := moduleBytecode.Constants
+
+	// Update exported functions to use the module's globals and constants
+	// We need to wrap compiled functions in closures that reference the module's globals
+	for name, exp := range mod.Exports {
+		switch fn := exp.(type) {
+		case *Closure:
+			// Create a new closure with the module's globals
+			newClosure := &Closure{
+				Fn:             fn.Fn,
+				FreeVars:       fn.FreeVars,
+				Constants:      moduleConstants,
+				Globals:        nil, // Will use GlobalsValues instead
+				FreeVarsValues: fn.FreeVarsValues,
+				GlobalsValues:  moduleGlobals, // Store the Value slice directly
+			}
+			mod.Exports[name] = newClosure
+		case *compiler.CompiledFunction:
+			// Wrap the compiled function in a closure with the module's globals
+			newClosure := &Closure{
+				Fn:             fn,
+				FreeVars:       nil,
+				Constants:      moduleConstants,
+				Globals:        nil,
+				FreeVarsValues: nil,
+				GlobalsValues:  moduleGlobals,
+			}
+			mod.Exports[name] = newClosure
+		}
+	}
+
 	// Cache the module
 	vm.loader.Set(resolvedPath, &module.Module{
 		Name:    mod.Name,
 		Exports: mod.Exports,
+		Globals: mod.Globals,
 	})
 
 	return mod, nil

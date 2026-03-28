@@ -63,17 +63,32 @@ func init() {
 			}),
 
 			"round": BuiltinFunc(func(args ...objects.Object) objects.Object {
-				if len(args) != 1 {
-					return Error("round() takes exactly 1 argument")
+				if len(args) < 1 || len(args) > 2 {
+					return Error("round() takes 1 or 2 arguments")
 				}
+				var val float64
 				switch n := args[0].(type) {
 				case *objects.Int:
-					return n
+					if len(args) == 1 {
+						return n
+					}
+					val = float64(n.Value)
 				case *objects.Float:
-					return Int(int64(math.Round(n.Value)))
+					val = n.Value
 				default:
 					return Error("round() requires a numeric argument")
 				}
+				if len(args) == 1 {
+					return Int(int64(math.Round(val)))
+				}
+				precision, ok := args[1].(*objects.Int)
+				if !ok {
+					return Error("precision must be INT")
+				}
+				p := int(precision.Value)
+				multiplier := math.Pow(10, float64(p))
+				result := math.Round(val*multiplier) / multiplier
+				return Float(result)
 			}),
 
 			"sqrt": BuiltinFunc(func(args ...objects.Object) objects.Object {

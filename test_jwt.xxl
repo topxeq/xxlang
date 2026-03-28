@@ -1,4 +1,6 @@
-// test_jwt.xxl - Test JWT built-in functions
+// test_jwt.xxl - Test JWT functions from crypto module
+
+import { genJwtToken, parseJwtToken } from "crypto"
 
 pln("=== Testing genJwtToken ===")
 

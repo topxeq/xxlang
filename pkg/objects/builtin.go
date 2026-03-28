@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // BuiltinFunction is the type for built-in functions
@@ -309,8 +310,6 @@ var Builtins = map[string]*Builtin{
 	// ============================================================
 	"substr": {
 		Fn: func(args ...Object) Object {
-			// substr uses BYTE indices (Go-compatible behavior)
-			// For character-based slicing, use toChars(s).subStr(start, end) instead
 			if len(args) < 2 || len(args) > 3 {
 				return newError("wrong number of arguments for substr. got=%d, want=2 or 3", len(args))
 			}
@@ -325,9 +324,9 @@ var Builtins = map[string]*Builtin{
 				return newError("second argument to 'substr' must be INT, got %s", args[1].Type())
 			}
 
-			// Use byte indices (Go-compatible)
-			strLen := int64(len(str.Value))
-			end := strLen
+			runes := []rune(str.Value)
+			runeLen := int64(len(runes))
+			end := runeLen
 			if len(args) == 3 {
 				e, ok := args[2].(*Int)
 				if !ok {
@@ -336,11 +335,11 @@ var Builtins = map[string]*Builtin{
 				end = e.Value
 			}
 
-			if start.Value < 0 || start.Value > strLen || end < start.Value || end > strLen {
+			if start.Value < 0 || start.Value > runeLen || end < start.Value || end > runeLen {
 				return newError("substring indices out of range")
 			}
 
-			return NewString(str.Value[start.Value:end])
+			return NewString(string(runes[start.Value:end]))
 		},
 	},
 	"split": {
@@ -957,7 +956,6 @@ var Builtins = map[string]*Builtin{
 				return newError("wrong number of arguments for indexOf. got=%d, want=2", len(args))
 			}
 
-			// Support both array and string
 			switch obj := args[0].(type) {
 			case *Array:
 				for i, elem := range obj.Elements {
@@ -971,8 +969,12 @@ var Builtins = map[string]*Builtin{
 				if !ok {
 					return newError("second argument to 'indexOf' for string must be STRING, got %s", args[1].Type())
 				}
-				idx := strings.Index(obj.Value, substr.Value)
-				return NewInt(int64(idx))
+				byteIdx := strings.Index(obj.Value, substr.Value)
+				if byteIdx < 0 {
+					return NewInt(-1)
+				}
+				charIdx := utf8.RuneCountInString(obj.Value[:byteIdx])
+				return NewInt(int64(charIdx))
 			default:
 				return newError("first argument to 'indexOf' must be ARRAY or STRING, got %s", args[0].Type())
 			}
@@ -1664,7 +1666,7 @@ var Builtins = map[string]*Builtin{
 
 	// ============================================================
 	// Math Functions
-	// Note: round and random removed - use math module instead
+	// Note: round and random moved to math module
 	// ============================================================
 	"clamp": {
 		Fn: func(args ...Object) Object {

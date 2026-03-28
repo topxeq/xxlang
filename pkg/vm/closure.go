@@ -18,6 +18,10 @@ type Closure struct {
 	// FreeVarsValues is used by register VM for shared mutable free variables
 	// When set, register VM uses this instead of FreeVars
 	FreeVarsValues []Value
+
+	// GlobalsValues is used by register VM for module globals
+	// When set, register VM uses this instead of Globals
+	GlobalsValues []Value
 }
 
 // Type returns the object type

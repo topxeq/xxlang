@@ -71,12 +71,11 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["isFunction"], // 57
 		objects.Builtins["isNull"],     // 58
 		// Math utilities
-		// 59: round removed - use math.round
-		nil,                       // 59 (placeholder)
-		objects.Builtins["clamp"], // 60
-		objects.Builtins["sign"],  // 61
-		// 62: random removed - use math.random
-		nil,                           // 62 (placeholder)
+		// Note: round, random moved to math module
+		nil,                           // 59: round removed
+		objects.Builtins["clamp"],     // 60
+		objects.Builtins["sign"],      // 61
+		nil,                           // 62: random removed
 		objects.Builtins["randomInt"], // 63
 		// Array utilities
 		objects.Builtins["unique"],  // 64

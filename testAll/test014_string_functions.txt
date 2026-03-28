@@ -192,7 +192,7 @@ Unicode/Chinese strings:
 6
 你好
 你好
-6
+2
 Special characters:
 hello	world
 line1

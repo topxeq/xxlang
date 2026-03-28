@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -17,6 +19,105 @@ func init() {
 	// JWT builtins removed - use crypto module instead
 	// Builtins["genJwtToken"] = &Builtin{Fn: builtinGenJwtToken}
 	// Builtins["parseJwtToken"] = &Builtin{Fn: builtinParseJwtToken}
+}
+
+func builtinGenJwtToken(args ...Object) Object {
+	if len(args) < 2 || len(args) > 3 {
+		return newError("wrong number of arguments for genJwtToken. got=%d, want=2 or 3", len(args))
+	}
+
+	payload, ok := args[0].(*Map)
+	if !ok {
+		return newError("first argument to 'genJwtToken' must be MAP, got %s", args[0].Type())
+	}
+
+	secret, ok := args[1].(*String)
+	if !ok {
+		return newError("second argument to 'genJwtToken' must be STRING, got %s", args[1].Type())
+	}
+
+	withType := false
+	base64Secret := false
+	expireSeconds := int64(0)
+
+	if len(args) == 3 {
+		opts, ok := args[2].(*String)
+		if !ok {
+			return newError("options must be STRING, got %s", args[2].Type())
+		}
+		optStr := opts.Value
+		if strings.Contains(optStr, "-type") {
+			withType = true
+		}
+		if strings.Contains(optStr, "-base64") {
+			base64Secret = true
+		}
+		if idx := strings.Index(optStr, "-expire="); idx != -1 {
+			rest := optStr[idx+8:]
+			if len(rest) > 0 {
+				if exp, err := strconv.ParseInt(rest, 10, 64); err == nil {
+					expireSeconds = exp
+				}
+			}
+		}
+	}
+
+	token, err := GenJwtToken(payload, []byte(secret.Value), withType, base64Secret, expireSeconds)
+	if err != nil {
+		return newError("failed to generate JWT token: %v", err)
+	}
+
+	return NewString(token)
+}
+
+func builtinParseJwtToken(args ...Object) Object {
+	if len(args) < 2 || len(args) > 3 {
+		return newError("wrong number of arguments for parseJwtToken. got=%d, want=2 or 3", len(args))
+	}
+
+	tokenStr, ok := args[0].(*String)
+	if !ok {
+		return newError("first argument to 'parseJwtToken' must be STRING, got %s", args[0].Type())
+	}
+
+	secret, ok := args[1].(*String)
+	if !ok {
+		return newError("second argument to 'parseJwtToken' must be STRING, got %s", args[1].Type())
+	}
+
+	base64Secret := false
+	noValidate := false
+
+	if len(args) == 3 {
+		opts, ok := args[2].(*String)
+		if !ok {
+			return newError("options must be STRING, got %s", args[2].Type())
+		}
+		optStr := opts.Value
+		if strings.Contains(optStr, "-base64") {
+			base64Secret = true
+		}
+		if strings.Contains(optStr, "-noValidate") || strings.Contains(optStr, "-novalidate") {
+			noValidate = true
+		}
+	}
+
+	claims, err := ParseJwtToken(tokenStr.Value, []byte(secret.Value), base64Secret, noValidate)
+	if err != nil {
+		return newError("failed to parse JWT token: %v", err)
+	}
+
+	result := NewMapWithCapacity(len(claims))
+	for k, v := range claims {
+		keyObj := NewString(k)
+		hashKey := keyObj.HashKey()
+		result.Pairs[hashKey] = MapPair{
+			Key:   keyObj,
+			Value: InterfaceToObject(v),
+		}
+	}
+
+	return result
 }
 
 // GenJwtToken generates a JWT token from payload and secret.

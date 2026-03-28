@@ -1,4 +1,6 @@
-// test_unicode.xxl - Test Unicode built-in functions
+// test_unicode.xxl - Test Unicode functions from locale module
+
+import { toPinYin, kanaToRomaji, kanjiToKana, kanjiToRomaji } from "locale"
 
 // Test toPinYin
 pln("=== Testing toPinYin ===")

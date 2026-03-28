@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // TypeMethods maps ObjectType -> methodName -> *Builtin
@@ -544,7 +545,12 @@ var stringMethods = map[string]*Builtin{
 		if !ok {
 			return newError("argument for indexOf must be STRING, got %s", args[1].Type())
 		}
-		return NewInt(int64(strings.Index(self.Value, substr.Value)))
+		byteIdx := strings.Index(self.Value, substr.Value)
+		if byteIdx < 0 {
+			return NewInt(-1)
+		}
+		charIdx := utf8.RuneCountInString(self.Value[:byteIdx])
+		return NewInt(int64(charIdx))
 	}},
 	"startsWith": {Fn: func(args ...Object) Object {
 		if len(args) != 2 {
@@ -575,8 +581,6 @@ var stringMethods = map[string]*Builtin{
 		return &Bool{Value: strings.HasSuffix(self.Value, suffix.Value)}
 	}},
 	"subStr": {Fn: func(args ...Object) Object {
-		// subStr uses BYTE indices (Go-compatible behavior)
-		// For character-based slicing, use toChars().subStr() instead
 		if len(args) < 2 || len(args) > 3 {
 			return newError("wrong number of arguments for subStr. got=%d, want=2 or 3", len(args))
 		}
@@ -588,13 +592,14 @@ var stringMethods = map[string]*Builtin{
 		if !ok {
 			return newError("start index for subStr must be INT, got %s", args[1].Type())
 		}
-		byteLen := len(self.Value)
+		runes := []rune(self.Value)
+		runeLen := len(runes)
 		startIdx := int(start.Value)
 		if startIdx < 0 {
 			startIdx = 0
 		}
-		if startIdx > byteLen {
-			startIdx = byteLen
+		if startIdx > runeLen {
+			startIdx = runeLen
 		}
 		if len(args) == 3 {
 			end, ok := args[2].(*Int)
@@ -605,12 +610,12 @@ var stringMethods = map[string]*Builtin{
 			if endIdx < startIdx {
 				endIdx = startIdx
 			}
-			if endIdx > byteLen {
-				endIdx = byteLen
+			if endIdx > runeLen {
+				endIdx = runeLen
 			}
-			return NewString(self.Value[startIdx:endIdx])
+			return NewString(string(runes[startIdx:endIdx]))
 		}
-		return NewString(self.Value[startIdx:])
+		return NewString(string(runes[startIdx:]))
 	}},
 	"charLen": {Fn: func(args ...Object) Object {
 		// charLen returns the number of Unicode characters (runes)

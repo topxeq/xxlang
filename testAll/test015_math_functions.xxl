@@ -1,5 +1,7 @@
 // Test 015: Math Functions
-// Tests mathematical built-in functions
+// Tests mathematical built-in functions and math module
+
+import { round, random } from "math"
 
 pln("abs function:")
 pln(abs(-5))

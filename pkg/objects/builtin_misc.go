@@ -421,9 +421,19 @@ func builtinGenOtpCode(args ...Object) Object {
 		digits = int(d.Value)
 	}
 
-	// Simple HOTP-like code generation using secret and current time
+	secretStr := strings.ToUpper(strings.TrimSpace(secret.Value))
+	if secretStr == "" {
+		return newError("secret cannot be empty")
+	}
+
+	for _, c := range secretStr {
+		if !((c >= 'A' && c <= 'Z') || (c >= '2' && c <= '7')) {
+			return newError("invalid character in secret: must be base32 (A-Z, 2-7)")
+		}
+	}
+
 	counter := time.Now().Unix() / 30
-	code := generateOTP(secret.Value, counter, digits)
+	code := generateOTP(secretStr, counter, digits)
 	return NewString(code)
 }
 

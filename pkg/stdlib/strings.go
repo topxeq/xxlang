@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/topxeq/xxlang/pkg/objects"
 )
@@ -44,7 +45,9 @@ func init() {
 				default:
 					return Error("start position must be an integer")
 				}
-				end := len(s.Value)
+				runes := []rune(s.Value)
+				runeLen := len(runes)
+				end := runeLen
 				if len(args) > 2 {
 					switch v := args[2].(type) {
 					case *objects.Int:
@@ -55,10 +58,10 @@ func init() {
 						return Error("end position must be an integer")
 					}
 				}
-				if start < 0 || end > len(s.Value) || start > end {
+				if start < 0 || end > runeLen || start > end {
 					return Error("substr() index out of range")
 				}
-				return String(s.Value[start:end])
+				return String(string(runes[start:end]))
 			}),
 
 			"indexOf": BuiltinFunc(func(args ...objects.Object) objects.Object {
@@ -73,7 +76,12 @@ func init() {
 				if !ok {
 					return Error("indexOf() requires a string as second argument")
 				}
-				return Int(int64(strings.Index(s.Value, sub.Value)))
+				byteIdx := strings.Index(s.Value, sub.Value)
+				if byteIdx < 0 {
+					return Int(-1)
+				}
+				charIdx := utf8.RuneCountInString(s.Value[:byteIdx])
+				return Int(int64(charIdx))
 			}),
 
 			"contains": BuiltinFunc(func(args ...objects.Object) objects.Object {
