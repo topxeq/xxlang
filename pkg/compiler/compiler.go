@@ -590,8 +590,12 @@ func NewSymbolTable() *SymbolTable {
 	// s.DefineBuiltin(495, "newToml")
 	// s.DefineBuiltin(496, "tomlValid")
 	// Email sending functions - use mail.newClient(), mail.send()
-	// s.DefineBuiltin(497, "sendMail")
-	// s.DefineBuiltin(498, "newMailClient")
+	// s.DefineBuiltin(486, "sendMail")
+	// s.DefineBuiltin(487, "newMailClient")
+	// Byte-index string functions
+	s.DefineBuiltin(488, "byteIndexOf")
+	s.DefineBuiltin(489, "byteSubstr")
+	s.DefineBuiltin(490, "byteLen")
 	return s
 }
 

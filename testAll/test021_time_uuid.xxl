@@ -26,7 +26,9 @@ for (var i = 0; i < 10000; i = i + 1) {
     sum = sum + i
 }
 var end = nowMs()
-pln("time elapsed (ms): " + toStr(end - start))
+var elapsed = end - start
+pln("time elapsed (ms): " + toStr(elapsed))
+pln(elapsed >= 0)
 pln(sum)
 
 pln("sleep function (short):")

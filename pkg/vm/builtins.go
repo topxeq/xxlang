@@ -566,7 +566,11 @@ func getBuiltin(index int) *objects.Builtin {
 		nil, // 485: tomlValid removed
 		// Email sending functions - use mail.newClient(), mail.send()
 		nil, // 486: sendMail removed
-		nil, // 497: newMailClient removed
+		nil, // 487: newMailClient removed
+		// Byte-index string functions (Batch 23)
+		objects.Builtins["byteIndexOf"], // 488
+		objects.Builtins["byteSubstr"],  // 489
+		objects.Builtins["byteLen"],     // 490
 	}
 
 	if index < 0 || index >= len(builtins) {

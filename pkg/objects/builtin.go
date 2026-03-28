@@ -980,6 +980,71 @@ var Builtins = map[string]*Builtin{
 			}
 		},
 	},
+	// Byte-index versions of string functions for low-level operations
+	"byteIndexOf": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 2 {
+				return newError("wrong number of arguments for byteIndexOf. got=%d, want=2", len(args))
+			}
+
+			str, ok := args[0].(*String)
+			if !ok {
+				return newError("first argument to 'byteIndexOf' must be STRING, got %s", args[0].Type())
+			}
+			substr, ok := args[1].(*String)
+			if !ok {
+				return newError("second argument to 'byteIndexOf' must be STRING, got %s", args[1].Type())
+			}
+			return NewInt(int64(strings.Index(str.Value, substr.Value)))
+		},
+	},
+	"byteSubstr": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 2 || len(args) > 3 {
+				return newError("wrong number of arguments for byteSubstr. got=%d, want=2 or 3", len(args))
+			}
+
+			str, ok := args[0].(*String)
+			if !ok {
+				return newError("first argument to 'byteSubstr' must be STRING, got %s", args[0].Type())
+			}
+
+			start, ok := args[1].(*Int)
+			if !ok {
+				return newError("second argument to 'byteSubstr' must be INT, got %s", args[1].Type())
+			}
+
+			byteLen := int64(len(str.Value))
+			end := byteLen
+			if len(args) == 3 {
+				e, ok := args[2].(*Int)
+				if !ok {
+					return newError("third argument to 'byteSubstr' must be INT, got %s", args[2].Type())
+				}
+				end = e.Value
+			}
+
+			if start.Value < 0 || start.Value > byteLen || end < start.Value || end > byteLen {
+				return newError("byteSubstr indices out of range")
+			}
+
+			return NewString(str.Value[start.Value:end])
+		},
+	},
+	"byteLen": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for byteLen. got=%d, want=1", len(args))
+			}
+
+			str, ok := args[0].(*String)
+			if !ok {
+				return newError("argument to 'byteLen' must be STRING, got %s", args[0].Type())
+			}
+
+			return NewInt(int64(len(str.Value)))
+		},
+	},
 	"containsArr": {
 		Fn: func(args ...Object) Object {
 			if len(args) != 2 {
