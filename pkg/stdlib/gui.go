@@ -4,6 +4,8 @@ package stdlib
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 
 	"github.com/topxeq/xxlang/pkg/objects"
 	"github.com/topxeq/xxlang/pkg/webview2"
@@ -47,11 +49,17 @@ func init() {
 					Debug:  false,
 				}
 
-				// Optional: user data folder
+				// Set default user data folder if not provided
 				if len(args) > 3 {
 					if folder, ok := args[3].(*objects.String); ok {
 						config.UserDataFolder = folder.Value
 					}
+				}
+
+				// If no user data folder specified, use temp directory
+				if config.UserDataFolder == "" {
+					tempDir := os.TempDir()
+					config.UserDataFolder = filepath.Join(tempDir, "xxlang_webview2")
 				}
 
 				// Optional: debug mode

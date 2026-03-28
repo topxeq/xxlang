@@ -127,11 +127,11 @@ func TestMathModuleSqrtPow(t *testing.T) {
 }
 
 // ============================================
-// Tests for string module
+// Tests for strings module
 // ============================================
 
 func TestStringModuleToUpperLower(t *testing.T) {
-	result := callStdlibFunc("string", "toUpper", String("hello"))
+	result := callStdlibFunc("strings", "toUpper", String("hello"))
 	if result == nil {
 		t.Fatal("toUpper returned nil")
 	}
@@ -143,7 +143,7 @@ func TestStringModuleToUpperLower(t *testing.T) {
 		t.Errorf("toUpper('hello') = %q, want 'HELLO'", strResult.Value)
 	}
 
-	result = callStdlibFunc("string", "toLower", String("HELLO"))
+	result = callStdlibFunc("strings", "toLower", String("HELLO"))
 	if result == nil {
 		t.Fatal("toLower returned nil")
 	}
@@ -157,7 +157,7 @@ func TestStringModuleToUpperLower(t *testing.T) {
 }
 
 func TestStringModuleTrim(t *testing.T) {
-	result := callStdlibFunc("string", "trim", String("  hello  "))
+	result := callStdlibFunc("strings", "trim", String("  hello  "))
 	if result == nil {
 		t.Fatal("trim returned nil")
 	}
@@ -171,7 +171,7 @@ func TestStringModuleTrim(t *testing.T) {
 }
 
 func TestStringModuleContains(t *testing.T) {
-	result := callStdlibFunc("string", "contains", String("hello world"), String("world"))
+	result := callStdlibFunc("strings", "contains", String("hello world"), String("world"))
 	if result == nil {
 		t.Fatal("contains returned nil")
 	}
@@ -186,7 +186,7 @@ func TestStringModuleContains(t *testing.T) {
 
 func TestStringModuleSplitJoin(t *testing.T) {
 	// Test split
-	result := callStdlibFunc("string", "split", String("a,b,c"), String(","))
+	result := callStdlibFunc("strings", "split", String("a,b,c"), String(","))
 	if result == nil {
 		t.Fatal("split returned nil")
 	}
@@ -199,7 +199,7 @@ func TestStringModuleSplitJoin(t *testing.T) {
 	}
 
 	// Test join
-	result = callStdlibFunc("string", "join", arrResult, String("-"))
+	result = callStdlibFunc("strings", "join", arrResult, String("-"))
 	if result == nil {
 		t.Fatal("join returned nil")
 	}
@@ -214,7 +214,7 @@ func TestStringModuleSplitJoin(t *testing.T) {
 
 func TestStringModuleHasPrefixHasSuffix(t *testing.T) {
 	// Test hasPrefix
-	result := callStdlibFunc("string", "hasPrefix", String("hello"), String("he"))
+	result := callStdlibFunc("strings", "hasPrefix", String("hello"), String("he"))
 	if result == nil {
 		t.Fatal("hasPrefix returned nil")
 	}
@@ -227,7 +227,7 @@ func TestStringModuleHasPrefixHasSuffix(t *testing.T) {
 	}
 
 	// Test hasSuffix
-	result = callStdlibFunc("string", "hasSuffix", String("hello"), String("lo"))
+	result = callStdlibFunc("strings", "hasSuffix", String("hello"), String("lo"))
 	if result == nil {
 		t.Fatal("hasSuffix returned nil")
 	}

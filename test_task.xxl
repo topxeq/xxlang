@@ -1,0 +1,48 @@
+// test_task.xxl - Test Task/Scheduling built-in functions
+
+pln("=== Testing isCronExprValid ===")
+
+// Test valid cron expressions
+pln("isCronExprValid('* * * * *'):", isCronExprValid("* * * * *"))
+pln("isCronExprValid('*/5 * * * *'):", isCronExprValid("*/5 * * * *"))
+pln("isCronExprValid('0 0 * * *'):", isCronExprValid("0 0 * * *"))
+pln("isCronExprValid('0 0 0 * * *'):", isCronExprValid("0 0 0 * * *"))
+pln("isCronExprValid('invalid'):", isCronExprValid("invalid"))
+pln("isCronExprValid('* * *'):", isCronExprValid("* * *"))
+
+pln("")
+pln("=== Testing isCronExprDue ===")
+
+// Check if cron expressions are due
+pln("isCronExprDue('* * * * *'):", isCronExprDue("* * * * *"))
+pln("isCronExprDue('0 0 * * *'):", isCronExprDue("0 0 * * *"))
+pln("isCronExprDue('*/30 * * * *'):", isCronExprDue("*/30 * * * *"))
+
+pln("")
+pln("=== Testing runTicker and stopTicker ===")
+
+// Simple ticker test
+cnt := 0
+
+// Note: runTicker with function callback is limited in current implementation
+// The ticker will run but callback execution in goroutine context has limitations
+tickerID := runTicker(0.5, func() {
+    cnt = cnt + 1
+    pl("tick: ", cnt, " ")
+})
+
+pln("Started ticker with ID:", tickerID)
+
+// Let it run for a short time
+sleep(2.5)
+
+// Stop the ticker
+stopped := stopTicker(tickerID)
+pln("Ticker stopped:", stopped)
+
+// Try to stop again (should return false)
+stoppedAgain := stopTicker(tickerID)
+pln("Stop again:", stoppedAgain)
+
+pln("")
+pln("=== All task tests completed ===")

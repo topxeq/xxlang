@@ -1,0 +1,202 @@
+// test_toml_features.xxl - Test all TOML 1.0 features
+
+toml := loadModule("toml")
+
+pln("========================================")
+pln("TOML 1.0 Feature Test Suite")
+pln("========================================")
+
+// Test 1: Basic String
+pln("\n--- Test 1: Basic String ---")
+test1 := "str = \"hello world\""
+doc1 := toml.parse(test1)
+pln("Basic string:", doc1.get("str"))
+
+// Test 2: Multi-line String
+pln("\n--- Test 2: Multi-line String ---")
+test2 := "str = \"\"\"line1\nline2\nline3\"\"\""
+doc2 := toml.parse(test2)
+pln("Multi-line string:", doc2.get("str"))
+
+// Test 3: Literal String
+pln("\n--- Test 3: Literal String ---")
+test3 := "str = 'C:\\Users\\name\\file'"
+doc3 := toml.parse(test3)
+pln("Literal string:", doc3.get("str"))
+
+// Test 4: Multi-line Literal String
+pln("\n--- Test 4: Multi-line Literal String ---")
+test4 := "str = '''line1\nline2'''"
+doc4 := toml.parse(test4)
+pln("Multi-line literal:", doc4.get("str"))
+
+// Test 5: Integer (decimal)
+pln("\n--- Test 5: Integer ---")
+test5 := "num = 12345"
+doc5 := toml.parse(test5)
+pln("Integer:", doc5.get("num"))
+
+// Test 6: Integer with underscores
+pln("\n--- Test 6: Integer with underscores ---")
+test6 := "num = 1_000_000"
+doc6 := toml.parse(test6)
+pln("Integer with underscores:", doc6.get("num"))
+
+// Test 7: Hex integer
+pln("\n--- Test 7: Hex Integer ---")
+test7 := "num = 0xDEADBEEF"
+doc7 := toml.parse(test7)
+pln("Hex integer:", doc7.get("num"))
+
+// Test 8: Octal integer
+pln("\n--- Test 8: Octal Integer ---")
+test8 := "num = 0o755"
+doc8 := toml.parse(test8)
+pln("Octal integer:", doc8.get("num"))
+
+// Test 9: Binary integer
+pln("\n--- Test 9: Binary Integer ---")
+test9 := "num = 0b11010110"
+doc9 := toml.parse(test9)
+pln("Binary integer:", doc9.get("num"))
+
+// Test 10: Float
+pln("\n--- Test 10: Float ---")
+test10 := "num = 3.14159"
+doc10 := toml.parse(test10)
+pln("Float:", doc10.get("num"))
+
+// Test 11: Float with exponent
+pln("\n--- Test 11: Float with exponent ---")
+test11 := "num = 1.5e10"
+doc11 := toml.parse(test11)
+pln("Float with exponent:", doc11.get("num"))
+
+// Test 12: Float special values
+pln("\n--- Test 12: Float special values ---")
+test12 := "a = inf\nb = -inf\nc = nan"
+doc12 := toml.parse(test12)
+pln("inf:", doc12.get("a"))
+pln("-inf:", doc12.get("b"))
+pln("nan:", doc12.get("c"))
+
+// Test 13: Boolean
+pln("\n--- Test 13: Boolean ---")
+test13 := "a = true\nb = false"
+doc13 := toml.parse(test13)
+pln("true:", doc13.get("a"))
+pln("false:", doc13.get("b"))
+
+// Test 14: Offset Date-Time
+pln("\n--- Test 14: Offset Date-Time ---")
+test14 := "dt = 1979-05-27T07:32:00Z"
+doc14 := toml.parse(test14)
+pln("Offset datetime:", doc14.get("dt"))
+
+// Test 15: Local Date-Time
+pln("\n--- Test 15: Local Date-Time ---")
+test15 := "dt = 1979-05-27T07:32:00"
+doc15 := toml.parse(test15)
+pln("Local datetime:", doc15.get("dt"))
+
+// Test 16: Local Date
+pln("\n--- Test 16: Local Date ---")
+test16 := "dt = 1979-05-27"
+doc16 := toml.parse(test16)
+pln("Local date:", doc16.get("dt"))
+
+// Test 17: Local Time
+pln("\n--- Test 17: Local Time ---")
+test17 := "dt = 07:32:00"
+doc17 := toml.parse(test17)
+pln("Local time:", doc17.get("dt"))
+
+// Test 18: Basic Table
+pln("\n--- Test 18: Basic Table ---")
+test18 := "[server]\nhost = \"localhost\"\nport = 8080"
+doc18 := toml.parse(test18)
+pln("Table server.host:", doc18.get("server.host"))
+pln("Table server.port:", doc18.get("server.port"))
+
+// Test 19: Nested Table
+pln("\n--- Test 19: Nested Table ---")
+test19 := "[server]\n[server.database]\nhost = \"db.example.com\""
+doc19 := toml.parse(test19)
+pln("Nested table:", doc19.get("server.database.host"))
+
+// Test 20: Dotted Keys
+pln("\n--- Test 20: Dotted Keys ---")
+test20 := "server.host.name = \"example.com\""
+doc20 := toml.parse(test20)
+pln("Dotted key:", doc20.get("server.host.name"))
+
+// Test 21: Inline Table
+pln("\n--- Test 21: Inline Table ---")
+test21 := "point = {x = 1, y = 2}"
+doc21 := toml.parse(test21)
+pln("Inline table point:", doc21.get("point"))
+
+// Test 22: Array
+pln("\n--- Test 22: Array ---")
+test22 := "nums = [1, 2, 3]"
+doc22 := toml.parse(test22)
+pln("Array:", doc22.get("nums"))
+
+// Test 23: Array of Tables
+pln("\n--- Test 23: Array of Tables ---")
+test23 := "[[products]]\nname = \"Hammer\"\nsku = 738594937\n\n[[products]]\nname = \"Nail\"\nsku = 284758393"
+doc23 := toml.parse(test23)
+pln("Array table count:", len(doc23.get("products")))
+pln("First product name:", doc23.get("products[0].name"))
+pln("Second product name:", doc23.get("products[1].name"))
+
+// Test 24: Comments
+pln("\n--- Test 24: Comments ---")
+test24 := "# This is a comment\nkey = \"value\" # inline comment"
+doc24 := toml.parse(test24)
+pln("With comments:", doc24.get("key"))
+
+// Test 25: Quoted Keys
+pln("\n--- Test 25: Quoted Keys ---")
+test25 := "\"127.0.0.1\" = \"localhost\"\n'this.is.a.key' = 123"
+doc25 := toml.parse(test25)
+pln("Quoted key 1:", doc25.get("127.0.0.1"))
+pln("Quoted key 2:", doc25.get("this.is.a.key"))
+
+// Test 26: Mixed Types in Array
+pln("\n--- Test 26: Mixed Array ---")
+test26 := "mixed = [1, \"two\", 3.0, true]"
+doc26 := toml.parse(test26)
+pln("Mixed array:", doc26.get("mixed"))
+
+// Test 27: Nested Arrays
+pln("\n--- Test 27: Nested Arrays ---")
+test27 := "matrix = [[1, 2], [3, 4]]"
+doc27 := toml.parse(test27)
+pln("Nested array:", doc27.get("matrix"))
+
+// Test 28: Empty Value
+pln("\n--- Test 28: Empty String ---")
+test28 := "empty = \"\""
+doc28 := toml.parse(test28)
+pln("Empty string len:", len(doc28.get("empty")))
+
+// Test 29: Negative Numbers
+pln("\n--- Test 29: Negative Numbers ---")
+test29 := "neg_int = -100\nneg_float = -3.14"
+doc29 := toml.parse(test29)
+pln("Negative int:", doc29.get("neg_int"))
+pln("Negative float:", doc29.get("neg_float"))
+
+// Test 30: Complex Document
+pln("\n--- Test 30: Complex Document ---")
+complex := "[owner]\nname = \"Tom Preston-Werner\"\ndob = 1979-05-27T07:32:00-08:00\n\n[database]\nserver = \"192.168.1.1\"\nports = [8001, 8001, 8002]\nconnection_max = 5000\nenabled = true\n\n[servers.alpha]\nip = \"10.0.0.1\"\ndc = \"eqdc10\"\n\n[servers.beta]\nip = \"10.0.0.2\"\ndc = \"eqdc10\"\n\n[clients]\ndata = [[\"gamma\", \"delta\"], [1, 2]]\n\n[[products]]\nname = \"Hammer\"\nsku = 738594937\n\n[[products]]\nname = \"Nail\"\nsku = 284758393"
+doc30 := toml.parse(complex)
+pln("Owner name:", doc30.get("owner.name"))
+pln("Database server:", doc30.get("database.server"))
+pln("Servers alpha IP:", doc30.get("servers.alpha.ip"))
+pln("Products count:", len(doc30.get("products")))
+
+pln("\n========================================")
+pln("TOML Feature Test Complete!")
+pln("========================================")

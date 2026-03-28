@@ -1,0 +1,41 @@
+// test_jwt.xxl - Test JWT built-in functions
+
+pln("=== Testing genJwtToken ===")
+
+// Test basic token generation
+payload := {"sub": "user1", "userId": 116, "role": "admin"}
+secret := "my_secret_key"
+
+token := genJwtToken(payload, secret)
+pln("Generated token:", token)
+pln("Token length:", len(token))
+
+// Test with expiration
+tokenExp := genJwtToken(payload, secret, "-expire=3600")
+pln("Token with expiration:", tokenExp)
+
+pln("")
+pln("=== Testing parseJwtToken ===")
+
+// Parse the token
+parsed := parseJwtToken(token, secret)
+pln("Parsed claims:", parsed)
+
+// Access specific claim
+pln("Subject:", parsed["sub"])
+pln("User ID:", parsed["userId"])
+pln("Role:", parsed["role"])
+
+pln("")
+pln("=== Testing validation ===")
+
+// Test with wrong secret
+wrongResult := parseJwtToken(token, "wrong_secret")
+pln("Parse with wrong secret:", wrongResult)
+
+// Test no validation option
+noValidateResult := parseJwtToken(token, "any_key", "-noValidate")
+pln("Parse without validation:", noValidateResult)
+
+pln("")
+pln("=== All JWT tests completed ===")

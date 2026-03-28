@@ -16,10 +16,10 @@ pln("floor(1.5): ", math.floor(1.5))
 pln("max(1, 5, 3): ", math.max(1, 5, 3))
 pln("min(1, 5, 3): ", math.min(1, 5, 3))
 
-// Test string module
-import * as str from "string"
+// Test strings module
+import * as str from "strings"
 
-pln("\n=== Testing string module ===")
+pln("\n=== Testing strings module ===")
 pln("len(\"hello\"): ", str.len("hello"))
 pln("toUpper(\"hello\"): ", str.toUpper("hello"))
 pln("toLower(\"HELLO\"): ", str.toLower("HELLO"))
@@ -30,7 +30,7 @@ pln("hasPrefix(\"hello\", \"he\"): ", str.hasPrefix("hello", "he"))
 pln("hasSuffix(\"hello\", \"lo\"): ", str.hasSuffix("hello", "lo"))
 
 // Test importing specific functions
-import { toUpper, toLower, split, join } from "string"
+import { toUpper, toLower, split, join } from "strings"
 
 pln("\n=== Testing destructured imports ===")
 pln("toUpper(\"test\"): ", toUpper("test"))

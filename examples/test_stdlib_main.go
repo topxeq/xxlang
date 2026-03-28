@@ -188,22 +188,22 @@ println("PATH exists: " + (path != "" && path != null).toStr())
 
 	// Test string
 	fmt.Println()
-	fmt.Println("8. string module")
+	fmt.Println("8. strings module")
 	fmt.Println("-------------------------------------------")
 	testString := `
-import "string"
+import "strings"
 
 var s = "Hello, World!"
-println("len: " + string.len(s))
-println("toUpper: " + string.toUpper(s))
-println("toLower: " + string.toLower(s))
-println("contains: " + string.contains(s, "World"))
-println("indexOf: " + string.indexOf(s, "World"))
-println("hasPrefix: " + string.hasPrefix(s, "Hello"))
-println("hasSuffix: " + string.hasSuffix(s, "!"))
-println("split: " + string.split("a,b,c", ","))
-println("repeat: " + string.repeat("ab", 3))
-println("reverse: " + string.reverse("hello"))
+println("len: " + strings.len(s))
+println("toUpper: " + strings.toUpper(s))
+println("toLower: " + strings.toLower(s))
+println("contains: " + strings.contains(s, "World"))
+println("indexOf: " + strings.indexOf(s, "World"))
+println("hasPrefix: " + strings.hasPrefix(s, "Hello"))
+println("hasSuffix: " + strings.hasSuffix(s, "!"))
+println("split: " + strings.split("a,b,c", ","))
+println("repeat: " + strings.repeat("ab", 3))
+println("reverse: " + strings.reverse("hello"))
 `
 	_, err = interp.Eval(testString)
 	if err != nil {

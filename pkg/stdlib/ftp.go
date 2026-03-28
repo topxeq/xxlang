@@ -14,6 +14,15 @@ func init() {
 			// Client Creation Functions
 			// ============================================================
 
+			// newClient creates a new FTP client object (unconnected).
+			// Use connect() for one-step connection.
+			"newClient": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 0 {
+					return Error("newClient takes no arguments")
+				}
+				return objects.NewFtpClient()
+			}),
+
 			// connect establishes FTP connection with credentials.
 			"connect": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				if len(args) != 4 {

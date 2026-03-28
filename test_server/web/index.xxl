@@ -1,0 +1,29 @@
+// web/index.xxl - Home page
+
+var name = paraMapG["name"]
+if (name == "" || name == null) {
+    name = "World"
+}
+
+setRespHeader(responseG, "Content-Type", "text/html; charset=utf-8")
+
+writeResp(responseG, `<!DOCTYPE html>
+<html>
+<head>
+    <title>Xxlang Server</title>
+</head>
+<body>
+    <h1>Hello, ` + name + `!</h1>
+    <p>Request URI: ` + reqUriG + `</p>
+    <p>Method: ` + methodG + `</p>
+    <p>Run Mode: ` + runModeG + `</p>
+    <p>Web Path: ` + webPathG + `</p>
+    <p>Base Path (MS): ` + basePathG + `</p>
+    <form method="POST">
+        <input type="text" name="name" placeholder="Enter your name">
+        <button type="submit">Submit</button>
+    </form>
+</body>
+</html>`)
+
+return "TX_END_RESPONSE_XT"

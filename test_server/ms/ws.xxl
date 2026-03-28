@@ -1,0 +1,65 @@
+// ms/ws.xxl - WebSocket echo server
+// Access: /ms/ws
+
+setRespHeader(responseG, "Access-Control-Allow-Origin", "*")
+setRespHeader(responseG, "Access-Control-Allow-Headers", "*")
+
+var outG = "TX_END_RESPONSE_XT"
+
+// Check if this is a WebSocket upgrade request
+var upgradeT = trim(getReqHeader(requestG, "Upgrade"))
+upgradeT = lower(upgradeT)
+
+if !startsWith(upgradeT, "websocket") {
+    setRespHeader(responseG, "Content-Type", "application/json")
+    writeResp(responseG, toJson({
+        "success": false,
+        "error": "unsupported protocol: " + upgradeT
+    }))
+    return outG
+}
+
+// Upgrade to WebSocket
+var connT = webSocket(requestG, responseG)
+
+if isErr(connT) {
+    setRespHeader(responseG, "Content-Type", "application/json")
+    writeResp(responseG, toJson({
+        "success": false,
+        "error": "failed to upgrade WebSocket: " + toStr(connT)
+    }))
+    return outG
+}
+
+// WebSocket message loop
+var msgT
+var running = true
+
+while (running) {
+    // Use the new method-style syntax
+    msgT = connT.readMsg()
+
+    if isErr(msgT) {
+        connT.close()
+        return outG
+    }
+
+    // msgT is [messageType, data]
+    var msgType = msgT[0]
+    var msgData = msgT[1]
+
+    // Handle different message types
+    if (msgType == 1) {
+        // Text message - echo it back
+        connT.sendTextMsg("Echo: " + msgData)
+    }
+
+    if (msgType == 8) {
+        // Close message
+        connT.sendCloseMsg()
+        connT.close()
+        running = false
+    }
+}
+
+return outG

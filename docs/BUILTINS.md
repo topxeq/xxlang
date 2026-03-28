@@ -2,6 +2,30 @@
 
 This document provides a comprehensive reference for all built-in functions in Xxlang.
 
+## Important: Function Migration
+
+Some functions have been migrated from built-ins to standard library modules for better organization. If a built-in function is not found, check the corresponding module:
+
+| Module | Migrated Functions |
+|--------|-------------------|
+| `math` | `sin, cos, tan, asin, acos, atan, atan2, exp, log, log10, log2, pi, e, degToRad, radToDeg, random, round` |
+| `locale` | `toPinYin, kanaToRomaji, kanjiToKana, kanjiToRomaji` |
+| `crypto` | `genJwtToken, parseJwtToken` |
+
+Use namespace imports to access migrated functions:
+
+```xxl
+import * as math from "math"
+import * as locale from "locale"
+import * as crypto from "crypto"
+
+pln(math.sin(1.57))
+pln(locale.toPinYin("中国"))
+token := crypto.genJwtToken({"sub": "user"}, "secret")
+```
+
+For complete name resolution rules, see [LANGUAGE.md - Name Conflict Resolution](LANGUAGE.md#name-conflict-resolution).
+
 ## Table of Contents
 
 - [Preset Global Variables](#preset-global-variables)

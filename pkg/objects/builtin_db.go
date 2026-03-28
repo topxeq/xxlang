@@ -415,8 +415,8 @@ var BuiltinDbQuery = &Builtin{
 	},
 }
 
-// BuiltinDbQueryOrdered executes a SQL query and returns results as an array of ordered maps.
-// All values are converted to strings.
+// BuiltinDbQueryOrdered executes a SQL query and returns results as an array of OrderedMaps.
+// Column order is preserved in each OrderedMap. All values are converted to strings.
 var BuiltinDbQueryOrdered = &Builtin{
 	Fn: func(args ...Object) Object {
 		if len(args) < 2 {
@@ -463,14 +463,11 @@ var BuiltinDbQueryOrdered = &Builtin{
 			}
 
 			// Create ordered map with pairs in column order
-			pairs := make([]Object, len(columns))
+			om := NewOrderedMap()
 			for i, col := range columns {
-				pairs[i] = NewArray([]Object{
-					NewString(col),
-					NewString(dbValueToString(values[i])),
-				})
+				om.Set(NewString(col), NewString(dbValueToString(values[i])))
 			}
-			result = append(result, NewArray(pairs))
+			result = append(result, om)
 		}
 
 		if err := rows.Err(); err != nil {

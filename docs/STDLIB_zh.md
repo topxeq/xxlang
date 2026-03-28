@@ -9,6 +9,55 @@ import "io"
 io.println("你好，世界！")
 ```
 
+### 导入方式
+
+Xxlang 支持多种导入方式：
+
+```xxl
+// 命名空间导入（推荐，避免冲突）
+import * as math from "math"
+pln(math.sqrt(16))
+
+// 解构导入（简洁，但可能覆盖内置函数）
+import { sqrt, pow } from "math"
+pln(sqrt(16))
+
+// 简单导入
+import "io"
+io.println("你好")
+```
+
+### 名称冲突解决
+
+当模块函数与内置函数同名时：
+
+- **命名空间导入**（`import * as m from "module"`）两者都可访问
+- **解构导入**（`import { fn } from "module"`）会覆盖内置函数
+- **用户变量**始终具有最高优先级
+
+详细的名称解析规则请参见 [LANGUAGE.md - 名称冲突解决](LANGUAGE.md#name-conflict-resolution)。
+
+### 内置函数迁移到模块
+
+部分原本是内置函数的功能已迁移到标准库模块，以便更好地组织代码：
+
+| 模块 | 迁移的函数 |
+|------|-----------|
+| `math` | `sin, cos, tan, asin, acos, atan, atan2, exp, log, log10, log2, pi, e, degToRad, radToDeg, random, round` |
+| `locale` | `toPinYin, kanaToRomaji, kanjiToKana, kanjiToRomaji` |
+| `crypto` | `genJwtToken, parseJwtToken` |
+
+更新使用这些函数的代码：
+
+```xxl
+// 旧代码（内置函数风格 - 可能通过兼容性仍然可用）
+pln(sin(1.57))
+
+// 新代码（推荐 - 显式模块导入）
+import * as math from "math"
+pln(math.sin(1.57))
+```
+
 ## 目录
 
 - [io](#io) - 输入输出操作

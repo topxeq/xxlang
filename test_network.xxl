@@ -1,0 +1,38 @@
+// test_network.xxl - Test Network communication built-in functions
+
+pln("=== Testing newFtpClient ===")
+
+ftp := newFtpClient()
+pln("Created FTP client:", ftp)
+
+pln("")
+pln("=== Testing newSshClient ===")
+
+ssh := newSshClient()
+pln("Created SSH client:", ssh)
+
+pln("")
+pln("=== Available Methods ===")
+pln("FTP methods: connect, disconnect, list, upload, download, mkdir, remove")
+pln("SSH methods: connect, connectWithKey, disconnect, run, upload, download, list")
+
+pln("")
+pln("=== Example Usage ===")
+
+// Note: These are examples - you need actual servers to test
+
+// FTP example:
+// err := ftp.connect("ftp.example.com", 21, "user", "password")
+// if isError(err) { pln("FTP connect error:", err) }
+// files := ftp.list("/")
+// ftp.disconnect()
+
+// SSH example:
+// err := ssh.connect("server.com", 22, "user", "password")
+// if isError(err) { pln("SSH connect error:", err) }
+// output := ssh.run("ls -la")
+// pln(output)
+// ssh.disconnect()
+
+pln("")
+pln("=== All network tests completed ===")

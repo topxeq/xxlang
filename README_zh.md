@@ -431,6 +431,59 @@ pln(math.sqrt(16))
 import "io" { readFile, writeFile }
 ```
 
+#### 模块函数与内置函数重名处理
+
+当模块函数与内置函数重名时，Xxlang 根据导入方式决定如何处理：
+
+**1. 解构导入会覆盖内置函数**
+
+```xxl
+// 内置 abs 函数
+pln(abs(-5))      // 5（内置函数）
+
+// 解构导入后，模块函数覆盖内置函数
+import { abs } from "math"
+pln(abs(-10))     // 10（模块函数）
+```
+
+**2. 命名空间导入不会冲突（推荐）**
+
+```xxl
+// 使用命名空间方式导入
+import * as math from "math"
+
+// 内置函数仍然可用
+pln(abs(-5))         // 5（内置函数）
+
+// 模块函数通过命名空间访问
+pln(math.abs(-10))   // 10（模块函数）
+```
+
+**3. 用户变量优先于内置函数**
+
+```xxl
+// 自定义变量会覆盖内置函数
+abs := func(x) { x * 2 }
+pln(abs(5))        // 10（自定义函数）
+```
+
+**最佳实践：**
+
+| 导入方式 | 使用场景 |
+|---------|---------|
+| `import * as m from "module"` | **推荐**：避免命名冲突，清晰区分来源 |
+| `import { fn } from "module"` | 确认无冲突时使用，更简洁 |
+
+```xxl
+// 推荐做法：使用命名空间导入
+import * as crypto from "crypto"
+import * as locale from "locale"
+
+// 清晰明了
+token := crypto.genJwtToken({"sub": "user"}, "secret")
+pln(locale.toPinYin("中国"))
+```
+
 ### 插件系统
 
 编写原生 Go 插件实现高性能操作：

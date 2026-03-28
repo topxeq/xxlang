@@ -1,0 +1,23 @@
+// ms/router.xxl - Main API router
+// Access: /ms/router?action=add&a1=10&a2=20
+
+var action = paraMapG["action"]
+
+switch (action) {
+    case "add":
+        var result = int(paraMapG["a1"]) + int(paraMapG["a2"])
+        setRespHeader(responseG, "Content-Type", "application/json")
+        writeResp(responseG, toJson({"result": result}))
+
+    case "multiply":
+        var result = int(paraMapG["a1"]) * int(paraMapG["a2"])
+        setRespHeader(responseG, "Content-Type", "application/json")
+        writeResp(responseG, toJson({"result": result}))
+
+    default:
+        status(responseG, 400)
+        setRespHeader(responseG, "Content-Type", "application/json")
+        writeResp(responseG, toJson({"error": "unknown action"}))
+}
+
+return "TX_END_RESPONSE_XT"

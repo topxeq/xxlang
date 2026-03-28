@@ -263,8 +263,8 @@ func encryptDataByTXDEF(data []byte, code string) []byte {
 
 	// Calculate dynamic padding length based on code sum
 	sum := int(sumBytes(codeBytes))
-	addLen := int(sum%5) + 2   // 2-6 bytes
-	encIndex := sum % addLen   // Index of the encryption key byte
+	addLen := int(sum%5) + 2 // 2-6 bytes
+	encIndex := sum % addLen // Index of the encryption key byte
 
 	result := make([]byte, dataLen+addLen)
 
@@ -1208,8 +1208,129 @@ func init() {
 				}
 				return String(string(result))
 			}),
+
+			// ============================================
+			// JWT Functions
+			// ============================================
+			"genJwtToken": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 2 {
+					return Error("genJwtToken requires at least 2 arguments: payload, secret")
+				}
+
+				// Get payload (must be a Map)
+				payload, ok := args[0].(*objects.Map)
+				if !ok {
+					return Error("first argument to genJwtToken must be MAP")
+				}
+
+				// Get secret
+				var secret []byte
+				switch s := args[1].(type) {
+				case *objects.String:
+					secret = []byte(s.Value)
+				case *objects.Bytes:
+					secret = s.Value
+				default:
+					return Error("second argument to genJwtToken must be STRING or BYTES")
+				}
+
+				// Parse options
+				withType := true
+				base64Secret := false
+				expireSeconds := int64(0)
+
+				if len(args) > 2 {
+					for _, opt := range args[2:] {
+						if optStr, ok := opt.(*objects.String); ok {
+							switch {
+							case optStr.Value == "-noType":
+								withType = false
+							case optStr.Value == "-base64Secret":
+								base64Secret = true
+							case strings.HasPrefix(optStr.Value, "-expire="):
+								expStr := strings.TrimPrefix(optStr.Value, "-expire=")
+								expireSeconds = parseIntFromString(expStr)
+							}
+						}
+					}
+				}
+
+				token, err := objects.GenJwtToken(payload, secret, withType, base64Secret, expireSeconds)
+				if err != nil {
+					return Error(fmt.Sprintf("genJwtToken failed: %v", err))
+				}
+				return String(token)
+			}),
+
+			"parseJwtToken": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 2 {
+					return Error("parseJwtToken requires at least 2 arguments: token, secret")
+				}
+
+				// Get token string
+				tokenStr, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("first argument to parseJwtToken must be STRING")
+				}
+
+				// Get secret
+				var secret []byte
+				switch s := args[1].(type) {
+				case *objects.String:
+					secret = []byte(s.Value)
+				case *objects.Bytes:
+					secret = s.Value
+				default:
+					return Error("second argument to parseJwtToken must be STRING or BYTES")
+				}
+
+				// Parse options
+				base64Secret := false
+				noValidate := false
+
+				if len(args) > 2 {
+					for _, opt := range args[2:] {
+						if optStr, ok := opt.(*objects.String); ok {
+							switch optStr.Value {
+							case "-base64Secret":
+								base64Secret = true
+							case "-noValidate":
+								noValidate = true
+							}
+						}
+					}
+				}
+
+				claims, err := objects.ParseJwtToken(tokenStr.Value, secret, base64Secret, noValidate)
+				if err != nil {
+					return Error(fmt.Sprintf("parseJwtToken failed: %v", err))
+				}
+
+				// Convert claims to Map
+				result := make(map[objects.HashKey]objects.MapPair)
+				for k, v := range claims {
+					keyObj := objects.NewString(k)
+					hashKey := keyObj.HashKey()
+					result[hashKey] = objects.MapPair{
+						Key:   keyObj,
+						Value: objects.InterfaceToObject(v),
+					}
+				}
+				return objects.NewMap(result)
+			}),
 		},
 	})
+}
+
+// parseIntFromString parses integer from string
+func parseIntFromString(s string) int64 {
+	var result int64
+	for _, c := range s {
+		if c >= '0' && c <= '9' {
+			result = result*10 + int64(c-'0')
+		}
+	}
+	return result
 }
 
 // hmacHash is a helper function for HMAC operations

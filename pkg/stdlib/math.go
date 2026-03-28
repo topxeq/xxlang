@@ -215,6 +215,30 @@ func init() {
 				return Float(math.Atan(v))
 			}),
 
+			"atan2": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 2 {
+					return Error("atan2() takes exactly 2 arguments")
+				}
+				var y, x float64
+				switch n := args[0].(type) {
+				case *objects.Int:
+					y = float64(n.Value)
+				case *objects.Float:
+					y = n.Value
+				default:
+					return Error("atan2() requires numeric arguments")
+				}
+				switch n := args[1].(type) {
+				case *objects.Int:
+					x = float64(n.Value)
+				case *objects.Float:
+					x = n.Value
+				default:
+					return Error("atan2() requires numeric arguments")
+				}
+				return Float(math.Atan2(y, x))
+			}),
+
 			"log": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				if len(args) != 1 {
 					return Error("log() takes exactly 1 argument")
@@ -251,6 +275,25 @@ func init() {
 					return Error("log10() requires a positive argument")
 				}
 				return Float(math.Log10(v))
+			}),
+
+			"log2": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("log2() takes exactly 1 argument")
+				}
+				var v float64
+				switch n := args[0].(type) {
+				case *objects.Int:
+					v = float64(n.Value)
+				case *objects.Float:
+					v = n.Value
+				default:
+					return Error("log2() requires a numeric argument")
+				}
+				if v <= 0 {
+					return Error("log2() requires a positive argument")
+				}
+				return Float(math.Log2(v))
 			}),
 
 			"exp": BuiltinFunc(func(args ...objects.Object) objects.Object {
@@ -297,6 +340,38 @@ func init() {
 
 			"random": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				return Float(float64(randomInt()) / float64(2147483647))
+			}),
+
+			"degToRad": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("degToRad() takes exactly 1 argument")
+				}
+				var v float64
+				switch n := args[0].(type) {
+				case *objects.Int:
+					v = float64(n.Value)
+				case *objects.Float:
+					v = n.Value
+				default:
+					return Error("degToRad() requires a numeric argument")
+				}
+				return Float(v * math.Pi / 180)
+			}),
+
+			"radToDeg": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("radToDeg() takes exactly 1 argument")
+				}
+				var v float64
+				switch n := args[0].(type) {
+				case *objects.Int:
+					v = float64(n.Value)
+				case *objects.Float:
+					v = n.Value
+				default:
+					return Error("radToDeg() requires a numeric argument")
+				}
+				return Float(v * 180 / math.Pi)
 			}),
 		},
 	})

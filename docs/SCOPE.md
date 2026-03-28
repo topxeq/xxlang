@@ -268,6 +268,60 @@ example()
 pln(len([1,2,3]))   // 3 (built-in still works outside)
 ```
 
+### Complete Name Resolution Priority
+
+Xxlang resolves names in the following order (highest to lowest priority):
+
+1. **Local variables** - Variables declared inside the current function
+2. **Enclosing function variables** - Variables from outer functions (for closures)
+3. **Global variables** - Variables declared at the top level
+4. **Destructured imports** - Functions imported via `import { fn } from "module"`
+5. **Built-in functions** - Predefined functions like `len`, `pln`, `typeOf`
+
+### Module Imports and Scope
+
+#### Destructuring Import
+
+Destructured imports are added to the current scope and can shadow built-ins:
+
+```xxl
+// Built-in abs exists
+pln(abs(-5))  // 5
+
+// Destructuring import shadows built-in
+import { abs } from "math"
+pln(abs(-10))  // Uses module function, not built-in
+```
+
+#### Namespace Import
+
+Namespace imports create a new namespace object and do NOT shadow built-ins:
+
+```xxl
+import * as math from "math"
+
+// Both are accessible
+pln(abs(-5))       // 5 (built-in)
+pln(math.abs(-10)) // 10 (module function)
+```
+
+### Variable vs Import vs Built-in
+
+```xxl
+// Priority: variable > import > built-in
+
+import { abs } from "math"  // Shadows built-in abs
+
+abs := func(x) { x * 2 }    // Shadows module abs
+pln(abs(5))                 // 10 (user variable, highest priority)
+```
+
+### Best Practices for Avoiding Conflicts
+
+1. **Use namespace imports** (`import * as m from "module"`) to avoid shadowing built-ins
+2. **Avoid naming variables after built-in functions** unless intentionally overriding
+3. **Check for existing built-ins** before defining variables with common names like `len`, `type`, `abs`
+
 ## Scope Resolution Summary
 
 ```xxl

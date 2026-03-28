@@ -81,6 +81,8 @@ var TypeMethods = map[ObjectType]map[string]*Builtin{
 	// HTML
 	HTMLDocumentType: htmlDocumentMethods,
 	HTMLElementType:  htmlElementMethods,
+	// TOML
+	TomlDocumentType: tomlDocumentMethods,
 }
 
 // GetMethod returns the builtin method for the given object type and method name
@@ -8995,5 +8997,176 @@ var htmlElementMethods = map[string]*Builtin{
 			return newError("receiver for toMap must be HTMLElement, got %s", args[0].Type())
 		}
 		return self.ToMap()
+	}},
+}
+
+// ============================================================
+// TOML Document Methods
+// ============================================================
+
+var tomlDocumentMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	"get": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for get. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*TomlDocument)
+		if !ok {
+			return newError("receiver for get must be TomlDocument, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("path must be STRING, got %s", args[1].Type())
+		}
+		val := self.Get(path.Value)
+		if val == nil {
+			return NULL
+		}
+		return val.ToXxlangObject()
+	}},
+	"set": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for set. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*TomlDocument)
+		if !ok {
+			return newError("receiver for set must be TomlDocument, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("path must be STRING, got %s", args[1].Type())
+		}
+		value := FromXxlangObject(args[2])
+		self.Set(path.Value, value)
+		return NULL
+	}},
+	"remove": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for remove. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*TomlDocument)
+		if !ok {
+			return newError("receiver for remove must be TomlDocument, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("path must be STRING, got %s", args[1].Type())
+		}
+		if self.Remove(path.Value) {
+			return TRUE
+		}
+		return FALSE
+	}},
+	"has": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for has. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*TomlDocument)
+		if !ok {
+			return newError("receiver for has must be TomlDocument, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("path must be STRING, got %s", args[1].Type())
+		}
+		if self.Has(path.Value) {
+			return TRUE
+		}
+		return FALSE
+	}},
+	"keys": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for keys. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*TomlDocument)
+		if !ok {
+			return newError("receiver for keys must be TomlDocument, got %s", args[0].Type())
+		}
+		keys := self.Keys()
+		elements := make([]Object, len(keys))
+		for i, k := range keys {
+			elements[i] = NewString(k)
+		}
+		return NewArray(elements)
+	}},
+	"sections": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for sections. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*TomlDocument)
+		if !ok {
+			return newError("receiver for sections must be TomlDocument, got %s", args[0].Type())
+		}
+		sections := self.Sections()
+		elements := make([]Object, len(sections))
+		for i, s := range sections {
+			elements[i] = NewString(s)
+		}
+		return NewArray(elements)
+	}},
+	"toMap": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toMap. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*TomlDocument)
+		if !ok {
+			return newError("receiver for toMap must be TomlDocument, got %s", args[0].Type())
+		}
+		return self.ToMap()
+	}},
+	"toString": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toString. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*TomlDocument)
+		if !ok {
+			return newError("receiver for toString must be TomlDocument, got %s", args[0].Type())
+		}
+		return NewString(self.ToString())
+	}},
+	"toIndented": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toIndented. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*TomlDocument)
+		if !ok {
+			return newError("receiver for toIndented must be TomlDocument, got %s", args[0].Type())
+		}
+		return NewString(self.ToIndented())
+	}},
+	"save": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for save. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*TomlDocument)
+		if !ok {
+			return newError("receiver for save must be TomlDocument, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("path must be STRING, got %s", args[1].Type())
+		}
+		if err := self.Save(path.Value); err != nil {
+			return newError("save failed: %v", err)
+		}
+		return NULL
+	}},
+	"merge": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for merge. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*TomlDocument)
+		if !ok {
+			return newError("receiver for merge must be TomlDocument, got %s", args[0].Type())
+		}
+		other, ok := args[1].(*TomlDocument)
+		if !ok {
+			return newError("other must be TomlDocument, got %s", args[1].Type())
+		}
+		if err := self.Merge(other); err != nil {
+			return newError("merge failed: %v", err)
+		}
+		return NULL
 	}},
 }

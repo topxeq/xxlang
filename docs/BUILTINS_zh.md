@@ -2,6 +2,30 @@
 
 本文档提供 Xxlang 所有内置函数的完整参考。
 
+## 重要说明：函数迁移
+
+部分原本是内置函数的功能已迁移到标准库模块，以便更好地组织代码。如果某个内置函数未找到，请检查对应的模块：
+
+| 模块 | 迁移的函数 |
+|------|-----------|
+| `math` | `sin, cos, tan, asin, acos, atan, atan2, exp, log, log10, log2, pi, e, degToRad, radToDeg, random, round` |
+| `locale` | `toPinYin, kanaToRomaji, kanjiToKana, kanjiToRomaji` |
+| `crypto` | `genJwtToken, parseJwtToken` |
+
+使用命名空间导入来访问迁移后的函数：
+
+```xxl
+import * as math from "math"
+import * as locale from "locale"
+import * as crypto from "crypto"
+
+pln(math.sin(1.57))
+pln(locale.toPinYin("中国"))
+token := crypto.genJwtToken({"sub": "user"}, "secret")
+```
+
+完整的名称解析规则请参见 [LANGUAGE.md - 名称冲突解决](LANGUAGE.md#name-conflict-resolution)。
+
 ## 目录
 
 - [预置全局变量](#预置全局变量)

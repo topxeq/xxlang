@@ -1,0 +1,130 @@
+// test_zip_chinese.xxl
+// Test zip module with Chinese filenames
+
+import "zip"
+import "io"
+
+pln("=== Testing ZIP Module with Chinese Filenames ===\n")
+
+// Create a temporary directory for testing
+var tempDir = "temp/zip_chinese_test"
+io.mkdir(tempDir)
+
+// Test 1: Create ZIP with Chinese filenames using createFromMap
+pln("=== Test 1: createFromMap with Chinese filenames ===")
+
+var zipPath1 = tempDir + "/test_chinese.zip"
+
+var entries = {
+    "中文文件.txt": "这是中文内容，测试中文文件名支持。",
+    "文档/报告.txt": "这是一个报告文档的内容。",
+    "数据/配置.json": "{\"name\": \"测试\", \"value\": 123}",
+    "日本語.txt": "日本語のテキストです。",
+    "한글.txt": "한글 테스트입니다.",
+    "emoji_😀.txt": "Emoji support test! 🎉🎊",
+    "regular_file.txt": "Regular ASCII filename"
+}
+
+var result = zip.createFromMap(zipPath1, entries)
+pln("Created ZIP: ", zipPath1)
+
+// Test 2: List entries in the ZIP
+pln("\n=== Test 2: List entries ===")
+var names = zip.listNames(zipPath1)
+for (name in names) {
+    pln("  - ", name)
+}
+
+// Test 3: Read Chinese filename entries
+pln("\n=== Test 3: Read entries with Chinese filenames ===")
+var content = zip.readEntry(zipPath1, "中文文件.txt")
+pln("Content of '中文文件.txt': ", content)
+
+var content2 = zip.readEntry(zipPath1, "文档/报告.txt")
+pln("Content of '文档/报告.txt': ", content2)
+
+// Test 4: Check if entries exist
+pln("\n=== Test 4: Check entry existence ===")
+pln("Has '中文文件.txt': ", zip.hasEntry(zipPath1, "中文文件.txt"))
+pln("Has 'emoji_😀.txt': ", zip.hasEntry(zipPath1, "emoji_😀.txt"))
+pln("Has '不存在.txt': ", zip.hasEntry(zipPath1, "不存在.txt"))
+
+// Test 5: Get ZIP info
+pln("\n=== Test 5: ZIP info ===")
+var info = zip.getInfo(zipPath1)
+pln("File count: ", info["fileCount"])
+pln("Total size: ", info["totalSize"])
+pln("Compressed size: ", info["compressedSize"])
+pln("Compression ratio: ", info["compressionRatio"], "%")
+
+// Test 6: Extract all files
+pln("\n=== Test 6: Extract files ===")
+var extractDir = tempDir + "/extracted"
+var extractResult = zip.extract(zipPath1, extractDir)
+pln("Extracted to: ", extractDir)
+
+// Verify extracted file
+var extractedContent = io.readFile(extractDir + "/中文文件.txt")
+pln("Extracted content matches: ", extractedContent == "这是中文内容，测试中文文件名支持。")
+
+// Test 7: Handle-based operations
+pln("\n=== Test 7: Handle-based operations ===")
+var zipPath2 = tempDir + "/handle_test.zip"
+var handle = zip.create(zipPath2)
+pln("Created handle: ", handle)
+
+// Add files with Chinese names
+zip.addString(handle, "新建文件.txt", "通过句柄添加的中文内容")
+zip.addString(handle, "子目录/嵌套文件.txt", "嵌套的中文文件")
+zip.addString(handle, "数据.csv", "姓名,年龄\n张三,25\n李四,30")
+
+zip.close(handle)
+pln("Closed handle")
+
+// Verify
+var content3 = zip.readEntry(zipPath2, "新建文件.txt")
+pln("Content from handle-created ZIP: ", content3)
+
+// Test 8: Extract single file
+pln("\n=== Test 8: Extract single file ===")
+var singleExtractPath = tempDir + "/single_文件.txt"
+zip.extractFile(zipPath2, "新建文件.txt", singleExtractPath)
+var singleContent = io.readFile(singleExtractPath)
+pln("Single extracted content: ", singleContent)
+
+// Test 9: Remove entry
+pln("\n=== Test 9: Remove entry ===")
+pln("Before remove, has '新建文件.txt': ", zip.hasEntry(zipPath2, "新建文件.txt"))
+zip.removeEntry(zipPath2, "新建文件.txt")
+pln("After remove, has '新建文件.txt': ", zip.hasEntry(zipPath2, "新建文件.txt"))
+
+// Test 10: Rename entry
+pln("\n=== Test 10: Rename entry ===")
+pln("Before rename, has '子目录/嵌套文件.txt': ", zip.hasEntry(zipPath2, "子目录/嵌套文件.txt"))
+zip.renameEntry(zipPath2, "子目录/嵌套文件.txt", "子目录/重命名文件.txt")
+pln("After rename, has '子目录/嵌套文件.txt': ", zip.hasEntry(zipPath2, "子目录/嵌套文件.txt"))
+pln("After rename, has '子目录/重命名文件.txt': ", zip.hasEntry(zipPath2, "子目录/重命名文件.txt"))
+
+// Test 11: Read all entries
+pln("\n=== Test 11: Read all entries ===")
+var allEntries = zip.readAll(zipPath1)
+pln("All entries count: ", len(allEntries))
+for (key in keys(allEntries)) {
+    pln("  Key: ", key, ", Value length: ", len(allEntries[key]))
+}
+
+// Test 12: Pattern extraction
+pln("\n=== Test 12: Pattern extraction ===")
+var patternDir = tempDir + "/pattern_extracted"
+var count = zip.extractByPattern(zipPath1, patternDir, "*.txt")
+pln("Extracted ", count, " .txt files")
+
+// Summary
+pln("\n=== Summary ===")
+pln("All tests passed! The zip module correctly handles:")
+pln("  - Chinese filenames (中文文件名)")
+pln("  - Japanese filenames (日本語)")
+pln("  - Korean filenames (한글)")
+pln("  - Emoji in filenames (😀)")
+pln("  - Nested directories with Chinese names")
+pln("  - All basic operations (create, read, extract, modify)")

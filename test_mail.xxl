@@ -1,0 +1,101 @@
+// test_mail.xxl - Test Email sending via mail module
+
+mail := loadModule("mail")
+
+pln("=== Testing mail.newClient ===")
+
+// Create a mail client configuration
+client := mail.newClient("smtp.example.com", 587, "user@example.com", "password", "-tls")
+pln("Created mail client:", client)
+
+pln("")
+pln("=== Testing mail.send (Map syntax) ===")
+
+// Note: This example shows the syntax but won't actually send without real credentials
+// To actually send email, replace with real SMTP server details
+
+mailConfig := {
+    "host": "smtp.example.com",
+    "port": 587,
+    "user": "sender@example.com",
+    "password": "your_password",
+    "from": "sender@example.com",
+    "fromName": "Sender Name",
+    "to": "recipient@example.com",
+    "subject": "Test Email from Xxlang",
+    "body": "<h1>Hello from Xxlang!</h1><p>This is a test email.</p>",
+    "tls": true
+}
+
+pln("Mail configuration prepared")
+pln("  Host:", mailConfig["host"])
+pln("  Port:", mailConfig["port"])
+pln("  User:", mailConfig["user"])
+pln("  To:", mailConfig["to"])
+pln("  Subject:", mailConfig["subject"])
+
+// Uncomment to actually send (requires real SMTP credentials):
+// result := mail.send(mailConfig)
+// if isError(result) {
+//     pln("Send failed:", result)
+// } else {
+//     pln("Email sent successfully!")
+// }
+
+pln("")
+pln("=== Testing mail.send (Option syntax) ===")
+
+// Alternative syntax using option strings
+// mail.send(
+//     "-host=smtp.example.com",
+//     "-port=587",
+//     "-user=sender@example.com",
+//     "-password=your_password",
+//     "-from=sender@example.com",
+//     "-fromName=Sender Name",
+//     "-to=recipient@example.com",
+//     "-subject=Test Email",
+//     "-body=<h1>Hello World</h1>",
+//     "-tls"
+// )
+
+pln("Option syntax example shown (commented out)")
+
+pln("")
+pln("=== Sending with attachments ===")
+
+// Example with attachments
+// mail.send({
+//     "host": "smtp.example.com",
+//     "port": 587,
+//     "user": "sender@example.com",
+//     "password": "password",
+//     "to": "recipient@example.com",
+//     "subject": "Email with Attachment",
+//     "body": "<p>Please see attached file.</p>",
+//     "attachFiles": "document.pdf:/path/to/file.pdf;image.png:/path/to/image.png"
+// })
+
+pln("Attachment syntax example shown (commented out)")
+
+pln("")
+pln("=== CC and BCC support ===")
+
+// mail.send({
+//     "host": "smtp.example.com",
+//     "port": 587,
+//     "user": "sender@example.com",
+//     "password": "password",
+//     "to": "to1@example.com, to2@example.com",
+//     "cc": "cc1@example.com; cc2@example.com",
+//     "bcc": "bcc@example.com",
+//     "subject": "Email with CC and BCC",
+//     "body": "<p>This email has multiple recipients.</p>"
+// })
+
+pln("CC/BCC example shown (commented out)")
+
+pln("")
+pln("=== All email tests completed ===")
+pln("")
+pln("Note: To send real emails, replace example credentials with real SMTP server details.")

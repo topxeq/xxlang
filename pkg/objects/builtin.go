@@ -1664,41 +1664,8 @@ var Builtins = map[string]*Builtin{
 
 	// ============================================================
 	// Math Functions
+	// Note: round and random removed - use math module instead
 	// ============================================================
-	"round": {
-		Fn: func(args ...Object) Object {
-			if len(args) < 1 || len(args) > 2 {
-				return newError("wrong number of arguments for round. got=%d, want=1 or 2", len(args))
-			}
-
-			var val float64
-			switch arg := args[0].(type) {
-			case *Int:
-				return arg
-			case *Float:
-				val = arg.Value
-			default:
-				return newError("argument to 'round' must be INT or FLOAT, got %s", args[0].Type())
-			}
-
-			precision := 0
-			if len(args) == 2 {
-				p, ok := args[1].(*Int)
-				if !ok {
-					return newError("second argument to 'round' must be INT, got %s", args[1].Type())
-				}
-				precision = int(p.Value)
-			}
-
-			if precision == 0 {
-				return NewInt(int64(math.Round(val)))
-			}
-
-			multiplier := math.Pow(10, float64(precision))
-			result := math.Round(val*multiplier) / multiplier
-			return NewFloat(result)
-		},
-	},
 	"clamp": {
 		Fn: func(args ...Object) Object {
 			if len(args) != 3 {
@@ -1773,14 +1740,6 @@ var Builtins = map[string]*Builtin{
 			default:
 				return newError("argument to 'sign' must be numeric, got %s", args[0].Type())
 			}
-		},
-	},
-	"random": {
-		Fn: func(args ...Object) Object {
-			if len(args) != 0 {
-				return newError("wrong number of arguments for random. got=%d, want=0", len(args))
-			}
-			return NewFloat(float64(randInt63()) / float64(1<<63))
 		},
 	},
 	"randomInt": {

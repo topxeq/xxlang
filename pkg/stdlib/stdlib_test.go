@@ -8,7 +8,7 @@ import (
 )
 
 func TestRegistry(t *testing.T) {
-	modules := []string{"math", "string", "array", "io"}
+	modules := []string{"math", "strings", "array", "io"}
 
 	for _, name := range modules {
 		if !Has(name) {
@@ -93,7 +93,7 @@ func TestBuiltinFunc(t *testing.T) {
 func TestAllModules(t *testing.T) {
 	// Test that all expected modules are registered
 	expectedModules := []string{
-		"math", "string", "array", "io", "json", "time",
+		"math", "strings", "array", "io", "json", "time",
 		"crypto", "regex", "fmt", "os", "env", "log",
 		"encoding", "strconv", "text", "uuid", "debug",
 		"collections", "bytes", "csv", "sort", "net", "fp",

@@ -1257,41 +1257,19 @@ func TestBuiltinArrayFunctions(t *testing.T) {
 }
 
 func TestBuiltinMathFunctions(t *testing.T) {
-	// round
-	fn, ok := Builtins["round"]
-	if !ok {
-		t.Fatal("round builtin not found")
-	}
-	result := fn.Fn(&Float{Value: 3.5})
-	compareObjectsForTest(t, result, &Int{Value: 4})
-	result = fn.Fn(&Float{Value: 3.4})
-	compareObjectsForTest(t, result, &Int{Value: 3})
+	// Note: round and random removed - use math module instead
 
 	// sign
-	fn, ok = Builtins["sign"]
+	fn, ok := Builtins["sign"]
 	if !ok {
 		t.Fatal("sign builtin not found")
 	}
-	result = fn.Fn(&Int{Value: -5})
+	result := fn.Fn(&Int{Value: -5})
 	compareObjectsForTest(t, result, &Int{Value: -1})
 	result = fn.Fn(&Int{Value: 0})
 	compareObjectsForTest(t, result, &Int{Value: 0})
 	result = fn.Fn(&Int{Value: 5})
 	compareObjectsForTest(t, result, &Int{Value: 1})
-
-	// random
-	fn, ok = Builtins["random"]
-	if !ok {
-		t.Fatal("random builtin not found")
-	}
-	result = fn.Fn()
-	f, ok := result.(*Float)
-	if !ok {
-		t.Fatalf("expected Float, got %s", result.Type())
-	}
-	if f.Value < 0 || f.Value >= 1 {
-		t.Errorf("random should be in [0, 1), got %v", f.Value)
-	}
 
 	// randomInt
 	fn, ok = Builtins["randomInt"]

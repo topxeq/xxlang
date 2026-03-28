@@ -588,7 +588,7 @@ pln(squared)  // [1, 4, 9, 16, 25]
 ### 字符串处理
 
 ```xxl
-import "string"
+import "strings"
 
 var text = "  Hello, World!  "
 
@@ -1330,7 +1330,7 @@ pln(csv)
 
 ```xxl
 import "io"
-import "string"
+import "strings"
 
 func parseConfig(path) {
     if (!io.exists(path)) {
@@ -1383,7 +1383,7 @@ pln("数据库:", config["name"])
 ### 词频统计
 
 ```xxl
-import "string"
+import "strings"
 import "regex"
 
 func wordFrequency(text) {

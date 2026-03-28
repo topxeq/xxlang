@@ -121,6 +121,8 @@ const (
 	HTMLElementType  ObjectType = "HTML_ELEMENT"
 	// YAML types
 	YAMLDocumentType ObjectType = "YAML_DOCUMENT"
+	// TOML types
+	TomlDocumentType ObjectType = "TOML_DOCUMENT"
 )
 
 // TypeTag is a fast integer type identifier for hot path checks

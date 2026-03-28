@@ -1,0 +1,95 @@
+// 21_bytesbuffer.xxl
+// BytesBuffer - mutable byte buffer for efficient byte operations
+
+import "bytesbuffer"
+
+pln("=== BytesBuffer Basics ===")
+
+// Create a new BytesBuffer
+var bb = bytesbuffer.create()
+pln("Created empty buffer: ", bb)
+pln("Length: ", bb.len())
+pln("Capacity: ", bb.cap())
+
+// Write string
+pln("\n=== Write Operations ===")
+bb.write("Hello, ")
+bb.write("World!")
+pln("After writing: ", bb.toString())
+pln("Length: ", bb.len())
+
+// Write byte values
+pln("\n=== Write Bytes ===")
+bb.writeByte(32)  // space
+bb.writeByte(65)  // 'A'
+bb.writeByte(66)  // 'B'
+bb.writeByte(67)  // 'C'
+pln("After writeByte: ", bb.toString())
+
+// Write integers in binary format
+pln("\n=== Write Binary Integers ===")
+var bb2 = bytesbuffer.create()
+bb2.writeInt64(1234567890123456789)
+pln("After writeInt64, length: ", bb2.len(), " bytes")
+
+// Read it back
+var val = bb2.readInt64()
+pln("Read back: ", val)
+
+// Write floats
+pln("\n=== Write Binary Floats ===")
+var bb3 = bytesbuffer.create()
+bb3.writeFloat64(3.14159265358979)
+pln("After writeFloat64, length: ", bb3.len(), " bytes")
+
+var fval = bb3.readFloat64()
+pln("Read back: ", fval)
+
+// Create from string
+pln("\n=== Create from String ===")
+var bb4 = bytesbuffer.fromString("Binary data here")
+pln("fromString: ", bb4.toString())
+pln("Length: ", bb4.len())
+
+// Create from byte array
+pln("\n=== Create from Byte Array ===")
+var bb5 = bytesbuffer.fromBytes([72, 101, 108, 108, 111])  // "Hello"
+pln("fromBytes: ", bb5.toString())
+
+// Get bytes as array
+pln("\n=== Get Bytes ===")
+var bytes = bb5.bytes()
+pln("Bytes as array: ", bytes)
+pln("First byte: ", bytes[0], " (should be 72 for 'H')")
+
+// Peek without consuming
+pln("\n=== Peek ===")
+bb5.write([87, 111, 114, 108, 100])  // "World"
+pln("After writing 'World': ", bb5.toString())
+var peeked = bb5.peek(5)
+pln("Peeked 5 bytes: ", peeked, " (should be 'Hello')")
+pln("Buffer unchanged, length: ", bb5.len())
+
+// Truncate
+pln("\n=== Truncate ===")
+bb5.truncate(5)
+pln("After truncate(5): ", bb5.toString())
+
+// Clear
+pln("\n=== Clear ===")
+bb5.clear()
+pln("After clear, length: ", bb5.len())
+pln("isEmpty: ", bb5.isEmpty())
+
+// Grow capacity
+pln("\n=== Grow ===")
+var bb6 = bytesbuffer.create(1000)
+pln("Created with capacity 1000, cap: ", bb6.cap())
+
+// Type checking
+pln("\n=== Type Checking ===")
+pln("typeOf(bb): ", typeOf(bb))
+pln("isBytesBuffer: ", bytesbuffer.isBytesBuffer(bb))
+pln("isBytesBuffer(string): ", bytesbuffer.isBytesBuffer("test"))
+
+pln("\n=== Done ===")

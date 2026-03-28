@@ -1,0 +1,4 @@
+// test_pinyin.xxl
+pln("Testing toPinYin...")
+a := "ni hao"
+pln("a:", a)

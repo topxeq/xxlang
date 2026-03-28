@@ -502,6 +502,66 @@ func init() {
 				}
 				return Array(result...)
 			}),
+
+			// Keys - get sorted keys from a map
+			"keys": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("keys() takes exactly 1 argument")
+				}
+				m, ok := args[0].(*objects.Map)
+				if !ok {
+					return Error("keys() requires a map argument")
+				}
+				// Get sorted keys
+				sortedKeys := m.GetSortedKeys()
+				// Convert to array of strings
+				result := make([]objects.Object, len(sortedKeys))
+				for i, k := range sortedKeys {
+					if s, ok := k.(*objects.String); ok {
+						result[i] = s
+					} else {
+						result[i] = String(k.Inspect())
+					}
+				}
+				return Array(result...)
+			}),
+
+			// Values - get values from a map (in key-sorted order)
+			"values": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("values() takes exactly 1 argument")
+				}
+				m, ok := args[0].(*objects.Map)
+				if !ok {
+					return Error("values() requires a map argument")
+				}
+				// Get sorted keys to ensure deterministic order
+				sortedKeys := m.GetSortedKeys()
+				result := make([]objects.Object, len(sortedKeys))
+				for i, k := range sortedKeys {
+					hashKey := k.HashKey()
+					if pair, exists := m.Pairs[hashKey]; exists {
+						result[i] = pair.Value
+					} else {
+						result[i] = Null()
+					}
+				}
+				return Array(result...)
+			}),
+
+			// HasKey - check if a map has a key
+			"hasKey": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 2 {
+					return Error("hasKey() takes exactly 2 arguments")
+				}
+				m, ok := args[0].(*objects.Map)
+				if !ok {
+					return Error("hasKey() requires a map as first argument")
+				}
+				hashKey := args[1].HashKey()
+				_, exists := m.Pairs[hashKey]
+				return Bool(exists)
+			}),
 		},
 	})
 }

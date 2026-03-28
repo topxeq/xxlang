@@ -1,0 +1,20 @@
+// ms/add.xxl - Addition microservice
+// Access: /ms/add?a1=10&a2=20
+
+var a1 = int(paraMapG["a1"])
+var a2 = int(paraMapG["a2"])
+var result = a1 + a2
+
+// Set response type
+setRespHeader(responseG, "Content-Type", "application/json")
+
+// Write JSON response
+writeResp(responseG, toJson({
+    "success": true,
+    "result": result,
+    "a1": a1,
+    "a2": a2
+}))
+
+// Signal response complete
+return "TX_END_RESPONSE_XT"

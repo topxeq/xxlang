@@ -71,10 +71,12 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["isFunction"], // 57
 		objects.Builtins["isNull"],     // 58
 		// Math utilities
-		objects.Builtins["round"],     // 59
-		objects.Builtins["clamp"],     // 60
-		objects.Builtins["sign"],      // 61
-		objects.Builtins["random"],    // 62
+		// 59: round removed - use math.round
+		nil,                       // 59 (placeholder)
+		objects.Builtins["clamp"], // 60
+		objects.Builtins["sign"],  // 61
+		// 62: random removed - use math.random
+		nil,                           // 62 (placeholder)
 		objects.Builtins["randomInt"], // 63
 		// Array utilities
 		objects.Builtins["unique"],  // 64
@@ -304,29 +306,31 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["getFileAbs"],      // 259
 		objects.Builtins["getFileRel"],      // 260
 		objects.Builtins["isFile"],          // 261
+		objects.Builtins["saveBytes"],       // 262
+		objects.Builtins["loadBytes"],       // 263
 		// Time enhancement built-in functions (Batch 2)
-		objects.Builtins["getNowStr"],       // 262
-		objects.Builtins["getNowTimeStamp"], // 263
-		objects.Builtins["formatTime"],      // 264
-		objects.Builtins["timeToTick"],      // 265
-		objects.Builtins["timeAddSecs"],     // 266
-		objects.Builtins["timeAddDate"],     // 267
-		objects.Builtins["timeBefore"],      // 268
-		objects.Builtins["strToTime"],       // 269
-		objects.Builtins["timeAfter"],       // 270
-		objects.Builtins["timeEqual"],       // 271
-		objects.Builtins["timeDiff"],        // 272
-		objects.Builtins["timeDiffSecs"],    // 273
-		objects.Builtins["parseTime"],       // 274
-		objects.Builtins["isTime"],          // 275
+		objects.Builtins["getNowStr"],       // 264
+		objects.Builtins["getNowTimeStamp"], // 265
+		objects.Builtins["formatTime"],      // 266
+		objects.Builtins["timeToTick"],      // 267
+		objects.Builtins["timeAddSecs"],     // 268
+		objects.Builtins["timeAddDate"],     // 269
+		objects.Builtins["timeBefore"],      // 270
+		objects.Builtins["strToTime"],       // 271
+		objects.Builtins["timeAfter"],       // 272
+		objects.Builtins["timeEqual"],       // 273
+		objects.Builtins["timeDiff"],        // 274
+		objects.Builtins["timeDiffSecs"],    // 275
+		objects.Builtins["parseTime"],       // 276
+		objects.Builtins["isTime"],          // 277
 		// Regex enhancement built-in functions (Batch 3)
-		objects.Builtins["regMatch"],           // 276
-		objects.Builtins["regContains"],        // 277
-		objects.Builtins["regFindFirst"],       // 278
-		objects.Builtins["regFindAll"],         // 279
-		objects.Builtins["regFindFirstGroups"], // 280
-		objects.Builtins["regFindAllGroups"],   // 281
-		objects.Builtins["regReplace"],         // 282
+		objects.Builtins["regMatch"],           // 278
+		objects.Builtins["regContains"],        // 279
+		objects.Builtins["regFindFirst"],       // 280
+		objects.Builtins["regFindAll"],         // 281
+		objects.Builtins["regFindFirstGroups"], // 282
+		objects.Builtins["regFindAllGroups"],   // 283
+		objects.Builtins["regReplace"],         // 284
 		objects.Builtins["regSplit"],           // 283
 		objects.Builtins["regCount"],           // 284
 		objects.Builtins["regQuote"],           // 285
@@ -356,21 +360,23 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["getPPid"],    // 307
 		objects.Builtins["hostname"],   // 308
 		// Math enhancement built-in functions (Batch 6)
-		objects.Builtins["sin"],         // 309
-		objects.Builtins["cos"],         // 310
-		objects.Builtins["tan"],         // 311
-		objects.Builtins["asin"],        // 312
-		objects.Builtins["acos"],        // 313
-		objects.Builtins["atan"],        // 314
-		objects.Builtins["atan2"],       // 315
-		objects.Builtins["exp"],         // 316
-		objects.Builtins["log"],         // 317
-		objects.Builtins["log10"],       // 318
-		objects.Builtins["log2"],        // 319
-		objects.Builtins["pi"],          // 320
-		objects.Builtins["e"],           // 321
-		objects.Builtins["degToRad"],    // 322
-		objects.Builtins["radToDeg"],    // 323
+		// Note: sin, cos, tan, asin, acos, atan, atan2, exp, log, log10, log2, pi, e, degToRad, radToDeg removed
+		// Use math module instead. Placeholders kept for index stability.
+		nil,                             // 309: sin removed
+		nil,                             // 310: cos removed
+		nil,                             // 311: tan removed
+		nil,                             // 312: asin removed
+		nil,                             // 313: acos removed
+		nil,                             // 314: atan removed
+		nil,                             // 315: atan2 removed
+		nil,                             // 316: exp removed
+		nil,                             // 317: log removed
+		nil,                             // 318: log10 removed
+		nil,                             // 319: log2 removed
+		nil,                             // 320: pi removed
+		nil,                             // 321: e removed
+		nil,                             // 322: degToRad removed
+		nil,                             // 323: radToDeg removed
 		objects.Builtins["adjustFloat"], // 324
 		objects.Builtins["toKMG"],       // 325
 		objects.Builtins["trunc"],       // 326
@@ -421,15 +427,16 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["getTextSimilarity"],   // 367
 		objects.Builtins["fuzzyFind"],           // 368
 		objects.Builtins["strRemoveBom"],        // 369
-		objects.Builtins["wordCount"],           // 370
-		objects.Builtins["lineCount"],           // 371
-		objects.Builtins["reverseStr"],          // 372
-		objects.Builtins["capitalize"],          // 373
-		objects.Builtins["title"],               // 374
-		objects.Builtins["swapCase"],            // 375
-		objects.Builtins["center"],              // 376
-		objects.Builtins["zfill"],               // 377
-		objects.Builtins["isSpace"],             // 378
+		// String functions moved to string module
+		nil, // 370: wordCount removed - use string.wordCount()
+		nil, // 371: lineCount removed - use string.lineCount()
+		nil, // 372: reverseStr removed - use string.reverse()
+		nil, // 373: capitalize removed - use string.capitalize()
+		nil, // 374: title removed - use string.title()
+		nil, // 375: swapCase removed - use string.swapCase()
+		nil, // 376: center removed - use string.center()
+		nil, // 377: zfill removed - use string.zfill()
+		nil, // 378: isSpace removed - use string.isSpace()
 		// Collection enhancement built-in functions (Batch 11)
 		objects.Builtins["mapArray"],     // 379
 		objects.Builtins["filterArray"],  // 380
@@ -520,6 +527,57 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["genToken"],       // 461
 		objects.Builtins["genOtpCode"],     // 462
 		objects.Builtins["checkOtpCode"],   // 463
+		// Unicode/Text processing built-in functions (Batch 16)
+		// Note: toPinYin, kanaToRomaji, kanjiToKana, kanjiToRomaji moved to locale module
+		nil, // 464: toPinYin removed
+		nil, // 465: kanaToRomaji removed
+		nil, // 466: kanjiToKana removed
+		nil, // 467: kanjiToRomaji removed
+		// JWT built-in functions (Batch 17)
+		// Note: genJwtToken, parseJwtToken moved to crypto module
+		nil, // 468: genJwtToken removed
+		nil, // 469: parseJwtToken removed
+		// Task/Scheduling built-in functions (Batch 18)
+		// Note: isCronExprValid, isCronExprDue, runTicker, stopTicker moved to task module
+		nil, // 470: isCronExprValid removed
+		nil, // 471: isCronExprDue removed
+		nil, // 472: runTicker removed
+		nil, // 473: stopTicker removed
+		// Image processing built-in functions (Batch 19)
+		// Note: genQr, scanQr, getImageInfo, resizeImage moved to image module
+		// createImage is kept as a builtin (alias to image.createImage)
+		nil,                             // 474: genQr removed
+		nil,                             // 475: scanQr removed
+		nil,                             // 476: getImageInfo removed
+		nil,                             // 477: resizeImage removed
+		objects.Builtins["createImage"], // 478: kept as builtin (alias)
+		// Network communication built-in functions (Batch 20)
+		// Note: newFtpClient, newSshClient removed - use ftp.connect() and ssh.connect() instead
+		nil, // 479: newFtpClient removed
+		nil, // 480: newSshClient removed
+		// Excel/XLSX functions - use xlsx.create(), xlsx.open(), csv.read(), csv.write()
+		nil, // 481: newExcel removed
+		nil, // 482: openExcel removed
+		nil, // 483: readCsv removed
+		nil, // 484: writeCsv removed
+		// Data format built-in functions (Batch 22)
+		// XML functions - use xml.parse(), xml.parseFile(), xml.create()
+		nil, // 485: parseXml removed
+		nil, // 486: parseXmlFile removed
+		nil, // 487: newXmlDoc removed
+		// YAML functions - use yaml.parse(), yaml.stringify(), yaml.toJson(), yaml.fromJson()
+		nil, // 488: parseYaml removed
+		nil, // 489: toYaml removed
+		nil, // 490: yamlToJson removed
+		nil, // 491: jsonToYaml removed
+		// TOML functions - use toml.parse(), toml.encode(), toml.create(), toml.isValid()
+		nil, // 492: parseToml removed
+		nil, // 493: toToml removed
+		nil, // 494: newToml removed
+		nil, // 495: tomlValid removed
+		// Email sending functions - use mail.newClient(), mail.send()
+		nil, // 496: sendMail removed
+		nil, // 497: newMailClient removed
 	}
 
 	if index < 0 || index >= len(builtins) {

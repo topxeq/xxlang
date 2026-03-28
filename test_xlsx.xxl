@@ -1,0 +1,86 @@
+// test_xlsx.xxl - Test Excel/XLSX built-in functions
+
+pln("=== Testing newExcel ===")
+
+xl := newExcel()
+pln("Created Excel workbook:", xl)
+
+// Create a new sheet
+result := xl.newSheet("Data")
+pln("Created sheet 'Data':", result)
+
+// Add another sheet
+xl.newSheet("Summary")
+
+// Get sheet list
+sheets := xl.getSheetList()
+pln("Sheet list:", sheets)
+pln("Sheet count:", xl.getSheetCount())
+
+pln("")
+pln("=== Testing setCell and getCell ===")
+
+// Set some cell values
+xl.setCell("Data", "A1", "Name")
+xl.setCell("Data", "B1", "Age")
+xl.setCell("Data", "A2", "Alice")
+xl.setCell("Data", "B2", 25)
+xl.setCell("Data", "A3", "Bob")
+xl.setCell("Data", "B3", 30)
+xl.setCell("Data", "C3", 99.5)
+
+pln("Set cells in 'Data' sheet")
+
+// Get cell values
+pln("A1:", xl.getCell("Data", "A1"))
+pln("B2:", xl.getCell("Data", "B2"))
+pln("C3:", xl.getCell("Data", "C3"))
+
+pln("")
+pln("=== Testing save ===")
+
+err := xl.save("test_output.xlsx")
+pln("Save result:", err)
+
+// Close the workbook
+xl.close()
+pln("Workbook closed")
+
+pln("")
+pln("=== Testing openExcel ===")
+
+xl2 := openExcel("test_output.xlsx")
+pln("Opened workbook:", xl2)
+
+sheets2 := xl2.getSheetList()
+pln("Sheet list:", sheets2)
+
+pln("A1:", xl2.getCell("Data", "A1"))
+pln("B3:", xl2.getCell("Data", "B3"))
+
+xl2.close()
+
+pln("")
+pln("=== Testing readCsv and writeCsv ===")
+
+// Create CSV data
+csvData := [
+    ["Name", "Age", "City"],
+    ["Alice", "25", "Beijing"],
+    ["Bob", "30", "Shanghai"],
+    ["Charlie", "35", "Guangzhou"]
+]
+
+err := writeCsv("test_data.csv", csvData)
+pln("Write CSV result:", err)
+
+// Read it back
+readData := readCsv("test_data.csv")
+pln("Read CSV rows:", len(readData))
+
+// Read with header option
+readData2 := readCsv("test_data.csv", ",", true)
+pln("Read CSV without header:", len(readData2))
+
+pln("")
+pln("=== All Excel/XLSX tests completed ===")

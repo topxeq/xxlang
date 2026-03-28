@@ -1,0 +1,72 @@
+// test_image.xxl - Test Image processing built-in functions
+
+pln("=== Testing genQr ===")
+
+// Generate a QR code
+qrBytes := genQr("https://github.com/topxeq/xxlang")
+pln("Generated QR code, size:", len(qrBytes))
+
+// Save to file
+saveBytes("test_qr.png", qrBytes)
+pln("QR code saved to test_qr.png")
+
+// Generate with custom size
+qrLarge := genQr("Hello World!", 256)
+pln("Large QR code size:", len(qrLarge))
+
+// Generate with high error correction
+qrHigh := genQr("Important Data", 256, "high")
+pln("High error correction QR size:", len(qrHigh))
+
+pln("")
+pln("=== Testing scanQr ===")
+
+// Scan the QR code we just generated
+result := scanQr(qrBytes)
+pln("Scanned result:", result)
+
+// Scan from file path
+result2 := scanQr("test_qr.png")
+pln("Scanned from file:", result2)
+
+pln("")
+pln("=== Testing getImageInfo ===")
+
+// Get info about the QR code image
+info := getImageInfo(qrBytes)
+pln("Image info - Width:", info["width"], " Height:", info["height"])
+pln("Format:", info["format"], " HasAlpha:", info["hasAlpha"])
+
+pln("")
+pln("=== Testing createImage ===")
+
+// Create a red image
+redImg := createImage(100, 100, "#FF0000")
+pln("Created red image, size:", len(redImg))
+saveBytes("test_red.png", redImg)
+
+// Create a blue image with alpha
+blueImg := createImage(100, 100, "#0000FF80")
+pln("Created blue image with alpha, size:", len(blueImg))
+saveBytes("test_blue.png", blueImg)
+
+pln("")
+pln("=== Testing resizeImage ===")
+
+// Create a larger image and resize it
+bigImg := createImage(400, 300, "#00FF00")
+pln("Created large image, size:", len(bigImg))
+
+infoBig := getImageInfo(bigImg)
+pln("Large image: ", infoBig["width"], " x ", infoBig["height"])
+
+// Resize to smaller
+resized := resizeImage(bigImg, 100, 75)
+pln("Resized image, size:", len(resized))
+saveBytes("test_resized.png", resized)
+
+infoResized := getImageInfo(resized)
+pln("Resized image: ", infoResized["width"], " x ", infoResized["height"])
+
+pln("")
+pln("=== All image tests completed ===")

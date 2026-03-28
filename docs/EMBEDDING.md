@@ -59,7 +59,7 @@ func main() {
 
 ### WithStdlib()
 
-Enables all standard library modules (io, string, math, json, etc.).
+Enables all standard library modules (io, strings, math, json, etc.).
 
 ```go
 interp := interpreter.New(interpreter.WithStdlib())

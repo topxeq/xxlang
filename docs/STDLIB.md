@@ -9,6 +9,77 @@ import "io"
 io.println("Hello, World!")
 ```
 
+### Import Styles
+
+Xxlang supports multiple import styles:
+
+```xxl
+// Namespace import (recommended for avoiding conflicts)
+import * as math from "math"
+pln(math.sqrt(16))
+
+// Destructuring import (concise, but may shadow built-ins)
+import { sqrt, pow } from "math"
+pln(sqrt(16))
+
+// Simple import
+import "io"
+io.println("Hello")
+```
+
+### Name Conflict Resolution
+
+When module functions have the same name as built-in functions:
+
+- **Namespace imports** (`import * as m from "module"`) keep both accessible
+- **Destructuring imports** (`import { fn } from "module"`) shadow built-ins
+- **User variables** always take highest priority
+
+For detailed name resolution rules, see [LANGUAGE.md - Name Conflict Resolution](LANGUAGE.md#name-conflict-resolution).
+
+### Built-in to Module Migration
+
+Some functions that were previously built-ins have been moved to standard library modules for better organization:
+
+| Module | Migrated Functions |
+|--------|-------------------|
+| `math` | `sin, cos, tan, asin, acos, atan, atan2, exp, log, log10, log2, pi, e, degToRad, radToDeg, random, round` |
+| `locale` | `toPinYin, kanaToRomaji, kanjiToKana, kanjiToRomaji` |
+| `crypto` | `genJwtToken, parseJwtToken` |
+| `task` | `isCronExprValid, isCronExprDue, runTicker, stopTicker` |
+| `image` | `genQr, scanQr, getImageInfo, resizeImage` (createImage kept as builtin alias) |
+| `ftp` | `newFtpClient` (deleted - use `ftp.connect()` or `ftp.newClient()`) |
+| `ssh` | `newSshClient` (deleted - use `ssh.connect()` or `ssh.newClient()`) |
+| `xlsx` | `newExcel, openExcel` (deleted - use `xlsx.create()` and `xlsx.open()`) |
+| `csv` | `readCsv, writeCsv` (deleted - use `csv.read()` and `csv.write()`) |
+| `xml` | `parseXml, parseXmlFile, newXmlDoc` (deleted - use `xml.parse()`, `xml.parseFile()`, `xml.create()`) |
+| `yaml` | `parseYaml, toYaml, yamlToJson, jsonToYaml` (deleted - use `yaml.parse()`, `yaml.stringify()`, `yaml.toJson()`, `yaml.fromJson()`) |
+
+When updating code that uses these functions:
+
+```xxl
+// Old code (built-in style - may not work anymore)
+pln(sin(1.57))
+pln(isCronExprValid("* * * * *"))
+ftp := newFtpClient()
+ftp.connect("host", 21, "user", "pass")
+xl := newExcel()
+data := readCsv("data.csv")
+
+// New code (recommended - explicit module import)
+import * as math from "math"
+import * as task from "task"
+import * as ftp from "ftp"
+import * as xlsx from "xlsx"
+import * as csv from "csv"
+pln(math.sin(1.57))
+pln(task.isCronExprValid("* * * * *"))
+ftp.connect("host", 21, "user", "pass")  // One-step connect
+xl := xlsx.create()
+data := csv.read("data.csv")
+// Or: ftp.newClient() then client.connect(...)
+```
+
 ## Table of Contents
 
 - [io](#io) - Input/output operations
@@ -30,6 +101,8 @@ io.println("Hello, World!")
 - [regex](#regex) - Regular expressions
 - [crypto](#crypto) - Cryptographic functions
 - [time](#time) - Time and date functions
+- [image](#image) - Image processing and QR codes
+- [task](#task) - Task scheduling and cron expressions
 - [fmt](#fmt) - Formatting utilities
 - [encoding](#encoding) - Base64 and hex encoding/decoding
 - [uuid](#uuid) - UUID generation
@@ -2989,6 +3062,234 @@ Generates a random UUID (v4) string.
 
 ```xxl
 uuid()  // "550e8400-e29b-41d4-a716-446655440000"
+```
+
+---
+
+## image
+
+Image processing and QR code utilities.
+
+### QR Code Generation
+
+#### genQr(text)
+#### genQr(text, size)
+#### genQr(text, size, level)
+
+Generates a QR code image from text. Returns PNG image as bytes.
+
+```xxl
+import * as image from "image"
+
+qrBytes := image.genQr("https://example.com")
+saveBytes("qr.png", qrBytes)
+
+qrBytes := image.genQr("Hello World", 256)
+qrBytes := image.genQr("Data", 256, "high")
+```
+
+**Error correction levels:**
+- `low` - 7% error correction
+- `medium` - 15% error correction (default)
+- `high` - 30% error correction
+
+### QR Code Scanning
+
+#### scanQr(imageBytes)
+#### scanQr(imagePath)
+
+Scans a QR code from image bytes or file path. Returns decoded string.
+
+```xxl
+import * as image from "image"
+
+imgBytes := loadBytes("qr.png")
+result := image.scanQr(imgBytes)
+pln(result)
+
+// Or from file path
+result := image.scanQr("path/to/qr.png")
+```
+
+### Image Information
+
+#### getImageInfo(imageBytes)
+#### getImageInfo(imagePath)
+
+Returns information about an image.
+
+```xxl
+import * as image from "image"
+
+info := image.getImageInfo(loadBytes("photo.jpg"))
+pln("Width:", info["width"])
+pln("Height:", info["height"])
+pln("Format:", info["format"])
+pln("HasAlpha:", info["hasAlpha"])
+```
+
+**Returns map with:**
+- `width` - Image width in pixels
+- `height` - Image height in pixels
+- `format` - Image format (png, jpeg, gif, etc.)
+- `hasAlpha` - Boolean indicating alpha channel
+- `bounds` - Map with minX, minY, maxX, maxY
+
+### Image Resizing
+
+#### resizeImage(imageBytes, width, height)
+#### resizeImage(imageBytes, width, height, format)
+
+Resizes an image to specified dimensions.
+
+```xxl
+import * as image from "image"
+
+imgBytes := loadBytes("photo.jpg")
+resized := image.resizeImage(imgBytes, 800, 600)
+saveBytes("resized.png", resized)
+
+// With format
+resized := image.resizeImage(imgBytes, 800, 600, "jpeg")
+```
+
+**Supported formats:** `png` (default), `jpeg`/`jpg`, `gif`
+
+### Image Creation
+
+#### createImage(width, height)
+#### createImage(width, height, colorHex)
+
+Creates a new solid color image. Returns PNG image as bytes.
+
+```xxl
+import * as image from "image"
+
+img := image.createImage(100, 100)           // White image
+img := image.createImage(100, 100, "#FF0000") // Red image
+img := image.createImage(100, 100, "#FF000080") // Semi-transparent red (RGBA)
+
+saveBytes("red.png", img)
+```
+
+**Note:** `createImage` is also available as a built-in function for convenience.
+
+---
+
+## task
+
+Task scheduling and cron expression utilities.
+
+### Cron Expression Validation
+
+#### isCronExprValid(expr)
+
+Returns true if the cron expression is valid. Supports both 5-field (standard) and 6-field (with seconds) formats.
+
+```xxl
+import * as task from "task"
+
+task.isCronExprValid("* * * * *")        // true (every minute)
+task.isCronExprValid("*/5 * * * *")      // true (every 5 minutes)
+task.isCronExprValid("0 0 * * *")        // true (daily at midnight)
+task.isCronExprValid("0 0 0 * * *")      // true (with seconds)
+task.isCronExprValid("invalid")          // false
+```
+
+### Cron Expression Matching
+
+#### isCronExprDue(expr)
+#### isCronExprDue(expr, timeStr)
+
+Returns true if the cron expression is due at the current time or specified time.
+
+```xxl
+import * as task from "task"
+
+// Check if due now
+if (task.isCronExprDue("0 * * * *")) {
+    pln("Hourly task is due")
+}
+
+// Check at specific time
+task.isCronExprDue("0 0 * * *", "2024-01-15 00:00:00")  // true (midnight)
+```
+
+### Ticker Functions
+
+#### runTicker(intervalSeconds, callback)
+
+Runs a function periodically at specified intervals. Returns a ticker ID that can be used to stop the ticker.
+
+```xxl
+import * as task from "task"
+
+// Run ticker every 5 seconds
+var tickerID = task.runTicker(5, func() {
+    pln("Tick!")
+})
+
+// Run ticker every 1.5 seconds
+var tickerID2 = task.runTicker(1.5, func() {
+    pln("Tick with float interval")
+})
+```
+
+#### stopTicker(tickerID)
+
+Stops a running ticker by ID. Returns true if the ticker was stopped, false if not found.
+
+```xxl
+import * as task from "task"
+
+var id = task.runTicker(5, func() { pln("tick") })
+
+// Later, stop the ticker
+if (task.stopTicker(id)) {
+    pln("Ticker stopped")
+}
+```
+
+### Cron Expression Format
+
+The task module supports standard cron format with 5 or 6 fields:
+
+| Field | Allowed Values |
+|-------|---------------|
+| Second (optional) | 0-59 |
+| Minute | 0-59 |
+| Hour | 0-23 |
+| Day of Month | 1-31 |
+| Month | 1-12 |
+| Day of Week | 0-6 (0 = Sunday) |
+
+**Special characters:**
+
+- `*` - Any value
+- `*/n` - Every n values (e.g., `*/5` for every 5)
+- `n-m` - Range (e.g., `1-5` for 1 through 5)
+- `n,m` - List (e.g., `1,3,5` for specific values)
+
+**Examples:**
+
+```xxl
+// Every minute
+"* * * * *"
+
+// Every 5 minutes
+"*/5 * * * *"
+
+// Hourly at minute 0
+"0 * * * *"
+
+// Daily at midnight
+"0 0 * * *"
+
+// Every Monday at 9 AM
+"0 9 * * 1"
+
+// Every 30 seconds (6-field format)
+"*/30 * * * * *"
 ```
 
 ---

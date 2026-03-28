@@ -1473,6 +1473,88 @@ m.hasKey("a")        // true
 m.delete("a")        // {"b": 2}
 ```
 
+## OrderedMaps
+
+OrderedMap is a map that preserves the insertion order of key-value pairs. Unlike regular Maps, OrderedMaps maintain the order in which keys were added.
+
+### Creation
+
+```xxl
+// Create empty OrderedMap
+var om = newOrderedMap()
+
+// Create from Map
+var om2 = newOrderedMap({"a": 1, "b": 2})
+
+// Create from Array of [key, value] pairs
+var om3 = newOrderedMap([["x", 10], ["y", 20]])
+
+// Create with capacity
+var om4 = make("orderedMap", 100)
+```
+
+### Access and Modification
+
+```xxl
+var om = newOrderedMap()
+om["name"] = "Alice"    // Add entry
+om["age"] = 30
+om["city"] = "Beijing"
+
+pln(om["name"])         // "Alice"
+pln(om.keys())          // ["name", "age", "city"] - order preserved
+pln(om.values())        // ["Alice", 30, "Beijing"]
+```
+
+### OrderedMap Methods
+
+```xxl
+var om = newOrderedMap()
+om["a"] = 1
+om["b"] = 2
+om["c"] = 3
+
+// Basic operations
+om.len()                // 3
+om.hasKey("a")          // true
+var newOm = om.delete("b")  // Returns new OrderedMap without "b"
+
+// Ordered access
+om.keys()               // ["a", "b", "c"]
+om.values()             // [1, 2, 3]
+om.entries()            // [["a", 1], ["b", 2], ["c", 3]]
+om.indexOf("b")         // 1
+om.getAt(0)             // ["a", 1]
+
+// Reordering
+om.moveToFront("c")     // ["c", "a", "b"]
+om.moveToBack("a")      // ["c", "b", "a"]
+om.swap("c", "a")       // ["a", "b", "c"]
+om.reverse()            // ["c", "b", "a"]
+om.sortByKey()          // ["a", "b", "c"]
+
+// Conversion
+om.toMap()              // Convert to regular Map
+om.clone()              // Create a copy
+```
+
+### Use Cases
+
+OrderedMaps are particularly useful for:
+
+- Database query results where column order matters
+- JSON serialization with predictable key order
+- Configuration files where key order should be preserved
+- Building ordered data structures
+
+```xxl
+// Database query with ordered columns
+var rows = dbQueryOrdered(db, "SELECT id, name, email FROM users")
+for (row in rows) {
+    pln(row.keys())     // ["id", "name", "email"] - query column order
+}
+```
+
 ## Classes
 
 ### Basic Class
@@ -1556,8 +1638,8 @@ import "io" as io
 io.println("Hello")
 
 // Import specific functions
-import "string" { upper, lower }
-pln(upper("hello"))
+import "strings" { toUpper, toLower }
+pln(toUpper("hello"))
 
 // Import from relative path
 import * as utils from "./utils"
@@ -1608,6 +1690,132 @@ Module paths are resolved based on prefix and file extension:
 | `/xxx` | Absolute path module | `import * as math from "/home/user/math.xxl"` |
 
 **Note:** For file paths, `.wasm` files are loaded as WASM plugins; other paths have `.xxl` extension auto-added.
+
+### Name Conflict Resolution
+
+When a module function has the same name as a built-in function, Xxlang resolves the conflict based on the import style:
+
+#### Name Resolution Priority
+
+Xxlang resolves names in the following order (highest to lowest priority):
+
+1. **User-defined variables** (local, then enclosing, then global)
+2. **Destructured imports** (`import { fn } from "module"`)
+3. **Built-in functions**
+
+This means:
+- A local variable `abs` will shadow both built-in `abs` and imported `abs`
+- A destructured import `import { abs } from "math"` will shadow built-in `abs`
+- Namespace imports (`import * as m from "module"`) do NOT participate in shadowing
+
+#### 1. Destructuring Import Overwrites Built-in
+
+When using destructuring import (`import { func } from "module"`), the imported function **overwrites** the built-in:
+
+```xxl
+// Built-in abs function
+pln(abs(-5))      // 5 (built-in)
+
+// Destructuring import overwrites built-in
+import { abs } from "math"
+pln(abs(-10))     // 10 (module function, not built-in)
+```
+
+#### 2. Namespace Import Avoids Conflict (Recommended)
+
+Using namespace import (`import * as name from "module"`) keeps both functions accessible:
+
+```xxl
+// Namespace import - no conflict
+import * as math from "math"
+
+// Built-in still works
+pln(abs(-5))         // 5 (built-in)
+
+// Module function via namespace
+pln(math.abs(-10))   // 10 (module function)
+```
+
+#### 3. User Variables Override Built-ins
+
+User-defined variables always take precedence over built-in functions:
+
+```xxl
+// Custom abs function
+abs := func(x) { x * 2 }
+pln(abs(5))        // 10 (custom function)
+```
+
+#### 4. Preserving Built-in Reference
+
+To use both built-in and module functions with the same name, save the built-in first:
+
+```xxl
+// Save built-in reference
+builtinAbs := abs
+
+// Import module function
+import { abs } from "math"
+
+// Use both
+pln(builtinAbs(-5))   // 5 (built-in)
+pln(abs(-10))         // 10 (module)
+```
+
+#### Best Practices
+
+| Import Style | Use Case |
+|--------------|----------|
+| `import * as m from "module"` | **Recommended**: Avoids naming conflicts, clear function origin |
+| `import { fn } from "module"` | When no conflict exists, more concise syntax |
+| `import m from "module"` | When module has a default export |
+
+```xxl
+// Best practice: use namespace imports
+import * as crypto from "crypto"
+import * as locale from "locale"
+import * as math from "math"
+
+// Clear and unambiguous
+token := crypto.genJwtToken({"sub": "user"}, "secret")
+pln(locale.toPinYin("中国"))
+pln(math.sin(1.57))
+```
+
+#### Built-in to Module Migration
+
+Some built-in functions have been moved to standard library modules for better organization:
+
+| Module | Functions Moved from Built-ins |
+|--------|-------------------------------|
+| `math` | `sin, cos, tan, asin, acos, atan, atan2, exp, log, log10, log2, pi, e, degToRad, radToDeg, random, round` |
+| `locale` | `toPinYin, kanaToRomaji, kanjiToKana, kanjiToRomaji` |
+| `crypto` | `genJwtToken, parseJwtToken` |
+| `task` | `isCronExprValid, isCronExprDue, runTicker, stopTicker` |
+| `image` | `genQr, scanQr, getImageInfo, resizeImage` |
+| `ftp` | `newFtpClient` (deleted - use `ftp.connect()` or `ftp.newClient()`) |
+| `ssh` | `newSshClient` (deleted - use `ssh.connect()` or `ssh.newClient()`) |
+| `xlsx` | `newExcel, openExcel` (deleted - use `xlsx.create()` and `xlsx.open()`) |
+| `csv` | `readCsv, writeCsv` (deleted - use `csv.read()` and `csv.write()`) |
+| `xml` | `parseXml, parseXmlFile, newXmlDoc` (deleted - use `xml.parse()`, `xml.parseFile()`, `xml.create()`) |
+| `yaml` | `parseYaml, toYaml, yamlToJson, jsonToYaml` (deleted - use `yaml.parse()`, `yaml.stringify()`, `yaml.toJson()`, `yaml.fromJson()`) |
+
+**Note:** `createImage` is kept as a built-in function (alias to `image.createImage`).
+
+When migrating code that uses these functions, use namespace imports:
+
+```xxl
+// Old code (built-in)
+pln(sin(1.57))
+pln(toPinYin("中国"))
+
+// New code (module-based)
+import * as math from "math"
+import * as locale from "locale"
+
+pln(math.sin(1.57))
+pln(locale.toPinYin("中国"))
+```
 
 ## Error Handling
 

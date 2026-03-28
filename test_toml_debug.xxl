@@ -1,0 +1,25 @@
+// test_toml_debug.xxl - Debug TOML features
+
+toml := loadModule("toml")
+
+pln("=== Test 20 Debug: Dotted Keys ===")
+test20 := "server.host.name = \"example.com\""
+doc20 := toml.parse(test20)
+pln("Parsed doc20:", doc20)
+pln("Type:", typeOf(doc20))
+pln("Keys:", doc20.keys())
+
+pln("")
+pln("=== Test 23 Debug: Array of Tables ===")
+test23 := "[[products]]\nname = \"Hammer\"\n\n[[products]]\nname = \"Nail\""
+doc23 := toml.parse(test23)
+pln("Parsed doc23:", doc23)
+products := doc23.get("products")
+pln("Products type:", typeOf(products))
+pln("Array length:", len(products))
+
+pln("")
+pln("=== Test 25 Debug: Quoted Keys ===")
+test25 := "\"127.0.0.1\" = \"localhost\""
+doc25 := toml.parse(test25)
+pln("Is error:", isError(doc25))

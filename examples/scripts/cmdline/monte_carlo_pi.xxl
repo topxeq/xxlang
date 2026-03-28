@@ -1,0 +1,77 @@
+// monte_carlo_pi_cmdline.xxl
+// Monte Carlo method to calculate Pi using random points
+// Command-line version (no GUI)
+
+// Statistics
+var totalPoints = 0
+var insidePoints = 0
+var piEstimate = 0.0
+
+// Run simulation for a batch
+func runSimulation(count) {
+    for (var i = 0; i < count; i++) {
+        // Generate random point in [0, 1] x [0, 1]
+        var x = random()
+        var y = random()
+
+        // Check if inside unit circle (center at origin, radius 1)
+        // But we use quarter circle in first quadrant
+        var distSq = x * x + y * y
+        var inside = distSq <= 1.0
+
+        totalPoints = totalPoints + 1
+        if (inside) {
+            insidePoints = insidePoints + 1
+        }
+    }
+
+    // Calculate Pi estimate
+    if (totalPoints > 0) {
+        piEstimate = 4.0 * float(insidePoints) / float(totalPoints)
+    }
+}
+
+// Print progress
+func printProgress() {
+    var errorPct = 0.0
+    if (piEstimate > 0) {
+        errorPct = abs(piEstimate - 3.14159265359) / 3.14159265359 * 100.0
+    }
+    pl(format("Points: %12d | Inside: %12d | Pi ~ %.10f | Error: %.6f%%",
+        totalPoints, insidePoints, piEstimate, errorPct))
+}
+
+// Main function
+func main() {
+    pln("=====================================================")
+    pln("       Monte Carlo Pi Calculator (Command Line)")
+    pln("=====================================================")
+    pln("")
+    pln("The Monte Carlo method estimates Pi by:")
+    pln("1. Randomly placing points in a unit square")
+    pln("2. Counting points inside the inscribed quarter circle")
+    pln("3. Pi ~ 4 * (inside / total)")
+    pln("")
+    pln("Running simulation...")
+    pln("-----------------------------------------------------")
+
+    var batches = [1000, 10000, 100000, 1000000, 10000000]
+
+    for (batch in batches) {
+        runSimulation(batch)
+        printProgress()
+    }
+
+    pln("-----------------------------------------------------")
+    pln("")
+    pln("Final Results:")
+    pln(format("  Total Points:     %d", totalPoints))
+    pln(format("  Points Inside:    %d", insidePoints))
+    pln(format("  Pi Estimate:      %.15f", piEstimate))
+    pln(format("  Actual Pi:        %.15f", 3.141592653589793))
+    pln(format("  Error:            %.10f%%", abs(piEstimate - 3.14159265359) / 3.14159265359 * 100.0))
+    pln("")
+    pln("=====================================================")
+}
+
+main()

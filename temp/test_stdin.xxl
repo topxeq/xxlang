@@ -1,0 +1,5 @@
+// Test script that reads from stdin
+import { scan } from "io"
+
+var line = scan()
+pln("Received:", line)

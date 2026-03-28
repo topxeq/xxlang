@@ -1,0 +1,4 @@
+// test_simple.xxl
+pln("Testing builtins...")
+pln("len('abc'):", len("abc"))
+pln("Testing toPinYin...")
