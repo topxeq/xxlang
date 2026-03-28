@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/topxeq/xxlang/pkg/objects"
@@ -200,6 +201,57 @@ func init() {
 				}
 				elapsed := runtimeNano() - start.Value
 				return Int(elapsed)
+			}),
+
+			// dumpVar dumps a variable with detailed formatting.
+			// Usage: debug.dumpVar(value)
+			"dumpVar": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 1 {
+					return Error("dumpVar() requires at least 1 argument")
+				}
+
+				fmt.Printf("Dump: %s\n", args[0].Inspect())
+				fmt.Printf("Type: %s\n", args[0].Type())
+
+				switch v := args[0].(type) {
+				case *objects.Map:
+					fmt.Println("Contents:")
+					for _, pair := range v.Pairs {
+						fmt.Printf("  %s: %s\n", pair.Key.Inspect(), pair.Value.Inspect())
+					}
+				case *objects.Array:
+					fmt.Println("Elements:")
+					for i, elem := range v.Elements {
+						fmt.Printf("  [%d]: %s\n", i, elem.Inspect())
+					}
+				case *objects.String:
+					fmt.Printf("Value: %q\n", v.Value)
+					fmt.Printf("Length: %d\n", len(v.Value))
+				case *objects.Int:
+					fmt.Printf("Value: %d\n", v.Value)
+				case *objects.Float:
+					fmt.Printf("Value: %f\n", v.Value)
+				case *objects.Bool:
+					fmt.Printf("Value: %v\n", v.Value)
+				}
+
+				return Null()
+			}),
+
+			// debugInfo returns debug information about arguments.
+			// Usage: debug.info(args...)
+			"info": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				var sb strings.Builder
+				sb.WriteString("=== Debug Info ===\n")
+
+				if len(args) > 0 {
+					sb.WriteString("Arguments:\n")
+					for i, arg := range args {
+						sb.WriteString(fmt.Sprintf("  [%d]: %s (type: %s)\n", i, arg.Inspect(), arg.Type()))
+					}
+				}
+
+				return String(sb.String())
 			}),
 		},
 	})

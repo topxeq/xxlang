@@ -3,26 +3,11 @@
 package objects
 
 import (
-	"encoding/json"
-	"io"
-	"mime"
 	"net/http"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/gorilla/websocket"
 )
-
-// websocketUpgrader is the default WebSocket upgrader
-var websocketUpgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins for development
-	},
-}
 
 // HttpBuiltins contains all HTTP-related built-in functions.
 // These are only available in server mode.
@@ -396,95 +381,6 @@ var HttpBuiltins = map[string]*Builtin{
 		},
 	},
 
-	// parseJSON parses JSON body from the request.
-	// Returns a map or array object.
-	// Usage: parseJSON(request)
-	"parseJSON": {
-		Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for parseJSON. got=%d, want=1", len(args))
-			}
-
-			req, ok := args[0].(*HttpReq)
-			if !ok {
-				return newError("argument to 'parseJSON' must be HTTP_REQ, got %s", args[0].Type())
-			}
-
-			if req.Value == nil {
-				return newError("http request is nil")
-			}
-
-			body, err := io.ReadAll(req.Value.Body)
-			if err != nil {
-				return newError("read request body failed: %v", err)
-			}
-
-			var data interface{}
-			if err := json.Unmarshal(body, &data); err != nil {
-				return newError("parse JSON failed: %v", err)
-			}
-
-			return GoValueToObject(data)
-		},
-	},
-
-	// getReqBody reads the raw request body as a string.
-	// Usage: getReqBody(request)
-	"getReqBody": {
-		Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for getReqBody. got=%d, want=1", len(args))
-			}
-
-			req, ok := args[0].(*HttpReq)
-			if !ok {
-				return newError("argument to 'getReqBody' must be HTTP_REQ, got %s", args[0].Type())
-			}
-
-			if req.Value == nil {
-				return newError("http request is nil")
-			}
-
-			body, err := io.ReadAll(req.Value.Body)
-			if err != nil {
-				return newError("read request body failed: %v", err)
-			}
-
-			return NewString(string(body))
-		},
-	},
-
-	// getReqBodyBytes reads the raw request body and returns as integer array.
-	// Usage: getReqBodyBytes(request)
-	"getReqBodyBytes": {
-		Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for getReqBodyBytes. got=%d, want=1", len(args))
-			}
-
-			req, ok := args[0].(*HttpReq)
-			if !ok {
-				return newError("argument to 'getReqBodyBytes' must be HTTP_REQ, got %s", args[0].Type())
-			}
-
-			if req.Value == nil {
-				return newError("http request is nil")
-			}
-
-			body, err := io.ReadAll(req.Value.Body)
-			if err != nil {
-				return newError("read request body failed: %v", err)
-			}
-
-			// Return as array of integers (bytes)
-			elements := make([]Object, len(body))
-			for i, b := range body {
-				elements[i] = NewInt(int64(b))
-			}
-			return NewArray(elements)
-		},
-	},
-
 	// status sets the HTTP status code for the response.
 	// Usage: status(response, code)
 	"status": {
@@ -580,29 +476,6 @@ var HttpBuiltins = map[string]*Builtin{
 			http.ServeFile(resp.Value, req.Value, path.Value)
 			resp.SetWritten()
 			return NULL
-		},
-	},
-
-	// getMimeType returns the MIME type for a file path.
-	// Usage: getMimeType(path)
-	"getMimeType": {
-		Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for getMimeType. got=%d, want=1", len(args))
-			}
-
-			path, ok := args[0].(*String)
-			if !ok {
-				return newError("argument to 'getMimeType' must be STRING, got %s", args[0].Type())
-			}
-
-			ext := filepath.Ext(path.Value)
-			mimeType := mime.TypeByExtension(ext)
-			if mimeType == "" {
-				mimeType = "application/octet-stream"
-			}
-
-			return NewString(mimeType)
 		},
 	},
 
@@ -721,147 +594,6 @@ var HttpBuiltins = map[string]*Builtin{
 
 			value := req.Value.FormValue(name.Value)
 			return NewString(value)
-		},
-	},
-
-	// webSocket upgrades an HTTP connection to WebSocket.
-	// Usage: webSocket(request, response)
-	// Returns a WebSocket object or an error.
-	"webSocket": {
-		Fn: func(args ...Object) Object {
-			if len(args) != 2 {
-				return newError("wrong number of arguments for webSocket. got=%d, want=2", len(args))
-			}
-
-			req, ok := args[0].(*HttpReq)
-			if !ok {
-				return newError("first argument to 'webSocket' must be HTTP_REQ, got %s", args[0].Type())
-			}
-
-			resp, ok := args[1].(*HttpResp)
-			if !ok {
-				return newError("second argument to 'webSocket' must be HTTP_RESP, got %s", args[1].Type())
-			}
-
-			if req.Value == nil || resp.Value == nil {
-				return newError("http request or response is nil")
-			}
-
-			// Use the WebSocket upgrader
-			conn, err := websocketUpgrader.Upgrade(resp.Value, req.Value, nil)
-			if err != nil {
-				return newError("websocket upgrade failed: %v", err)
-			}
-
-			return NewWebSocket(conn)
-		},
-	},
-
-	// wsReadMsg reads a message from a WebSocket connection.
-	// Usage: wsReadMsg(websocket)
-	// Returns an array [messageType, data] or an error.
-	"wsReadMsg": {
-		Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for wsReadMsg. got=%d, want=1", len(args))
-			}
-
-			ws, ok := args[0].(*WebSocket)
-			if !ok {
-				return newError("argument to 'wsReadMsg' must be WEBSOCKET, got %s", args[0].Type())
-			}
-
-			return ws.ReadMessage()
-		},
-	},
-
-	// wsSendText sends a text message over a WebSocket connection.
-	// Usage: wsSendText(websocket, text)
-	"wsSendText": {
-		Fn: func(args ...Object) Object {
-			if len(args) != 2 {
-				return newError("wrong number of arguments for wsSendText. got=%d, want=2", len(args))
-			}
-
-			ws, ok := args[0].(*WebSocket)
-			if !ok {
-				return newError("first argument to 'wsSendText' must be WEBSOCKET, got %s", args[0].Type())
-			}
-
-			text, ok := args[1].(*String)
-			if !ok {
-				return newError("second argument to 'wsSendText' must be STRING, got %s", args[1].Type())
-			}
-
-			return ws.SendTextMessage(text.Value)
-		},
-	},
-
-	// wsSendBinary sends a binary message over a WebSocket connection.
-	// Usage: wsSendBinary(websocket, data)
-	"wsSendBinary": {
-		Fn: func(args ...Object) Object {
-			if len(args) != 2 {
-				return newError("wrong number of arguments for wsSendBinary. got=%d, want=2", len(args))
-			}
-
-			ws, ok := args[0].(*WebSocket)
-			if !ok {
-				return newError("first argument to 'wsSendBinary' must be WEBSOCKET, got %s", args[0].Type())
-			}
-
-			data, ok := args[1].(*String)
-			if !ok {
-				return newError("second argument to 'wsSendBinary' must be STRING, got %s", args[1].Type())
-			}
-
-			return ws.SendBinaryMessage(data.Value)
-		},
-	},
-
-	// wsSendClose sends a close message over a WebSocket connection.
-	// Usage: wsSendClose(websocket)
-	"wsSendClose": {
-		Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for wsSendClose. got=%d, want=1", len(args))
-			}
-
-			ws, ok := args[0].(*WebSocket)
-			if !ok {
-				return newError("argument to 'wsSendClose' must be WEBSOCKET, got %s", args[0].Type())
-			}
-
-			return ws.SendCloseMessage()
-		},
-	},
-
-	// wsClose closes a WebSocket connection.
-	// Usage: wsClose(websocket)
-	"wsClose": {
-		Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for wsClose. got=%d, want=1", len(args))
-			}
-
-			ws, ok := args[0].(*WebSocket)
-			if !ok {
-				return newError("argument to 'wsClose' must be WEBSOCKET, got %s", args[0].Type())
-			}
-
-			return ws.Close()
-		},
-	},
-
-	// isWebSocket checks if a value is a WebSocket connection.
-	// Usage: isWebSocket(value)
-	"isWebSocket": {
-		Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for isWebSocket. got=%d, want=1", len(args))
-			}
-			_, ok := args[0].(*WebSocket)
-			return &Bool{Value: ok}
 		},
 	},
 }
