@@ -4661,3 +4661,11 @@ func printPrettyTable(obj Object, indent int) {
 		fmt.Printf("%s%s\n", indentStr, obj.Inspect())
 	}
 }
+
+func init() {
+	// Add aliases for better compatibility with other languages
+	// print, println, printf are aliases for pr, pln, prf
+	Builtins["print"] = Builtins["pr"]
+	Builtins["println"] = Builtins["pln"]
+	Builtins["printf"] = Builtins["prf"]
+}

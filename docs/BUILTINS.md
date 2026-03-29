@@ -127,6 +127,8 @@ Prints arguments to stdout without a newline.
 pr("Hello", " ", "World")  // Hello World
 ```
 
+**Alias:** `print(args...)` - Same as `pr`, provided for better compatibility with other languages.
+
 ### pln(args...)
 
 Prints arguments to stdout with a trailing newline.
@@ -134,6 +136,8 @@ Prints arguments to stdout with a trailing newline.
 ```xxl
 pln("Hello", "World")  // Hello World
 ```
+
+**Alias:** `println(args...)` - Same as `pln`, provided for better compatibility with other languages.
 
 ### pl(format, args...)
 
@@ -169,6 +173,22 @@ pln()                                   // Add newline separately
 ```
 
 **Format verbs:** Same as `pl`.
+
+**Alias:** `printf(format, args...)` - Same as `prf`, provided for better compatibility with other languages.
+
+### Output Functions Comparison
+
+| Xxlang Function | Alias | Behavior | Newline |
+|-----------------|-------|----------|---------|
+| `pr()` | `print()` | Print arguments | No |
+| `pln()` | `println()` | Print arguments | Yes |
+| `pl()` | - | Formatted print | Yes |
+| `prf()` | `printf()` | Formatted print | No |
+
+**Compatibility Notes:**
+- `print`, `println`, `printf` are aliases provided for consistency with other programming languages (Python, Java, Go)
+- Using short names `pr`, `pln`, `prf` is recommended in Xxlang code
+- Use `print`, `println`, `printf` when consistency with other language code styles is needed
 
 ### checkErr(obj, message?)
 
@@ -2428,6 +2448,57 @@ isFunction(len)      // true
 isFunction(42)       // false
 ```
 
+### isUndefined(value) / isUndef(value)
+
+Returns true if value is undefined (i.e., null).
+
+In Xxlang, `null` is the sole null value, representing "no value" or "undefined". `isUndefined` and `isNull` are functionally identical. `isUndef` is a shorthand alias for `isUndefined`.
+
+```xxl
+isUndefined(null)    // true
+isUndefined(0)       // false
+isUndef(null)        // true (shorthand form)
+```
+
+**About null and undefined:**
+
+Xxlang simplifies JavaScript's design by using a single `null` value for both null and undefined concepts:
+
+| Scenario | JavaScript | Xxlang |
+|----------|------------|--------|
+| Null value | `null` | `null` |
+| Undefined | `undefined` | `null` |
+| Uninitialized variable | `undefined` | `null` |
+| Non-existent property | `undefined` | `null` |
+| Function with no return | `undefined` | `null` |
+
+```xxl
+// The following return null:
+var arr = [1, 2, 3]
+first([])              // null (empty array)
+arr[10]                // null (out of bounds)
+{"a": 1}["b"]          // null (non-existent key)
+```
+
+**Note: `null` vs `nil`**
+
+Xxlang only has `null`, not `nil`. This is different from Go:
+
+| Aspect | Go | Xxlang |
+|--------|-----|--------|
+| Null keyword | `nil` | `null` |
+| Usage | Pointers, interfaces, slices, maps, channels | Single null type |
+| In Xxlang code | N/A | Use `null` only |
+
+```xxl
+// ✅ Correct in Xxlang
+var x = null
+if (x == null) { ... }
+
+// ❌ Wrong - 'nil' does not exist in Xxlang
+var y = nil       // Error!
+```
+
 ### isNull(value)
 
 Returns true if value is null.
@@ -2436,6 +2507,314 @@ Returns true if value is null.
 isNull(null)         // true
 isNull(0)            // false
 ```
+
+---
+
+## Error Handling Functions
+
+Xxlang provides flexible error handling with two ways to represent errors:
+
+### Error Representation
+
+| Method | Description | Example |
+|--------|-------------|---------|
+| **Error Object** | Structured error object | `error("file not found")` |
+| **Error String** | String prefixed with `TXERROR:` | `"TXERROR:file not found"` |
+
+**Why support two methods?**
+
+1. **Error Object**: Suitable for scenarios requiring structured error information, retrieve message via `getErrStr()`
+2. **Error String**: Useful when you don't want to return an Error object but still need to indicate an error:
+   - Function may return a normal string or an error string
+   - String format required when interacting with other systems
+   - Simplified error handling logic
+
+**Important: Error Objects Never Have nil Value**
+
+Unlike Go, Xxlang doesn't have the "interface value is nil but type is not nil" trap:
+
+```go
+// The trap in Go
+type MyError struct{}
+func (e *MyError) Error() string { return "" }
+
+var err error = (*MyError)(nil)
+if err != nil { /* true! Interface is not nil, though underlying value is nil */ }
+```
+
+```xxl
+// No such problem in Xxlang
+// No error - return null
+// Has error - return Error object (with Message field)
+
+var result = someFunction()
+if (result == null) {
+    // No error
+}
+if (isError(result)) {
+    // Has error, result.Message contains error info
+}
+```
+
+Xxlang's `Error` is a simple struct, not an interface, so there's no Go-style "interface wrapping nil value" situation.
+
+### isError(value)
+
+Returns true if value is an Error object.
+
+```xxl
+isError(error("oops"))    // true
+isError("TXERROR:oops")   // false (string is not an Error object)
+isError(null)             // false
+```
+
+### isErr(value)
+
+Returns true if value represents an error (Error object or error string).
+
+This is a more general error checking function that checks both cases:
+
+```xxl
+isErr(error("oops"))      // true (Error object)
+isErr("TXERROR:oops")     // true (error string)
+isErr("TXERROR:")         // true (empty error string)
+isErr("normal string")    // false
+isErr(null)               // false
+```
+
+### error(message)
+
+Creates an Error object.
+
+```xxl
+var err = error("file not found")
+isError(err)              // true
+getErrStr(err)            // "file not found"
+```
+
+### getErrStr(value)
+
+Gets the error message from an Error object or error string.
+
+```xxl
+getErrStr(error("failed"))     // "failed"
+getErrStr("TXERROR:failed")    // "failed" (TXERROR: prefix removed)
+getErrStr("ERROR:failed")      // "ERROR:failed" (normal string returned as-is)
+getErrStr("normal string")     // "normal string" (returned as-is)
+getErrStr(null)                // "" (null returns empty string)
+```
+
+**Behavior:**
+- Error object: returns the error message
+- String starting with `TXERROR:`: removes prefix, returns message part
+- Other strings: returned as-is
+- Other types: returns empty string
+
+### checkErr(value, [message])
+
+Checks if value is an error, prints error message and exits program if so.
+
+Supports two error formats:
+- Error object
+- Error string starting with `TXERROR:`
+
+```xxl
+// Check Error object
+var result = someFunction()
+checkErr(result)  // If error, print and exit
+
+// With custom message
+checkErr(result, "Operation failed: %s")  // %s replaced with error message
+
+// Check error string
+var data = "TXERROR:file not found"
+checkErr(data)  // Prints: ERROR: file not found, then exits
+```
+
+**Note:** This function calls `os.Exit(1)` when an error is detected.
+
+#### checkErr Detailed Behavior
+
+**Parameters:**
+- `value` - The value to check (required)
+- `message` - Custom message (optional)
+
+**Check Logic:**
+1. Error object → Extract `Message` field as error message
+2. String starting with `"TXERROR:"` → Remove prefix, extract message part
+3. Other values → No action, return `null`
+
+**Print Behavior:**
+
+| Case | Output |
+|------|--------|
+| No message parameter | `ERROR: <error message>` |
+| message without format verb | `<message>` |
+| message with `%s` format verb | `<message>` (`%s` replaced with error message) |
+
+**Flow Diagram:**
+
+```
+checkErr(value, [message])
+         │
+         ▼
+┌────────────────────────────┐
+│ Is value an Error object?  │
+│ Or "TXERROR:" string?      │
+└────────────────────────────┘
+      │ Yes             │ No
+      ▼                 ▼
+┌──────────────┐   ┌──────────────┐
+│ Extract msg  │   │ Return NULL  │
+│ Print stderr │   │ No action    │
+│ os.Exit(1)   │   └──────────────┘
+└──────────────┘
+```
+
+**Complete Examples:**
+
+```xxl
+// 1. Error object, no message
+checkErr(error("file not found"))
+// Output to stderr: ERROR: file not found
+// Program exits
+
+// 2. TXERROR: string, no message
+checkErr("TXERROR:connection timeout")
+// Output to stderr: ERROR: connection timeout
+// Program exits
+
+// 3. With custom message (no format verb)
+checkErr(error("failed"), "Operation error")
+// Output to stderr: Operation error
+// Program exits
+
+// 4. With format message (%s replaced)
+checkErr(error("file not found"), "Cannot read: %s")
+// Output to stderr: Cannot read: file not found
+// Program exits
+
+// 5. Non-error values - normal return
+checkErr("normal string")   // No output, returns null
+checkErr(null)              // No output, returns null
+checkErr(42)                // No output, returns null
+```
+
+**Working with Other Error Functions:**
+
+```xxl
+// Typical usage: check function return value
+var result = someOperation()
+checkErr(result, "Operation failed: %s")
+
+// Chain check
+var data = io.readFile("config.json")
+checkErr(data)  // If TXERROR: string, print and exit
+
+// Conditional check then exit
+if (isErr(data)) {
+    checkErr(data)  // Exit after confirming error
+}
+
+// Fail-fast pattern
+func mustSucceed(result) {
+    checkErr(result)
+    return result
+}
+var config = mustSucceed(io.readFile("config.json"))
+```
+
+### Error Handling Best Practices
+
+**Note:** This function calls `os.Exit(1)` when an error is detected.
+
+### Error Handling Best Practices
+
+**Method 1: Return Error object or result**
+
+```xxl
+func divide(a, b) {
+    if (b == 0) {
+        return error("division by zero")
+    }
+    return a / b
+}
+
+var result = divide(10, 0)
+if (isError(result)) {
+    pln("Error:", getErrStr(result))
+} else {
+    pln("Result:", result)
+}
+```
+
+**Method 2: Return error string or result string**
+
+```xxl
+func readFile(path) {
+    var content = io.readFile(path)
+    if (isErrStr(content)) {
+        return "TXERROR:" + content  // Convert to standard error string
+    }
+    return content
+}
+
+var data = readFile("config.json")
+if (isErr(data)) {
+    pln("Read failed:", data)
+} else {
+    pln("Content:", data)
+}
+```
+
+**Method 3: Return null for success, Error for failure**
+
+```xxl
+func writeFile(path, content) {
+    var result = io.writeFile(path, content)
+    if (isErrStr(result)) {
+        return error(result)
+    }
+    return null  // Return null on success
+}
+
+var err = writeFile("output.txt", "hello")
+if (isErr(err)) {
+    pln("Write failed:", getErrStr(err))
+}
+```
+
+### isErrStr(value)
+
+Returns true if string is an error string (starts with `TXERROR:`).
+
+```xxl
+isErrStr("TXERROR:file not found")   // true
+isErrStr("TXERROR:")                 // true (empty prefix also counts)
+isErrStr("ERROR:failed")             // false (only checks TXERROR:)
+isErrStr("normal string")            // false
+isErrStr(null)                       // false (non-string returns false)
+isErrStr(42)                         // false
+```
+
+**Note:** This function only checks for `TXERROR:` prefix, not `ERROR:` or `error:`.
+
+### Error Check Functions Comparison
+
+| Function | Error Object | TXERROR: String | Normal String | null |
+|----------|-------------|-----------------|---------------|------|
+| `isError()` | ✅ true | ❌ false | ❌ false | ❌ false |
+| `isErr()` | ✅ true | ✅ true | ❌ false | ❌ false |
+| `isErrStr()` | ❌ false | ✅ true | ❌ false | ❌ false |
+| `checkErr()` | ✅ exit | ✅ exit | ❌ no action | ❌ no action |
+| `getErrStr()` | returns msg | prefix removed | as-is | empty string |
+
+**Notes:**
+- `isError()` - Only checks for Error objects
+- `isErr()` - Checks for Error objects or TXERROR: strings
+- `isErrStr()` - Only checks for strings starting with TXERROR:
+- `checkErr()` - Exits program for Error objects or TXERROR: strings
+- `getErrStr()` - Extracts error message
 
 ---
 
@@ -3562,19 +3941,21 @@ pln(e)  // ERROR: something went wrong
 
 ### getErrStr(value)
 
-Extracts error message from error object.
+Extracts error message from error object or TXERROR: string.
 
 ```xxl
-getErrStr(error("failed"))  // "failed"
+getErrStr(error("failed"))     // "failed"
+getErrStr("TXERROR:failed")    // "failed" (prefix removed)
+getErrStr("normal string")     // "normal string" (as-is)
 ```
 
 ### isErrStr(value)
 
-Returns true if string is an error message.
+Returns true if string starts with "TXERROR:".
 
 ```xxl
-isErrStr("ERROR: failed")   // true
-isErrStr("hello")           // false
+isErrStr("TXERROR: failed")   // true
+isErrStr("hello")             // false
 ```
 
 ### typeCode(value)
@@ -4485,18 +4866,21 @@ var e = error("something went wrong")
 
 ### getErrStr(value)
 
-Gets error string from error object.
+Gets error string from error object or TXERROR: string.
 
 ```xxl
-getErrStr(error("failed"))  // "failed"
+getErrStr(error("failed"))     // "failed"
+getErrStr("TXERROR:failed")    // "failed" (prefix removed)
+getErrStr("normal string")     // "normal string" (as-is)
 ```
 
 ### isErrStr(value)
 
-Checks if string is an error message.
+Checks if string starts with "TXERROR:".
 
 ```xxl
-isErrStr("ERROR: failed")  // true
+isErrStr("TXERROR: failed")  // true
+isErrStr("hello")            // false
 ```
 
 ### typeCode(value)

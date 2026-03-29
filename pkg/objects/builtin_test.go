@@ -1287,18 +1287,18 @@ func TestBuiltinMathFunctions(t *testing.T) {
 }
 
 func TestBuiltinTimeFunctions(t *testing.T) {
-	// now
+	// now - returns Time object
 	fn, ok := Builtins["now"]
 	if !ok {
 		t.Fatal("now builtin not found")
 	}
 	result := fn.Fn()
-	_, ok = result.(*Int)
+	_, ok = result.(*Time)
 	if !ok {
-		t.Fatalf("expected Int, got %s", result.Type())
+		t.Fatalf("expected Time, got %s", result.Type())
 	}
 
-	// nowMs
+	// nowMs - returns Int (milliseconds)
 	fn, ok = Builtins["nowMs"]
 	if !ok {
 		t.Fatal("nowMs builtin not found")
@@ -1419,4 +1419,98 @@ func TestBuiltinRunCodeAndLoadPlugin(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected Map, got %s", result.Type())
 	}
+}
+
+func TestBuiltinIsErr(t *testing.T) {
+	fn, ok := Builtins["isErr"]
+	if !ok {
+		t.Fatal("isErr builtin not found")
+	}
+
+	// Test with Error object
+	errObj := &Error{Message: "something went wrong"}
+	result := fn.Fn(errObj)
+	compareObjectsForTest(t, result, TRUE)
+
+	// Test with TXERROR: string
+	result = fn.Fn(&String{Value: "TXERROR:file not found"})
+	compareObjectsForTest(t, result, TRUE)
+
+	// Test with TXERROR: empty error
+	result = fn.Fn(&String{Value: "TXERROR:"})
+	compareObjectsForTest(t, result, TRUE)
+
+	// Test with normal string
+	result = fn.Fn(&String{Value: "normal string"})
+	compareObjectsForTest(t, result, FALSE)
+
+	// Test with null
+	result = fn.Fn(NULL)
+	compareObjectsForTest(t, result, FALSE)
+
+	// Test with integer
+	result = fn.Fn(&Int{Value: 42})
+	compareObjectsForTest(t, result, FALSE)
+
+	// Test with lowercase txerror (should NOT match)
+	result = fn.Fn(&String{Value: "txerror:something"})
+	compareObjectsForTest(t, result, FALSE)
+
+	// Test isError vs isErr difference
+	fnIsError, ok := Builtins["isError"]
+	if !ok {
+		t.Fatal("isError builtin not found")
+	}
+
+	// isError should return true for Error object
+	result = fnIsError.Fn(errObj)
+	compareObjectsForTest(t, result, TRUE)
+
+	// isError should return false for TXERROR string
+	result = fnIsError.Fn(&String{Value: "TXERROR:test"})
+	compareObjectsForTest(t, result, FALSE)
+
+	// isErr should return true for TXERROR string
+	result = fn.Fn(&String{Value: "TXERROR:test"})
+	compareObjectsForTest(t, result, TRUE)
+
+	// Test getErrStr with TXERROR: string
+	fnGetErrStr, ok := Builtins["getErrStr"]
+	if !ok {
+		t.Fatal("getErrStr builtin not found")
+	}
+
+	// getErrStr should extract message from TXERROR: string
+	result = fnGetErrStr.Fn(&String{Value: "TXERROR:file not found"})
+	compareObjectsForTest(t, result, &String{Value: "file not found"})
+
+	// getErrStr should work with Error object
+	result = fnGetErrStr.Fn(&Error{Message: "test error"})
+	compareObjectsForTest(t, result, &String{Value: "test error"})
+
+	// getErrStr should return normal string as-is
+	result = fnGetErrStr.Fn(&String{Value: "normal string"})
+	compareObjectsForTest(t, result, &String{Value: "normal string"})
+
+	// Test isErrStr with TXERROR: prefix
+	fnIsErrStr, ok := Builtins["isErrStr"]
+	if !ok {
+		t.Fatal("isErrStr builtin not found")
+	}
+
+	// isErrStr should return true for TXERROR: string
+	result = fnIsErrStr.Fn(&String{Value: "TXERROR:something"})
+	compareObjectsForTest(t, result, TRUE)
+
+	// isErrStr should return false for ERROR: string (not TXERROR:)
+	result = fnIsErrStr.Fn(&String{Value: "ERROR:something"})
+	compareObjectsForTest(t, result, FALSE)
+
+	// isErrStr should return false for error: string (lowercase)
+	result = fnIsErrStr.Fn(&String{Value: "error:something"})
+	compareObjectsForTest(t, result, FALSE)
+
+	// isErrStr should return false for normal string
+	result = fnIsErrStr.Fn(&String{Value: "normal string"})
+	compareObjectsForTest(t, result, FALSE)
 }

@@ -588,6 +588,10 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["copyPath"],    // 500
 		objects.Builtins["moveFile"],    // 501
 		objects.Builtins["getFileSize"], // 502
+		// Print aliases (Batch 27)
+		objects.Builtins["print"],   // 503: alias for pr
+		objects.Builtins["println"], // 504: alias for pln
+		objects.Builtins["printf"],  // 505: alias for prf
 	}
 
 	if index < 0 || index >= len(builtins) {

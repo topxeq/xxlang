@@ -130,6 +130,66 @@ The `--debug` flag provides comprehensive debug output:
 | `BOOL` | Boolean | `true`, `false` |
 | `NULL` | Null value | `null` |
 
+### Null Type
+
+In Xxlang, `null` is the sole null value representing "no value" or "undefined". This design simplifies JavaScript's dual `null`/`undefined` concept.
+
+**When null is returned:**
+- Function without explicit return
+- Accessing non-existent map key
+- Array out-of-bounds access
+- Function execution failure (when no error is needed)
+
+```xxl
+// Null value
+var nothing = null
+typeOf(null)      // "NULL"
+
+// Null from various operations
+var arr = [1, 2, 3]
+first([])         // null (empty array)
+arr[10]           // null (out of bounds)
+{"a": 1}["b"]     // null (non-existent key)
+
+// Checking for null
+isNull(null)      // true
+isUndefined(null) // true (alias for isNull)
+isUndef(null)     // true (shorthand for isUndefined)
+```
+
+**Comparison with JavaScript:**
+
+| Scenario | JavaScript | Xxlang |
+|----------|------------|--------|
+| Null value | `null` | `null` |
+| Undefined | `undefined` | `null` |
+| Uninitialized variable | `undefined` | `null` |
+| Non-existent property | `undefined` | `null` |
+| Function with no return | `undefined` | `null` |
+
+This unified approach eliminates the confusion between `null` and `undefined` found in JavaScript.
+
+**Note: `null` vs `nil`**
+
+Xxlang only has `null`, not `nil`. This is different from Go:
+
+| Aspect | Go | Xxlang |
+|--------|-----|--------|
+| Null keyword | `nil` | `null` |
+| Usage | Pointers, interfaces, slices, maps, channels | Single null type |
+| In Xxlang code | N/A | Use `null` only |
+
+```xxl
+// ✅ Correct in Xxlang
+var x = null
+if (x == null) { ... }
+
+// ❌ Wrong - 'nil' does not exist in Xxlang
+var y = nil       // Error!
+```
+
+The `nil` in Go is the zero value for pointer types, while Xxlang's `null` is a first-class value representing "no value".
+
 ### BigInt and BigFloat
 
 Xxlang supports arbitrary precision numbers for calculations requiring high precision:

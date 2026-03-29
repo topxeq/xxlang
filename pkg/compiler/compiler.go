@@ -613,6 +613,10 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(495, "getNowStrCompact")
 	s.DefineBuiltin(496, "timeToTimeStamp")
 	s.DefineBuiltin(497, "timeStampToTime")
+	// Print aliases (Batch 27)
+	s.DefineBuiltin(503, "print")   // alias for pr
+	s.DefineBuiltin(504, "println") // alias for pln
+	s.DefineBuiltin(505, "printf")  // alias for prf
 	return s
 }
 

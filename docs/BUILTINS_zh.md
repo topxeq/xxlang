@@ -121,6 +121,8 @@ len({"a": 1})     // 1
 pr("Hello", " ", "World")  // Hello World
 ```
 
+**别名：** `print(args...)` - 与 `pr` 功能相同，提供更好的兼容性。
+
 ### pln(args...)
 
 打印参数到标准输出，末尾换行。
@@ -128,6 +130,8 @@ pr("Hello", " ", "World")  // Hello World
 ```xxl
 pln("Hello", "World")  // Hello World
 ```
+
+**别名：** `println(args...)` - 与 `pln` 功能相同，提供更好的兼容性。
 
 ### pl(format, args...)
 
@@ -163,6 +167,22 @@ pln()                                  // 单独添加换行
 ```
 
 **格式化动词：** 与 `pl` 相同。
+
+**别名：** `printf(format, args...)` - 与 `prf` 功能相同，提供更好的兼容性。
+
+### 输出函数对照表
+
+| Xxlang 函数 | 别名 | 行为 | 换行 |
+|------------|------|------|------|
+| `pr()` | `print()` | 打印参数 | 无 |
+| `pln()` | `println()` | 打印参数 | 有 |
+| `pl()` | - | 格式化打印 | 有 |
+| `prf()` | `printf()` | 格式化打印 | 无 |
+
+**兼容性说明：**
+- `print`, `println`, `printf` 是为了与其他编程语言（如 Python、Java、Go）保持命名一致性而提供的别名
+- 推荐在 Xxlang 代码中使用简短的 `pr`, `pln`, `prf`
+- 在需要与其他语言代码风格保持一致时，可以使用 `print`, `println`, `printf`
 
 ### checkErr(obj, message?)
 
@@ -917,6 +937,57 @@ isFunction(len)      // true
 isFunction(42)       // false
 ```
 
+### isUndefined(value) / isUndef(value)
+
+判断值是否为 undefined（即 null）。
+
+在 Xxlang 中，`null` 是唯一的空值，表示"无值"或"未定义"。`isUndefined` 和 `isNull` 功能相同，`isUndef` 是 `isUndefined` 的简写形式。
+
+```xxl
+isUndefined(null)    // true
+isUndefined(0)       // false
+isUndef(null)        // true（简写形式）
+```
+
+**关于 null 和 undefined：**
+
+Xxlang 简化了 JavaScript 的设计，统一使用 `null` 表示空值/未定义：
+
+| 场景 | JavaScript | Xxlang |
+|------|------------|--------|
+| 空值 | `null` | `null` |
+| 未定义 | `undefined` | `null` |
+| 未初始化变量 | `undefined` | `null` |
+| 不存在的属性 | `undefined` | `null` |
+| 函数无返回值 | `undefined` | `null` |
+
+```xxl
+// 以下情况返回 null：
+var arr = [1, 2, 3]
+first([])              // null（空数组）
+arr[10]                // null（越界）
+{"a": 1}["b"]          // null（不存在的键）
+```
+
+**注意：null 与 nil 的区别**
+
+Xxlang 只有 `null`，没有 `nil`。这与 Go 语言不同：
+
+| 方面 | Go | Xxlang |
+|------|-----|--------|
+| 空值关键字 | `nil` | `null` |
+| 用途 | 指针、接口、切片、map、channel 的零值 | 唯一的空值类型 |
+| 在 Xxlang 代码中 | 不适用 | 只能使用 `null` |
+
+```xxl
+// ✅ 正确
+var x = null
+if (x == null) { ... }
+
+// ❌ 错误 - Xxlang 中不存在 nil
+var y = nil       // 报错！
+```
+
 ### isNull(value)
 
 判断值是否为 null。
@@ -925,6 +996,310 @@ isFunction(42)       // false
 isNull(null)         // true
 isNull(0)            // false
 ```
+
+---
+
+## 错误处理函数
+
+Xxlang 提供灵活的错误处理机制，支持两种错误表示方式：
+
+### 错误表示方式
+
+| 方式 | 说明 | 示例 |
+|------|------|------|
+| **Error 对象** | 结构化的错误对象 | `error("文件不存在")` |
+| **错误字符串** | 以 `TXERROR:` 开头的字符串 | `"TXERROR:文件不存在"` |
+
+**为什么支持两种方式？**
+
+1. **Error 对象**：适合需要结构化错误信息的场景，可以通过 `getErrStr()` 获取错误消息
+2. **错误字符串**：适合某些场景下不想返回 Error 对象，但仍需表示错误的情况。例如：
+   - 函数可能返回正常字符串或错误字符串
+   - 与其他系统交互时需要字符串格式的错误
+   - 简化错误处理逻辑
+
+**重要：Error 对象不会有 nil 值**
+
+与 Go 语言不同，Xxlang 不存在"接口值为 nil 但类型非 nil"的陷阱：
+
+```go
+// Go 中的陷阱
+type MyError struct{}
+func (e *MyError) Error() string { return "" }
+
+var err error = (*MyError)(nil)
+if err != nil { /* true! 接口不是 nil，虽然底层值是 nil */ }
+```
+
+```xxl
+// Xxlang 中不存在这个问题
+// 没有错误 - 返回 null
+// 有错误 - 返回 Error 对象（有 Message 字段）
+
+var result = someFunction()
+if (result == null) {
+    // 没有错误
+}
+if (isError(result)) {
+    // 有错误，result.Message 包含错误信息
+}
+```
+
+Xxlang 的 `Error` 是一个简单的结构体，不是接口，所以不存在 Go 那种"接口包装 nil 值"的情况。
+
+### isError(value)
+
+判断值是否为 Error 对象。
+
+```xxl
+isError(error("oops"))    // true
+isError("TXERROR:oops")   // false（字符串不是 Error 对象）
+isError(null)             // false
+```
+
+### isErr(value)
+
+判断值是否表示错误（Error 对象或错误字符串）。
+
+这是更通用的错误检查函数，会检查两种情况：
+
+```xxl
+isErr(error("oops"))      // true（Error 对象）
+isErr("TXERROR:oops")     // true（错误字符串）
+isErr("TXERROR:")         // true（空错误字符串）
+isErr("normal string")    // false
+isErr(null)               // false
+```
+
+### error(message)
+
+创建 Error 对象。
+
+```xxl
+var err = error("文件不存在")
+isError(err)              // true
+getErrStr(err)            // "文件不存在"
+```
+
+### getErrStr(value)
+
+从 Error 对象或错误字符串获取错误消息。
+
+```xxl
+getErrStr(error("失败"))        // "失败"
+getErrStr("TXERROR:失败")       // "失败"（去除 TXERROR: 前缀）
+getErrStr("ERROR:失败")         // "ERROR:失败"（普通字符串原样返回）
+getErrStr("普通字符串")         // "普通字符串"（原样返回）
+getErrStr(null)                 // ""（null 返回空字符串）
+```
+
+**行为说明：**
+- Error 对象：返回错误消息
+- `TXERROR:` 开头的字符串：去除前缀，返回消息部分
+- 其他字符串：原样返回
+- 其他类型：返回空字符串
+
+### checkErr(value, [message])
+
+检查值是否为错误，如果是则打印错误信息并退出程序。
+
+支持两种错误格式：
+- Error 对象
+- `TXERROR:` 开头的错误字符串
+
+```xxl
+// 检查 Error 对象
+var result = someFunction()
+checkErr(result)  // 如果是错误，打印并退出
+
+// 带自定义消息
+checkErr(result, "操作失败: %s")  // %s 会被替换为错误消息
+
+// 检查错误字符串
+var data = "TXERROR:文件不存在"
+checkErr(data)  // 打印: ERROR: 文件不存在，然后退出
+```
+
+**注意：** 此函数会在检测到错误时调用 `os.Exit(1)` 终止程序。
+
+#### checkErr 详细行为
+
+**参数：**
+- `value` - 要检查的值（必需）
+- `message` - 自定义消息（可选）
+
+**检查逻辑：**
+1. Error 对象 → 提取 `Message` 字段作为错误消息
+2. `"TXERROR:"` 开头的字符串 → 去除前缀，提取消息部分
+3. 其他值 → 不做任何处理，返回 `null`
+
+**打印行为：**
+
+| 情况 | 打印内容 |
+|------|----------|
+| 无 message 参数 | `ERROR: <错误消息>` |
+| message 无格式符 | `<message>` |
+| message 有 `%s` 格式符 | `<message>`（`%s` 替换为错误消息） |
+
+**流程图：**
+
+```
+checkErr(value, [message])
+         │
+         ▼
+┌────────────────────────────┐
+│ value 是 Error 对象？      │
+│ 或 "TXERROR:" 开头字符串？  │
+└────────────────────────────┘
+      │ 是              │ 否
+      ▼                 ▼
+┌──────────────┐   ┌──────────────┐
+│ 提取错误消息  │   │ 返回 NULL    │
+│ 打印到 stderr│   │ 不做任何操作 │
+│ os.Exit(1)   │   └──────────────┘
+└──────────────┘
+```
+
+**完整示例：**
+
+```xxl
+// 1. Error 对象，无消息
+checkErr(error("文件不存在"))
+// 输出到 stderr: ERROR: 文件不存在
+// 程序退出
+
+// 2. TXERROR: 字符串，无消息
+checkErr("TXERROR:连接超时")
+// 输出到 stderr: ERROR: 连接超时
+// 程序退出
+
+// 3. 带自定义消息（无格式符）
+checkErr(error("失败"), "操作出错")
+// 输出到 stderr: 操作出错
+// 程序退出
+
+// 4. 带格式消息（%s 被替换）
+checkErr(error("文件不存在"), "无法读取: %s")
+// 输出到 stderr: 无法读取: 文件不存在
+// 程序退出
+
+// 5. 非错误值 - 正常返回
+checkErr("正常字符串")   // 无输出，返回 null
+checkErr(null)          // 无输出，返回 null
+checkErr(42)            // 无输出，返回 null
+```
+
+**与其他错误函数配合：**
+
+```xxl
+// 典型用法：检查函数返回值
+var result = someOperation()
+checkErr(result, "操作失败: %s")
+
+// 链式检查
+var data = io.readFile("config.json")
+checkErr(data)  // 如果是 TXERROR: 字符串，打印并退出
+
+// 条件检查后退出
+if (isErr(data)) {
+    checkErr(data)  // 确认是错误后退出
+}
+
+// 快速失败模式
+func mustSucceed(result) {
+    checkErr(result)
+    return result
+}
+var config = mustSucceed(io.readFile("config.json"))
+```
+
+### 错误处理最佳实践
+
+**方式一：返回 Error 对象或结果**
+
+```xxl
+func divide(a, b) {
+    if (b == 0) {
+        return error("除数不能为零")
+    }
+    return a / b
+}
+
+var result = divide(10, 0)
+if (isError(result)) {
+    pln("错误:", getErrStr(result))
+} else {
+    pln("结果:", result)
+}
+```
+
+**方式二：返回错误字符串或结果字符串**
+
+```xxl
+func readFile(path) {
+    var content = io.readFile(path)
+    if (isErrStr(content)) {
+        return "TXERROR:" + content  // 转换为标准错误字符串
+    }
+    return content
+}
+
+var data = readFile("config.json")
+if (isErr(data)) {
+    pln("读取失败:", data)
+} else {
+    pln("内容:", data)
+}
+```
+
+**方式三：返回 null 表示成功，Error 表示失败**
+
+```xxl
+func writeFile(path, content) {
+    var result = io.writeFile(path, content)
+    if (isErrStr(result)) {
+        return error(result)
+    }
+    return null  // 成功返回 null
+}
+
+var err = writeFile("output.txt", "hello")
+if (isErr(err)) {
+    pln("写入失败:", getErrStr(err))
+}
+```
+
+### isErrStr(value)
+
+判断字符串是否为错误字符串（以 `TXERROR:` 开头）。
+
+```xxl
+isErrStr("TXERROR:文件不存在")   // true
+isErrStr("TXERROR:")             // true（空前缀也视为错误字符串）
+isErrStr("ERROR:失败")           // false（只检查 TXERROR:）
+isErrStr("普通字符串")           // false
+isErrStr(null)                   // false（非字符串返回 false）
+isErrStr(42)                     // false
+```
+
+**注意：** 此函数只检查 `TXERROR:` 前缀，不检查 `ERROR:` 或 `error:`。
+
+### 错误检查函数对比
+
+| 函数 | Error 对象 | TXERROR: 字符串 | 普通字符串 | null |
+|------|-----------|-----------------|-----------|------|
+| `isError()` | ✅ true | ❌ false | ❌ false | ❌ false |
+| `isErr()` | ✅ true | ✅ true | ❌ false | ❌ false |
+| `isErrStr()` | ❌ false | ✅ true | ❌ false | ❌ false |
+| `checkErr()` | ✅ 退出 | ✅ 退出 | ❌ 不处理 | ❌ 不处理 |
+| `getErrStr()` | 返回消息 | 去前缀返回 | 原样返回 | 空字符串 |
+
+**说明：**
+- `isError()` - 只检查 Error 对象
+- `isErr()` - 检查 Error 对象或 TXERROR: 字符串
+- `isErrStr()` - 只检查 TXERROR: 开头的字符串
+- `checkErr()` - Error 对象或 TXERROR: 字符串时退出程序
+- `getErrStr()` - 提取错误消息
 
 ### isEmpty(value)
 

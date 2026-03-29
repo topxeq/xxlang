@@ -15,9 +15,11 @@ func init() {
 	Builtins["toInt"] = &Builtin{Fn: builtinToInt}
 	Builtins["toFloat"] = &Builtin{Fn: builtinToFloat}
 	Builtins["isUndefined"] = &Builtin{Fn: builtinIsUndefined}
+	Builtins["isUndef"] = &Builtin{Fn: builtinIsUndefined} // alias for isUndefined
 	Builtins["isCallable"] = &Builtin{Fn: builtinIsCallable}
 	Builtins["isIterable"] = &Builtin{Fn: builtinIsIterable}
 	Builtins["isError"] = &Builtin{Fn: builtinIsError}
+	Builtins["isErr"] = &Builtin{Fn: builtinIsErr}
 	Builtins["error"] = &Builtin{Fn: builtinBuiltinError}
 	Builtins["getErrStr"] = &Builtin{Fn: builtinGetErrStr}
 	Builtins["isErrStr"] = &Builtin{Fn: builtinIsErrStr}
@@ -193,6 +195,29 @@ func builtinIsError(args ...Object) Object {
 	return &Bool{Value: isError}
 }
 
+// builtinIsErr - check if value represents an error (Error object or error string)
+// Usage: isErr(value) -> bool
+// Returns true if:
+//   - value is an Error object
+//   - value is a string starting with "TXERROR:" (error string convention)
+//
+// This is useful for functions that return either an error object or a special
+// error string instead of throwing exceptions.
+func builtinIsErr(args ...Object) Object {
+	if len(args) != 1 {
+		return newError("wrong number of arguments for isErr. got=%d, want=1", len(args))
+	}
+
+	switch v := args[0].(type) {
+	case *Error:
+		return TRUE
+	case *String:
+		return &Bool{Value: strings.HasPrefix(v.Value, "TXERROR:")}
+	default:
+		return FALSE
+	}
+}
+
 // builtinBuiltinError - create an error object
 // Usage: error(message) -> error
 func builtinBuiltinError(args ...Object) Object {
@@ -208,8 +233,12 @@ func builtinBuiltinError(args ...Object) Object {
 	return &Error{Message: msg.Value}
 }
 
-// builtinGetErrStr - get error string from error object
+// builtinGetErrStr - get error string from error object or TXERROR: string
 // Usage: getErrStr(value) -> string
+// For Error object: returns the error message
+// For TXERROR: string: returns the message after TXERROR: prefix
+// For other strings: returns the string as-is
+// For other types: returns empty string
 func builtinGetErrStr(args ...Object) Object {
 	if len(args) != 1 {
 		return newError("wrong number of arguments for getErrStr. got=%d, want=1", len(args))
@@ -219,6 +248,10 @@ func builtinGetErrStr(args ...Object) Object {
 	case *Error:
 		return NewString(v.Message)
 	case *String:
+		// If it's a TXERROR: string, extract the message
+		if strings.HasPrefix(v.Value, "TXERROR:") {
+			return NewString(v.Value[8:]) // Remove "TXERROR:" prefix
+		}
 		return v
 	default:
 		return NewString("")
@@ -227,6 +260,7 @@ func builtinGetErrStr(args ...Object) Object {
 
 // builtinIsErrStr - check if string is an error message
 // Usage: isErrStr(value) -> bool
+// Returns true if value is a string starting with "TXERROR:"
 func builtinIsErrStr(args ...Object) Object {
 	if len(args) != 1 {
 		return newError("wrong number of arguments for isErrStr. got=%d, want=1", len(args))
@@ -237,7 +271,7 @@ func builtinIsErrStr(args ...Object) Object {
 		return FALSE
 	}
 
-	return &Bool{Value: strings.HasPrefix(str.Value, "ERROR:") || strings.HasPrefix(str.Value, "error:")}
+	return &Bool{Value: strings.HasPrefix(str.Value, "TXERROR:")}
 }
 
 // builtinTypeCode - get type code of an object
