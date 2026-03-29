@@ -527,6 +527,61 @@ func init() {
 				}
 				return Bool(true)
 			}),
+
+			// bom returns the UTF-8 BOM (Byte Order Mark) string.
+			// Usage: bom() -> string
+			"bom": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				return String("\ufeff")
+			}),
+
+			// removeBom removes UTF-8 BOM from the beginning of a string.
+			// Usage: removeBom(str) -> string
+			"removeBom": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("removeBom() takes exactly 1 argument")
+				}
+				s, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("removeBom() requires a string argument")
+				}
+				str := s.Value
+				if len(str) >= 3 && str[0] == 0xEF && str[1] == 0xBB && str[2] == 0xBF {
+					str = str[3:]
+				}
+				return String(str)
+			}),
+
+			// addBom adds UTF-8 BOM to the beginning of a string.
+			// Usage: addBom(str) -> string
+			"addBom": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("addBom() takes exactly 1 argument")
+				}
+				s, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("addBom() requires a string argument")
+				}
+				str := s.Value
+				// Check if BOM already exists
+				if len(str) >= 3 && str[0] == 0xEF && str[1] == 0xBB && str[2] == 0xBF {
+					return args[0]
+				}
+				return String("\ufeff" + str)
+			}),
+
+			// hasBom checks if a string starts with UTF-8 BOM.
+			// Usage: hasBom(str) -> bool
+			"hasBom": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("hasBom() takes exactly 1 argument")
+				}
+				s, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("hasBom() requires a string argument")
+				}
+				str := s.Value
+				return Bool(len(str) >= 3 && str[0] == 0xEF && str[1] == 0xBB && str[2] == 0xBF)
+			}),
 		},
 	})
 }

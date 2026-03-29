@@ -2379,6 +2379,27 @@ var Builtins = map[string]*Builtin{
 		},
 	},
 
+	// strCount counts substring occurrences in a string
+	"strCount": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 2 {
+				return newError("wrong number of arguments for strCount. got=%d, want=2", len(args))
+			}
+
+			str, ok := args[0].(*String)
+			if !ok {
+				return newError("first argument to 'strCount' must be STRING, got %s", args[0].Type())
+			}
+
+			substr, ok := args[1].(*String)
+			if !ok {
+				return newError("second argument to 'strCount' must be STRING, got %s", args[1].Type())
+			}
+
+			return NewInt(int64(strings.Count(str.Value, substr.Value)))
+		},
+	},
+
 	// ============================================================
 	// Array Enhancement Functions
 	// ============================================================

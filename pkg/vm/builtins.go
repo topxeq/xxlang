@@ -416,7 +416,8 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["strToInt"],            // 357
 		objects.Builtins["getTextSimilarity"],   // 358
 		objects.Builtins["fuzzyFind"],           // 359
-		objects.Builtins["strRemoveBom"],        // 360
+		// strRemoveBom moved to strings module
+		nil, // 360: strRemoveBom removed - use strings.removeBom()
 		// String functions moved to string module
 		nil, // 361: wordCount removed - use string.wordCount()
 		nil, // 362: lineCount removed - use string.lineCount()
@@ -571,6 +572,11 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["byteIndexOf"], // 488
 		objects.Builtins["byteSubstr"],  // 489
 		objects.Builtins["byteLen"],     // 490
+		// String enhancement (Batch 24)
+		objects.Builtins["strCount"], // 491
+		// Simple encoding (Batch 25)
+		objects.Builtins["simpleEncode"], // 492
+		objects.Builtins["simpleDecode"], // 493
 	}
 
 	if index < 0 || index >= len(builtins) {

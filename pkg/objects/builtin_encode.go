@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"html"
 	"net/url"
+	"strings"
 )
 
 func init() {
@@ -29,6 +30,10 @@ func init() {
 	Builtins["toHex"] = &Builtin{Fn: builtinHexEncode}
 	Builtins["unhex"] = &Builtin{Fn: builtinHexDecode}
 	Builtins["hexToStr"] = &Builtin{Fn: builtinHexToStr}
+
+	// Simple obfuscation encoding
+	Builtins["simpleEncode"] = &Builtin{Fn: builtinSimpleEncode}
+	Builtins["simpleDecode"] = &Builtin{Fn: builtinSimpleDecode}
 }
 
 // urlEncode - encode string for URL (path encoding)
@@ -233,4 +238,111 @@ func builtinHexToStr(args ...Object) Object {
 	}
 
 	return NewString(string(decoded))
+}
+
+// hexChars for simple encoding
+const hexChars = "0123456789ABCDEF"
+
+// builtinSimpleEncode - simple encoding compatible with Charlang
+// Keeps '0'-'9' and 'a'-'z' unchanged, encodes other chars as padding + hex
+// Usage: simpleEncode(str) -> string (default padding '_')
+//
+//	simpleEncode(str, padding) -> string
+func builtinSimpleEncode(args ...Object) Object {
+	if len(args) < 1 || len(args) > 2 {
+		return newError("wrong number of arguments for simpleEncode. got=%d, want=1 or 2", len(args))
+	}
+
+	str, ok := args[0].(*String)
+	if !ok {
+		return newError("first argument to 'simpleEncode' must be STRING, got %s", args[0].Type())
+	}
+
+	padding := byte('_')
+	if len(args) == 2 {
+		p, ok := args[1].(*String)
+		if !ok {
+			return newError("second argument to 'simpleEncode' must be STRING, got %s", args[1].Type())
+		}
+		if len(p.Value) > 0 {
+			padding = p.Value[0]
+		}
+	}
+
+	var result strings.Builder
+	for i := 0; i < len(str.Value); i++ {
+		v := str.Value[i]
+		// Keep '0'-'9' and 'a'-'z' unchanged
+		if (v >= '0' && v <= '9') || (v >= 'a' && v <= 'z') {
+			result.WriteByte(v)
+		} else {
+			result.WriteByte(padding)
+			result.WriteByte(hexChars[v>>4])
+			result.WriteByte(hexChars[v&0x0F])
+		}
+	}
+
+	return NewString(result.String())
+}
+
+// builtinSimpleDecode - simple decoding compatible with Charlang
+// Usage: simpleDecode(str) -> string (default padding '_')
+//
+//	simpleDecode(str, padding) -> string
+func builtinSimpleDecode(args ...Object) Object {
+	if len(args) < 1 || len(args) > 2 {
+		return newError("wrong number of arguments for simpleDecode. got=%d, want=1 or 2", len(args))
+	}
+
+	str, ok := args[0].(*String)
+	if !ok {
+		return newError("first argument to 'simpleDecode' must be STRING, got %s", args[0].Type())
+	}
+
+	padding := byte('_')
+	if len(args) == 2 {
+		p, ok := args[1].(*String)
+		if !ok {
+			return newError("second argument to 'simpleDecode' must be STRING, got %s", args[1].Type())
+		}
+		if len(p.Value) > 0 {
+			padding = p.Value[0]
+		}
+	}
+
+	var result strings.Builder
+	s := str.Value
+	lenS := len(s)
+
+	for i := 0; i < lenS; {
+		if s[i] == padding {
+			if i+2 >= lenS {
+				// Invalid format, return as-is
+				return str
+			}
+			// Decode hex value
+			high := unhexChar(s[i+1])
+			low := unhexChar(s[i+2])
+			result.WriteByte(high<<4 | low)
+			i += 3
+		} else {
+			result.WriteByte(s[i])
+			i++
+		}
+	}
+
+	return NewString(result.String())
+}
+
+// unhexChar converts a hex character to its numeric value
+func unhexChar(c byte) byte {
+	switch {
+	case '0' <= c && c <= '9':
+		return c - '0'
+	case 'a' <= c && c <= 'f':
+		return c - 'a' + 10
+	case 'A' <= c && c <= 'F':
+		return c - 'A' + 10
+	}
+	return 0
 }

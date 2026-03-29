@@ -22,9 +22,7 @@ func init() {
 	Builtins["strToInt"] = &Builtin{Fn: builtinStrToInt}
 	Builtins["getTextSimilarity"] = &Builtin{Fn: builtinGetTextSimilarity}
 	Builtins["fuzzyFind"] = &Builtin{Fn: builtinFuzzyFind}
-	Builtins["strRemoveBom"] = &Builtin{Fn: builtinStrRemoveBom}
-	// The following functions have been moved to the string module:
-	// wordCount, lineCount, reverseStr, capitalize, title, swapCase, center, zfill, isSpace
+	// strRemoveBom moved to strings module: strings.removeBom(), strings.addBom(), strings.bom()
 	Builtins["strReverse"] = &Builtin{Fn: builtinReverseStr}
 }
 
@@ -256,8 +254,8 @@ func builtinStrFindAllSub(args ...Object) Object {
 	return NewArray(results)
 }
 
-// builtinLimitStr - limit string length
-// Usage: limitStr(str, maxLen) -> string
+// builtinLimitStr - limit string length (by Unicode characters)
+// Usage: limitStr(str, maxLen, suffix?) -> string
 func builtinLimitStr(args ...Object) Object {
 	if len(args) < 2 || len(args) > 3 {
 		return newError("wrong number of arguments for limitStr. got=%d, want=2 or 3", len(args))
@@ -282,11 +280,22 @@ func builtinLimitStr(args ...Object) Object {
 		suffix = s.Value
 	}
 
-	if len(str.Value) <= int(maxLen.Value) {
+	runes := []rune(str.Value)
+	runeLen := len(runes)
+
+	if runeLen <= int(maxLen.Value) {
 		return str
 	}
 
-	return NewString(str.Value[:int(maxLen.Value)] + suffix)
+	suffixRunes := []rune(suffix)
+	suffixLen := len(suffixRunes)
+
+	if int(maxLen.Value) <= suffixLen {
+		return NewString(string(runes[:maxLen.Value]))
+	}
+
+	result := string(runes[:int(maxLen.Value)-suffixLen]) + suffix
+	return NewString(result)
 }
 
 // builtinStrQuote - quote string
@@ -476,26 +485,6 @@ func builtinFuzzyFind(args ...Object) Object {
 	}
 
 	return NewArray(matches)
-}
-
-// builtinStrRemoveBom - remove BOM from string
-// Usage: strRemoveBom(str) -> string
-func builtinStrRemoveBom(args ...Object) Object {
-	if len(args) != 1 {
-		return newError("wrong number of arguments for strRemoveBom. got=%d, want=1", len(args))
-	}
-
-	str, ok := args[0].(*String)
-	if !ok {
-		return newError("argument to 'strRemoveBom' must be STRING, got %s", args[0].Type())
-	}
-
-	s := str.Value
-	if len(s) >= 3 && s[0] == 0xEF && s[1] == 0xBB && s[2] == 0xBF {
-		s = s[3:]
-	}
-
-	return NewString(s)
 }
 
 // builtinReverseStr - reverse string (used by strReverse builtin)

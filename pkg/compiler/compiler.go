@@ -447,7 +447,8 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(357, "strToInt")
 	s.DefineBuiltin(358, "getTextSimilarity")
 	s.DefineBuiltin(359, "fuzzyFind")
-	s.DefineBuiltin(360, "strRemoveBom")
+	// strRemoveBom moved to strings module - use strings.removeBom(), strings.addBom(), strings.bom()
+	s.DefineBuiltin(360, "strRemoveBom") // placeholder for index stability
 	// String functions moved to string module
 	// s.DefineBuiltin(361, "wordCount")      // use string.wordCount()
 	// s.DefineBuiltin(362, "lineCount")      // use string.lineCount()
@@ -596,6 +597,11 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(488, "byteIndexOf")
 	s.DefineBuiltin(489, "byteSubstr")
 	s.DefineBuiltin(490, "byteLen")
+	// String enhancement (Batch 24)
+	s.DefineBuiltin(491, "strCount")
+	// Simple encoding (Batch 25)
+	s.DefineBuiltin(492, "simpleEncode")
+	s.DefineBuiltin(493, "simpleDecode")
 	return s
 }
 
