@@ -123,6 +123,8 @@ const (
 	YAMLDocumentType ObjectType = "YAML_DOCUMENT"
 	// TOML types
 	TomlDocumentType ObjectType = "TOML_DOCUMENT"
+	// Time type
+	TimeType ObjectType = "TIME"
 )
 
 // TypeTag is a fast integer type identifier for hot path checks
@@ -243,6 +245,8 @@ const (
 	TagHTMLElement
 	// YAML tags
 	TagYAMLDocument
+	// Time tag
+	TagTime
 	TagUnknown
 )
 

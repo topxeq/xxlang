@@ -479,127 +479,32 @@ func builtinGetNowStrCompact(args ...Object) Object {
 	return NewString(time.Now().Format("20060102150405"))
 }
 
-// now - get current time as a map object
-// Usage: now() -> map with year, month, day, hour, minute, second, nanosecond, timestamp
+// now - get current time as a Time object
+// Usage: now() -> Time
 func builtinNow(args ...Object) Object {
 	if len(args) != 0 {
 		return newError("wrong number of arguments for now. got=%d, want=0", len(args))
 	}
-
-	t := time.Now()
-	pairs := make(map[HashKey]MapPair)
-
-	pairs[NewString("year").HashKey()] = MapPair{
-		Key: NewString("year"), Value: NewInt(int64(t.Year())),
-	}
-	pairs[NewString("month").HashKey()] = MapPair{
-		Key: NewString("month"), Value: NewInt(int64(t.Month())),
-	}
-	pairs[NewString("day").HashKey()] = MapPair{
-		Key: NewString("day"), Value: NewInt(int64(t.Day())),
-	}
-	pairs[NewString("hour").HashKey()] = MapPair{
-		Key: NewString("hour"), Value: NewInt(int64(t.Hour())),
-	}
-	pairs[NewString("minute").HashKey()] = MapPair{
-		Key: NewString("minute"), Value: NewInt(int64(t.Minute())),
-	}
-	pairs[NewString("second").HashKey()] = MapPair{
-		Key: NewString("second"), Value: NewInt(int64(t.Second())),
-	}
-	pairs[NewString("nanosecond").HashKey()] = MapPair{
-		Key: NewString("nanosecond"), Value: NewInt(int64(t.Nanosecond())),
-	}
-	pairs[NewString("timestamp").HashKey()] = MapPair{
-		Key: NewString("timestamp"), Value: NewInt(t.Unix()),
-	}
-	pairs[NewString("timestampMs").HashKey()] = MapPair{
-		Key: NewString("timestampMs"), Value: NewInt(t.UnixMilli()),
-	}
-	pairs[NewString("weekday").HashKey()] = MapPair{
-		Key: NewString("weekday"), Value: NewInt(int64(t.Weekday())),
-	}
-
-	return NewMap(pairs)
+	return NewTime(time.Now())
 }
 
-// timeToTimeStamp - convert time map to Unix timestamp
-// Usage: timeToTimeStamp(timeMap) -> int
-// The timeMap should contain year, month, day, and optionally hour, minute, second
+// timeToTimeStamp - convert Time object to Unix timestamp
+// Usage: timeToTimeStamp(timeObj) -> int
 func builtinTimeToTimeStamp(args ...Object) Object {
 	if len(args) != 1 {
 		return newError("wrong number of arguments for timeToTimeStamp. got=%d, want=1", len(args))
 	}
 
-	m, ok := args[0].(*Map)
+	t, ok := args[0].(*Time)
 	if !ok {
-		return newError("argument to 'timeToTimeStamp' must be MAP, got %s", args[0].Type())
+		return newError("argument to 'timeToTimeStamp' must be Time, got %s", args[0].Type())
 	}
 
-	// Extract values from map
-	year := int64(0)
-	month := int64(1)
-	day := int64(1)
-	hour := int64(0)
-	minute := int64(0)
-	second := int64(0)
-	nano := int64(0)
-
-	yearKey := NewString("year")
-	if pair, exists := m.Pairs[yearKey.HashKey()]; exists {
-		if i, ok := pair.Value.(*Int); ok {
-			year = i.Value
-		}
-	}
-
-	monthKey := NewString("month")
-	if pair, exists := m.Pairs[monthKey.HashKey()]; exists {
-		if i, ok := pair.Value.(*Int); ok {
-			month = i.Value
-		}
-	}
-
-	dayKey := NewString("day")
-	if pair, exists := m.Pairs[dayKey.HashKey()]; exists {
-		if i, ok := pair.Value.(*Int); ok {
-			day = i.Value
-		}
-	}
-
-	hourKey := NewString("hour")
-	if pair, exists := m.Pairs[hourKey.HashKey()]; exists {
-		if i, ok := pair.Value.(*Int); ok {
-			hour = i.Value
-		}
-	}
-
-	minuteKey := NewString("minute")
-	if pair, exists := m.Pairs[minuteKey.HashKey()]; exists {
-		if i, ok := pair.Value.(*Int); ok {
-			minute = i.Value
-		}
-	}
-
-	secondKey := NewString("second")
-	if pair, exists := m.Pairs[secondKey.HashKey()]; exists {
-		if i, ok := pair.Value.(*Int); ok {
-			second = i.Value
-		}
-	}
-
-	nanoKey := NewString("nanosecond")
-	if pair, exists := m.Pairs[nanoKey.HashKey()]; exists {
-		if i, ok := pair.Value.(*Int); ok {
-			nano = i.Value
-		}
-	}
-
-	t := time.Date(int(year), time.Month(month), int(day), int(hour), int(minute), int(second), int(nano), time.Local)
-	return NewInt(t.Unix())
+	return NewInt(t.GetTimestamp())
 }
 
-// timeStampToTime - convert Unix timestamp to time map (auto-detect seconds/milliseconds)
-// Usage: timeStampToTime(timestamp) -> map
+// timeStampToTime - convert Unix timestamp to Time object (auto-detect seconds/milliseconds)
+// Usage: timeStampToTime(timestamp) -> Time
 // Auto-detects: if timestamp > 1e12, treats as milliseconds; otherwise as seconds
 func builtinTimeStampToTime(args ...Object) Object {
 	if len(args) != 1 {
@@ -616,53 +521,7 @@ func builtinTimeStampToTime(args ...Object) Object {
 		return newError("argument to 'timeStampToTime' must be INT or FLOAT, got %s", args[0].Type())
 	}
 
-	// Auto-detect seconds vs milliseconds
-	// If timestamp > 1e12 (year 33658 in seconds), it's likely milliseconds
-	var t time.Time
-	if timestamp > 1e12 {
-		// Milliseconds
-		t = time.UnixMilli(timestamp)
-	} else {
-		// Seconds
-		t = time.Unix(timestamp, 0)
-	}
-
-	pairs := make(map[HashKey]MapPair)
-	pairs[NewString("year").HashKey()] = MapPair{
-		Key: NewString("year"), Value: NewInt(int64(t.Year())),
-	}
-	pairs[NewString("month").HashKey()] = MapPair{
-		Key: NewString("month"), Value: NewInt(int64(t.Month())),
-	}
-	pairs[NewString("day").HashKey()] = MapPair{
-		Key: NewString("day"), Value: NewInt(int64(t.Day())),
-	}
-	pairs[NewString("hour").HashKey()] = MapPair{
-		Key: NewString("hour"), Value: NewInt(int64(t.Hour())),
-	}
-	pairs[NewString("minute").HashKey()] = MapPair{
-		Key: NewString("minute"), Value: NewInt(int64(t.Minute())),
-	}
-	pairs[NewString("second").HashKey()] = MapPair{
-		Key: NewString("second"), Value: NewInt(int64(t.Second())),
-	}
-	pairs[NewString("nanosecond").HashKey()] = MapPair{
-		Key: NewString("nanosecond"), Value: NewInt(int64(t.Nanosecond())),
-	}
-	pairs[NewString("timestamp").HashKey()] = MapPair{
-		Key: NewString("timestamp"), Value: NewInt(t.Unix()),
-	}
-	pairs[NewString("timestampMs").HashKey()] = MapPair{
-		Key: NewString("timestampMs"), Value: NewInt(t.UnixMilli()),
-	}
-	pairs[NewString("weekday").HashKey()] = MapPair{
-		Key: NewString("weekday"), Value: NewInt(int64(t.Weekday())),
-	}
-	pairs[NewString("str").HashKey()] = MapPair{
-		Key: NewString("str"), Value: NewString(t.Format("2006-01-02 15:04:05")),
-	}
-
-	return NewMap(pairs)
+	return NewTimeFromTimestamp(timestamp)
 }
 
 // Helper function to create time info string

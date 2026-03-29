@@ -84,6 +84,8 @@ var TypeMethods = map[ObjectType]map[string]*Builtin{
 	HTMLElementType:  htmlElementMethods,
 	// TOML
 	TomlDocumentType: tomlDocumentMethods,
+	// Time
+	TimeType: timeMethods,
 }
 
 // GetMethod returns the builtin method for the given object type and method name
@@ -9173,5 +9175,301 @@ var tomlDocumentMethods = map[string]*Builtin{
 			return newError("merge failed: %v", err)
 		}
 		return NULL
+	}},
+}
+
+// ============================================================
+// Time Methods
+// ============================================================
+
+var timeMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toStr. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Time)
+		if !ok {
+			return newError("receiver for toStr must be Time, got %s", args[0].Type())
+		}
+		return NewString(self.Format("2006-01-02 15:04:05"))
+	}},
+
+	// Getter methods
+	"year": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for year. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Time)
+		if !ok {
+			return newError("receiver for year must be Time, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.GetYear()))
+	}},
+
+	"month": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for month. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Time)
+		if !ok {
+			return newError("receiver for month must be Time, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.GetMonth()))
+	}},
+
+	"day": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for day. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Time)
+		if !ok {
+			return newError("receiver for day must be Time, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.GetDay()))
+	}},
+
+	"hour": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for hour. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Time)
+		if !ok {
+			return newError("receiver for hour must be Time, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.GetHour()))
+	}},
+
+	"minute": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for minute. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Time)
+		if !ok {
+			return newError("receiver for minute must be Time, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.GetMinute()))
+	}},
+
+	"second": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for second. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Time)
+		if !ok {
+			return newError("receiver for second must be Time, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.GetSecond()))
+	}},
+
+	"nanosecond": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for nanosecond. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Time)
+		if !ok {
+			return newError("receiver for nanosecond must be Time, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.GetNanosecond()))
+	}},
+
+	"weekday": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for weekday. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Time)
+		if !ok {
+			return newError("receiver for weekday must be Time, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.GetWeekday()))
+	}},
+
+	"timestamp": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for timestamp. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Time)
+		if !ok {
+			return newError("receiver for timestamp must be Time, got %s", args[0].Type())
+		}
+		return NewInt(self.GetTimestamp())
+	}},
+
+	"timestampMs": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for timestampMs. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Time)
+		if !ok {
+			return newError("receiver for timestampMs must be Time, got %s", args[0].Type())
+		}
+		return NewInt(self.GetTimestampMs())
+	}},
+
+	// Formatting
+	"format": {Fn: func(args ...Object) Object {
+		if len(args) < 1 || len(args) > 2 {
+			return newError("wrong number of arguments for format. got=%d, want=1 or 2", len(args))
+		}
+		self, ok := args[0].(*Time)
+		if !ok {
+			return newError("receiver for format must be Time, got %s", args[0].Type())
+		}
+		layout := "2006-01-02 15:04:05"
+		if len(args) == 2 {
+			l, ok := args[1].(*String)
+			if !ok {
+				return newError("layout must be STRING, got %s", args[1].Type())
+			}
+			layout = l.Value
+		}
+		return NewString(self.Format(layout))
+	}},
+
+	// Time operations
+	"addSecs": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for addSecs. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Time)
+		if !ok {
+			return newError("receiver for addSecs must be Time, got %s", args[0].Type())
+		}
+		var secs float64
+		switch arg := args[1].(type) {
+		case *Int:
+			secs = float64(arg.Value)
+		case *Float:
+			secs = arg.Value
+		default:
+			return newError("seconds must be INT or FLOAT, got %s", args[1].Type())
+		}
+		return self.AddSecs(secs)
+	}},
+
+	"addDate": {Fn: func(args ...Object) Object {
+		if len(args) != 4 {
+			return newError("wrong number of arguments for addDate. got=%d, want=4", len(args))
+		}
+		self, ok := args[0].(*Time)
+		if !ok {
+			return newError("receiver for addDate must be Time, got %s", args[0].Type())
+		}
+		years, ok := args[1].(*Int)
+		if !ok {
+			return newError("years must be INT, got %s", args[1].Type())
+		}
+		months, ok := args[2].(*Int)
+		if !ok {
+			return newError("months must be INT, got %s", args[2].Type())
+		}
+		days, ok := args[3].(*Int)
+		if !ok {
+			return newError("days must be INT, got %s", args[3].Type())
+		}
+		return self.AddDate(int(years.Value), int(months.Value), int(days.Value))
+	}},
+
+	"addDuration": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for addDuration. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Time)
+		if !ok {
+			return newError("receiver for addDuration must be Time, got %s", args[0].Type())
+		}
+		durStr, ok := args[1].(*String)
+		if !ok {
+			return newError("duration must be STRING, got %s", args[1].Type())
+		}
+		result, err := self.AddDuration(durStr.Value)
+		if err != nil {
+			return newError("addDuration failed: %v", err)
+		}
+		return result
+	}},
+
+	// Comparison methods
+	"before": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for before. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Time)
+		if !ok {
+			return newError("receiver for before must be Time, got %s", args[0].Type())
+		}
+		other, ok := args[1].(*Time)
+		if !ok {
+			return newError("other must be Time, got %s", args[1].Type())
+		}
+		return &Bool{Value: self.Before(other)}
+	}},
+
+	"after": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for after. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Time)
+		if !ok {
+			return newError("receiver for after must be Time, got %s", args[0].Type())
+		}
+		other, ok := args[1].(*Time)
+		if !ok {
+			return newError("other must be Time, got %s", args[1].Type())
+		}
+		return &Bool{Value: self.After(other)}
+	}},
+
+	"equal": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for equal. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Time)
+		if !ok {
+			return newError("receiver for equal must be Time, got %s", args[0].Type())
+		}
+		other, ok := args[1].(*Time)
+		if !ok {
+			return newError("other must be Time, got %s", args[1].Type())
+		}
+		return &Bool{Value: self.Equal(other)}
+	}},
+
+	"diffSecs": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for diffSecs. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*Time)
+		if !ok {
+			return newError("receiver for diffSecs must be Time, got %s", args[0].Type())
+		}
+		other, ok := args[1].(*Time)
+		if !ok {
+			return newError("other must be Time, got %s", args[1].Type())
+		}
+		return NewFloat(self.DiffSecs(other))
+	}},
+
+	// Utility methods
+	"isZero": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for isZero. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Time)
+		if !ok {
+			return newError("receiver for isZero must be Time, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.IsZero()}
+	}},
+
+	"toMap": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toMap. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Time)
+		if !ok {
+			return newError("receiver for toMap must be Time, got %s", args[0].Type())
+		}
+		return self.ToMap()
 	}},
 }
