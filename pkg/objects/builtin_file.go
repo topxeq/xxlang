@@ -12,6 +12,8 @@ import (
 func init() {
 	// File system functions
 	Builtins["fileExists"] = &Builtin{Fn: builtinFileExists}
+	Builtins["dirExists"] = &Builtin{Fn: builtinDirExists}
+	Builtins["pathExists"] = &Builtin{Fn: builtinPathExists}
 	Builtins["isDir"] = &Builtin{Fn: builtinIsDir}
 	Builtins["loadText"] = &Builtin{Fn: builtinLoadText}
 	Builtins["saveText"] = &Builtin{Fn: builtinSaveText}
@@ -19,7 +21,9 @@ func init() {
 	Builtins["loadBytes"] = &Builtin{Fn: builtinLoadBytes}
 	Builtins["appendText"] = &Builtin{Fn: builtinAppendText}
 	Builtins["copyFile"] = &Builtin{Fn: builtinCopyFile}
+	Builtins["copyPath"] = &Builtin{Fn: builtinCopyPath}
 	Builtins["renameFile"] = &Builtin{Fn: builtinRenameFile}
+	Builtins["moveFile"] = &Builtin{Fn: builtinRenameFile} // alias for renameFile
 	Builtins["removeFile"] = &Builtin{Fn: builtinRemoveFile}
 	Builtins["removeDir"] = &Builtin{Fn: builtinRemoveDir}
 	Builtins["getFileList"] = &Builtin{Fn: builtinGetFileList}
@@ -32,6 +36,7 @@ func init() {
 	Builtins["extractFileDir"] = &Builtin{Fn: builtinExtractFileDir}
 	Builtins["extractFileName"] = &Builtin{Fn: builtinExtractFileName}
 	Builtins["getFileInfo"] = &Builtin{Fn: builtinGetFileInfo}
+	Builtins["getFileSize"] = &Builtin{Fn: builtinGetFileSize}
 	Builtins["loadLines"] = &Builtin{Fn: builtinLoadLines}
 	Builtins["getFileAbs"] = &Builtin{Fn: builtinGetFileAbs}
 	Builtins["getFileRel"] = &Builtin{Fn: builtinGetFileRel}
@@ -50,12 +55,56 @@ func builtinFileExists(args ...Object) Object {
 		return newError("argument to 'fileExists' must be STRING, got %s", args[0].Type())
 	}
 
-	_, err := os.Stat(path.Value)
+	info, err := os.Stat(path.Value)
 	if os.IsNotExist(err) {
 		return FALSE
 	}
 	if err != nil {
 		return newError("fileExists error: %v", err)
+	}
+	return &Bool{Value: !info.IsDir()}
+}
+
+// dirExists - check if directory exists
+// Usage: dirExists(path) -> bool
+func builtinDirExists(args ...Object) Object {
+	if len(args) != 1 {
+		return newError("wrong number of arguments for dirExists. got=%d, want=1", len(args))
+	}
+
+	path, ok := args[0].(*String)
+	if !ok {
+		return newError("argument to 'dirExists' must be STRING, got %s", args[0].Type())
+	}
+
+	info, err := os.Stat(path.Value)
+	if os.IsNotExist(err) {
+		return FALSE
+	}
+	if err != nil {
+		return FALSE
+	}
+	return &Bool{Value: info.IsDir()}
+}
+
+// pathExists - check if path exists (file or directory)
+// Usage: pathExists(path) -> bool
+func builtinPathExists(args ...Object) Object {
+	if len(args) != 1 {
+		return newError("wrong number of arguments for pathExists. got=%d, want=1", len(args))
+	}
+
+	path, ok := args[0].(*String)
+	if !ok {
+		return newError("argument to 'pathExists' must be STRING, got %s", args[0].Type())
+	}
+
+	_, err := os.Stat(path.Value)
+	if os.IsNotExist(err) {
+		return FALSE
+	}
+	if err != nil {
+		return FALSE
 	}
 	return TRUE
 }
@@ -340,6 +389,9 @@ func builtinRemoveDir(args ...Object) Object {
 
 // getFileList - get list of files in directory
 // Usage: getFileList(path) -> array
+//
+//	getFileList(path, pattern) -> array (glob pattern)
+//	getFileList(path, "-recursive" or "-r") -> array (recursive)
 func builtinGetFileList(args ...Object) Object {
 	if len(args) < 1 || len(args) > 2 {
 		return newError("wrong number of arguments for getFileList. got=%d, want=1 or 2", len(args))
@@ -350,15 +402,53 @@ func builtinGetFileList(args ...Object) Object {
 		return newError("argument to 'getFileList' must be STRING, got %s", args[0].Type())
 	}
 
+	pattern := ""
 	recursive := false
 	if len(args) == 2 {
 		if opt, ok := args[1].(*String); ok {
-			recursive = opt.Value == "-recursive" || opt.Value == "-r"
+			if opt.Value == "-recursive" || opt.Value == "-r" {
+				recursive = true
+			} else {
+				// Treat as glob pattern
+				pattern = opt.Value
+			}
 		}
 	}
 
 	var files []Object
 
+	// If pattern contains path separator, use filepath.Glob directly
+	if pattern != "" && strings.Contains(pattern, string(filepath.Separator)) {
+		// Full path glob
+		matches, err := filepath.Glob(filepath.Join(path.Value, pattern))
+		if err != nil {
+			return newError("getFileList glob error: %v", err)
+		}
+		for _, m := range matches {
+			files = append(files, NewString(m))
+		}
+		return NewArray(files)
+	}
+
+	// If pattern is provided without path separator, filter the directory
+	if pattern != "" {
+		entries, err := os.ReadDir(path.Value)
+		if err != nil {
+			return newError("getFileList error: %v", err)
+		}
+		for _, entry := range entries {
+			matched, err := filepath.Match(pattern, entry.Name())
+			if err != nil {
+				return newError("getFileList pattern error: %v", err)
+			}
+			if matched {
+				files = append(files, NewString(entry.Name()))
+			}
+		}
+		return NewArray(files)
+	}
+
+	// No pattern, just list directory
 	if recursive {
 		err := filepath.Walk(path.Value, func(filePath string, info os.FileInfo, err error) error {
 			if err != nil {
@@ -637,4 +727,123 @@ func builtinLoadLines(args ...Object) Object {
 	}
 
 	return NewArray(elements)
+}
+
+// getFileSize - get file size in bytes
+// Usage: getFileSize(path) -> int
+func builtinGetFileSize(args ...Object) Object {
+	if len(args) != 1 {
+		return newError("wrong number of arguments for getFileSize. got=%d, want=1", len(args))
+	}
+
+	path, ok := args[0].(*String)
+	if !ok {
+		return newError("argument to 'getFileSize' must be STRING, got %s", args[0].Type())
+	}
+
+	info, err := os.Stat(path.Value)
+	if err != nil {
+		return newError("getFileSize error: %v", err)
+	}
+
+	return NewInt(info.Size())
+}
+
+// copyPath - copy directory or file recursively
+// Usage: copyPath(src, dst) -> null
+func builtinCopyPath(args ...Object) Object {
+	if len(args) != 2 {
+		return newError("wrong number of arguments for copyPath. got=%d, want=2", len(args))
+	}
+
+	src, ok := args[0].(*String)
+	if !ok {
+		return newError("first argument to 'copyPath' must be STRING, got %s", args[0].Type())
+	}
+
+	dst, ok := args[1].(*String)
+	if !ok {
+		return newError("second argument to 'copyPath' must be STRING, got %s", args[1].Type())
+	}
+
+	// Get source info
+	srcInfo, err := os.Stat(src.Value)
+	if err != nil {
+		return newError("copyPath error: cannot stat source: %v", err)
+	}
+
+	if srcInfo.IsDir() {
+		// Copy directory recursively
+		err = copyDir(src.Value, dst.Value)
+		if err != nil {
+			return newError("copyPath error: %v", err)
+		}
+	} else {
+		// Copy single file
+		err = copySingleFile(src.Value, dst.Value)
+		if err != nil {
+			return newError("copyPath error: %v", err)
+		}
+	}
+
+	return NULL
+}
+
+// copyDir copies a directory recursively
+func copyDir(src, dst string) error {
+	// Create destination directory
+	err := os.MkdirAll(dst, 0755)
+	if err != nil {
+		return err
+	}
+
+	// Read source directory
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+
+		if entry.IsDir() {
+			err = copyDir(srcPath, dstPath)
+			if err != nil {
+				return err
+			}
+		} else {
+			err = copySingleFile(srcPath, dstPath)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// copySingleFile copies a single file
+func copySingleFile(src, dst string) error {
+	// Ensure destination directory exists
+	dstDir := filepath.Dir(dst)
+	err := os.MkdirAll(dstDir, 0755)
+	if err != nil {
+		return err
+	}
+
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
+	return err
 }

@@ -582,6 +582,12 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["getNowStrCompact"], // 495
 		objects.Builtins["timeToTimeStamp"],  // 496
 		objects.Builtins["timeStampToTime"],  // 497
+		// File system enhancement (Batch 27)
+		objects.Builtins["dirExists"],   // 498
+		objects.Builtins["pathExists"],  // 499
+		objects.Builtins["copyPath"],    // 500
+		objects.Builtins["moveFile"],    // 501
+		objects.Builtins["getFileSize"], // 502
 	}
 
 	if index < 0 || index >= len(builtins) {
