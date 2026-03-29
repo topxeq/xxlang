@@ -4,6 +4,7 @@ package objects
 
 import (
 	"crypto/sha1"
+	"crypto/sha512"
 	"encoding/hex"
 	"html"
 	"net/url"
@@ -164,7 +165,7 @@ func builtinSha512(args ...Object) Object {
 		return newError("argument to 'sha512' must be STRING, got %s", args[0].Type())
 	}
 
-	hash := sha1.Sum([]byte(str.Value))
+	hash := sha512.Sum512([]byte(str.Value))
 	return NewString(hex.EncodeToString(hash[:]))
 }
 
