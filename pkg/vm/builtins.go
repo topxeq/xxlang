@@ -577,6 +577,11 @@ func getBuiltin(index int) *objects.Builtin {
 		// Simple encoding (Batch 25)
 		objects.Builtins["simpleEncode"], // 492
 		objects.Builtins["simpleDecode"], // 493
+		// Time enhancement (Batch 26)
+		objects.Builtins["now"],              // 494
+		objects.Builtins["getNowStrCompact"], // 495
+		objects.Builtins["timeToTimeStamp"],  // 496
+		objects.Builtins["timeStampToTime"],  // 497
 	}
 
 	if index < 0 || index >= len(builtins) {

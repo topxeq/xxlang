@@ -602,6 +602,11 @@ func NewSymbolTable() *SymbolTable {
 	// Simple encoding (Batch 25)
 	s.DefineBuiltin(492, "simpleEncode")
 	s.DefineBuiltin(493, "simpleDecode")
+	// Time enhancement (Batch 26)
+	s.DefineBuiltin(494, "now")
+	s.DefineBuiltin(495, "getNowStrCompact")
+	s.DefineBuiltin(496, "timeToTimeStamp")
+	s.DefineBuiltin(497, "timeStampToTime")
 	return s
 }
 
