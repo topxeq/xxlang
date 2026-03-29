@@ -325,7 +325,7 @@ func builtinCopyFile(args ...Object) Object {
 	return NULL
 }
 
-// renameFile - rename or move file
+// renameFile - rename or move file (supports cross-volume move)
 // Usage: renameFile(oldPath, newPath) -> null
 func builtinRenameFile(args ...Object) Object {
 	if len(args) != 2 {
@@ -342,11 +342,50 @@ func builtinRenameFile(args ...Object) Object {
 		return newError("second argument to 'renameFile' must be STRING, got %s", args[1].Type())
 	}
 
+	// Try rename first (fast, works on same volume)
 	err := os.Rename(oldPath.Value, newPath.Value)
-	if err != nil {
-		return newError("renameFile error: %v", err)
+	if err == nil {
+		return NULL
 	}
-	return NULL
+
+	// If rename fails (likely cross-volume), try copy + delete
+	// Check if it's a cross-device link error
+	if strings.Contains(err.Error(), "cross-device") || strings.Contains(err.Error(), "different volume") {
+		// Ensure destination directory exists
+		dstDir := filepath.Dir(newPath.Value)
+		if dstDir != "" && dstDir != "." {
+			if err := os.MkdirAll(dstDir, 0755); err != nil {
+				return newError("renameFile error: cannot create destination directory: %v", err)
+			}
+		}
+
+		// Check if source is a directory
+		srcInfo, statErr := os.Stat(oldPath.Value)
+		if statErr != nil {
+			return newError("renameFile error: cannot stat source: %v", statErr)
+		}
+
+		if srcInfo.IsDir() {
+			// Move directory recursively
+			if err := copyDir(oldPath.Value, newPath.Value); err != nil {
+				return newError("renameFile error: copy failed: %v", err)
+			}
+			if err := os.RemoveAll(oldPath.Value); err != nil {
+				return newError("renameFile error: remove source failed: %v", err)
+			}
+		} else {
+			// Move single file
+			if err := copySingleFile(oldPath.Value, newPath.Value); err != nil {
+				return newError("renameFile error: copy failed: %v", err)
+			}
+			if err := os.Remove(oldPath.Value); err != nil {
+				return newError("renameFile error: remove source failed: %v", err)
+			}
+		}
+		return NULL
+	}
+
+	return newError("renameFile error: %v", err)
 }
 
 // removeFile - remove a file
