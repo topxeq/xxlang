@@ -301,7 +301,7 @@ db.setConnMaxLifetime(conn, 3600)  // seconds
 | `query(db, sql, args...)` | Query returning array of maps |
 | `queryArrays(db, sql, args...)` | Query returning array of arrays |
 | `queryRow(db, sql, args...)` | Query single row |
-| `exec(db, sql, args...)` | Execute SQL, returns `[lastInsertId, rowsAffected]` |
+| `exec(db, sql, args...)` | Execute SQL, returns `{lastInsertId, rowsAffected}` |
 | `begin(db)` | Start transaction |
 | `commit(tx)` | Commit transaction |
 | `rollback(tx)` | Rollback transaction |
@@ -330,8 +330,8 @@ dbExec(db, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER, 
 
 // Insert data with parameters
 result = dbExec(db, "INSERT INTO users (name, age, salary) VALUES (?, ?, ?)", "Alice", 30, 50000.50)
-id = result[0]         // last inserted ID
-affected = result[1]   // rows affected
+id = result["lastInsertId"]     // last inserted ID
+affected = result["rowsAffected"] // rows affected
 
 // String-based query (Charlang compatible - all values are strings)
 rows = dbQuery(db, "SELECT * FROM users WHERE age > ?", 25)
@@ -394,6 +394,106 @@ dbClose(db)
 - Typed functions: NULL → `null`, native types preserved (int, float, bool, string, time)
 - All functions work with DB object from db module
 - No import required (built-in functions)
+
+### Network (net) Module
+
+HTTP client functions for making web requests:
+
+```xxl
+import { get, post, request, head, getJson, postJson } from "net"
+
+// HTTP GET
+var resp = get("https://api.example.com/data")
+if (resp["statusCode"] == 200) {
+    pln(resp["body"])
+}
+
+// HTTP POST
+var result = post("https://api.example.com/users", '{"name": "Alice"}')
+pln("Status:", result["statusCode"])
+
+// JSON helpers
+var jsonResp = getJson("https://api.example.com/data")
+pln(jsonResp["body"])
+
+// Set timeout (seconds)
+setTimeout(60)
+```
+
+**Return Values:**
+
+| Function | Returns |
+|----------|---------|
+| `get(url)` | `{body, statusCode, statusText}` |
+| `post(url, body, [contentType])` | `{body, statusCode, statusText}` |
+| `request(method, url, [body], [headers])` | `{body, statusCode, statusText, headers}` |
+| `head(url)` | `{statusCode, headers}` |
+| `getJson(url)` | `{body, statusCode}` |
+| `postJson(url, body)` | `{body, statusCode}` |
+
+### File Module
+
+Extended file operations:
+
+```xxl
+import { listDirFull, glob, copyPath, moveFile } from "file"
+
+// List directory with full information
+var entries = listDirFull("/path/to/dir")
+for (var e in entries) {
+    pln(e["name"], e["size"], e["isDir"], e["modTime"])
+}
+
+// Glob pattern matching
+var matches = glob("/path/*.txt")
+```
+
+**listDirFull Return Values:**
+
+Each entry in the returned array is a map:
+```xxl
+{
+    "name": string,    // File/directory name
+    "size": int,       // Size in bytes
+    "isDir": bool,     // true if directory
+    "modTime": string  // Modification time
+}
+```
+
+### Concurrency Functions
+
+Tube (channel) operations for concurrent programming:
+
+```xxl
+// Create a tube (buffered channel)
+var t = makeTube(10)
+
+// Send value
+tubeSend(t, 42)
+
+// Receive value (blocking)
+var result = tubeRecv(t)
+if (result["ok"]) {
+    pln("Received:", result["value"])
+}
+
+// Try receive (non-blocking)
+var tryResult = tubeTryRecv(t)
+if (tryResult["received"]) {
+    pln("Value:", tryResult["value"])
+}
+
+// Close tube
+closeTube(t)
+```
+
+**Return Values:**
+
+| Function | Returns |
+|----------|---------|
+| `tubeRecv(tube)` | `{value, ok}` |
+| `tubeTrySend(tube, value)` | `{sent, ok}` |
+| `tubeTryRecv(tube)` | `{value, received, open}` |
 
 ### Plugin System
 
