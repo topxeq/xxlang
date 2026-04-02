@@ -15,11 +15,39 @@ var httpClient = &http.Client{
 	Timeout: 30 * time.Second,
 }
 
+// httpResponse creates a standard HTTP response map
+func httpResponse(body string, statusCode int, statusText string) *objects.OrderedMap {
+	result := objects.NewOrderedMap()
+	result.Set(objects.NewString("body"), objects.NewString(body))
+	result.Set(objects.NewString("statusCode"), objects.NewInt(int64(statusCode)))
+	result.Set(objects.NewString("statusText"), objects.NewString(statusText))
+	return result
+}
+
+// httpResponseWithHeaders creates an HTTP response map with headers
+func httpResponseWithHeaders(body string, statusCode int, statusText string, headers *objects.OrderedMap) *objects.OrderedMap {
+	result := objects.NewOrderedMap()
+	result.Set(objects.NewString("body"), objects.NewString(body))
+	result.Set(objects.NewString("statusCode"), objects.NewInt(int64(statusCode)))
+	result.Set(objects.NewString("statusText"), objects.NewString(statusText))
+	result.Set(objects.NewString("headers"), headers)
+	return result
+}
+
+// httpHeadersToMap converts HTTP headers to OrderedMap
+func httpHeadersToMap(header http.Header) *objects.OrderedMap {
+	headers := objects.NewOrderedMap()
+	for k, v := range header {
+		headers.Set(objects.NewString(k), objects.NewString(strings.Join(v, ", ")))
+	}
+	return headers
+}
+
 func init() {
 	Register(&Module{
 		Name: "net",
 		Exports: map[string]objects.Object{
-			// HTTP GET
+			// HTTP GET - returns {body, statusCode, statusText}
 			"get": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				if len(args) != 1 {
 					return Error("get() takes exactly 1 argument")
@@ -37,10 +65,10 @@ func init() {
 				if err != nil {
 					return Error(err.Error())
 				}
-				return Array(String(string(body)), Int(int64(resp.StatusCode)), String(resp.Status))
+				return httpResponse(string(body), resp.StatusCode, resp.Status)
 			}),
 
-			// HTTP POST
+			// HTTP POST - returns {body, statusCode, statusText}
 			"post": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				if len(args) < 2 {
 					return Error("post() takes at least 2 arguments")
@@ -69,10 +97,10 @@ func init() {
 				if err != nil {
 					return Error(err.Error())
 				}
-				return Array(String(string(respBody)), Int(int64(resp.StatusCode)), String(resp.Status))
+				return httpResponse(string(respBody), resp.StatusCode, resp.Status)
 			}),
 
-			// HTTP request with method
+			// HTTP request with method - returns {body, statusCode, statusText, headers}
 			"request": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				if len(args) < 2 {
 					return Error("request() takes at least 2 arguments")
@@ -118,15 +146,10 @@ func init() {
 				if err != nil {
 					return Error(err.Error())
 				}
-				// Collect headers
-				headers := Array()
-				for k, v := range resp.Header {
-					headers.Elements = append(headers.Elements, Array(String(k), String(strings.Join(v, ", "))))
-				}
-				return Array(String(string(respBody)), Int(int64(resp.StatusCode)), headers)
+				return httpResponseWithHeaders(string(respBody), resp.StatusCode, resp.Status, httpHeadersToMap(resp.Header))
 			}),
 
-			// Head request
+			// Head request - returns {statusCode, headers}
 			"head": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				if len(args) != 1 {
 					return Error("head() takes exactly 1 argument")
@@ -140,12 +163,10 @@ func init() {
 					return Error(err.Error())
 				}
 				defer resp.Body.Close()
-				// Collect headers
-				headers := Array()
-				for k, v := range resp.Header {
-					headers.Elements = append(headers.Elements, Array(String(k), String(strings.Join(v, ", "))))
-				}
-				return Array(Int(int64(resp.StatusCode)), headers)
+				result := objects.NewOrderedMap()
+				result.Set(objects.NewString("statusCode"), objects.NewInt(int64(resp.StatusCode)))
+				result.Set(objects.NewString("headers"), httpHeadersToMap(resp.Header))
+				return result
 			}),
 
 			// Download file - returns content (use io.writeFile to save)
@@ -230,7 +251,7 @@ func init() {
 				return Bool(code.Value >= 500)
 			}),
 
-			// JSON helpers
+			// JSON helpers - returns {body, statusCode}
 			"getJson": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				if len(args) != 1 {
 					return Error("getJson() takes exactly 1 argument")
@@ -253,7 +274,10 @@ func init() {
 				if err != nil {
 					return Error(err.Error())
 				}
-				return Array(String(string(body)), Int(int64(resp.StatusCode)))
+				result := objects.NewOrderedMap()
+				result.Set(objects.NewString("body"), objects.NewString(string(body)))
+				result.Set(objects.NewString("statusCode"), objects.NewInt(int64(resp.StatusCode)))
+				return result
 			}),
 
 			"postJson": BuiltinFunc(func(args ...objects.Object) objects.Object {
@@ -277,7 +301,10 @@ func init() {
 				if err != nil {
 					return Error(err.Error())
 				}
-				return Array(String(string(body)), Int(int64(resp.StatusCode)))
+				result := objects.NewOrderedMap()
+				result.Set(objects.NewString("body"), objects.NewString(string(body)))
+				result.Set(objects.NewString("statusCode"), objects.NewInt(int64(resp.StatusCode)))
+				return result
 			}),
 		},
 	})

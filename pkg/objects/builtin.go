@@ -3193,7 +3193,7 @@ var Builtins = map[string]*Builtin{
 		},
 	},
 
-	// tubeRecv - receive value from tube (blocking), returns [value, ok]
+	// tubeRecv - receive value from tube (blocking), returns {value, ok}
 	"tubeRecv": {
 		Fn: func(args ...Object) Object {
 			if len(args) < 1 {
@@ -3204,14 +3204,18 @@ var Builtins = map[string]*Builtin{
 				return newError("argument must be a tube")
 			}
 			val, ok := t.Receive()
+			result := NewOrderedMap()
+			result.Set(NewString("value"), val)
 			if ok {
-				return NewArray([]Object{val, TRUE})
+				result.Set(NewString("ok"), TRUE)
+			} else {
+				result.Set(NewString("ok"), FALSE)
 			}
-			return NewArray([]Object{val, FALSE})
+			return result
 		},
 	},
 
-	// tubeTrySend - try to send without blocking, returns [sent, ok]
+	// tubeTrySend - try to send without blocking, returns {sent, ok}
 	"tubeTrySend": {
 		Fn: func(args ...Object) Object {
 			if len(args) < 2 {
@@ -3222,22 +3226,22 @@ var Builtins = map[string]*Builtin{
 				return newError("first argument must be a tube")
 			}
 			sent, ok := t.TrySend(args[1])
-			var sentBool, okBool *Bool
+			result := NewOrderedMap()
 			if sent {
-				sentBool = TRUE
+				result.Set(NewString("sent"), TRUE)
 			} else {
-				sentBool = FALSE
+				result.Set(NewString("sent"), FALSE)
 			}
 			if ok {
-				okBool = TRUE
+				result.Set(NewString("ok"), TRUE)
 			} else {
-				okBool = FALSE
+				result.Set(NewString("ok"), FALSE)
 			}
-			return NewArray([]Object{sentBool, okBool})
+			return result
 		},
 	},
 
-	// tubeTryRecv - try to receive without blocking, returns [value, received, open]
+	// tubeTryRecv - try to receive without blocking, returns {value, received, open}
 	"tubeTryRecv": {
 		Fn: func(args ...Object) Object {
 			if len(args) < 1 {
@@ -3248,18 +3252,19 @@ var Builtins = map[string]*Builtin{
 				return newError("argument must be a tube")
 			}
 			val, received, open := t.TryReceive()
-			var recvBool, openBool *Bool
+			result := NewOrderedMap()
+			result.Set(NewString("value"), val)
 			if received {
-				recvBool = TRUE
+				result.Set(NewString("received"), TRUE)
 			} else {
-				recvBool = FALSE
+				result.Set(NewString("received"), FALSE)
 			}
 			if open {
-				openBool = TRUE
+				result.Set(NewString("open"), TRUE)
 			} else {
-				openBool = FALSE
+				result.Set(NewString("open"), FALSE)
 			}
-			return NewArray([]Object{val, recvBool, openBool})
+			return result
 		},
 	},
 

@@ -389,7 +389,7 @@ func init() {
 			// ============================================================
 
 			// exec executes a query without returning rows.
-			// Returns [lastInsertId, rowsAffected].
+			// Returns {lastInsertId, rowsAffected}.
 			// Usage: result = db.exec(conn, sql, [args...])
 			// Example: result = db.exec(db, "INSERT INTO users (name) VALUES (?)", "John")
 			"exec": BuiltinFunc(func(args ...objects.Object) objects.Object {
@@ -424,7 +424,11 @@ func init() {
 				lastInsertId, _ := result.LastInsertId()
 				rowsAffected, _ := result.RowsAffected()
 
-				return Array(Int(lastInsertId), Int(rowsAffected))
+				// Return OrderedMap with lastInsertId and rowsAffected
+				ret := objects.NewOrderedMap()
+				ret.Set(objects.NewString("lastInsertId"), objects.NewInt(lastInsertId))
+				ret.Set(objects.NewString("rowsAffected"), objects.NewInt(rowsAffected))
+				return ret
 			}),
 
 			// ============================================================

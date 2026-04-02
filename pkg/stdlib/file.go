@@ -551,7 +551,7 @@ func init() {
 
 			// listDirFull lists directory entries with full information.
 			// Usage: entries = file.listDirFull(path)
-			// Returns array of [name, size, isDir, modTime]
+			// Returns array of {name, size, isDir, modTime}
 			"listDirFull": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				if len(args) != 1 {
 					return Error("listDirFull() takes exactly 1 argument")
@@ -569,12 +569,13 @@ func init() {
 				result := make([]objects.Object, len(entries))
 				for i, entry := range entries {
 					info, _ := entry.Info()
-					result[i] = Array(
-						String(entry.Name()),
-						Int(info.Size()),
-						Bool(entry.IsDir()),
-						String(info.ModTime().Format("2006-01-02 15:04:05")),
-					)
+					// Create OrderedMap for each entry
+					entryMap := objects.NewOrderedMap()
+					entryMap.Set(objects.NewString("name"), objects.NewString(entry.Name()))
+					entryMap.Set(objects.NewString("size"), objects.NewInt(info.Size()))
+					entryMap.Set(objects.NewString("isDir"), Bool(entry.IsDir()))
+					entryMap.Set(objects.NewString("modTime"), objects.NewString(info.ModTime().Format("2006-01-02 15:04:05")))
+					result[i] = entryMap
 				}
 
 				return Array(result...)
