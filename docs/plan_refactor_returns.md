@@ -50,7 +50,7 @@ v0.7.0
 
 - [x] Verify all tests pass
 
-- [ ] Update documentation (README.md)
+- [x] Update documentation (README.md)
 
 ## Files Modified
 - `pkg/stdlib/net.go`
