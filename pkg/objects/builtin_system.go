@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
-	"syscall"
 )
 
 // ============================================================
@@ -214,8 +213,8 @@ var BuiltinSystemStart = &Builtin{
 			}
 			cmd.Stdout = nil
 			cmd.Stderr = nil
-			// Hide any window
-			cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+			// Use platform-specific detached attribute
+			setDetachedAttr(cmd)
 			// Start the process asynchronously
 			err := cmd.Start()
 			if err != nil {
