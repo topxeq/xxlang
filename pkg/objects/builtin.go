@@ -55,6 +55,8 @@ var Builtins = map[string]*Builtin{
 				return NewInt(int64(len(arg.Value)))
 			case *Chars:
 				return NewInt(int64(len(arg.Value)))
+			case *Bytes:
+				return NewInt(int64(len(arg.Value)))
 			case *Array:
 				return NewInt(int64(len(arg.Elements)))
 			case *Map:

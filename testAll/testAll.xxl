@@ -60,6 +60,7 @@ var testFiles = [
     "anonymousFunc",
     "tx_anonymousFunc",
     "tx_array",
+    "addBom",
     "test034_dynamic_code"
 ]
 

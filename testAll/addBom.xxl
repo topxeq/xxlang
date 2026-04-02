@@ -1,29 +1,28 @@
-// addBom.xxl - Add UTF-8 BOM to text file
-// Usage: xxl run addBom.xxl -file=path/to/file [-output=path/to/output]
+// Test addBom: Bytes functions and BOM operations
+// Tests bytes(), hexDecode(), concatBytes() functions
 
-// Get file path from command line arguments
-var file1T = getSwitch(argsG, "-file=", "")
-
-if (file1T == "") {
-    pln("Error: empty file path")
-    pln("Usage: xxl run addBom.xxl -file=path/to/file [-output=path/to/output]")
-}
-
-var outputFileT = getSwitch(argsG, "-output=", file1T)
-
-// Load file content as bytes
-var contentBytes = loadBytes(file1T)
-
-// Create UTF-8 BOM bytes (EF BB BF)
+pln("bytes() function:")
 var bomBytes = bytes(239, 187, 191)
+pln(typeOf(bomBytes))
+pln(len(bomBytes))
 
-// Combine BOM + content
-var combined = concatBytes(bomBytes, contentBytes)
+pln("hexDecode() function:")
+var hexDecoded = hexDecode("48656C6C6F")
+pln(typeOf(hexDecoded))
+pln(len(hexDecoded))
 
-// Save to output file
-var rs = saveBytes(outputFileT, combined)
+pln("concatBytes() function:")
+var combined = concatBytes(bomBytes, hexDecoded)
+pln(typeOf(combined))
+pln(len(combined))
 
-// Check for errors
-checkErr(rs)
+pln("BOM verification:")
+var bom = bytes(239, 187, 191)
+pln("BOM length: " + len(bom))
 
-pln("done save to " + outputFileT)
+pln("Concat with BOM:")
+var textBytes = bytes(116, 101, 115, 116)
+var withBom = concatBytes(bom, textBytes)
+pln("Total length: " + len(withBom))
+
+pln("Bytes operations complete.")

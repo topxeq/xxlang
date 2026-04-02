@@ -5,7 +5,7 @@ hello world
 hexEncode:
 68656c6c6f
 hexDecode:
-hello
+Bytes(len=5)
 md5 hash:
 5d41402abc4b2a76b9719d911017c592
 sha256 hash:
