@@ -2169,7 +2169,24 @@ var Builtins = map[string]*Builtin{
 				return newError("hexDecode failed: %s", err.Error())
 			}
 
-			return NewString(string(decoded))
+			return NewBytes(decoded)
+		},
+	},
+	"concatBytes": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 2 {
+				return newError("wrong number of arguments for concatBytes. got=%d, want>=2", len(args))
+			}
+
+			var result []byte
+			for _, arg := range args {
+				b, ok := arg.(*Bytes)
+				if !ok {
+					return newError("all arguments to 'concatBytes' must be BYTES, got %s", arg.Type())
+				}
+				result = append(result, b.Value...)
+			}
+			return NewBytes(result)
 		},
 	},
 	"md5": {
@@ -2952,28 +2969,28 @@ var Builtins = map[string]*Builtin{
 			}
 		},
 	},
-	// bytes - create byte array from integer arguments
+	// bytes - create Bytes object from integer arguments
 	"bytes": {
 		Fn: func(args ...Object) Object {
-			elements := make([]Object, len(args))
+			result := make([]byte, len(args))
 			for i, arg := range args {
 				switch v := arg.(type) {
 				case *Int:
 					if v.Value < 0 || v.Value > 255 {
 						return newError("bytes: value at index %d out of range (0-255), got %d", i, v.Value)
 					}
-					elements[i] = v
+					result[i] = byte(v.Value)
 				case *Float:
 					val := int64(v.Value)
 					if val < 0 || val > 255 {
 						return newError("bytes: value at index %d out of range (0-255), got %d", i, val)
 					}
-					elements[i] = NewInt(val)
+					result[i] = byte(val)
 				default:
 					return newError("bytes: argument at index %d must be INT (0-255), got %s", i, arg.Type())
 				}
 			}
-			return NewArray(elements)
+			return NewBytes(result)
 		},
 	},
 	// plt - pretty table print for debugging

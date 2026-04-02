@@ -1,0 +1,29 @@
+// addBom.xxl - Add UTF-8 BOM to text file
+// Usage: xxl run addBom.xxl -file=path/to/file [-output=path/to/output]
+
+// Get file path from command line arguments
+var file1T = getSwitch(argsG, "-file=", "")
+
+if (file1T == "") {
+    pln("Error: empty file path")
+    pln("Usage: xxl run addBom.xxl -file=path/to/file [-output=path/to/output]")
+}
+
+var outputFileT = getSwitch(argsG, "-output=", file1T)
+
+// Load file content as bytes
+var contentBytes = loadBytes(file1T)
+
+// Create UTF-8 BOM bytes (EF BB BF)
+var bomBytes = bytes(239, 187, 191)
+
+// Combine BOM + content
+var combined = concatBytes(bomBytes, contentBytes)
+
+// Save to output file
+var rs = saveBytes(outputFileT, combined)
+
+// Check for errors
+checkErr(rs)
+
+pln("done save to " + outputFileT)

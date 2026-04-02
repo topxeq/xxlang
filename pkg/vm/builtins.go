@@ -592,6 +592,7 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["print"],   // 503: alias for pr
 		objects.Builtins["println"], // 504: alias for pln
 		objects.Builtins["printf"],  // 505: alias for prf
+		objects.Builtins["concatBytes"], // 506
 	}
 
 	if index < 0 || index >= len(builtins) {
