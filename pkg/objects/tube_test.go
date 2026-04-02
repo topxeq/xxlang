@@ -686,22 +686,20 @@ func TestBuiltinTubeRecv(t *testing.T) {
 	tube.Send(&Int{Value: 42})
 
 	result := fn.Fn(tube)
-	arr, ok := result.(*Array)
+	m, ok := result.(*OrderedMap)
 	if !ok {
-		t.Fatalf("tubeRecv should return Array, got %T", result)
+		t.Fatalf("tubeRecv should return OrderedMap, got %T", result)
 	}
 
-	if len(arr.Elements) != 2 {
-		t.Errorf("tubeRecv result should have 2 elements, got %d", len(arr.Elements))
-	}
-
-	// First element is value
-	if arr.Elements[0].(*Int).Value != 42 {
+	// Check value
+	val := m.Get(&String{Value: "value"})
+	if val == nil || val.(*Int).Value != 42 {
 		t.Error("Received value should be 42")
 	}
 
-	// Second element is ok flag
-	if arr.Elements[1] != TRUE {
+	// Check ok flag
+	okVal := m.Get(&String{Value: "ok"})
+	if okVal != TRUE {
 		t.Error("ok should be TRUE")
 	}
 }
@@ -715,27 +713,33 @@ func TestBuiltinTubeTrySend(t *testing.T) {
 	tube := NewTube("", 1)
 	result := fn.Fn(tube, &Int{Value: 42})
 
-	arr, ok := result.(*Array)
+	m, ok := result.(*OrderedMap)
 	if !ok {
-		t.Fatalf("tubeTrySend should return Array, got %T", result)
+		t.Fatalf("tubeTrySend should return OrderedMap, got %T", result)
 	}
 
-	// [sent, ok]
-	if arr.Elements[0] != TRUE {
+	// {sent, ok}
+	sent := m.Get(&String{Value: "sent"})
+	if sent != TRUE {
 		t.Error("Should have sent")
 	}
-	if arr.Elements[1] != TRUE {
+
+	okVal := m.Get(&String{Value: "ok"})
+	if okVal != TRUE {
 		t.Error("Tube should be open")
 	}
 
 	// Tube is now full, trySend should fail
 	result = fn.Fn(tube, &Int{Value: 3})
-	arr = result.(*Array)
+	m = result.(*OrderedMap)
 
-	if arr.Elements[0] != FALSE {
+	sent = m.Get(&String{Value: "sent"})
+	if sent != FALSE {
 		t.Error("Should not have sent (full)")
 	}
-	if arr.Elements[1] != TRUE {
+
+	okVal = m.Get(&String{Value: "ok"})
+	if okVal != TRUE {
 		t.Error("Tube should still be open")
 	}
 }
@@ -750,20 +754,18 @@ func TestBuiltinTubeTryRecv(t *testing.T) {
 	tube.Send(&Int{Value: 42})
 
 	result := fn.Fn(tube)
-	arr, ok := result.(*Array)
+	m, ok := result.(*OrderedMap)
 	if !ok {
-		t.Fatalf("tubeTryRecv should return Array, got %T", result)
+		t.Fatalf("tubeTryRecv should return OrderedMap, got %T", result)
 	}
 
-	// [value, received, open]
-	if len(arr.Elements) != 3 {
-		t.Errorf("tubeTryRecv result should have 3 elements, got %d", len(arr.Elements))
-	}
-
-	if arr.Elements[1] != TRUE {
+	// {value, received, open}
+	received := m.Get(&String{Value: "received"})
+	if received != TRUE {
 		t.Error("Should have received")
 	}
-	if arr.Elements[2] != TRUE {
+	open := m.Get(&String{Value: "open"})
+	if open != TRUE {
 		t.Error("Tube should be open")
 	}
 }

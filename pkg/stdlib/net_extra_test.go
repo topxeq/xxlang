@@ -25,37 +25,46 @@ func TestNet_Get_Success(t *testing.T) {
 		t.Fatalf("get() returned error: %s", result.Inspect())
 	}
 
-	// Should return [body, statusCode, status]
-	arr, ok := result.(*objects.Array)
+	// Should return {body, statusCode, statusText}
+	m, ok := result.(*objects.OrderedMap)
 	if !ok {
-		t.Fatalf("get() should return Array, got %T", result)
-	}
-	if len(arr.Elements) != 3 {
-		t.Fatalf("get() array should have 3 elements, got %d", len(arr.Elements))
+		t.Fatalf("get() should return OrderedMap, got %T", result)
 	}
 
 	// Check body
-	body, ok := arr.Elements[0].(*objects.String)
-	if !ok {
-		t.Fatalf("first element should be String (body), got %T", arr.Elements[0])
+	body := m.Get(&objects.String{Value: "body"})
+	if body == nil {
+		t.Fatalf("map should have 'body' key")
 	}
-	if body.Value != "Hello from test server" {
-		t.Errorf("body = %s, want 'Hello from test server'", body.Value)
+	bodyStr, ok := body.(*objects.String)
+	if !ok {
+		t.Fatalf("body should be String, got %T", body)
+	}
+	if bodyStr.Value != "Hello from test server" {
+		t.Errorf("body = %s, want 'Hello from test server'", bodyStr.Value)
 	}
 
 	// Check status code (should be 200)
-	status, ok := arr.Elements[1].(*objects.Int)
+	statusCode := m.Get(&objects.String{Value: "statusCode"})
+	if statusCode == nil {
+		t.Fatalf("map should have 'statusCode' key")
+	}
+	status, ok := statusCode.(*objects.Int)
 	if !ok {
-		t.Fatalf("second element should be Int (status code), got %T", arr.Elements[1])
+		t.Fatalf("statusCode should be Int, got %T", statusCode)
 	}
 	if status.Value != 200 {
 		t.Errorf("status code = %d, want 200", status.Value)
 	}
 
 	// Check status string
-	statusStr, ok := arr.Elements[2].(*objects.String)
+	statusText := m.Get(&objects.String{Value: "statusText"})
+	if statusText == nil {
+		t.Fatalf("map should have 'statusText' key")
+	}
+	statusStr, ok := statusText.(*objects.String)
 	if !ok {
-		t.Fatalf("third element should be String (status), got %T", arr.Elements[2])
+		t.Fatalf("statusText should be String, got %T", statusText)
 	}
 	if statusStr.Value != "200 OK" {
 		t.Logf("status string = %s (may vary)", statusStr.Value)
@@ -81,21 +90,22 @@ func TestNet_Post_Success(t *testing.T) {
 		t.Fatalf("post() returned error: %s", result.Inspect())
 	}
 
-	arr, ok := result.(*objects.Array)
+	m, ok := result.(*objects.OrderedMap)
 	if !ok {
-		t.Fatalf("post() should return Array, got %T", result)
-	}
-	if len(arr.Elements) != 3 {
-		t.Fatalf("post() array should have 3 elements, got %d", len(arr.Elements))
+		t.Fatalf("post() should return OrderedMap, got %T", result)
 	}
 
 	// Check body
-	body, ok := arr.Elements[0].(*objects.String)
-	if !ok {
-		t.Fatalf("first element should be String, got %T", arr.Elements[0])
+	body := m.Get(&objects.String{Value: "body"})
+	if body == nil {
+		t.Fatalf("map should have 'body' key")
 	}
-	if body.Value != "POST received" {
-		t.Logf("body = %s", body.Value)
+	bodyStr, ok := body.(*objects.String)
+	if !ok {
+		t.Fatalf("body should be String, got %T", body)
+	}
+	if bodyStr.Value != "POST received" {
+		t.Logf("body = %s", bodyStr.Value)
 	}
 }
 
@@ -115,44 +125,40 @@ func TestNet_Head_Success(t *testing.T) {
 		t.Fatalf("head() returned error: %s", result.Inspect())
 	}
 
-	arr, ok := result.(*objects.Array)
+	m, ok := result.(*objects.OrderedMap)
 	if !ok {
-		t.Fatalf("head() should return Array, got %T", result)
-	}
-	if len(arr.Elements) != 2 {
-		t.Fatalf("head() array should have 2 elements (status, headers), got %d", len(arr.Elements))
+		t.Fatalf("head() should return OrderedMap, got %T", result)
 	}
 
-	status, ok := arr.Elements[0].(*objects.Int)
+	statusCode := m.Get(&objects.String{Value: "statusCode"})
+	if statusCode == nil {
+		t.Fatalf("map should have 'statusCode' key")
+	}
+	status, ok := statusCode.(*objects.Int)
 	if !ok {
-		t.Fatalf("first element should be Int (status code), got %T", arr.Elements[0])
+		t.Fatalf("statusCode should be Int, got %T", statusCode)
 	}
 	if status.Value != 200 {
 		t.Errorf("status code = %d, want 200", status.Value)
 	}
 
-	// Second element should be array of headers
-	headersArr, ok := arr.Elements[1].(*objects.Array)
-	if !ok {
-		t.Fatalf("second element should be Array (headers), got %T", arr.Elements[1])
+	// Headers should be an OrderedMap
+	headers := m.Get(&objects.String{Value: "headers"})
+	if headers == nil {
+		t.Fatalf("map should have 'headers' key")
 	}
-	// Headers array should have at least Content-Length
-	foundContentLength := false
-	for _, h := range headersArr.Elements {
-		if hdrArr, ok := h.(*objects.Array); ok && len(hdrArr.Elements) == 2 {
-			key, _ := hdrArr.Elements[0].(*objects.String)
-			val, _ := hdrArr.Elements[1].(*objects.String)
-			if key != nil && key.Value == "Content-Length" {
-				foundContentLength = true
-				if val.Value != "5" {
-					t.Errorf("Content-Length = %s, want 5", val.Value)
-				}
-				break
+	headersMap, ok := headers.(*objects.OrderedMap)
+	if !ok {
+		t.Fatalf("headers should be OrderedMap, got %T", headers)
+	}
+	// Check Content-Length header
+	contentLength := headersMap.Get(&objects.String{Value: "Content-Length"})
+	if contentLength != nil {
+		if clStr, ok := contentLength.(*objects.String); ok {
+			if clStr.Value != "5" {
+				t.Errorf("Content-Length = %s, want 5", clStr.Value)
 			}
 		}
-	}
-	if !foundContentLength {
-		t.Log("Content-Length header not found (may be optional)")
 	}
 }
 
@@ -171,20 +177,21 @@ func TestNet_Request_Success(t *testing.T) {
 		t.Fatalf("request() returned error: %s", result.Inspect())
 	}
 
-	arr, ok := result.(*objects.Array)
+	m, ok := result.(*objects.OrderedMap)
 	if !ok {
-		t.Fatalf("request() should return Array, got %T", result)
-	}
-	if len(arr.Elements) != 3 {
-		t.Fatalf("request() array should have 3 elements, got %d", len(arr.Elements))
+		t.Fatalf("request() should return OrderedMap, got %T", result)
 	}
 
-	body, ok := arr.Elements[0].(*objects.String)
-	if !ok {
-		t.Fatalf("first element should be String (body), got %T", arr.Elements[0])
+	body := m.Get(&objects.String{Value: "body"})
+	if body == nil {
+		t.Fatalf("map should have 'body' key")
 	}
-	if body.Value != "PATCH response" {
-		t.Errorf("body = %s, want 'PATCH response'", body.Value)
+	bodyStr, ok := body.(*objects.String)
+	if !ok {
+		t.Fatalf("body should be String, got %T", body)
+	}
+	if bodyStr.Value != "PATCH response" {
+		t.Errorf("body = %s, want 'PATCH response'", bodyStr.Value)
 	}
 }
 
@@ -241,21 +248,24 @@ func TestNet_GetJson_Success(t *testing.T) {
 		t.Fatalf("getJson() returned error: %s", result.Inspect())
 	}
 
-	arr, ok := result.(*objects.Array)
+	m, ok := result.(*objects.OrderedMap)
 	if !ok {
-		t.Fatalf("getJson() should return Array, got %T", result)
-	}
-	if len(arr.Elements) != 2 {
-		t.Fatalf("getJson() array should have 2 elements, got %d", len(arr.Elements))
+		t.Fatalf("getJson() should return OrderedMap, got %T", result)
 	}
 
-	body, ok1 := arr.Elements[0].(*objects.String)
-	status, ok2 := arr.Elements[1].(*objects.Int)
-	if !ok1 || !ok2 {
-		t.Fatalf("getJson() array elements should be String and Int, got %T and %T", arr.Elements[0], arr.Elements[1])
+	body := m.Get(&objects.String{Value: "body"})
+	statusCode := m.Get(&objects.String{Value: "statusCode"})
+	if body == nil || statusCode == nil {
+		t.Fatalf("getJson() map should have 'body' and 'statusCode' keys")
 	}
-	if body.Value != `{"message":"hello","count":5}` {
-		t.Logf("body = %s", body.Value)
+
+	bodyStr, ok1 := body.(*objects.String)
+	status, ok2 := statusCode.(*objects.Int)
+	if !ok1 || !ok2 {
+		t.Fatalf("getJson() values should be String and Int, got %T and %T", body, statusCode)
+	}
+	if bodyStr.Value != `{"message":"hello","count":5}` {
+		t.Logf("body = %s", bodyStr.Value)
 	}
 	if status.Value != 200 {
 		t.Logf("status = %d", status.Value)
@@ -278,17 +288,20 @@ func TestNet_PostJson_Success(t *testing.T) {
 		t.Fatalf("postJson() returned error: %s", result.Inspect())
 	}
 
-	arr, ok := result.(*objects.Array)
+	m, ok := result.(*objects.OrderedMap)
 	if !ok {
-		t.Fatalf("postJson() should return Array, got %T", result)
-	}
-	if len(arr.Elements) != 2 {
-		t.Fatalf("postJson() array should have 2 elements, got %d", len(arr.Elements))
+		t.Fatalf("postJson() should return OrderedMap, got %T", result)
 	}
 
-	body, _ := arr.Elements[0].(*objects.String)
-	status, _ := arr.Elements[1].(*objects.Int)
-	t.Logf("postJson response body: %s, status: %d", body.Value, status.Value)
+	body := m.Get(&objects.String{Value: "body"})
+	statusCode := m.Get(&objects.String{Value: "statusCode"})
+	if body == nil || statusCode == nil {
+		t.Fatalf("postJson() map should have 'body' and 'statusCode' keys")
+	}
+
+	bodyStr, _ := body.(*objects.String)
+	status, _ := statusCode.(*objects.Int)
+	t.Logf("postJson response body: %s, status: %d", bodyStr.Value, status.Value)
 }
 
 // TestNet_SetTimeout_AndEffect tests setTimeout changes the client timeout.

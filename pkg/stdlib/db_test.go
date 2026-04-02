@@ -97,10 +97,12 @@ func TestDBExecAndQuery(t *testing.T) {
 	// Create table
 	execFn := module.Exports["exec"].(*objects.Builtin)
 	result = execFn.Fn(db, String("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)"))
-	arr, ok := result.(*objects.Array)
+	m, ok := result.(*objects.OrderedMap)
 	require.True(t, ok)
-	assert.Equal(t, int64(0), arr.Elements[0].(*objects.Int).Value) // lastInsertId
-	assert.Equal(t, int64(0), arr.Elements[1].(*objects.Int).Value) // rowsAffected
+	lastInsertId := m.Get(&objects.String{Value: "lastInsertId"})
+	assert.Equal(t, int64(0), lastInsertId.(*objects.Int).Value)
+	rowsAffected := m.Get(&objects.String{Value: "rowsAffected"})
+	assert.Equal(t, int64(0), rowsAffected.(*objects.Int).Value)
 
 	// Insert data
 	result = execFn.Fn(db, String("INSERT INTO users (name, age) VALUES (?, ?)"), String("Alice"), Int(30))
@@ -108,10 +110,12 @@ func TestDBExecAndQuery(t *testing.T) {
 	if errObj, ok := result.(*objects.Error); ok {
 		t.Fatalf("Insert failed: %s", errObj.Message)
 	}
-	arr, ok = result.(*objects.Array)
-	require.True(t, ok, "result should be an array, got %T: %s", result, result.Inspect())
-	assert.True(t, arr.Elements[0].(*objects.Int).Value > 0) // lastInsertId
-	assert.Equal(t, int64(1), arr.Elements[1].(*objects.Int).Value) // rowsAffected
+	m, ok = result.(*objects.OrderedMap)
+	require.True(t, ok, "result should be an OrderedMap, got %T: %s", result, result.Inspect())
+	lastInsertId = m.Get(&objects.String{Value: "lastInsertId"})
+	assert.True(t, lastInsertId.(*objects.Int).Value > 0)
+	rowsAffected = m.Get(&objects.String{Value: "rowsAffected"})
+	assert.Equal(t, int64(1), rowsAffected.(*objects.Int).Value)
 
 	// Insert more data
 	execFn.Fn(db, String("INSERT INTO users (name, age) VALUES (?, ?)"), String("Bob"), Int(25))

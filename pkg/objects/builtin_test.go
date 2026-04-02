@@ -1077,7 +1077,7 @@ func TestBuiltinStringFunctions(t *testing.T) {
 		t.Fatal("hexDecode builtin not found")
 	}
 	result = fn.Fn(&String{Value: "68656c6c6f"})
-	compareObjectsForTest(t, result, &String{Value: "hello"})
+	compareObjectsForTest(t, result, &Bytes{Value: []byte("hello")})
 }
 
 func TestBuiltinArrayFunctions(t *testing.T) {

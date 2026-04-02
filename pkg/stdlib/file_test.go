@@ -471,12 +471,22 @@ func TestFileListDir(t *testing.T) {
 		t.Fatalf("expected Array, got %T", result)
 	}
 	for _, elem := range arr2.Elements {
-		entryArr, ok := elem.(*objects.Array)
+		entryMap, ok := elem.(*objects.OrderedMap)
 		if !ok {
-			t.Fatalf("expected array entry, got %T", elem)
+			t.Fatalf("expected OrderedMap entry, got %T", elem)
 		}
-		if len(entryArr.Elements) != 4 {
-			t.Fatalf("expected 4 fields (name,size,isDir,modTime), got %d", len(entryArr.Elements))
+		// Check required keys exist
+		if entryMap.Get(&objects.String{Value: "name"}) == nil {
+			t.Fatalf("expected 'name' key in entry")
+		}
+		if entryMap.Get(&objects.String{Value: "size"}) == nil {
+			t.Fatalf("expected 'size' key in entry")
+		}
+		if entryMap.Get(&objects.String{Value: "isDir"}) == nil {
+			t.Fatalf("expected 'isDir' key in entry")
+		}
+		if entryMap.Get(&objects.String{Value: "modTime"}) == nil {
+			t.Fatalf("expected 'modTime' key in entry")
 		}
 	}
 }
