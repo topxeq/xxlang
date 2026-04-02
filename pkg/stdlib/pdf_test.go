@@ -4,6 +4,7 @@ package stdlib
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -472,4 +473,138 @@ func TestPDFToBytesRoundTrip(t *testing.T) {
 	}
 
 	t.Logf("Round trip successful: %d bytes", len(data))
+}
+
+// TestPDFMerge tests the mergePDFs function
+func TestPDFMerge(t *testing.T) {
+	// Create two simple PDFs to merge
+	dir := os.TempDir()
+	pdf1Path := filepath.Join(dir, "merge1.pdf")
+	pdf2Path := filepath.Join(dir, "merge2.pdf")
+	outputPath := filepath.Join(dir, "merged.pdf")
+	defer os.Remove(pdf1Path)
+	defer os.Remove(pdf2Path)
+	defer os.Remove(outputPath)
+
+	// Create first PDF
+	doc1 := objects.NewPDFDocument()
+	doc1.AddPage(595, 842)
+	doc1.WriteText(0, "First PDF", 100, 700, nil)
+	doc1.Save(pdf1Path)
+
+	// Create second PDF
+	doc2 := objects.NewPDFDocument()
+	doc2.AddPage(595, 842)
+	doc2.WriteText(0, "Second PDF", 100, 700, nil)
+	doc2.Save(pdf2Path)
+
+	// Merge them
+	result := mergePDFs([]string{pdf1Path, pdf2Path}, outputPath)
+	if isPDFErr(result) {
+		t.Fatalf("mergePDFs failed: %v", result)
+	}
+
+	// Verify merged file exists
+	info, err := os.Stat(outputPath)
+	if err != nil {
+		t.Fatalf("Merged file not created: %v", err)
+	}
+	if info.Size() == 0 {
+		t.Fatal("Merged file is empty")
+	}
+
+	// Verify merged PDF has 2 pages
+	pdf, err := objects.NewPDFFromFile(outputPath)
+	if err != nil {
+		t.Fatalf("Failed to open merged PDF: %v", err)
+	}
+	defer pdf.Close()
+
+	if pdf.PageCount != 2 {
+		t.Errorf("Expected 2 pages in merged PDF, got %d", pdf.PageCount)
+	}
+
+	t.Logf("Merged PDF created with %d pages, size %d bytes", pdf.PageCount, info.Size())
+}
+
+// TestPDFSplit tests the splitPDF function
+func TestPDFSplit(t *testing.T) {
+	// Create a multi-page PDF
+	dir := os.TempDir()
+	inputPath := filepath.Join(dir, "split_input.pdf")
+	outputPath := filepath.Join(dir, "split_output.pdf")
+	defer os.Remove(inputPath)
+	defer os.Remove(outputPath)
+
+	// Create PDF with 5 pages
+	doc := objects.NewPDFDocument()
+	for i := 0; i < 5; i++ {
+		doc.AddPage(595, 842)
+		doc.WriteText(i, fmt.Sprintf("Page %d", i+1), 100, 700, nil)
+	}
+	doc.Save(inputPath)
+
+	// Split: extract pages 1-3 (0-indexed: 0,1,2)
+	result := splitPDF(inputPath, outputPath, 0, 2)
+	if isPDFErr(result) {
+		t.Fatalf("splitPDF failed: %v", result)
+	}
+
+	// Verify output has 3 pages
+	pdf, err := objects.NewPDFFromFile(outputPath)
+	if err != nil {
+		t.Fatalf("Failed to open split PDF: %v", err)
+	}
+	defer pdf.Close()
+
+	if pdf.PageCount != 3 {
+		t.Errorf("Expected 3 pages after split, got %d", pdf.PageCount)
+	}
+
+	t.Logf("Split PDF: extracted 3 pages from 5-page document")
+}
+
+// TestPDFExtractPages tests the extractPages function
+func TestPDFExtractPages(t *testing.T) {
+	// Create a multi-page PDF
+	dir := os.TempDir()
+	inputPath := filepath.Join(dir, "extract_input.pdf")
+	outputPath := filepath.Join(dir, "extract_output.pdf")
+	defer os.Remove(inputPath)
+	defer os.Remove(outputPath)
+
+	// Create PDF with 5 pages
+	doc := objects.NewPDFDocument()
+	for i := 0; i < 5; i++ {
+		doc.AddPage(595, 842)
+		doc.WriteText(i, fmt.Sprintf("Page %d", i+1), 100, 700, nil)
+	}
+	doc.Save(inputPath)
+
+	// Extract specific pages: 0, 2, 4 (first, third, fifth)
+	result := extractPages(inputPath, []int{0, 2, 4}, outputPath)
+	if isPDFErr(result) {
+		t.Fatalf("extractPages failed: %v", result)
+	}
+
+	// Verify output has 3 pages
+	pdf, err := objects.NewPDFFromFile(outputPath)
+	if err != nil {
+		t.Fatalf("Failed to open extracted PDF: %v", err)
+	}
+	defer pdf.Close()
+
+	if pdf.PageCount != 3 {
+		t.Errorf("Expected 3 pages after extraction, got %d", pdf.PageCount)
+	}
+
+	// Verify page 0 (first page) contains "Page 1"
+	text0 := pdf.ExtractText(0)
+	if str, ok := text0.(*objects.String); ok {
+		if str.Value != "Page 1" {
+			t.Errorf("Expected page 0 text 'Page 1', got %q", str.Value)
+		}
+	}
+
+	t.Logf("Extracted PDF: 3 specific pages")
 }

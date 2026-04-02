@@ -4,8 +4,16 @@ package stdlib
 
 import (
 	"math"
+	"sync"
+	"time"
 
 	"github.com/topxeq/xxlang/pkg/objects"
+)
+
+// Random number generator state
+var (
+	randomState uint64 = uint64(time.Now().UnixNano())
+	randomMu    sync.Mutex
 )
 
 func init() {
@@ -416,9 +424,17 @@ func compareNumeric(a, b objects.Object) int {
 	return 0
 }
 
-// randomInt returns a pseudo-random int64.
+// randomInt returns a pseudo-random int.
 func randomInt() int {
-	// Simple xorshift for deterministic "randomness"
-	// In production, we'd use math/rand or crypto/rand
-	return int(123456789 * 1103515245 % 2147483647)
+	randomMu.Lock()
+	defer randomMu.Unlock()
+
+	// xorshift64 algorithm
+	x := randomState
+	x ^= x << 13
+	x ^= x >> 7
+	x ^= x << 17
+	randomState = x
+
+	return int(x % 2147483647)
 }

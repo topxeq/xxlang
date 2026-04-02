@@ -5,6 +5,7 @@
 package webview2
 
 import (
+	"fmt"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -244,20 +245,46 @@ func messageRelease(this *MessageHandler) uintptr {
 }
 
 func messageInvoke(this *MessageHandler, sender uintptr, args uintptr) uintptr {
-	if this.wv == nil {
+	// Use defer/recover to catch any panic from invalid pointer access
+	defer func() {
+		if r := recover(); r != nil {
+			// Silently ignore conversion failures
+		}
+	}()
+
+	if this == nil || this.wv == nil {
+		return S_OK
+	}
+
+	// Validate args pointer
+	if args == 0 {
 		return S_OK
 	}
 
 	// Get message as JSON - use the vtable from interfaces.go
 	argsVtbl := *(**ICoreWebView2WebMessageReceivedEventArgsVTable)(unsafe.Pointer(args))
-	var msgBSTR BSTR
-	syscall.SyscallN(uintptr(argsVtbl.GetWebMessageAsJson),
-		args, uintptr(unsafe.Pointer(&msgBSTR)))
+	if argsVtbl == nil || argsVtbl.GetWebMessageAsJson == 0 {
+		return S_OK
+	}
 
-	msg := BSTRToString(msgBSTR)
-	FreeBSTR(msgBSTR)
+	// GetWebMessageAsJson returns LPWSTR (not BSTR!), which is a null-terminated UTF-16 string
+	// The memory is owned by the args object and should NOT be freed by us
+	var msgPtr *uint16
+	hr, _, _ := syscall.SyscallN(uintptr(argsVtbl.GetWebMessageAsJson),
+		args, uintptr(unsafe.Pointer(&msgPtr)))
 
-	this.wv.handleMessage(msg)
+	// Check HRESULT
+	if hr != 0 || msgPtr == nil {
+		return S_OK
+	}
+
+	// Convert LPWSTR to Go string
+	msg := LPCWSTRToString(msgPtr)
+
+	// Only process if we got a valid message
+	if msg != "" {
+		this.wv.handleMessage(msg)
+	}
 
 	return S_OK
 }
@@ -317,14 +344,43 @@ func scriptRelease(this *ScriptHandler) uintptr {
 }
 
 func scriptInvoke(this *ScriptHandler, hr uintptr, resultObjectAsJson uintptr) uintptr {
-	if this.callback != nil {
-		if hr == S_OK && resultObjectAsJson != 0 {
-			// resultObjectAsJson is a BSTR (which is uintptr)
-			result := BSTRToString(BSTR(resultObjectAsJson))
-			this.callback(result, nil)
-		} else {
-			this.callback("", syscall.Errno(hr))
+	if this == nil {
+		return S_OK
+	}
+
+	// For fire-and-forget (nil callback), skip BSTR processing entirely
+	// This avoids potential crashes from invalid BSTR pointers
+	if this.callback == nil {
+		// Just return - no need to process result
+		return S_OK
+	}
+
+	// Use defer/recover to catch any panic from invalid BSTR access
+	defer func() {
+		if r := recover(); r != nil {
+			this.callback("", fmt.Errorf("BSTR conversion panic: %v", r))
 		}
+	}()
+
+	if hr == S_OK && resultObjectAsJson != 0 {
+		// resultObjectAsJson is a BSTR (which is uintptr)
+		// Add comprehensive safety check for BSTR
+		// Valid user-space addresses in Windows are typically 0x10000 to 0x7FFEFFFF
+		if resultObjectAsJson > 0x10000 && resultObjectAsJson < 0x7FFEFFFF {
+			// Try to validate the BSTR by checking if we can read the length prefix
+			// BSTR has a 4-byte length prefix at address -4 from the data pointer
+			lenPtr := resultObjectAsJson - 4
+			if lenPtr > 0x10000 && lenPtr < 0x7FFEFFFF {
+				result := BSTRToString(BSTR(resultObjectAsJson))
+				this.callback(result, nil)
+			} else {
+				this.callback("", nil)
+			}
+		} else {
+			this.callback("", nil)
+		}
+	} else if hr != S_OK {
+		this.callback("", syscall.Errno(hr))
 	}
 	return S_OK
 }

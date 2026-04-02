@@ -542,7 +542,7 @@ func init() {
 				runes := []rune(s.Value)
 				i := int(idx.Value)
 				if i < 0 || i >= len(runes) {
-					return Error("charAt() index out of range")
+					return Null()
 				}
 				return String(string(runes[i]))
 			}),

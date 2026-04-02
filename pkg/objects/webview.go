@@ -66,10 +66,27 @@ func (w *WebView) Equals(other Object) *Bool {
 }
 
 // IsClosed returns true if the WebView is closed.
+// Checks both the local closed flag and the underlying handle's closed state.
 func (w *WebView) IsClosed() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.closed
+
+	// Check local closed flag
+	if w.closed {
+		return true
+	}
+
+	// Check underlying handle's closed state if available
+	if w.Handle != nil {
+		if handle, ok := w.Handle.(interface{ IsClosed() bool }); ok {
+			if handle.IsClosed() {
+				w.closed = true // Cache the closed state
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // SetClosed sets the closed state.

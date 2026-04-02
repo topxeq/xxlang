@@ -5,7 +5,6 @@ package objects
 import (
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -682,39 +681,4 @@ func init() {
 		},
 	}
 
-	// urlEncode - encode a string for use in a URL
-	Builtins["urlEncode"] = &Builtin{
-		Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for urlEncode. got=%d, want=1", len(args))
-			}
-
-			str, ok := args[0].(*String)
-			if !ok {
-				return newError("argument to 'urlEncode' must be STRING, got %s", args[0].Type())
-			}
-
-			// Simple URL encoding - replace spaces with + and encode special chars
-			result := strings.ReplaceAll(str.Value, " ", "+")
-			return NewString(result)
-		},
-	}
-
-	// urlDecode - decode a URL-encoded string
-	Builtins["urlDecode"] = &Builtin{
-		Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for urlDecode. got=%d, want=1", len(args))
-			}
-
-			str, ok := args[0].(*String)
-			if !ok {
-				return newError("argument to 'urlDecode' must be STRING, got %s", args[0].Type())
-			}
-
-			// Simple URL decoding - replace + with spaces
-			result := strings.ReplaceAll(str.Value, "+", " ")
-			return NewString(result)
-		},
-	}
 }

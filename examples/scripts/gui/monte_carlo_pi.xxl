@@ -1,485 +1,281 @@
 // monte_carlo_pi.xxl
 // Monte Carlo method to calculate Pi using random points
-// Uses WebView2 with Canvas for visualization
-//
-// This demo shows Xxlang's GUI capabilities with WebView2.
-// The simulation runs entirely in JavaScript for smooth animation,
-// with Xxlang handling window creation and control.
+// Xxlang does backend computation, WebView renders results
 
 import "gui"
+import "math"
+import "json"
+import "array"
 
-// Create HTML with embedded Canvas and Monte Carlo simulation
+var totalPoints = 0
+var insidePoints = 0
+var isRunning = false
+var wvHandle = null
+
+func generatePoint() {
+    var x = math.random()
+    var y = math.random()
+    var dx = x - 0.5
+    var dy = y - 0.5
+    var dist = math.sqrt(dx * dx + dy * dy)
+    var inside = 0
+    if (dist <= 0.5) {
+        inside = 1
+    }
+    return [x, y, inside]
+}
+
+func calculatePi() {
+    if (totalPoints == 0) {
+        return 0.0
+    }
+    return 4.0 * float(insidePoints) / float(totalPoints)
+}
+
+func sendPoints(points) {
+    // Build JSON array directly
+    var json = "["
+    var i = 0
+    while (i < len(points)) {
+        var p = points[i]
+        if (i > 0) {
+            json = json + ","
+        }
+        json = json + "[" + toStr(p[0]) + "," + toStr(p[1]) + "," + toStr(p[2]) + "]"
+        i = i + 1
+    }
+    json = json + "]"
+
+    var js = "window.xxlang.onPoints(" + json + ");"
+    gui.evalJSAsync(wvHandle, js)
+}
+
+func sendStats() {
+    var pi = calculatePi()
+    var err = 0.0
+    if (pi > 0) {
+        err = math.abs((pi - math.PI) / math.PI * 100.0)
+    }
+    var js = "window.xxlang.onStats({pi:" + toStr(pi) + ",total:" + toStr(totalPoints) + ",inside:" + toStr(insidePoints) + ",error:" + toStr(err) + "});"
+    gui.evalJSAsync(wvHandle, js)
+    pln("[Xxlang] Pi=", pi, " Points=", totalPoints, " Inside=", insidePoints, " Error=", err, "%")
+}
+
+func addBatch(count) {
+    var points = []
+    var i = 0
+    while (i < count) {
+        var p = generatePoint()
+        array.push(points, p)
+        totalPoints = totalPoints + 1
+        if (p[2] == 1) {
+            insidePoints = insidePoints + 1
+        }
+        i = i + 1
+    }
+    sendPoints(points)
+    sendStats()
+    pln("Added ", count, " points")
+}
+
+func handleMessage(msg) {
+    var data = json.fromJson(msg)
+    var cmd = data["cmd"]
+
+    if (cmd == "start") {
+        isRunning = true
+        pln(">>> Simulation STARTED")
+    }
+    else if (cmd == "stop") {
+        isRunning = false
+        pln(">>> Simulation STOPPED")
+    }
+    else if (cmd == "reset") {
+        isRunning = false
+        totalPoints = 0
+        insidePoints = 0
+        gui.evalJSAsync(wvHandle, "window.xxlang.onReset();")
+        sendStats()
+        pln(">>> Simulation RESET")
+    }
+    else if (cmd == "addBatch") {
+        var n = int(data["count"])
+        addBatch(n)
+    }
+}
+
 func createHTML() {
     return `
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <title>Monte Carlo Pi Calculator</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            color: #eee;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 20px;
-        }
-
-        h1 {
-            color: #00d4ff;
-            margin-bottom: 5px;
-            text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
-            font-size: 28px;
-        }
-
-        .subtitle {
-            color: #888;
-            margin-bottom: 20px;
-            font-size: 14px;
-        }
-
-        .main-container {
-            display: flex;
-            gap: 30px;
-            align-items: flex-start;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-
-        .canvas-wrapper {
-            position: relative;
-        }
-
-        #canvas {
-            border: 3px solid #00d4ff;
-            border-radius: 50%;
-            background: radial-gradient(circle, #0f0f1a 0%, #1a1a2e 100%);
-            box-shadow: 0 0 30px rgba(0, 212, 255, 0.3),
-                        inset 0 0 50px rgba(0, 0, 0, 0.5);
-        }
-
-        .stats-panel {
-            background: rgba(22, 33, 62, 0.9);
-            padding: 25px;
-            border-radius: 15px;
-            min-width: 280px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(0, 212, 255, 0.2);
-        }
-
-        .stat-row {
-            margin: 12px 0;
-            padding: 12px 15px;
-            background: rgba(26, 26, 46, 0.8);
-            border-radius: 8px;
-            border-left: 3px solid #00d4ff;
-        }
-
-        .stat-label {
-            color: #888;
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .stat-value {
-            color: #fff;
-            font-size: 24px;
-            font-weight: bold;
-            font-family: 'Consolas', monospace;
-        }
-
-        .pi-value {
-            color: #00ff88;
-            font-size: 36px;
-            text-shadow: 0 0 15px rgba(0, 255, 136, 0.5);
-        }
-
-        .actual-pi {
-            color: #ff6b6b;
-        }
-
-        .error-value {
-            color: #ffd93d;
-        }
-
-        .controls {
-            margin-top: 25px;
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-
-        button {
-            background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
-            color: #1a1a2e;
-            border: none;
-            padding: 12px 24px;
-            font-size: 14px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: all 0.3s ease;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(0, 212, 255, 0.4);
-        }
-
-        button:active {
-            transform: translateY(0);
-        }
-
-        button.stop-btn {
-            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
-        }
-
-        button.stop-btn:hover {
-            box-shadow: 0 5px 20px rgba(255, 107, 107, 0.4);
-        }
-
-        button.reset-btn {
-            background: linear-gradient(135deg, #ffd93d 0%, #ffb347 100%);
-        }
-
-        button.reset-btn:hover {
-            box-shadow: 0 5px 20px rgba(255, 217, 61, 0.4);
-        }
-
-        .progress-container {
-            margin-top: 20px;
-            width: 100%;
-            max-width: 500px;
-        }
-
-        .progress-bar-bg {
-            width: 100%;
-            height: 8px;
-            background: rgba(26, 26, 46, 0.8);
-            border-radius: 4px;
-            overflow: hidden;
-        }
-
-        .progress-bar-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #00d4ff, #00ff88, #ffd93d);
-            border-radius: 4px;
-            transition: width 0.3s ease;
-        }
-
-        .legend {
-            display: flex;
-            justify-content: center;
-            gap: 30px;
-            margin-top: 15px;
-            font-size: 13px;
-        }
-
-        .legend-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .legend-dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-        }
-
-        .legend-dot.inside {
-            background: #00ff88;
-            box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
-        }
-
-        .legend-dot.outside {
-            background: #ff6b6b;
-            box-shadow: 0 0 10px rgba(255, 107, 107, 0.5);
-        }
-
-        .formula {
-            margin-top: 20px;
-            padding: 15px;
-            background: rgba(26, 26, 46, 0.8);
-            border-radius: 8px;
-            text-align: center;
-            font-family: 'Times New Roman', serif;
-            font-size: 18px;
-            color: #00d4ff;
-        }
-
-        .formula sub {
-            font-size: 12px;
-        }
-    </style>
+<meta charset="UTF-8">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: sans-serif; background: linear-gradient(135deg, #1a1a2e, #16213e); color: #eee; padding: 15px; display: flex; flex-direction: column; align-items: center; }
+h1 { color: #00d4ff; margin-bottom: 5px; }
+.badge { background: #00ff88; color: #1a1a2e; padding: 3px 10px; border-radius: 10px; font-size: 11px; font-weight: bold; margin-bottom: 10px; }
+.main { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
+#canvas { border: 3px solid #00d4ff; border-radius: 50%; background: radial-gradient(circle, #0f0f1a, #1a1a2e); }
+.stats { background: rgba(22,33,62,0.9); padding: 15px; border-radius: 10px; min-width: 200px; }
+.row { margin: 8px 0; padding: 8px; background: rgba(26,26,46,0.8); border-radius: 5px; border-left: 3px solid #00d4ff; }
+.label { color: #888; font-size: 11px; text-transform: uppercase; }
+.value { color: #fff; font-size: 18px; font-weight: bold; font-family: monospace; }
+.pi-val { color: #00ff88; font-size: 26px; }
+.err-val { color: #ffd93d; }
+.ctrls { margin-top: 15px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+button { background: linear-gradient(135deg, #00d4ff, #0099cc); color: #1a1a2e; border: none; padding: 8px 16px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+button:hover { transform: translateY(-2px); }
+.stop { background: linear-gradient(135deg, #ff6b6b, #ee5a5a); }
+.reset { background: linear-gradient(135deg, #ffd93d, #ffb347); }
+</style>
 </head>
 <body>
-    <h1>Monte Carlo Pi Calculator</h1>
-    <p class="subtitle">Estimating Pi using random point distribution</p>
+<h1>Monte Carlo Pi Calculator</h1>
+<div class="badge">Xxlang Backend Active</div>
 
-    <div class="main-container">
-        <div class="canvas-wrapper">
-            <canvas id="canvas" width="400" height="400"></canvas>
-        </div>
+<div class="main">
+<canvas id="canvas" width="320" height="320"></canvas>
 
-        <div class="stats-panel">
-            <div class="stat-row">
-                <div class="stat-label">Estimated Pi</div>
-                <div class="stat-value pi-value" id="piValue">0.000000</div>
-            </div>
+<div class="stats">
+<div class="row"><div class="label">Estimated Pi</div><div class="value pi-val" id="pi">0.000000</div></div>
+<div class="row"><div class="label">Actual Pi</div><div class="value">3.141593</div></div>
+<div class="row"><div class="label">Total Points</div><div class="value" id="total">0</div></div>
+<div class="row"><div class="label">Inside Circle</div><div class="value" id="inside">0</div></div>
+<div class="row"><div class="label">Error</div><div class="value err-val" id="err">-</div></div>
+</div>
+</div>
 
-            <div class="stat-row">
-                <div class="stat-label">Actual Pi</div>
-                <div class="stat-value actual-pi">3.141593</div>
-            </div>
+<div class="ctrls">
+<button onclick="cmd('start')">Start</button>
+<button class="stop" onclick="cmd('stop')">Stop</button>
+<button class="reset" onclick="cmd('reset')">Reset</button>
+<button onclick="cmd('addBatch',1000)">+1000</button>
+<button onclick="cmd('addBatch',10000)">+10000</button>
+</div>
 
-            <div class="stat-row">
-                <div class="stat-label">Total Points</div>
-                <div class="stat-value" id="totalPoints">0</div>
-            </div>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const SIZE = 320;
+const RADIUS = SIZE / 2;
 
-            <div class="stat-row">
-                <div class="stat-label">Points Inside Circle</div>
-                <div class="stat-value" id="insidePoints">0</div>
-            </div>
+function drawCircle() {
+    ctx.beginPath();
+    ctx.arc(RADIUS, RADIUS, RADIUS - 2, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(0,212,255,0.8)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+}
 
-            <div class="stat-row">
-                <div class="stat-label">Error</div>
-                <div class="stat-value error-value" id="errorValue">-</div>
-            </div>
-        </div>
-    </div>
+function drawPoint(x, y, inside) {
+    ctx.beginPath();
+    ctx.arc(x * SIZE, y * SIZE, 2, 0, Math.PI * 2);
+    ctx.fillStyle = inside ? '#00ff88' : '#ff6b6b';
+    ctx.fill();
+}
 
-    <div class="legend">
-        <div class="legend-item">
-            <div class="legend-dot inside"></div>
-            <span>Inside Circle (r <= 1)</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-dot outside"></div>
-            <span>Outside Circle (r > 1)</span>
-        </div>
-    </div>
+function updateStats(d) {
+    document.getElementById('pi').textContent = d.pi.toFixed(6);
+    document.getElementById('total').textContent = d.total.toLocaleString();
+    document.getElementById('inside').textContent = d.inside.toLocaleString();
+    document.getElementById('err').textContent = d.total > 0 ? d.error.toFixed(4) + '%' : '-';
+}
 
-    <div class="controls">
-        <button id="startBtn" onclick="startSimulation()">Start</button>
-        <button id="stopBtn" class="stop-btn" onclick="stopSimulation()">Stop</button>
-        <button class="reset-btn" onclick="resetSimulation()">Reset</button>
-        <button onclick="addBatch(1000)">+1000 Points</button>
-        <button onclick="addBatch(10000)">+10000 Points</button>
-    </div>
+function cmd(c, arg) {
+    window.chrome.webview.postMessage(arg ? {cmd: c, count: arg} : {cmd: c});
+}
 
-    <div class="progress-container">
-        <div class="progress-bar-bg">
-            <div class="progress-bar-fill" id="progressBar" style="width: 0%"></div>
-        </div>
-    </div>
-
-    <div class="formula">
-        Pi ≈ 4 × (Points Inside / Total Points)
-    </div>
-
-    <script>
-        // Canvas setup
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        const size = 400;
-        const radius = size / 2;
-        const centerX = radius;
-        const centerY = radius;
-
-        // Statistics
-        let totalPoints = 0;
-        let insidePoints = 0;
-        let isRunning = false;
-        let animationId = null;
-        const POINTS_PER_FRAME = 100;
-        const BATCH_SIZE = 50; // Points per draw cycle
-
-        // Draw the circle boundary
-        function drawCircle() {
-            ctx.beginPath();
-            ctx.arc(centerX, centerY, radius - 2, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(0, 212, 255, 0.8)';
-            ctx.lineWidth = 2;
-            ctx.stroke();
+window.xxlang = {
+    onPoints: function(pts) {
+        for (let i = 0; i < pts.length; i++) {
+            drawPoint(pts[i][0], pts[i][1], pts[i][2]);
         }
-
-        // Draw a single point
-        function drawPoint(x, y, inside) {
-            ctx.beginPath();
-            ctx.arc(x, y, 2, 0, Math.PI * 2);
-            ctx.fillStyle = inside ? '#00ff88' : '#ff6b6b';
-            ctx.fill();
-        }
-
-        // Clear canvas and redraw circle
-        function clearCanvas() {
-            ctx.clearRect(0, 0, size, size);
-            drawCircle();
-        }
-
-        // Update statistics display
-        function updateDisplay() {
-            const piEstimate = totalPoints > 0 ? (4 * insidePoints / totalPoints) : 0;
-            const error = totalPoints > 0 ? Math.abs((piEstimate - Math.PI) / Math.PI * 100) : 0;
-
-            document.getElementById('piValue').textContent = piEstimate.toFixed(6);
-            document.getElementById('totalPoints').textContent = totalPoints.toLocaleString();
-            document.getElementById('insidePoints').textContent = insidePoints.toLocaleString();
-            document.getElementById('errorValue').textContent = totalPoints > 0 ? error.toFixed(4) + '%' : '-';
-
-            // Update progress bar (logarithmic scale for visual feedback)
-            const progress = Math.min(100, Math.log10(totalPoints + 1) / 5 * 100);
-            document.getElementById('progressBar').style.width = progress + '%';
-        }
-
-        // Generate a single random point
-        function generatePoint() {
-            // Random coordinates in [0, size]
-            const x = Math.random() * size;
-            const y = Math.random() * size;
-
-            // Calculate distance from center
-            const dx = x - centerX;
-            const dy = y - centerY;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-
-            // Check if inside circle
-            const inside = distance <= radius;
-
-            // Update counters
-            totalPoints++;
-            if (inside) {
-                insidePoints++;
-            }
-
-            return { x, y, inside };
-        }
-
-        // Add multiple points at once
-        function addBatch(count) {
-            for (let i = 0; i < count; i++) {
-                const point = generatePoint();
-                drawPoint(point.x, point.y, point.inside);
-            }
-            updateDisplay();
-        }
-
-        // Animation loop
-        function animationLoop() {
-            if (!isRunning) return;
-
-            for (let i = 0; i < POINTS_PER_FRAME; i++) {
-                const point = generatePoint();
-                drawPoint(point.x, point.y, point.inside);
-            }
-
-            updateDisplay();
-            animationId = requestAnimationFrame(animationLoop);
-        }
-
-        // Start simulation
-        function startSimulation() {
-            if (isRunning) return;
-            isRunning = true;
-            document.getElementById('startBtn').disabled = true;
-            animationLoop();
-        }
-
-        // Stop simulation
-        function stopSimulation() {
-            isRunning = false;
-            document.getElementById('startBtn').disabled = false;
-            if (animationId) {
-                cancelAnimationFrame(animationId);
-                animationId = null;
-            }
-        }
-
-        // Reset simulation
-        function resetSimulation() {
-            stopSimulation();
-            totalPoints = 0;
-            insidePoints = 0;
-            clearCanvas();
-            updateDisplay();
-        }
-
-        // Initialize
+    },
+    onStats: function(d) {
+        updateStats(d);
+    },
+    onReset: function() {
+        ctx.clearRect(0, 0, SIZE, SIZE);
         drawCircle();
-        updateDisplay();
-    </script>
+    }
+};
+
+drawCircle();
+</script>
 </body>
 </html>
 `
 }
 
-// Main function
 func main() {
-    pln("====================================")
-    pln("Monte Carlo Pi Calculator Demo")
-    pln("====================================")
+    pln("=====================================")
+    pln("Monte Carlo Pi Calculator - Xxlang Backend")
+    pln("=====================================")
     pln("")
-    pln("This program demonstrates Xxlang's GUI capabilities")
-    pln("using WebView2 with HTML5 Canvas.")
-    pln("")
-    pln("The Monte Carlo method estimates Pi by:")
-    pln("1. Randomly placing points in a square")
-    pln("2. Counting points that fall inside the inscribed circle")
-    pln("3. Pi ~ 4 * (inside/total)")
-    pln("")
-    pln("Creating WebView2 window...")
+    pln("Creating window...")
 
-    // Create window
-    var wvHandle = gui.createWindow("Monte Carlo Pi Calculator - Xxlang Demo", 800, 620)
-
-    // Check for errors
+    wvHandle = gui.createWindow("Pi Calculator - Xxlang Backend", 750, 600)
     if (typeOf(wvHandle) == "ERROR") {
-        pln("Error creating window: ", wvHandle)
+        pln("Error: ", wvHandle)
         return
     }
+    pln("Window created")
 
-    pln("Window created successfully!")
-    pln("Setting up HTML content...")
+    gui.setHTML(wvHandle, createHTML())
+    pln("HTML loaded")
+    pln("")
+    pln("Controls: Start/Stop/Reset, or add points in batches")
+    pln("Close window to exit")
+    pln("")
 
-    // Set HTML content
-    var html = createHTML()
-    var result = gui.setHTML(wvHandle, html)
+    var frames = 0
+    while (!gui.isClosed(wvHandle)) {
+        // Process messages
+        var p = 0
+        while (p < 5) {
+            gui.poll(wvHandle)
+            p = p + 1
+        }
 
-    if (typeOf(result) == "ERROR") {
-        pln("Error setting HTML: ", result)
-        gui.close(wvHandle)
-        return
+        // Handle WebView messages
+        while (gui.hasMessages(wvHandle)) {
+            handleMessage(gui.popMessage(wvHandle))
+        }
+
+        // Run simulation if active
+        if (isRunning) {
+            var pts = []
+            var i = 0
+            while (i < 100) {
+                var pt = generatePoint()
+                array.push(pts, pt)
+                totalPoints = totalPoints + 1
+                if (pt[2] == 1) {
+                    insidePoints = insidePoints + 1
+                }
+                i = i + 1
+            }
+            sendPoints(pts)
+
+            frames = frames + 1
+            if (frames >= 5) {
+                sendStats()
+                frames = 0
+            }
+        }
+
+        sleep(30)
     }
 
-    pln("HTML content loaded.")
-    pln("")
-    pln("Starting message loop...")
-    pln("(Close the window to exit)")
-    pln("")
-
-    // Run the message loop (blocking)
-    gui.loop(wvHandle)
-
-    // Cleanup
     gui.close(wvHandle)
     pln("")
-    pln("Window closed. Demo finished.")
+    pln("=== Final Results ===")
+    pln("Total Points: ", totalPoints)
+    pln("Inside Circle: ", insidePoints)
+    pln("Pi Estimate: ", calculatePi())
+    pln("Actual Pi: ", math.PI)
+    pln("Error: ", math.abs(calculatePi() - math.PI))
 }
 
-// Run main
 main()

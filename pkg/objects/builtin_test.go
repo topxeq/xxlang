@@ -404,8 +404,8 @@ func TestBuiltinRange(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected Array, got %s", result.Type())
 	}
-	if len(arr.Elements) != 6 {
-		t.Errorf("expected 6 elements, got %d", len(arr.Elements))
+	if len(arr.Elements) != 5 {
+		t.Errorf("expected 5 elements, got %d", len(arr.Elements))
 	}
 }
 

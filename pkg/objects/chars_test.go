@@ -81,3 +81,75 @@ func TestCharsTypeTag(t *testing.T) {
 		t.Errorf("expected TagChars, got %d", ch.TypeTag())
 	}
 }
+
+func TestCharsHashKey(t *testing.T) {
+	ch1 := NewCharsFromString("hello")
+	ch2 := NewCharsFromString("hello")
+	ch3 := NewCharsFromString("world")
+
+	h1 := ch1.HashKey()
+	h2 := ch2.HashKey()
+	h3 := ch3.HashKey()
+
+	if h1 != h2 {
+		t.Error("expected same hash for same chars")
+	}
+
+	if h1 == h3 {
+		t.Error("expected different hash for different chars")
+	}
+
+	empty := NewChars([]rune{})
+	emptyHash := empty.HashKey()
+	if emptyHash.Type != CharsType {
+		t.Error("expected CharsType for empty chars hash")
+	}
+}
+
+func TestCharsAt(t *testing.T) {
+	ch := NewCharsFromString("hello")
+
+	s, ok := ch.At(0)
+	if !ok || s != "h" {
+		t.Errorf("expected 'h', got '%s', ok=%v", s, ok)
+	}
+
+	s, ok = ch.At(4)
+	if !ok || s != "o" {
+		t.Errorf("expected 'o', got '%s', ok=%v", s, ok)
+	}
+
+	_, ok = ch.At(-1)
+	if ok {
+		t.Error("expected false for negative index")
+	}
+
+	_, ok = ch.At(10)
+	if ok {
+		t.Error("expected false for out of bounds index")
+	}
+}
+
+func TestCharsSlice(t *testing.T) {
+	ch := NewCharsFromString("hello world")
+
+	slice := ch.Slice(0, 5)
+	if slice.Inspect() != "hello" {
+		t.Errorf("expected 'hello', got '%s'", slice.Inspect())
+	}
+
+	slice = ch.Slice(6, 11)
+	if slice.Inspect() != "world" {
+		t.Errorf("expected 'world', got '%s'", slice.Inspect())
+	}
+
+	slice = ch.Slice(0, 100)
+	if slice.Inspect() != "hello world" {
+		t.Errorf("expected 'hello world' for clamped slice, got '%s'", slice.Inspect())
+	}
+
+	slice = ch.Slice(-5, 5)
+	if slice.Inspect() != "hello" {
+		t.Errorf("expected 'hello' for negative start, got '%s'", slice.Inspect())
+	}
+}

@@ -306,7 +306,7 @@ func (e *HTMLElement) NodeType() HTMLNodeType {
 
 // TextContent returns the text content.
 func (e *HTMLElement) TextContent() string {
-	if e.nodeType == HTMLNodeText {
+	if e.nodeType == HTMLNodeText || e.nodeType == HTMLNodeComment {
 		return e.textContent
 	}
 	var buf bytes.Buffer

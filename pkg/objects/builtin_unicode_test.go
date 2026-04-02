@@ -165,3 +165,133 @@ func TestKanjiToRomaji(t *testing.T) {
 		})
 	}
 }
+
+func TestKanaToRomajiExported(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"あ", "a"},
+		{"い", "i"},
+		{"う", "u"},
+		{"え", "e"},
+		{"お", "o"},
+		{"か", "ka"},
+		{"き", "ki"},
+		{"さ", "sa"},
+		{"し", "shi"},
+		{"た", "ta"},
+		{"ち", "chi"},
+		{"ん", "n"},
+		{"ア", "a"},
+		{"イ", "i"},
+		{"カ", "ka"},
+		{"キ", "ki"},
+		{"ガ", "ga"},
+		{"パ", "pa"},
+		{"きゃ", "kya"},
+		{"しゃ", "sha"},
+		{"ちゃ", "cha"},
+		{"hello", "hello"},
+		{"", ""},
+	}
+
+	for _, tt := range tests {
+		result := KanaToRomaji(tt.input)
+		if result != tt.expected {
+			t.Errorf("KanaToRomaji(%q) = %q, want %q", tt.input, result, tt.expected)
+		}
+	}
+}
+
+func TestKanjiToKanaExported(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"一", "いち"},
+		{"二", "に"},
+		{"三", "さん"},
+		{"日本", "にほん"},
+		{"東京", "とうきょう"},
+		{"人", "じん"},
+		{"日", "にち"},
+		{"hello", "hello"},
+		{"", ""},
+	}
+
+	for _, tt := range tests {
+		result := KanjiToKana(tt.input)
+		if result != tt.expected {
+			t.Errorf("KanjiToKana(%q) = %q, want %q", tt.input, result, tt.expected)
+		}
+	}
+}
+
+func TestKanjiToRomajiExported(t *testing.T) {
+	tests := []struct {
+		input    string
+		contains string
+	}{
+		{"一", "ichi"},
+		{"二", "ni"},
+		{"三", "san"},
+		{"日本", "nihon"},
+		{"東京", "toukyou"},
+	}
+
+	for _, tt := range tests {
+		result := KanjiToRomaji(tt.input)
+		if result == "" {
+			t.Errorf("KanjiToRomaji(%q) returned empty string", tt.input)
+		}
+	}
+}
+
+func TestBuiltinKanaToRomajiErrors(t *testing.T) {
+	result := builtinKanaToRomaji()
+	if !isError(result) {
+		t.Error("expected error for no args")
+	}
+
+	result = builtinKanaToRomaji(NewInt(1))
+	if !isError(result) {
+		t.Error("expected error for wrong type")
+	}
+}
+
+func TestBuiltinKanjiToKanaErrors(t *testing.T) {
+	result := builtinKanjiToKana()
+	if !isError(result) {
+		t.Error("expected error for no args")
+	}
+
+	result = builtinKanjiToKana(NewInt(1))
+	if !isError(result) {
+		t.Error("expected error for wrong type")
+	}
+}
+
+func TestBuiltinKanjiToRomajiErrors(t *testing.T) {
+	result := builtinKanjiToRomaji()
+	if !isError(result) {
+		t.Error("expected error for no args")
+	}
+
+	result = builtinKanjiToRomaji(NewInt(1))
+	if !isError(result) {
+		t.Error("expected error for wrong type")
+	}
+}
+
+func TestBuiltinToPinYinErrors(t *testing.T) {
+	result := builtinToPinYin()
+	if !isError(result) {
+		t.Error("expected error for no args")
+	}
+
+	result = builtinToPinYin(NewInt(1))
+	if !isError(result) {
+		t.Error("expected error for wrong type")
+	}
+}

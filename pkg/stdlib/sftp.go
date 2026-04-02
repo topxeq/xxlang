@@ -231,49 +231,51 @@ func init() {
 				}
 
 				if len(args) > 1 {
-					if configMap, ok := args[1].(*objects.Map); ok {
-						config = &objects.SftpServerConfig{}
+					configMap, ok := args[1].(*objects.Map)
+					if !ok {
+						return Error("second argument must be a map (config)")
+					}
+					config = &objects.SftpServerConfig{}
 
-						// Helper function to get string value from map
-						getString := func(key string) (string, bool) {
-							keyObj := objects.NewString(key)
-							if pair, exists := configMap.Pairs[keyObj.HashKey()]; exists {
-								if s, ok := pair.Value.(*objects.String); ok {
-									return s.Value, true
-								}
+					// Helper function to get string value from map
+					getString := func(key string) (string, bool) {
+						keyObj := objects.NewString(key)
+						if pair, exists := configMap.Pairs[keyObj.HashKey()]; exists {
+							if s, ok := pair.Value.(*objects.String); ok {
+								return s.Value, true
 							}
-							return "", false
 						}
+						return "", false
+					}
 
-						// Helper function to get int value from map
-						getInt := func(key string) (int, bool) {
-							keyObj := objects.NewString(key)
-							if pair, exists := configMap.Pairs[keyObj.HashKey()]; exists {
-								if i, ok := pair.Value.(*objects.Int); ok {
-									return int(i.Value), true
-								}
+					// Helper function to get int value from map
+					getInt := func(key string) (int, bool) {
+						keyObj := objects.NewString(key)
+						if pair, exists := configMap.Pairs[keyObj.HashKey()]; exists {
+							if i, ok := pair.Value.(*objects.Int); ok {
+								return int(i.Value), true
 							}
-							return 0, false
 						}
+						return 0, false
+					}
 
-						if host, ok := getString("host"); ok {
-							config.Host = host
-						}
-						if port, ok := getInt("port"); ok {
-							config.Port = port
-						}
-						if maxConn, ok := getInt("maxConnections"); ok {
-							config.MaxConnections = maxConn
-						}
-						if timeout, ok := getInt("timeout"); ok {
-							config.Timeout = timeout
-						}
-						if hostKey, ok := getString("hostKey"); ok {
-							config.HostKey = hostKey
-						}
-						if hostKeyPath, ok := getString("hostKeyPath"); ok {
-							config.HostKeyPath = hostKeyPath
-						}
+					if host, ok := getString("host"); ok {
+						config.Host = host
+					}
+					if port, ok := getInt("port"); ok {
+						config.Port = port
+					}
+					if maxConn, ok := getInt("maxConnections"); ok {
+						config.MaxConnections = maxConn
+					}
+					if timeout, ok := getInt("timeout"); ok {
+						config.Timeout = timeout
+					}
+					if hostKey, ok := getString("hostKey"); ok {
+						config.HostKey = hostKey
+					}
+					if hostKeyPath, ok := getString("hostKeyPath"); ok {
+						config.HostKeyPath = hostKeyPath
 					}
 				}
 

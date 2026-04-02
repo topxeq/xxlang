@@ -18,9 +18,9 @@ type OrderedMapPair struct {
 // OrderedMap represents a map that preserves insertion order of key-value pairs.
 // It supports O(1) lookup via a hash map and ordered iteration via a slice.
 type OrderedMap struct {
-	Pairs      map[HashKey]int // HashKey -> index in orderSlice
+	Pairs      map[HashKey]int  // HashKey -> index in orderSlice
 	orderSlice []OrderedMapPair // Ordered storage of pairs
-	mu         sync.RWMutex    // Mutex for thread safety
+	mu         sync.RWMutex     // Mutex for thread safety
 }
 
 // NewOrderedMap creates a new empty OrderedMap
@@ -52,6 +52,18 @@ func (om *OrderedMap) Inspect() string {
 	om.mu.RLock()
 	defer om.mu.RUnlock()
 
+	visited := make(map[interface{}]struct{})
+	return om.inspect(visited)
+}
+
+// inspect with cycle detection (caller must hold lock or be single-threaded)
+func (om *OrderedMap) inspect(visited map[interface{}]struct{}) string {
+	// Detect cycle
+	if _, ok := visited[om]; ok {
+		return "{...}"
+	}
+	visited[om] = struct{}{}
+
 	if len(om.orderSlice) == 0 {
 		return "{}"
 	}
@@ -64,7 +76,17 @@ func (om *OrderedMap) Inspect() string {
 		}
 		buf.WriteString(pair.Key.Inspect())
 		buf.WriteString(": ")
-		buf.WriteString(pair.Value.Inspect())
+		// Use cycle-aware inspection for values
+		switch v := pair.Value.(type) {
+		case *Map:
+			buf.WriteString(v.inspect(visited))
+		case *Array:
+			buf.WriteString(v.inspect(visited))
+		case *OrderedMap:
+			buf.WriteString(v.inspect(visited))
+		default:
+			buf.WriteString(pair.Value.Inspect())
+		}
 	}
 	buf.WriteString("}")
 	return buf.String()

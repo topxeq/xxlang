@@ -5,6 +5,7 @@
 package webview2
 
 import (
+	"fmt"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -14,8 +15,8 @@ var (
 	ole32DLL       = syscall.NewLazyDLL("ole32.dll")
 	coInitialize   = ole32DLL.NewProc("CoInitializeEx")
 	coUninitialize = ole32DLL.NewProc("CoUninitialize")
-	coTaskMemAlloc  = ole32DLL.NewProc("CoTaskMemAlloc")
-	coTaskMemFree   = ole32DLL.NewProc("CoTaskMemFree")
+	coTaskMemAlloc = ole32DLL.NewProc("CoTaskMemAlloc")
+	coTaskMemFree  = ole32DLL.NewProc("CoTaskMemFree")
 
 	// WinRT initialization (combase.dll)
 	combaseDLL     = syscall.NewLazyDLL("combase.dll")
@@ -27,8 +28,8 @@ var (
 	COINIT_MULTITHREADED     = 0x0
 
 	// WinRT initialization flags
-	RO_INIT_SINGLETHREADED   = 0x1
-	RO_INIT_MULTITHREADED    = 0x0
+	RO_INIT_SINGLETHREADED = 0x1
+	RO_INIT_MULTITHREADED  = 0x0
 
 	// Common HRESULT values
 	S_OK          uintptr = 0x00000000
@@ -144,9 +145,18 @@ func (u *IUnknown) Release() uint32 {
 }
 
 // GUIDToString converts a GUID to its string representation.
+// This creates a proper GUID string format like "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
 func GUIDToString(g *syscall.GUID) string {
-	return string(g.Data1>>24&0xFF) + string(g.Data1>>16&0xFF) +
-		string(g.Data1>>8&0xFF) + string(g.Data1&0xFF)
+	// Use fmt.Sprintf for proper hex formatting
+	// This matches the standard GUID string format
+	return fmt.Sprintf(
+		"%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X",
+		g.Data1,
+		g.Data2,
+		g.Data3,
+		g.Data4[0], g.Data4[1], g.Data4[2], g.Data4[3],
+		g.Data4[4], g.Data4[5], g.Data4[6], g.Data4[7],
+	)
 }
 
 // CoTaskMemAlloc allocates memory from COM task allocator.

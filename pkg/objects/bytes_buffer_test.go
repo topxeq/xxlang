@@ -206,3 +206,188 @@ func TestBytesBufferHashKey(t *testing.T) {
 		t.Error("Different BytesBuffer instances should have different hash keys")
 	}
 }
+
+func TestBytesBufferWrite(t *testing.T) {
+	bb := NewBytesBuffer()
+	data := []byte{72, 101, 108, 108, 111}
+
+	n := bb.Write(data)
+	if n != 5 {
+		t.Errorf("expected 5 bytes written, got %d", n)
+	}
+}
+
+func TestBytesBufferBytesRef(t *testing.T) {
+	bb := NewBytesBuffer()
+	bb.WriteString("hello")
+
+	ref := bb.BytesRef()
+	if len(ref) != 5 {
+		t.Errorf("expected 5 bytes, got %d", len(ref))
+	}
+}
+
+func TestBytesBufferReset(t *testing.T) {
+	bb := NewBytesBuffer()
+	bb.WriteString("hello")
+
+	bb.Reset()
+	if bb.Len() != 0 {
+		t.Errorf("expected length 0 after reset, got %d", bb.Len())
+	}
+}
+
+func TestBytesBufferWriteInt16(t *testing.T) {
+	bb := NewBytesBuffer()
+
+	err := bb.WriteInt16(12345)
+	if err != nil {
+		t.Errorf("WriteInt16 error: %v", err)
+	}
+
+	v, err := bb.ReadInt16()
+	if err != nil {
+		t.Errorf("ReadInt16 error: %v", err)
+	}
+	if v != 12345 {
+		t.Errorf("expected 12345, got %d", v)
+	}
+}
+
+func TestBytesBufferWriteInt32(t *testing.T) {
+	bb := NewBytesBuffer()
+
+	err := bb.WriteInt32(123456789)
+	if err != nil {
+		t.Errorf("WriteInt32 error: %v", err)
+	}
+
+	v, err := bb.ReadInt32()
+	if err != nil {
+		t.Errorf("ReadInt32 error: %v", err)
+	}
+	if v != 123456789 {
+		t.Errorf("expected 123456789, got %d", v)
+	}
+}
+
+func TestBytesBufferWriteFloat32(t *testing.T) {
+	bb := NewBytesBuffer()
+
+	err := bb.WriteFloat32(3.14)
+	if err != nil {
+		t.Errorf("WriteFloat32 error: %v", err)
+	}
+
+	v, err := bb.ReadFloat32()
+	if err != nil {
+		t.Errorf("ReadFloat32 error: %v", err)
+	}
+	if v < 3.13 || v > 3.15 {
+		t.Errorf("expected ~3.14, got %f", v)
+	}
+}
+
+func TestBytesBufferRead(t *testing.T) {
+	bb := NewBytesBuffer()
+	bb.WriteString("hello")
+
+	buf := make([]byte, 3)
+	n, err := bb.Read(buf)
+	if err != nil {
+		t.Errorf("Read error: %v", err)
+	}
+	if n != 3 {
+		t.Errorf("expected 3 bytes read, got %d", n)
+	}
+	if string(buf) != "hel" {
+		t.Errorf("expected 'hel', got '%s'", string(buf))
+	}
+}
+
+func TestBytesBufferReadByte(t *testing.T) {
+	bb := NewBytesBuffer()
+	bb.WriteString("ABC")
+
+	b, err := bb.ReadByte()
+	if err != nil {
+		t.Errorf("ReadByte error: %v", err)
+	}
+	if b != 65 {
+		t.Errorf("expected 65 ('A'), got %d", b)
+	}
+}
+
+func TestBytesBufferReadBytes(t *testing.T) {
+	bb := NewBytesBuffer()
+	bb.WriteString("hello,world")
+
+	data, err := bb.ReadBytes(',')
+	if err != nil {
+		t.Errorf("ReadBytes error: %v", err)
+	}
+	if string(data) != "hello," {
+		t.Errorf("expected 'hello,', got '%s'", string(data))
+	}
+}
+
+func TestBytesBufferReadString(t *testing.T) {
+	bb := NewBytesBuffer()
+	bb.WriteString("hello,world")
+
+	s, err := bb.ReadString(',')
+	if err != nil {
+		t.Errorf("ReadString error: %v", err)
+	}
+	if s != "hello," {
+		t.Errorf("expected 'hello,', got '%s'", s)
+	}
+}
+
+func TestBytesBufferSeek(t *testing.T) {
+	bb := NewBytesBuffer()
+	bb.WriteString("hello")
+
+	// Seek to beginning
+	pos := bb.Seek(0, 0)
+	if pos != 0 {
+		t.Errorf("expected position 0, got %d", pos)
+	}
+}
+
+func TestBytesBufferEquals(t *testing.T) {
+	bb1 := NewBytesBuffer()
+	bb1.WriteString("hello")
+
+	bb2 := NewBytesBuffer()
+	bb2.WriteString("hello")
+
+	bb3 := NewBytesBuffer()
+	bb3.WriteString("world")
+
+	if !bb1.Equals(bb2) {
+		t.Error("expected equal buffers to be equal")
+	}
+	if bb1.Equals(bb3) {
+		t.Error("expected different buffers to not be equal")
+	}
+}
+
+func TestBytesBufferGetIOReader(t *testing.T) {
+	bb := NewBytesBuffer()
+	bb.WriteString("hello")
+
+	reader := bb.GetIOReader()
+	if reader == nil {
+		t.Error("expected non-nil reader")
+	}
+}
+
+func TestBytesBufferGetIOWriter(t *testing.T) {
+	bb := NewBytesBuffer()
+
+	writer := bb.GetIOWriter()
+	if writer == nil {
+		t.Error("expected non-nil writer")
+	}
+}

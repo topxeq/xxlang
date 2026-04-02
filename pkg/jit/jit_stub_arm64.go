@@ -1,8 +1,9 @@
-// +build !amd64
+//go:build !amd64 && !arm64
+// +build !amd64,!arm64
 
 // pkg/jit/jit_stub_arm64.go
-// Stub implementation for non-amd64 platforms
-// JIT compilation is not supported on non-amd64 platforms
+// Stub implementation for platforms without JIT support
+// JIT compilation is not supported on non-amd64 and non-arm64 platforms
 // This allows the code to compile and run, but JIT features are disabled
 
 package jit
@@ -130,12 +131,12 @@ func AnalyzeNativeSupport(fn *compiler.CompiledFunction) int {
 
 // Support levels
 const (
-	SupportNone             = 0
-	SupportPureArithmetic   = 1
-	SupportWithBuiltins     = 2
-	SupportWithCalls        = 3
-	SupportWithArrays       = 4
-	SupportWithObjects      = 5
+	SupportNone           = 0
+	SupportPureArithmetic = 1
+	SupportWithBuiltins   = 2
+	SupportWithCalls      = 3
+	SupportWithArrays     = 4
+	SupportWithObjects    = 5
 )
 
 // CallNativeCode stub

@@ -5,7 +5,6 @@
 package webview2
 
 import (
-	"encoding/json"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -26,13 +25,20 @@ type WebView2 struct {
 	scriptID    int64
 	eventTokens map[uintptr]EventRegistrationToken
 
+	// Message queue for messages from JavaScript (thread-safe)
+	messageQueue []string
+
 	// Handlers (stored to prevent GC)
 	envHandler        *EnvironmentHandler
 	controllerHandler *ControllerHandler
 	messageHandler    *MessageHandler
+	scriptHandlers    map[int64]*ScriptHandler // Script handlers by ID (prevent GC)
 
 	// Atomic flag for initialization
 	inited uintptr
+
+	// Closed flag (atomic for thread safety)
+	closed uintptr
 }
 
 // ICoreWebView2Controller wrapper.
@@ -210,8 +216,9 @@ func NewWebView2(config WebView2Config) (*WebView2, error) {
 	}
 
 	wv := &WebView2{
-		callbacks:   make(map[string]func(args map[string]interface{})),
-		eventTokens: make(map[uintptr]EventRegistrationToken),
+		callbacks:      make(map[string]func(args map[string]interface{})),
+		eventTokens:    make(map[uintptr]EventRegistrationToken),
+		scriptHandlers: make(map[int64]*ScriptHandler),
 	}
 
 	// Create and store handlers (prevents GC)
@@ -430,7 +437,24 @@ func (wv *WebView2) ExecuteScript(script string, callback func(result string, er
 	id := wv.scriptID
 	wv.mu.Unlock()
 
-	handler := wv.createExecuteScriptHandler(id, callback)
+	// Create wrapper callback that cleans up handler after invocation
+	wrapperCallback := func(result string, err error) {
+		// Clean up handler from map after callback completes
+		wv.mu.Lock()
+		delete(wv.scriptHandlers, id)
+		wv.mu.Unlock()
+		// Call original callback if provided
+		if callback != nil {
+			callback(result, err)
+		}
+	}
+
+	handler := wv.createExecuteScriptHandler(id, wrapperCallback)
+
+	// Store handler to prevent GC until callback is invoked
+	wv.mu.Lock()
+	wv.scriptHandlers[id] = handler
+	wv.mu.Unlock()
 
 	hr, _, _ := syscall.Syscall(
 		wv.webview.vtbl.ExecuteScript,
@@ -441,6 +465,10 @@ func (wv *WebView2) ExecuteScript(script string, callback func(result string, er
 	)
 
 	if hr != 0 {
+		// Remove handler on error
+		wv.mu.Lock()
+		delete(wv.scriptHandlers, id)
+		wv.mu.Unlock()
 		return fmt.Errorf("ExecuteScript failed: hr=0x%x", hr)
 	}
 	return nil
@@ -498,8 +526,52 @@ func (wv *WebView2) Run() {
 	runMessageLoop(wv.hwnd)
 }
 
+// Poll processes a single message without blocking.
+// Returns true if a message was processed, false otherwise.
+// Use this for non-blocking GUI updates while doing computation.
+func (wv *WebView2) Poll() bool {
+	return processSingleMessage()
+}
+
+// PopMessage returns the next message from the queue.
+// Returns empty string if no messages are available.
+func (wv *WebView2) PopMessage() string {
+	wv.mu.Lock()
+	defer wv.mu.Unlock()
+	if len(wv.messageQueue) == 0 {
+		return ""
+	}
+	msg := wv.messageQueue[0]
+	wv.messageQueue = wv.messageQueue[1:]
+	return msg
+}
+
+// HasMessages returns true if there are messages waiting in the queue.
+func (wv *WebView2) HasMessages() bool {
+	wv.mu.Lock()
+	defer wv.mu.Unlock()
+	return len(wv.messageQueue) > 0
+}
+
+// IsClosed returns true if the WebView2 window has been closed.
+func (wv *WebView2) IsClosed() bool {
+	return atomic.LoadUintptr(&wv.closed) != 0
+}
+
+// SetClosed sets the closed state.
+func (wv *WebView2) SetClosed(closed bool) {
+	if closed {
+		atomic.StoreUintptr(&wv.closed, 1)
+	} else {
+		atomic.StoreUintptr(&wv.closed, 0)
+	}
+}
+
 // Close closes the WebView2 instance.
 func (wv *WebView2) Close() {
+	// Mark as closed first
+	wv.SetClosed(true)
+
 	if wv.controller != nil {
 		syscall.Syscall(wv.controller.vtbl.Close, 1,
 			uintptr(unsafe.Pointer(wv.controller)), 0, 0)
@@ -511,20 +583,15 @@ func (wv *WebView2) Close() {
 }
 
 // HandleMessage handles a web message from JavaScript.
+// This is called from a COM callback, so we must be careful:
+// - Only do minimal work here
+// - Don't call Go callbacks or do JSON parsing
+// - Just queue the message for later processing
 func (wv *WebView2) handleMessage(msg string) {
-	var data map[string]interface{}
-	if err := json.Unmarshal([]byte(msg), &data); err != nil {
-		return
+	wv.mu.Lock()
+	// Limit queue size to prevent memory issues
+	if len(wv.messageQueue) < 1000 {
+		wv.messageQueue = append(wv.messageQueue, msg)
 	}
-
-	if fnName, ok := data["__fn"].(string); ok {
-		wv.mu.Lock()
-		fn, exists := wv.callbacks[fnName]
-		wv.mu.Unlock()
-
-		if exists {
-			args, _ := data["__args"].(map[string]interface{})
-			go fn(args)
-		}
-	}
+	wv.mu.Unlock()
 }

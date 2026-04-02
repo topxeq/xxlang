@@ -173,3 +173,110 @@ func TestBytesEmpty(t *testing.T) {
 		t.Error("Expected non-empty bytes to be truthy")
 	}
 }
+
+func TestBytesType(t *testing.T) {
+	b := NewBytes([]byte{65})
+	if b.Type() != BytesType {
+		t.Errorf("Expected BytesType, got %v", b.Type())
+	}
+}
+
+func TestBytesTypeTag(t *testing.T) {
+	b := NewBytes([]byte{65})
+	if b.TypeTag() != TagBytes {
+		t.Errorf("Expected TagBytes, got %v", b.TypeTag())
+	}
+}
+
+func TestBytesInspect(t *testing.T) {
+	b := NewBytes([]byte{65, 66, 67})
+	result := b.Inspect()
+	if result == "" {
+		t.Error("Expected non-empty inspect string")
+	}
+}
+
+func TestBytesHashKey(t *testing.T) {
+	b1 := NewBytes([]byte{65, 66, 67})
+	b2 := NewBytes([]byte{65, 66, 67})
+	b3 := NewBytes([]byte{68, 69, 70})
+
+	h1 := b1.HashKey()
+	h2 := b2.HashKey()
+	h3 := b3.HashKey()
+
+	if h1 != h2 {
+		t.Error("Expected same hash for same bytes")
+	}
+	if h1 == h3 {
+		t.Error("Expected different hash for different bytes")
+	}
+}
+
+func TestBytesEqual(t *testing.T) {
+	b1 := NewBytes([]byte{65, 66, 67})
+	b2 := NewBytes([]byte{65, 66, 67})
+	b3 := NewBytes([]byte{68, 69, 70})
+
+	if !b1.Equal(b2) {
+		t.Error("Expected equal bytes to be equal")
+	}
+	if b1.Equal(b3) {
+		t.Error("Expected different bytes to not be equal")
+	}
+}
+
+func TestBytesIndex(t *testing.T) {
+	b := NewBytes([]byte{72, 101, 108, 108, 111})
+
+	sub := NewBytes([]byte{108})
+	idx := b.Index(sub)
+	if idx != 2 {
+		t.Errorf("Expected index 2, got %d", idx)
+	}
+
+	notSub := NewBytes([]byte{119})
+	idx = b.Index(notSub)
+	if idx != -1 {
+		t.Errorf("Expected -1 for not found, got %d", idx)
+	}
+}
+
+func TestBytesLastIndex(t *testing.T) {
+	b := NewBytes([]byte{72, 101, 108, 108, 111})
+
+	sub := NewBytes([]byte{108})
+	idx := b.LastIndex(sub)
+	if idx != 3 {
+		t.Errorf("Expected last index 3, got %d", idx)
+	}
+}
+
+func TestBytesCount(t *testing.T) {
+	b := NewBytes([]byte{72, 101, 108, 108, 111})
+
+	sub := NewBytes([]byte{108})
+	count := b.Count(sub)
+	if count != 2 {
+		t.Errorf("Expected count 2, got %d", count)
+	}
+}
+
+func TestBytesGetMember(t *testing.T) {
+	b := NewBytes([]byte{72, 101, 108, 108, 111})
+
+	result := b.GetMember("len")
+	if result == nil {
+		t.Error("Expected non-nil result for 'len'")
+	}
+
+	result = b.GetMember("toString")
+	if result == nil {
+		t.Error("Expected non-nil result for 'toString'")
+	}
+
+	result = b.GetMember("at")
+	if result == nil {
+		t.Error("Expected non-nil result for 'at'")
+	}
+}

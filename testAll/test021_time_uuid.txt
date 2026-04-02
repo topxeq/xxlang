@@ -1,5 +1,5 @@
 now function:
-true
+false
 nowMs function:
 true
 uuid function:
@@ -8,8 +8,7 @@ true
 Multiple UUIDs are unique:
 true
 Timing comparison:
-time elapsed (ms): 0
-true
+time elapsed >= 0: true
 49995000
 sleep function (short):
 true

@@ -1,9 +1,10 @@
 // pkg/stdlib/yaml_comprehensive_test.go
-// Comprehensive tests for YAML 1.2 compliance
 package stdlib
 
 import (
+	"encoding/json"
 	"math"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -454,11 +455,16 @@ nested:
 				t.Fatalf("Second parse error: %v\nSerialized:\n%s", err, serialized)
 			}
 
-			// Compare
+			// Compare by unmarshaling JSON to handle map key order
 			json1, _ := objects.ObjectToJSON(obj1, objects.ObjectToJSONOptions{})
 			json2, _ := objects.ObjectToJSON(obj2, objects.ObjectToJSONOptions{})
 
-			if string(json1) != string(json2) {
+			var m1, m2 interface{}
+			json.Unmarshal(json1, &m1)
+			json.Unmarshal(json2, &m2)
+
+			// Use reflect.DeepEqual for comparison
+			if !reflect.DeepEqual(m1, m2) {
 				t.Errorf("Round-trip mismatch:\nOriginal JSON: %s\nAfter round-trip: %s", json1, json2)
 			}
 		})

@@ -180,3 +180,99 @@ func TestNetDownloadErrors(t *testing.T) {
 		t.Error("download() with no args should return Error")
 	}
 }
+
+func TestNetGetArgErrors(t *testing.T) {
+	// No arguments
+	result := callNetFunc("get")
+	if _, ok := result.(*objects.Error); !ok {
+		t.Error("get() with no args should return Error")
+	}
+	// Wrong type for URL (non-string)
+	result = callNetFunc("get", Int(42))
+	if _, ok := result.(*objects.Error); !ok {
+		t.Error("get() with non-string URL should return Error")
+	}
+}
+
+func TestNetPostArgErrors(t *testing.T) {
+	// No arguments
+	result := callNetFunc("post")
+	if _, ok := result.(*objects.Error); !ok {
+		t.Error("post() with no args should return Error")
+	}
+	// Only URL provided (missing body)
+	result = callNetFunc("post", String("http://example.com"))
+	if _, ok := result.(*objects.Error); !ok {
+		t.Error("post() with only URL should return Error")
+	}
+	// Wrong type for body
+	result = callNetFunc("post", String("http://example.com"), Int(1))
+	if _, ok := result.(*objects.Error); !ok {
+		t.Error("post() with non-string body should return Error")
+	}
+}
+
+func TestNetRequestArgErrors(t *testing.T) {
+	// No arguments
+	result := callNetFunc("request")
+	if _, ok := result.(*objects.Error); !ok {
+		t.Error("request() with no args should return Error")
+	}
+	// Only one argument
+	result = callNetFunc("request", String("GET"))
+	if _, ok := result.(*objects.Error); !ok {
+		t.Error("request() with one arg should return Error")
+	}
+	// Wrong type for URL
+	result = callNetFunc("request", String("GET"), Int(42))
+	if _, ok := result.(*objects.Error); !ok {
+		t.Error("request() with non-string URL should return Error")
+	}
+}
+
+func TestNetHeadArgErrors(t *testing.T) {
+	// No arguments
+	result := callNetFunc("head")
+	if _, ok := result.(*objects.Error); !ok {
+		t.Error("head() with no args should return Error")
+	}
+	// Wrong type for URL
+	result = callNetFunc("head", Int(1))
+	if _, ok := result.(*objects.Error); !ok {
+		t.Error("head() with non-string URL should return Error")
+	}
+}
+
+func TestNetDownloadArgErrors(t *testing.T) {
+	// No arguments
+	result := callNetFunc("download")
+	if _, ok := result.(*objects.Error); !ok {
+		t.Error("download() with no args should return Error")
+	}
+}
+
+func TestNetGetJsonArgErrors(t *testing.T) {
+	// No arguments
+	result := callNetFunc("getJson")
+	if _, ok := result.(*objects.Error); !ok {
+		t.Error("getJson() with no args should return Error")
+	}
+	// Wrong type for URL
+	result = callNetFunc("getJson", Int(123))
+	if _, ok := result.(*objects.Error); !ok {
+		t.Error("getJson() with non-string URL should return Error")
+	}
+}
+
+func TestNetPostJsonArgErrors(t *testing.T) {
+	// No arguments
+	result := callNetFunc("postJson")
+	if _, ok := result.(*objects.Error); !ok {
+		t.Error("postJson() with no args should return Error")
+	}
+	// Wrong types for both arguments
+	result = callNetFunc("postJson", String("http://example.com"), Int(1))
+	if _, ok := result.(*objects.Error); !ok {
+		t.Error("postJson() with invalid body should return Error")
+	}
+}

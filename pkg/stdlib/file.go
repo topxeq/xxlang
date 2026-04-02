@@ -773,6 +773,25 @@ func init() {
 
 				return Null()
 			}),
+
+			// close closes an open file handle.
+			// Usage: file.close(fileObject)
+			"close": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("close() takes exactly 1 argument")
+				}
+				f, ok := args[0].(*objects.File)
+				if !ok {
+					return Error("close() requires a file object")
+				}
+
+				err := f.Close()
+				if err != nil {
+					return Error(err.Error())
+				}
+
+				return Null()
+			}),
 		},
 	})
 }

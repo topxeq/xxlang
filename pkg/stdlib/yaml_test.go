@@ -1111,6 +1111,132 @@ matrix:
 	})
 }
 
+// TestYAMLSetValue tests the setYAMLValue and setYAMLValueRecursive functions
+func TestYAMLSetValue(t *testing.T) {
+	tests := []struct {
+		name     string
+		initial  string
+		path     string
+		value    string
+		expected string
+	}{
+		{
+			name:     "set simple key",
+			initial:  "a: 1\nb: 2",
+			path:     "a",
+			value:    "10",
+			expected: "a: 10\nb: 2",
+		},
+		{
+			name:     "set nested key",
+			initial:  "server:\n  host: localhost\n  port: 8080",
+			path:     "server.port",
+			value:    "9090",
+			expected: "server:\n  host: localhost\n  port: 9090",
+		},
+		{
+			name:     "set creates intermediate maps",
+			initial:  "a: 1",
+			path:     "b.c.d",
+			value:    "test",
+			expected: "a: 1\nb:\n  c:\n    d: test",
+		},
+		{
+			name:     "set array index",
+			initial:  "items: [a, b, c]",
+			path:     "items.[1]",
+			value:    "B",
+			expected: "items: [a, B, c]",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			obj, err := objects.ParseYAML(tt.initial)
+			if err != nil {
+				t.Fatalf("ParseYAML() error = %v", err)
+			}
+
+			// Parse the value as a YAML object
+			valueObj, err := objects.ParseYAML(tt.value)
+			if err != nil {
+				t.Fatalf("ParseYAML(value) error = %v", err)
+			}
+
+			// Call setYAMLValue
+			result := setYAMLValue(obj, tt.path, valueObj)
+			if result.Type() == objects.ErrorType {
+				t.Fatalf("setYAMLValue() error: %s", result.Inspect())
+			}
+
+			// Serialize and compare
+			yamlStr := objects.SerializeYAML(result, 2)
+			t.Logf("Result:\n%s", yamlStr)
+		})
+	}
+}
+
+// TestYAMLMapToArray tests the mapToArray function
+func TestYAMLMapToArray(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected []string
+	}{
+		{
+			name:     "simple numeric map",
+			input:    "0: a\n1: b\n2: c",
+			expected: []string{"a", "b", "c"},
+		},
+		{
+			name:     "map with gaps",
+			input:    "0: a\n2: c\n4: e",
+			expected: []string{"a", "null", "c", "null", "e"},
+		},
+		{
+			name:     "empty map",
+			input:    "{}",
+			expected: []string{},
+		},
+		{
+			name:     "non-numeric keys only",
+			input:    "a: 1",
+			expected: []string{"1"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			obj, err := objects.ParseYAML(tt.input)
+			if err != nil {
+				t.Fatalf("ParseYAML() error = %v", err)
+			}
+
+			m, ok := obj.(*objects.Map)
+			if !ok {
+				t.Fatalf("expected Map, got %T", obj)
+			}
+
+			result := mapToArray(m)
+			// mapToArray returns *objects.Array directly
+			arr := result
+
+			if len(arr.Elements) != len(tt.expected) {
+				t.Errorf("expected %d elements, got %d", len(tt.expected), len(arr.Elements))
+			}
+
+			for i, expected := range tt.expected {
+				if i < len(arr.Elements) {
+					actual := arr.Elements[i].Inspect()
+					if actual != expected {
+						t.Errorf("element %d: expected %q, got %q", i, expected, actual)
+					}
+				}
+			}
+		})
+	}
+}
+
 // TestYAMLDiff tests the diff function
 func TestYAMLDiff(t *testing.T) {
 	yaml1 := `

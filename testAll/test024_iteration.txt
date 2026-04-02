@@ -9,7 +9,6 @@ Iterate with range function:
 4
 6
 8
-10
 Sum array elements:
 15
 Iterate map keys:

@@ -66,6 +66,8 @@ func init() {
 				if len(args) > 4 {
 					if debug, ok := args[4].(*objects.Bool); ok {
 						config.Debug = debug.Value
+					} else {
+						return Error("fourth argument (debug) must be a boolean")
 					}
 				}
 
@@ -196,6 +198,40 @@ func init() {
 				return String(res.result)
 			}),
 
+			// evalJSAsync executes JavaScript without waiting for result.
+			// Non-blocking - use this with poll() mode.
+			// Usage: gui.evalJSAsync(handle, script)
+			"evalJSAsync": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 2 {
+					return Error("evalJSAsync() requires 2 arguments: handle, script")
+				}
+
+				wv, ok := args[0].(*objects.WebView)
+				if !ok {
+					return Error("first argument must be a WebView handle")
+				}
+
+				if wv.IsClosed() {
+					return Error("WebView is closed")
+				}
+
+				script, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("second argument must be a string (script)")
+				}
+
+				handle := wv.Handle.(interface {
+					ExecuteScript(string, func(string, error)) error
+				})
+				// Pass nil callback for fire-and-forget
+				err := handle.ExecuteScript(script.Value, nil)
+				if err != nil {
+					return Error("script execution failed: " + err.Error())
+				}
+
+				return objects.NULL
+			}),
+
 			// bind binds a Xxlang function to be callable from JavaScript.
 			// Usage: gui.bind(handle, name, function)
 			"bind": BuiltinFunc(func(args ...objects.Object) objects.Object {
@@ -262,6 +298,80 @@ func init() {
 				handle.Run()
 
 				return objects.NULL
+			}),
+
+			// poll processes a single message without blocking.
+			// Returns true if a message was processed, false if no message.
+			// Usage: processed = gui.poll(handle)
+			"poll": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 1 {
+					return Error("poll() requires 1 argument: handle")
+				}
+
+				wv, ok := args[0].(*objects.WebView)
+				if !ok {
+					return Error("argument must be a WebView handle")
+				}
+
+				if wv.IsClosed() {
+					return objects.FALSE
+				}
+
+				handle := wv.Handle.(interface {
+					Poll() bool
+				})
+				if handle.Poll() {
+					return objects.TRUE
+				}
+				return objects.FALSE
+			}),
+
+			// popMessage gets the next message from the queue.
+			// Returns the message string or empty string if none.
+			// Usage: msg = gui.popMessage(handle)
+			"popMessage": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 1 {
+					return Error("popMessage() requires 1 argument: handle")
+				}
+
+				wv, ok := args[0].(*objects.WebView)
+				if !ok {
+					return Error("argument must be a WebView handle")
+				}
+
+				if wv.IsClosed() {
+					return String("")
+				}
+
+				handle := wv.Handle.(interface {
+					PopMessage() string
+				})
+				return String(handle.PopMessage())
+			}),
+
+			// hasMessages returns true if there are pending messages.
+			// Usage: has = gui.hasMessages(handle)
+			"hasMessages": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 1 {
+					return Error("hasMessages() requires 1 argument: handle")
+				}
+
+				wv, ok := args[0].(*objects.WebView)
+				if !ok {
+					return Error("argument must be a WebView handle")
+				}
+
+				if wv.IsClosed() {
+					return objects.FALSE
+				}
+
+				handle := wv.Handle.(interface {
+					HasMessages() bool
+				})
+				if handle.HasMessages() {
+					return objects.TRUE
+				}
+				return objects.FALSE
 			}),
 
 			// close closes the WebView.

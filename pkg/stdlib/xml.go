@@ -132,6 +132,107 @@ func init() {
 				escaped := objects.EscapeXMLAttr(str.Value)
 				return String(escaped)
 			}),
+
+			// setAttribute sets an attribute on an XML node.
+			// Usage: xml.setAttribute(node, name, value)
+			"setAttribute": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 3 {
+					return Error("setAttribute takes exactly 3 arguments")
+				}
+				node, ok := args[0].(*objects.XMLNode)
+				if !ok {
+					return Error("first argument must be an XMLNode")
+				}
+				name, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("second argument must be a string (attribute name)")
+				}
+				value, ok := args[2].(*objects.String)
+				if !ok {
+					return Error("third argument must be a string (attribute value)")
+				}
+				node.SetAttr(name.Value, value.Value)
+				return Null()
+			}),
+
+			// getAttribute gets an attribute value from an XML node.
+			// Usage: value = xml.getAttribute(node, name)
+			"getAttribute": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 2 {
+					return Error("getAttribute takes exactly 2 arguments")
+				}
+				node, ok := args[0].(*objects.XMLNode)
+				if !ok {
+					return Error("first argument must be an XMLNode")
+				}
+				name, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("second argument must be a string (attribute name)")
+				}
+				return String(node.Attr(name.Value))
+			}),
+
+			// addChild adds a child node to an XML node.
+			// Usage: xml.addChild(parent, child)
+			"addChild": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 2 {
+					return Error("addChild takes exactly 2 arguments")
+				}
+				parent, ok := args[0].(*objects.XMLNode)
+				if !ok {
+					return Error("first argument must be an XMLNode")
+				}
+				child, ok := args[1].(*objects.XMLNode)
+				if !ok {
+					return Error("second argument must be an XMLNode")
+				}
+				parent.AddChild(child)
+				return Null()
+			}),
+
+			// getChildren returns all child nodes of an XML node as an array.
+			// Usage: children = xml.getChildren(node)
+			"getChildren": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("getChildren takes exactly 1 argument")
+				}
+				node, ok := args[0].(*objects.XMLNode)
+				if !ok {
+					return Error("argument must be an XMLNode")
+				}
+				return node.Children()
+			}),
+
+			// setText sets the text content of an XML node.
+			// Usage: xml.setText(node, text)
+			"setText": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 2 {
+					return Error("setText takes exactly 2 arguments")
+				}
+				node, ok := args[0].(*objects.XMLNode)
+				if !ok {
+					return Error("first argument must be an XMLNode")
+				}
+				text, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("second argument must be a string")
+				}
+				node.SetText(text.Value)
+				return Null()
+			}),
+
+			// getText gets the text content of an XML node.
+			// Usage: text = xml.getText(node)
+			"getText": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("getText takes exactly 1 argument")
+				}
+				node, ok := args[0].(*objects.XMLNode)
+				if !ok {
+					return Error("argument must be an XMLNode")
+				}
+				return String(node.Text())
+			}),
 		},
 	})
 }

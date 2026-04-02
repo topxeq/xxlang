@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"syscall"
 )
 
 // ============================================================
@@ -205,15 +206,32 @@ var BuiltinSystemStart = &Builtin{
 
 		switch runtime.GOOS {
 		case "windows":
-			// Use cmd.exe start command on Windows
-			// The empty string after "start" is the window title
-			cmd := exec.Command("cmd", "/c", "start", "", path)
+			// Use cmd.exe to run the command asynchronously without creating a window.
+			// We use cmd /c to run the command string.
+			cmd := exec.Command("cmd", "/c", path)
 			if workingDir != "" {
 				cmd.Dir = workingDir
 			}
 			cmd.Stdout = nil
 			cmd.Stderr = nil
-			err = cmd.Run()
+			// Hide any window
+			cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+			// Start the process asynchronously
+			err := cmd.Start()
+			if err != nil {
+				result := NewOrderedMap()
+				result.Set(NewString("success"), FALSE)
+				result.Set(NewString("error"), NewString(err.Error()))
+				return result
+			}
+			// Release the process to avoid resource leaks (fire-and-forget)
+			if cmd.Process != nil {
+				cmd.Process.Release()
+			}
+			result := NewOrderedMap()
+			result.Set(NewString("success"), TRUE)
+			result.Set(NewString("error"), NewString(""))
+			return result
 
 		case "darwin":
 			// Use 'open' command on macOS

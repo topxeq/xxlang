@@ -7,6 +7,210 @@ import (
 	"testing"
 )
 
+func TestBuiltinGenJwtToken(t *testing.T) {
+	payload := NewMapWithCapacity(2)
+	payload.Pairs[NewString("sub").HashKey()] = MapPair{
+		Key:   NewString("sub"),
+		Value: NewString("user1"),
+	}
+	payload.Pairs[NewString("userId").HashKey()] = MapPair{
+		Key:   NewString("userId"),
+		Value: NewInt(116),
+	}
+
+	tests := []struct {
+		name        string
+		args        []Object
+		wantError   bool
+		description string
+	}{
+		{
+			name:        "basic token",
+			args:        []Object{payload, NewString("my_secret"), NewString("-type")},
+			wantError:   false,
+			description: "Generate basic JWT token with -type option",
+		},
+		{
+			name:        "token with expiration",
+			args:        []Object{payload, NewString("secret"), NewString("-expire=3600")},
+			wantError:   false,
+			description: "Generate token with 1 hour expiration",
+		},
+		{
+			name:        "token with base64 secret",
+			args:        []Object{payload, NewString("bXlfc2VjcmV0"), NewString("-base64")},
+			wantError:   false,
+			description: "Generate token with base64-encoded secret",
+		},
+		{
+			name:        "wrong number of arguments",
+			args:        []Object{payload},
+			wantError:   true,
+			description: "Should return error for wrong number of arguments",
+		},
+		{
+			name:        "first arg not map",
+			args:        []Object{NewString("not a map"), NewString("secret")},
+			wantError:   true,
+			description: "Should return error when first arg is not a map",
+		},
+		{
+			name:        "second arg not string",
+			args:        []Object{payload, NewInt(123)},
+			wantError:   true,
+			description: "Should return error when second arg is not a string",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := builtinGenJwtToken(tt.args...)
+
+			if tt.wantError {
+				if _, ok := result.(*Error); !ok {
+					t.Errorf("expected error, got %v", result)
+				}
+				return
+			}
+
+			if err, ok := result.(*Error); ok {
+				t.Errorf("unexpected error: %v", err.Message)
+				return
+			}
+
+			if str, ok := result.(*String); !ok {
+				t.Errorf("expected String, got %s", result.Type())
+				return
+			} else {
+				parts := splitString(str.Value, ".")
+				if len(parts) != 3 {
+					t.Errorf("JWT token should have 3 parts, got %d", len(parts))
+				}
+			}
+		})
+	}
+}
+
+func TestBuiltinParseJwtToken(t *testing.T) {
+	payload := NewMapWithCapacity(2)
+	payload.Pairs[NewString("sub").HashKey()] = MapPair{
+		Key:   NewString("sub"),
+		Value: NewString("user1"),
+	}
+	payload.Pairs[NewString("userId").HashKey()] = MapPair{
+		Key:   NewString("userId"),
+		Value: NewInt(116),
+	}
+
+	secret := []byte("test_secret")
+
+	tokenStr, err := GenJwtToken(payload, secret, true, false, 0)
+	if err != nil {
+		t.Fatalf("failed to generate token: %v", err)
+	}
+
+	tests := []struct {
+		name        string
+		args        []Object
+		wantError   bool
+		checkClaims bool
+		description string
+	}{
+		{
+			name:        "parse valid token",
+			args:        []Object{NewString(tokenStr), NewString("test_secret")},
+			wantError:   false,
+			checkClaims: true,
+			description: "Parse valid token with correct secret",
+		},
+		{
+			name:        "parse with wrong secret",
+			args:        []Object{NewString(tokenStr), NewString("wrong_secret")},
+			wantError:   true,
+			description: "Should fail with wrong secret",
+		},
+		{
+			name:        "parse without validation",
+			args:        []Object{NewString(tokenStr), NewString("any_secret"), NewString("-noValidate")},
+			wantError:   false,
+			description: "Parse without validation",
+		},
+		{
+			name:        "parse with base64 secret",
+			args:        []Object{NewString(tokenStr), NewString("dGVzdF9zZWNyZXQ="), NewString("-base64")},
+			wantError:   false,
+			description: "Parse with base64-encoded secret",
+		},
+		{
+			name:        "wrong number of arguments",
+			args:        []Object{NewString(tokenStr)},
+			wantError:   true,
+			description: "Should return error for wrong number of arguments",
+		},
+		{
+			name:        "first arg not string",
+			args:        []Object{NewInt(123), NewString("secret")},
+			wantError:   true,
+			description: "Should return error when first arg is not a string",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := builtinParseJwtToken(tt.args...)
+
+			if tt.wantError {
+				if _, ok := result.(*Error); !ok {
+					t.Errorf("expected error, got %v", result)
+				}
+				return
+			}
+
+			if err, ok := result.(*Error); ok {
+				t.Errorf("unexpected error: %v", err.Message)
+				return
+			}
+
+			if tt.checkClaims {
+				if _, ok := result.(*Map); !ok {
+					t.Errorf("expected Map, got %s", result.Type())
+				}
+			}
+		})
+	}
+}
+
+func TestInterfaceToObject(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    interface{}
+		expected Object
+	}{
+		{"nil", nil, NULL},
+		{"bool true", true, &Bool{Value: true}},
+		{"bool false", false, &Bool{Value: false}},
+		{"int", int(42), NewInt(42)},
+		{"int64", int64(42), NewInt(42)},
+		{"float64", float64(3.14), NewFloat(3.14)},
+		{"string", "hello", NewString("hello")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := InterfaceToObject(tt.input)
+			if tt.name == "nil" {
+				if result != NULL {
+					t.Errorf("expected NULL, got %v", result)
+				}
+				return
+			}
+			if result.Type() != tt.expected.Type() {
+				t.Errorf("expected type %s, got %s", tt.expected.Type(), result.Type())
+			}
+		})
+	}
+}
+
 func TestGenJwtToken(t *testing.T) {
 	// Create payload map
 	payload := NewMapWithCapacity(2)

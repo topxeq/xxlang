@@ -136,9 +136,6 @@ func encryptDataByTXDEE(data []byte, code string) []byte {
 	}
 
 	dataLen := len(data)
-	if dataLen < 1 {
-		return data
-	}
 
 	codeT := code
 	if codeT == "" {
@@ -249,9 +246,6 @@ func encryptDataByTXDEF(data []byte, code string) []byte {
 	}
 
 	dataLen := len(data)
-	if dataLen < 1 {
-		return data
-	}
 
 	codeT := code
 	if codeT == "" {

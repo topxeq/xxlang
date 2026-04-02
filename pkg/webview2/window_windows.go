@@ -75,6 +75,9 @@ var (
 	windowInstancesLock sync.RWMutex
 	className           = syscall.StringToUTF16Ptr("XxlangWebView2Class")
 	classRegistered     bool
+
+	// Cache proc addresses for performance
+	peekMessageProc *syscall.LazyProc
 )
 
 // createWindow creates a Win32 window for WebView2.
@@ -219,11 +222,13 @@ func runMessageLoop(hwnd uintptr) {
 // processSingleMessage processes a single Windows message without blocking.
 // Returns true if a message was processed, false if no message was available.
 func processSingleMessage() bool {
-	// Use PeekMessageW to check for messages without blocking
-	peekMessage := user32DLL.NewProc("PeekMessageW")
+	// Cache the proc address
+	if peekMessageProc == nil {
+		peekMessageProc = user32DLL.NewProc("PeekMessageW")
+	}
 
 	var msg Msg
-	ret, _, _ := peekMessage.Call(
+	ret, _, _ := peekMessageProc.Call(
 		uintptr(unsafe.Pointer(&msg)),
 		0, 0, 0,
 		1, // PM_REMOVE

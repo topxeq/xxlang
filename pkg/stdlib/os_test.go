@@ -479,3 +479,96 @@ func TestOsUserInfo(t *testing.T) {
 		t.Error("userInfo() should return array with user info")
 	}
 }
+
+func TestGetConfigStrImpl_ReadsFromHomeCfg(t *testing.T) {
+	// Prepare a config file under the user's home (~/.xxl/<name>.cfg)
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("failed to get user home dir: %v", err)
+	}
+
+	cfgDir := filepath.Join(homeDir, ".xxl")
+	if err := os.MkdirAll(cfgDir, 0755); err != nil {
+		t.Fatalf("failed to create config dir: %v", err)
+	}
+	cfgName := "test_home_cfg"
+	cfgPath := filepath.Join(cfgDir, cfgName+".cfg")
+	defer os.Remove(cfgPath)
+
+	const cfgContent = "home-cfg-value"
+	if err := os.WriteFile(cfgPath, []byte(cfgContent), 0644); err != nil {
+		t.Fatalf("failed to write temp cfg: %v", err)
+	}
+
+	// When getConfigStrImpl is called with the name, it should read the file
+	result := getConfigStrImpl(cfgName)
+	s, ok := result.(*objects.String)
+	if !ok {
+		t.Fatalf("getConfigStrImpl() should return String, got %T", result)
+	}
+	if s.Value != cfgContent {
+		t.Fatalf("getConfigStrImpl() = %q, want %q", s.Value, cfgContent)
+	}
+}
+
+func TestSetConfigStrImpl_WritesAndReads(t *testing.T) {
+	// Use a unique name to avoid collisions
+	name := "test_os_config_set"
+	value := "hello-config"
+	// Write
+	res := setConfigStrImpl(name, value)
+	if _, ok := res.(*objects.Null); !ok {
+		t.Fatalf("setConfigStrImpl() should return Null, got %T", res)
+	}
+
+	// Read back via getConfigStrImpl
+	got := getConfigStrImpl(name)
+	s, ok := got.(*objects.String)
+	if !ok {
+		t.Fatalf("getConfigStrImpl() should return String, got %T", got)
+	}
+	if s.Value != value {
+		t.Fatalf("getConfigStrImpl() = %q, want %q", s.Value, value)
+	}
+
+	// Cleanup
+	homeDir, _ := os.UserHomeDir()
+	cfgPath := filepath.Join(homeDir, ".xxl", name+".cfg")
+	os.Remove(cfgPath)
+}
+
+func TestTryReadConfigFile_ParsesJsonToMap(t *testing.T) {
+	// Create a temporary JSON config file with a couple of keys
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "settings.json")
+	content := []byte(`{"foo": "bar", "num": 123}`)
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		t.Fatalf("failed to write temp json: %v", err)
+	}
+
+	obj := tryReadConfigFile(path)
+	if obj == nil {
+		t.Fatalf("tryReadConfigFile() returned nil, expected Map object")
+	}
+	m, ok := obj.(*objects.Map)
+	if !ok {
+		t.Fatalf("tryReadConfigFile() should return Map, got %T", obj)
+	}
+	// Verify entries exist
+	foundFoo := false
+	for _, pair := range m.Pairs {
+		if pair.Key != nil {
+			if ks, ok := pair.Key.(*objects.String); ok && ks.Value == "foo" {
+				if s, ok := pair.Value.(*objects.String); ok {
+					if s.Value != "bar" {
+						t.Fatalf("expected foo.bar value 'bar', got '%s'", s.Value)
+					}
+					foundFoo = true
+				}
+			}
+		}
+	}
+	if !foundFoo {
+		t.Fatalf("expected to find key 'foo' in config map")
+	}
+}

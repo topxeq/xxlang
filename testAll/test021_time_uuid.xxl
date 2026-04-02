@@ -27,8 +27,7 @@ for (var i = 0; i < 10000; i = i + 1) {
 }
 var end = nowMs()
 var elapsed = end - start
-pln("time elapsed (ms): " + toStr(elapsed))
-pln(elapsed >= 0)
+pln("time elapsed >= 0: " + toStr(elapsed >= 0))
 pln(sum)
 
 pln("sleep function (short):")

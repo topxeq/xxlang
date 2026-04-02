@@ -23,21 +23,63 @@ var (
 type BSTR uintptr
 
 // BSTRToString converts a Windows BSTR to a Go string.
-// Returns empty string if bstr is nil.
+// Returns empty string if bstr is nil or invalid.
 func BSTRToString(bstr BSTR) string {
 	if bstr == 0 {
 		return ""
 	}
 
-	// Get string length in characters
-	lenRet, _, _ := sysStringLen.Call(uintptr(bstr))
+	// Validate BSTR pointer - should be 4-byte aligned and not too low
+	if bstr < 0x10000 {
+		return ""
+	}
+
+	// Validate pointer is in reasonable range (not too high)
+	// Typical Windows user-space addresses are below 0x7fff00000000
+	if bstr > 0x7fff00000000 {
+		return ""
+	}
+
+	// Try to get string length - this will fail if BSTR is invalid
+	lenRet, _, err := sysStringLen.Call(uintptr(bstr))
 	if lenRet == 0 {
 		return ""
 	}
 
-	// BSTR is a pointer to UTF-16 string (4-byte length prefix before the data)
-	ptr := (*[0xffff]uint16)(unsafe.Pointer(bstr))[:lenRet:lenRet]
-	return syscall.UTF16ToString(ptr)
+	// Check for syscall error (indicates invalid pointer)
+	// Note: err might be nil on success, not Errno(0)
+	if err != nil && err != syscall.Errno(0) {
+		return ""
+	}
+
+	// Sanity check: BSTR length should be reasonable
+	// Max 1MB of UTF-16 characters
+	const maxLen = 512 * 1024
+	if lenRet > maxLen {
+		return ""
+	}
+
+	length := int(lenRet)
+
+	// Try a simpler approach using UTF16PtrToString with error handling
+	// BSTR data starts at the pointer location
+	utf16Ptr := (*uint16)(unsafe.Pointer(bstr))
+
+	// Use a safer slice-based approach with bounds checking
+	utf16Slice := make([]uint16, 0, length+1)
+	for i := 0; i < length; i++ {
+		// Access each character with explicit pointer arithmetic
+		charPtr := (*uint16)(unsafe.Pointer(uintptr(unsafe.Pointer(utf16Ptr)) + uintptr(i)*2))
+		// Check if pointer is still valid (basic sanity)
+		if uintptr(unsafe.Pointer(charPtr)) > 0x7fff00000000 || uintptr(unsafe.Pointer(charPtr)) < 0x10000 {
+			// Invalid pointer encountered, return what we have
+			break
+		}
+		utf16Slice = append(utf16Slice, *charPtr)
+	}
+	utf16Slice = append(utf16Slice, 0) // null terminate
+
+	return syscall.UTF16ToString(utf16Slice)
 }
 
 // BSTRToBytes converts a Windows BSTR to a byte slice.

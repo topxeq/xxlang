@@ -326,6 +326,8 @@ var Builtins = map[string]*Builtin{
 
 			runes := []rune(str.Value)
 			runeLen := int64(len(runes))
+
+			// Default end is end of string
 			end := runeLen
 			if len(args) == 3 {
 				e, ok := args[2].(*Int)
@@ -335,8 +337,19 @@ var Builtins = map[string]*Builtin{
 				end = e.Value
 			}
 
-			if start.Value < 0 || start.Value > runeLen || end < start.Value || end > runeLen {
-				return newError("substring indices out of range")
+			// Validate start
+			if start.Value < 0 || start.Value > runeLen {
+				return newError("substring start out of range")
+			}
+
+			// Clamp end to string length if it exceeds
+			if end > runeLen {
+				end = runeLen
+			}
+
+			// If end is less than start after clamping, return empty string
+			if end < start.Value {
+				return NewString("")
 			}
 
 			return NewString(string(runes[start.Value:end]))
@@ -1155,7 +1168,7 @@ var Builtins = map[string]*Builtin{
 	"range": {
 		Fn: func(args ...Object) Object {
 			if len(args) < 1 || len(args) > 3 {
-				return newError("wrong number of arguments for range. got=%d, want=1, 2, or 3", len(args))
+				return newError("wrong number of arguments for 'range'. got=%d, want=1, 2, or 3", len(args))
 			}
 			var start, end, step int64 = 0, 0, 1
 			switch len(args) {
@@ -1198,32 +1211,18 @@ var Builtins = map[string]*Builtin{
 				}
 			}
 			elements := make([]Object, 0)
-			if step == 1 {
-				// Default behavior: inclusive range
-				if start <= end {
-					elements = make([]Object, end-start+1)
-					for i := start; i <= end; i++ {
-						elements[i-start] = NewInt(i)
-					}
-				} else {
-					elements = make([]Object, start-end+1)
-					for i := start; i >= end; i-- {
-						elements[start-i] = NewInt(i)
+
+			// All range behaviors are exclusive of end (like Python)
+			if step > 0 {
+				if start < end {
+					for i := start; i < end; i += step {
+						elements = append(elements, NewInt(i))
 					}
 				}
 			} else {
-				// With custom step
-				if step > 0 {
-					if start < end {
-						for i := start; i < end; i += step {
-							elements = append(elements, NewInt(i))
-						}
-					}
-				} else {
-					if start > end {
-						for i := start; i > end; i += step {
-							elements = append(elements, NewInt(i))
-						}
+				if start > end {
+					for i := start; i > end; i += step {
+						elements = append(elements, NewInt(i))
 					}
 				}
 			}

@@ -136,13 +136,34 @@ func (a *Array) TypeTag() TypeTag { return TagArray }
 
 // Inspect returns the string representation
 func (a *Array) Inspect() string {
+	visited := make(map[interface{}]struct{})
+	return a.inspect(visited)
+}
+
+// inspect with cycle detection
+func (a *Array) inspect(visited map[interface{}]struct{}) string {
+	if _, ok := visited[a]; ok {
+		return "[...]"
+	}
+	visited[a] = struct{}{}
+
 	var out bytes.Buffer
 	out.WriteString("[")
 	for i, e := range a.Elements {
 		if i > 0 {
 			out.WriteString(", ")
 		}
-		out.WriteString(e.Inspect())
+		// Use cycle-aware inspection for elements
+		switch v := e.(type) {
+		case *Map:
+			out.WriteString(v.inspect(visited))
+		case *Array:
+			out.WriteString(v.inspect(visited))
+		case *OrderedMap:
+			out.WriteString(v.inspect(visited))
+		default:
+			out.WriteString(e.Inspect())
+		}
 	}
 	out.WriteString("]")
 	return out.String()

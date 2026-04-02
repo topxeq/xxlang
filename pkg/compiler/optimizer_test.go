@@ -83,6 +83,29 @@ func TestOptimizer_GenerateSuperinstructions_ConstantAdd(t *testing.T) {
 	}
 }
 
+func TestOptimizer_GenerateSuperinstructions_ConstantMul(t *testing.T) {
+	// Create bytecode: OpConstant(0), OpConstant(1), OpMul
+	input := []byte{
+		byte(OpConstant), 0, 0, // constant index 0
+		byte(OpConstant), 0, 1, // constant index 1
+		byte(OpMul),
+	}
+	constants := []objects.Object{objects.NewInt(2), objects.NewInt(3)}
+	bytecode := &Bytecode{Instructions: input, Constants: constants}
+
+	optimizer := NewOptimizer(bytecode)
+	result := optimizer.GenerateSuperinstructions()
+
+	// Expected: OpConstantMul(0, 1) - 5 bytes total
+	if len(result.Instructions) != 5 {
+		t.Errorf("expected 5 bytes, got %d: %v", len(result.Instructions), result.Instructions)
+	}
+
+	if Opcode(result.Instructions[0]) != OpConstantMul {
+		t.Errorf("expected OpConstantMul, got %v", Opcode(result.Instructions[0]))
+	}
+}
+
 func TestOptimizer_FullOptimization(t *testing.T) {
 	// Test that Optimize() runs both passes
 	constants := []objects.Object{objects.NewInt(5), objects.NewInt(3)}

@@ -1,3 +1,4 @@
+//go:build windows && amd64
 // +build windows,amd64
 
 // pkg/jit/jit_windows_amd64.go
@@ -242,4 +243,126 @@ func (j *JITCompiler) GetStats() JITStats {
 // GetFunctionPointer returns a callable pointer for the compiled function
 func (cf *CompiledFunc) GetFunctionPointer() uintptr {
 	return cf.Entry
+}
+
+// ============================================================================
+// JIT Support Analysis Functions
+// ============================================================================
+
+// JITSupportLevel represents the level of JIT support for a function
+type JITSupportLevel int
+
+const (
+	JITSupportNone    JITSupportLevel = iota // Cannot be JIT compiled
+	JITSupportPartial                        // Can be JIT compiled with limitations
+	JITSupportFull                           // Full JIT support
+)
+
+// RequiresInterpreterFallback checks if a function requires interpreter fallback
+func RequiresInterpreterFallback(fn *compiler.CompiledFunction) bool {
+	code := fn.Instructions
+	ip := 0
+
+	for ip < len(code) {
+		op := compiler.Opcode(code[ip])
+
+		// Check for operations that require interpreter
+		switch op {
+		case compiler.OpRegClosure,
+			compiler.OpRegLoadFree,
+			compiler.OpRegStoreFree,
+			compiler.OpRegBuiltin,
+			compiler.OpRegGetMethod,
+			compiler.OpRegCallMethod,
+			compiler.OpRegClass,
+			compiler.OpRegNew,
+			compiler.OpRegThrow,
+			compiler.OpRegPushHandler,
+			compiler.OpRegPopHandler,
+			compiler.OpRegLoadModule,
+			compiler.OpRegGetExport,
+			compiler.OpRegSetExport,
+			compiler.OpRegIterKey,
+			compiler.OpRegIterValue:
+			return true
+
+		// Concurrency operations
+		case compiler.OpRegRunStart,
+			compiler.OpRegRunWait,
+			compiler.OpRegMakeTube,
+			compiler.OpRegTubeSend,
+			compiler.OpRegTubeRecv,
+			compiler.OpRegTubeClose,
+			compiler.OpRegSelectStart,
+			compiler.OpRegSelectCase,
+			compiler.OpRegSelectEnd,
+			compiler.OpRegMutexLock,
+			compiler.OpRegMutexUnlock,
+			compiler.OpRegWGAdd,
+			compiler.OpRegWGWait,
+			compiler.OpRegWGDone,
+			compiler.OpRegAtomicAdd,
+			compiler.OpRegAtomicLoad,
+			compiler.OpRegAtomicSwap:
+			return true
+		}
+
+		// Skip operands
+		def, err := compiler.Lookup(byte(op))
+		if err != nil {
+			return true // Unknown opcode - fallback to interpreter
+		}
+		ip++
+		for _, w := range def.OperandWidths {
+			ip += w
+		}
+	}
+
+	return false
+}
+
+// GetJITSupportLevel analyzes a function and returns its JIT support level
+func GetJITSupportLevel(fn *compiler.CompiledFunction) JITSupportLevel {
+	if RequiresInterpreterFallback(fn) {
+		return JITSupportNone
+	}
+
+	// Check for operations that limit JIT support
+	code := fn.Instructions
+	ip := 0
+	hasArrayOps := false
+	hasMapOps := false
+	hasFieldOps := false
+
+	for ip < len(code) {
+		op := compiler.Opcode(code[ip])
+
+		switch op {
+		case compiler.OpRegArray, compiler.OpRegArrayEmpty, compiler.OpRegArrayAppend,
+			compiler.OpRegIndex, compiler.OpRegSetIndex:
+			hasArrayOps = true
+
+		case compiler.OpRegMap, compiler.OpRegMapEmpty, compiler.OpRegMapSet:
+			hasMapOps = true
+
+		case compiler.OpRegGetField, compiler.OpRegSetField:
+			hasFieldOps = true
+		}
+
+		def, err := compiler.Lookup(byte(op))
+		if err != nil {
+			return JITSupportNone
+		}
+		ip++
+		for _, w := range def.OperandWidths {
+			ip += w
+		}
+	}
+
+	// If there are array/map/field operations, JIT support is partial
+	if hasArrayOps || hasMapOps || hasFieldOps {
+		return JITSupportPartial
+	}
+
+	return JITSupportFull
 }

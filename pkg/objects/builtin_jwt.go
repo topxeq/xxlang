@@ -125,7 +125,7 @@ func builtinParseJwtToken(args ...Object) Object {
 func GenJwtToken(payload *Map, secret []byte, withType, base64Secret bool, expireSeconds int64) (string, error) {
 	// Decode base64 secret if needed
 	if base64Secret {
-		decoded, err := base64.RawURLEncoding.DecodeString(string(secret))
+		decoded, err := base64.StdEncoding.DecodeString(string(secret))
 		if err != nil {
 			return "", fmt.Errorf("failed to decode base64 secret: %v", err)
 		}
@@ -172,7 +172,7 @@ func GenJwtToken(payload *Map, secret []byte, withType, base64Secret bool, expir
 func ParseJwtToken(tokenStr string, secret []byte, base64Secret, noValidate bool) (map[string]interface{}, error) {
 	// Decode base64 secret if needed
 	if base64Secret {
-		decoded, err := base64.RawURLEncoding.DecodeString(string(secret))
+		decoded, err := base64.StdEncoding.DecodeString(string(secret))
 		if err != nil {
 			return nil, fmt.Errorf("failed to decode base64 secret: %v", err)
 		}

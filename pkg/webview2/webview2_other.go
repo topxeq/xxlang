@@ -61,6 +61,21 @@ func (wv *WebView2) Run() {
 	// No-op on non-Windows platforms
 }
 
+// Poll returns false on non-Windows platforms.
+func (wv *WebView2) Poll() bool {
+	return false
+}
+
+// PopMessage returns empty string on non-Windows platforms.
+func (wv *WebView2) PopMessage() string {
+	return ""
+}
+
+// HasMessages returns false on non-Windows platforms.
+func (wv *WebView2) HasMessages() bool {
+	return false
+}
+
 // Close does nothing on non-Windows platforms.
 func (wv *WebView2) Close() {
 	// No-op on non-Windows platforms

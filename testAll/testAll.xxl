@@ -57,6 +57,7 @@ var testFiles = [
     "test031_dot_expression",
     "test032_builtin_coverage",
     "test033_charlang_compat",
+    "anonymousFunc",
     "tx_anonymousFunc",
     "tx_array",
     "test034_dynamic_code"

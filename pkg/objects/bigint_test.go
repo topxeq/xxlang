@@ -62,10 +62,10 @@ func TestBigIntFromString(t *testing.T) {
 	}{
 		{"123", "123", false},
 		{"-456", "-456", false},
-		{"0x10", "16", false},   // hex
-		{"0b101", "5", false},   // binary
-		{"0o77", "63", false},   // octal
-		{"invalid", "", true},   // error case
+		{"0x10", "16", false}, // hex
+		{"0b101", "5", false}, // binary
+		{"0o77", "63", false}, // octal
+		{"invalid", "", true}, // error case
 	}
 
 	for _, tt := range tests {
@@ -303,5 +303,29 @@ func TestNewBigIntFromBig(t *testing.T) {
 	bi = NewBigInt(nil)
 	if bi.Inspect() != "0" {
 		t.Errorf("Expected 0 for nil, got %s", bi.Inspect())
+	}
+}
+
+func TestFormatBigInt(t *testing.T) {
+	bi := NewBigIntFromInt64(1234567)
+	result := FormatBigInt(bi)
+	if result != "1234567n" {
+		t.Errorf("Expected 1234567n, got %s", result)
+	}
+}
+
+func TestBigIntDivInt(t *testing.T) {
+	a := NewBigIntFromInt64(17)
+	result := a.DivInt(5)
+	if result.Inspect() != "3" {
+		t.Errorf("Expected 3, got %s", result.Inspect())
+	}
+}
+
+func TestBigIntModInt(t *testing.T) {
+	a := NewBigIntFromInt64(17)
+	result := a.ModInt(5)
+	if result.Inspect() != "2" {
+		t.Errorf("Expected 2, got %s", result.Inspect())
 	}
 }

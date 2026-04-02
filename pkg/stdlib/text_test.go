@@ -541,6 +541,18 @@ func TestCharAt(t *testing.T) {
 	if s.Value != "e" {
 		t.Errorf("charAt() = %q, want %q", s.Value, "e")
 	}
+
+	// Test out of bounds returns null
+	result = fn.Fn(String("hello"), Int(10))
+	if result != objects.NULL {
+		t.Errorf("charAt() out of bounds = %T, want NULL", result)
+	}
+
+	// Test negative index returns null
+	result = fn.Fn(String("hello"), Int(-1))
+	if result != objects.NULL {
+		t.Errorf("charAt() negative index = %T, want NULL", result)
+	}
 }
 
 func TestCharCode(t *testing.T) {
@@ -665,7 +677,6 @@ func TestTextErrors(t *testing.T) {
 		{"repeat no args", "repeat", []objects.Object{}},
 		{"repeat negative count", "repeat", []objects.Object{String("a"), Int(-1)}},
 		{"charAt no args", "charAt", []objects.Object{}},
-		{"charAt out of range", "charAt", []objects.Object{String("hi"), Int(10)}},
 		{"charCode no args", "charCode", []objects.Object{}},
 		{"fromCode no args", "fromCode", []objects.Object{}},
 		{"shellEscape no args", "shellEscape", []objects.Object{}},

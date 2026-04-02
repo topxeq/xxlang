@@ -2,6 +2,8 @@
 // Monte Carlo method to calculate Pi using random points
 // Command-line version (no GUI)
 
+import { random } from "math"
+
 // Statistics
 var totalPoints = 0
 var insidePoints = 0

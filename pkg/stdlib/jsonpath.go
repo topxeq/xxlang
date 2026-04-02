@@ -30,7 +30,7 @@ type pathSegment struct {
 
 	// For slice segments
 	start, end, step int
-	hasStart, hasEnd  bool
+	hasStart, hasEnd bool
 
 	// For filter segments
 	filterExpr string
@@ -123,7 +123,8 @@ func parseNextSegment(s string) (*pathSegment, string, error) {
 		return &pathSegment{typ: "field", fieldName: field}, rem, nil
 	}
 
-	return nil, s, nil
+	// Invalid start character - unexpected token
+	return nil, "", fmt.Errorf("unexpected token '%c' at start of segment", s[0])
 }
 
 // parseBracketSegment parses a bracket notation segment [...]
@@ -194,6 +195,12 @@ func parseBracketSegment(s string) (*pathSegment, string, error) {
 // parseSliceSegment parses a slice segment like [start:end:step]
 func parseSliceSegment(content, remaining string) (*pathSegment, string, error) {
 	parts := strings.Split(content, ":")
+
+	// Validate: slice can have at most 3 parts (start:end:step)
+	if len(parts) > 3 {
+		return nil, "", fmt.Errorf("invalid slice: too many parts (max 3, got %d)", len(parts))
+	}
+
 	seg := &pathSegment{typ: "slice", step: 1}
 
 	if parts[0] != "" {
@@ -1586,7 +1593,7 @@ func (jp *JSONPath) deleteValue(obj objects.Object, seg pathSegment) {
 // Paths returns all JSONPath strings that lead to values in the object
 func Paths(obj objects.Object) []string {
 	var paths []string
-	collectPaths(obj, "$", &paths)
+	collectPaths(obj, "", &paths)
 	return paths
 }
 
@@ -1596,7 +1603,12 @@ func collectPaths(obj objects.Object, prefix string, paths *[]string) {
 	case *objects.Map:
 		for _, pair := range v.Pairs {
 			if keyStr, ok := pair.Key.(*objects.String); ok {
-				path := prefix + "." + escapeFieldName(keyStr.Value)
+				var path string
+				if prefix == "" {
+					path = escapeFieldName(keyStr.Value)
+				} else {
+					path = prefix + "." + escapeFieldName(keyStr.Value)
+				}
 				*paths = append(*paths, path)
 				collectPaths(pair.Value, path, paths)
 			}

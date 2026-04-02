@@ -1,30 +1,106 @@
-// define a complex anonymous function
-func(x) {
-	return func(y) {
-		x(y)
-	}
-}(func(z) {
-		pln("Hi!", z)
-	})("Nice to see you.")
+// Test: Anonymous Functions - Additional Cases
+// Tests different anonymous function patterns
 
-// anonymous function to test variable "count"
-NewAddFunc := func() {
-	count := 0
+// Test 1: Anonymous functions stored in array
+pln("=== Anonymous functions in array ===")
+var ops = [
+    func(x) { return x + 1 },
+    func(x) { return x * 2 },
+    func(x) { return x * x }
+]
 
-	return func(n) {
-		count += n
+var num = 5
+pln("Apply first operation: " + toStr(ops[0](num)))
+pln("Apply second operation: " + toStr(ops[1](num)))
+pln("Apply third operation: " + toStr(ops[2](num)))
 
-		return count
-	}
+// Test 2: Chaining anonymous functions
+pln("=== Chaining anonymous functions ===")
+var result = func(x) { return x + 10 }(func(y) { return y * 2 }(5))
+pln("Chained result: " + toStr(result))
+
+// Test 3: Anonymous function as map/filter helper
+pln("=== Anonymous functions for array operations ===")
+var nums = [1, 2, 3, 4, 5]
+
+// Manual map using anonymous function
+var doubled = []
+var doubler = func(x) { return x * 2 }
+for (var i = 0; i < len(nums); i = i + 1) {
+    doubled = push(doubled, doubler(nums[i]))
+}
+pln("Doubled array: " + toStr(doubled))
+
+// Manual filter using anonymous function
+var evens = []
+var isEven = func(x) { return x % 2 == 0 }
+for (var i = 0; i < len(nums); i = i + 1) {
+    if (isEven(nums[i])) {
+        evens = push(evens, nums[i])
+    }
+}
+pln("Filtered evens: " + toStr(evens))
+
+// Test 4: Anonymous functions with multiple parameters
+pln("=== Anonymous functions with multiple params ===")
+var adder = func(a, b) { return a + b }
+var multiplier = func(a, b) { return a * b }
+var combiner = func(a, b, c) { return a + b * c }
+
+pln("Add 3 + 4: " + toStr(adder(3, 4)))
+pln("Multiply 5 * 6: " + toStr(multiplier(5, 6)))
+pln("Combine 1 + 2 * 3: " + toStr(combiner(1, 2, 3)))
+
+// Test 5: Anonymous function returning computed value immediately
+pln("=== Immediately invoked with computation ===")
+var computed = func(a, b) {
+    var sum = a + b
+    var product = a * b
+    return sum + product
+}(3, 4)
+pln("3+4 + 3*4 = " + toStr(computed))
+
+// Test 6: Factory pattern with anonymous functions
+pln("=== Factory pattern ===")
+var createValidator = func(minVal, maxVal) {
+    return func(x) {
+        return x >= minVal && x <= maxVal
+    }
 }
 
-// access count through closure, can see count changing
-f2 := NewAddFunc()
+var validator = createValidator(10, 20)
+pln("15 in [10,20]: " + toStr(validator(15)))
+pln("5 in [10,20]: " + toStr(validator(5)))
+pln("25 in [10,20]: " + toStr(validator(25)))
 
-pln(f2(3))
-	
-pln(f2(5))
+// Test 7: Anonymous function as object method simulation
+pln("=== Anonymous function as method ===")
+var calculator = {
+    "add": func(a, b) { return a + b },
+    "sub": func(a, b) { return a - b },
+    "mul": func(a, b) { return a * b }
+}
 
-pln(f2(9))
+pln("Calc add 10+5: " + toStr(calculator["add"](10, 5)))
+pln("Calc sub 10-5: " + toStr(calculator["sub"](10, 5)))
+pln("Calc mul 10*5: " + toStr(calculator["mul"](10, 5)))
 
+// Test 8: Self-referencing through closure
+pln("=== Self-modifying closure ===")
+var makeAccumulator = func(initial) {
+    var total = initial
+    return func(n) {
+        total = total + n
+        return total
+    }
+}
 
+var acc1 = makeAccumulator(100)
+var acc2 = makeAccumulator(0)
+
+pln("acc1 after +10: " + toStr(acc1(10)))
+pln("acc1 after +20: " + toStr(acc1(20)))
+pln("acc2 after +5: " + toStr(acc2(5)))
+pln("acc1 after +5: " + toStr(acc1(5)))  // Should be 135, independent of acc2
+
+pln("=== All anonymous function tests completed ===")

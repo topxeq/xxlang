@@ -21,8 +21,8 @@ type Map struct {
 	keysInvalid bool     // True if sortedKeys needs recomputation
 }
 
-// Pre-cached empty map
-var EMPTY_MAP = &Map{Pairs: emptyPairs}
+// Pre-cached empty map no longer used; empty maps are created fresh.
+// var EMPTY_MAP = &Map{Pairs: emptyPairs}
 
 var emptyPairs = make(map[HashKey]MapPair)
 
@@ -53,20 +53,24 @@ var mapPoolStats struct {
 // NewMap creates a new Map object with the given pairs
 func NewMap(pairs map[HashKey]MapPair) *Map {
 	if len(pairs) == 0 {
-		atomic.AddInt64(&mapPoolStats.CacheHits, 1)
-		return EMPTY_MAP
+		// Return a fresh empty map instead of shared singleton to avoid mutation issues.
+		return &Map{Pairs: make(map[HashKey]MapPair)}
 	}
+	atomic.AddInt64(&mapPoolStats.CacheHits, 1)
 	obj := mapPool.Get().(*Map)
 	obj.Pairs = pairs
+	obj.sortedKeys = nil
+	obj.keysInvalid = true
 	return obj
 }
 
 // NewMapWithCapacity creates a new Map with pre-allocated capacity
 func NewMapWithCapacity(capacity int) *Map {
 	if capacity == 0 {
-		atomic.AddInt64(&mapPoolStats.CacheHits, 1)
-		return EMPTY_MAP
+		// Return a fresh empty map
+		return &Map{Pairs: make(map[HashKey]MapPair)}
 	}
+	atomic.AddInt64(&mapPoolStats.CacheHits, 1)
 	obj := mapPool.Get().(*Map)
 	if obj.Pairs == nil {
 		obj.Pairs = make(map[HashKey]MapPair, capacity)
@@ -76,18 +80,22 @@ func NewMapWithCapacity(capacity int) *Map {
 			delete(obj.Pairs, k)
 		}
 	}
+	obj.sortedKeys = nil
+	obj.keysInvalid = true
 	return obj
 }
 
 // ReleaseMap returns a Map object to the pool
 func ReleaseMap(obj *Map) {
-	if obj == nil || obj == EMPTY_MAP {
+	if obj == nil {
 		return
 	}
 	// Clear references to allow GC
 	for k := range obj.Pairs {
 		delete(obj.Pairs, k)
 	}
+	obj.sortedKeys = nil
+	obj.keysInvalid = true
 	atomic.AddInt64(&mapPoolStats.Released, 1)
 	mapPool.Put(obj)
 }
@@ -95,12 +103,14 @@ func ReleaseMap(obj *Map) {
 // ReleaseMapSlice returns multiple Map objects to the pool
 func ReleaseMapSlice(objs []*Map) {
 	for _, obj := range objs {
-		if obj == nil || obj == EMPTY_MAP {
+		if obj == nil {
 			continue
 		}
 		for k := range obj.Pairs {
 			delete(obj.Pairs, k)
 		}
+		obj.sortedKeys = nil
+		obj.keysInvalid = true
 		mapPool.Put(obj)
 	}
 	if len(objs) > 0 {
@@ -141,6 +151,18 @@ func (m *Map) TypeTag() TypeTag { return TagMap }
 
 // Inspect returns the string representation
 func (m *Map) Inspect() string {
+	visited := make(map[interface{}]struct{})
+	return m.inspect(visited)
+}
+
+// inspect with cycle detection
+func (m *Map) inspect(visited map[interface{}]struct{}) string {
+	// Detect cycle
+	if _, ok := visited[m]; ok {
+		return "{...}"
+	}
+	visited[m] = struct{}{}
+
 	var out bytes.Buffer
 	out.WriteString("{")
 
@@ -163,7 +185,17 @@ func (m *Map) Inspect() string {
 		pair := pairByKey[keyStr]
 		out.WriteString(pair.Key.Inspect())
 		out.WriteString(": ")
-		out.WriteString(pair.Value.Inspect())
+		// Use cycle-aware inspection for values
+		switch v := pair.Value.(type) {
+		case *Map:
+			out.WriteString(v.inspect(visited))
+		case *Array:
+			out.WriteString(v.inspect(visited))
+		case *OrderedMap:
+			out.WriteString(v.inspect(visited))
+		default:
+			out.WriteString(pair.Value.Inspect())
+		}
 	}
 	out.WriteString("}")
 	return out.String()
