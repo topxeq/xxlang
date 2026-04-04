@@ -432,17 +432,27 @@ func drawDistributedSeries(canvas [][]plotCell, cols, rows []int, color, h, w in
 			}
 		} else {
 			// Diagonal: Charlang style
-			// At start point (x0, y0): draw direction indicator only
+			// At start point (x0, y0): draw curve that shows the initial direction
 			// Vertical line from y0 to y1 (exclusive of endpoints that will be curves)
 			// At (x0, y1): draw curve connecting vertical to horizontal
 			// Horizontal line from x0 to x1 (exclusive of endpoints)
-			// At (x1, y1): horizontal line continues to next segment, no endpoint marker here
 
-			// Start point marker - indicates direction of vertical
+			// Start point - curve showing initial direction
+			// When x0 < x1 (going right), the curve at start shows right+vertical direction
 			if y0 > y1 {
-				setCell(canvas, x0, y0, dirUp, color, h, w)
+				// Going up (visually)
+				if x0 < x1 {
+					setCell(canvas, x0, y0, dirLeft|dirUp, color, h, w) // ╯ (right+up curve)
+				} else {
+					setCell(canvas, x0, y0, dirRight|dirUp, color, h, w) // ╰ (left+up curve)
+				}
 			} else {
-				setCell(canvas, x0, y0, dirDown, color, h, w)
+				// Going down (visually)
+				if x0 < x1 {
+					setCell(canvas, x0, y0, dirLeft|dirDown, color, h, w) // ╮ (right+down curve)
+				} else {
+					setCell(canvas, x0, y0, dirRight|dirDown, color, h, w) // ╭ (left+down curve)
+				}
 			}
 
 			// Vertical line (interior only, curve handles the endpoint)
