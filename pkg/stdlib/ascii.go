@@ -356,18 +356,10 @@ func setCell(canvas [][]plotCell, x, y int, char rune, color int, height, width 
 //
 // Arc characters and their correct usage:
 //
-//	╯ (lines on right and bottom): from left horizontal, curve UP
-//	╰ (lines on left and bottom): from left horizontal, curve DOWN
-//	╭ (lines on left and top): from BELOW vertical, curve right
-//	╮ (lines on right and top): from ABOVE vertical, curve right
-//
-// When going UP on canvas (y decreases, value increases):
-//   - Start point: horizontal from left, then curve UP → ╯
-//   - End point: came from BELOW (larger y), curve right → ╭
-//
-// When going DOWN on canvas (y increases, value decreases):
-//   - Start point: horizontal from left, then curve DOWN → ╰
-//   - End point: came from ABOVE (smaller y), curve right → ╮
+//	╯ : 线在右边和下边 - 从左边来，向上弯
+//	╰ : 线在左边和下边 - 从上边来，向右弯
+//	╭ : 线在左边和上边 - 从下边来，向右弯
+//	╮ : 线在右边和上边 - 从左边来，向下弯
 func drawVerticalTransition(canvas [][]plotCell, x, y0, y1, color int, height, width int) {
 	if y0 == y1 {
 		setCell(canvas, x, y0, '─', color, height, width)
@@ -375,16 +367,20 @@ func drawVerticalTransition(canvas [][]plotCell, x, y0, y1, color int, height, w
 	}
 
 	if y0 > y1 {
-		// Going up on canvas (y decreasing)
-		setCell(canvas, x, y0, '╯', color, height, width) // horizontal→up
-		setCell(canvas, x, y1, '╭', color, height, width) // from below→right
+		// Going up on canvas (y decreasing, value increasing)
+		// Start: horizontal from left, then curve UP → ╯
+		// End: vertical from BELOW (larger y), curve right → ╭
+		setCell(canvas, x, y0, '╯', color, height, width)
+		setCell(canvas, x, y1, '╭', color, height, width)
 		for y := y1 + 1; y < y0; y++ {
 			setCell(canvas, x, y, '│', color, height, width)
 		}
 	} else {
-		// Going down on canvas (y increasing)
-		setCell(canvas, x, y0, '╰', color, height, width) // horizontal→down
-		setCell(canvas, x, y1, '╮', color, height, width) // from above→right
+		// Going down on canvas (y increasing, value decreasing)
+		// Start: horizontal from left, then curve DOWN → ╮
+		// End: vertical from ABOVE (smaller y), curve right → ╰
+		setCell(canvas, x, y0, '╮', color, height, width)
+		setCell(canvas, x, y1, '╰', color, height, width)
 		for y := y0 + 1; y < y1; y++ {
 			setCell(canvas, x, y, '│', color, height, width)
 		}
