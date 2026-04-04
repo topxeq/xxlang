@@ -131,6 +131,11 @@ type plotCell struct {
 }
 
 // connectionsToChar converts connection directions to the appropriate character
+// Arc characters (based on Unicode box drawing):
+//   ╭ : lines at right and down - curves from right-to-down or down-to-right
+//   ╮ : lines at left and down - curves from left-to-down or down-to-left
+//   ╰ : lines at right and up - curves from right-to-up or up-to-right
+//   ╯ : lines at left and up - curves from left-to-up or up-to-left
 func connectionsToChar(conn uint8) rune {
 	switch conn {
 	case dirLeft | dirRight:
@@ -138,13 +143,13 @@ func connectionsToChar(conn uint8) rune {
 	case dirUp | dirDown:
 		return '│'
 	case dirLeft | dirDown:
-		return '╰'
+		return '╮' // from left, curves down
 	case dirLeft | dirUp:
-		return '╭'
+		return '╯' // from left, curves up
 	case dirRight | dirDown:
-		return '╯'
+		return '╭' // from right, curves down
 	case dirRight | dirUp:
-		return '╮'
+		return '╰' // from right, curves up
 	case dirUp | dirDown | dirLeft | dirRight:
 		return '┼'
 	case dirUp | dirDown | dirLeft:
