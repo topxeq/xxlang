@@ -1,7 +1,7 @@
 // pkg/stdlib/ascii.go
 // ASCII plotting module for the Xxlang standard library.
 // This module provides ASCII chart plotting functionality without external dependencies.
-// Implements continuous curve plotting with Unicode box-drawing characters and ANSI colors.
+// Implements continuous curve plotting based on asciigraph algorithm.
 package stdlib
 
 import (
@@ -136,6 +136,28 @@ type plotCell struct {
 	color int // ANSI color code, 0 means default
 }
 
+// charSet holds the characters used for drawing
+type charSet struct {
+	Horizontal    rune
+	Vertical      rune
+	ArcUpLeft     rune // ┘
+	ArcUpRight    rune // └
+	ArcDownLeft   rune // ┐
+	ArcDownRight  rune // ┌
+}
+
+// defaultCharSet returns the default character set for drawing
+func defaultCharSet() charSet {
+	return charSet{
+		Horizontal:    '─',
+		Vertical:      '│',
+		ArcUpLeft:     '┘',
+		ArcUpRight:    '└',
+		ArcDownLeft:   '┐',
+		ArcDownRight:  '┌',
+	}
+}
+
 // asciiPlotDataToStr implements the plotDataToStr function with continuous curves
 func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 	if len(args) < 1 {
@@ -197,6 +219,7 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 
 	height := cfg.height
 	width := cfg.width
+	charSet := defaultCharSet()
 
 	// Create the plot canvas with cells
 	canvas := make([][]plotCell, height)
@@ -207,7 +230,7 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 		}
 	}
 
-	// Plot each series as continuous curves
+	// Plot each series
 	for seriesIdx, s := range series {
 		if len(s) < 2 {
 			continue
@@ -219,26 +242,91 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 			seriesColor = cfg.seriesColors[seriesIdx]
 		}
 
-		// Calculate positions for all points
-		points := make([]struct{ x, y int }, len(s))
+		// Calculate Y positions for all data points
+		n := len(s)
+		yPositions := make([]int, n)
 		for i, v := range s {
-			// X position: spread data points across the width
-			points[i].x = int(float64(i) * float64(width-1) / float64(len(s)-1))
-
-			// Y position: map value to row (inverted because row 0 is top)
-			yFloat := (cfg.maxVal - v) / (cfg.maxVal - cfg.minVal) * float64(height-1)
-			points[i].y = int(math.Round(yFloat))
-			if points[i].y < 0 {
-				points[i].y = 0
+			// Map value to Y position (0 = bottom, height-1 = top)
+			yFloat := (v - cfg.minVal) / (cfg.maxVal - cfg.minVal) * float64(height-1)
+			yPos := int(math.Round(yFloat))
+			if yPos < 0 {
+				yPos = 0
 			}
-			if points[i].y >= height {
-				points[i].y = height - 1
+			if yPos >= height {
+				yPos = height - 1
+			}
+			// Convert to canvas row (0 = top)
+			yPositions[i] = height - 1 - yPos
+		}
+
+		// Draw the curve using linear interpolation for smooth curves
+		// Map data indices to column positions across the full width
+		for i := 0; i < n-1; i++ {
+			y0 := yPositions[i]
+			y1 := yPositions[i+1]
+
+			// Calculate x positions spread across the width
+			x0 := int(float64(i) * float64(width-1) / float64(n-1))
+			x1 := int(float64(i+1) * float64(width-1) / float64(n-1))
+
+			// Draw horizontal line if same Y level
+			if y0 == y1 {
+				for x := x0; x <= x1; x++ {
+					setCell(canvas, x, y0, charSet.Horizontal, seriesColor)
+				}
+			} else {
+				// Draw curve with arcs
+				// Determine arc characters based on direction
+				var topChar, bottomChar rune
+				var topY, bottomY int
+
+				if y0 < y1 {
+					// Going down on canvas
+					topChar = charSet.ArcDownLeft
+					bottomChar = charSet.ArcUpRight
+					topY = y0
+					bottomY = y1
+				} else {
+					// Going up on canvas
+					topChar = charSet.ArcUpLeft
+					bottomChar = charSet.ArcDownRight
+					topY = y1
+					bottomY = y0
+				}
+
+				// Draw horizontal segment before vertical transition
+				if x0 < x1-1 {
+					for x := x0; x < x1-1; x++ {
+						setCell(canvas, x, y0, charSet.Horizontal, seriesColor)
+					}
+				}
+
+				// Draw the arc transition at the last column before x1
+				transitionX := x1 - 1
+				if transitionX < x0 {
+					transitionX = x0
+				}
+
+				setCell(canvas, transitionX, topY, topChar, seriesColor)
+				setCell(canvas, transitionX, bottomY, bottomChar, seriesColor)
+
+				// Fill vertical space between
+				for y := topY + 1; y < bottomY; y++ {
+					setCell(canvas, transitionX, y, charSet.Vertical, seriesColor)
+				}
 			}
 		}
 
-		// Draw curves between consecutive points
-		for i := 0; i < len(points)-1; i++ {
-			drawCurve(canvas, points[i].x, points[i].y, points[i+1].x, points[i+1].y, seriesColor, height, width)
+		// Draw the last point
+		if n > 0 {
+			lastY := yPositions[n-1]
+			lastX := int(float64(n-1) * float64(width-1) / float64(n-1))
+			if lastX >= width {
+				lastX = width - 1
+			}
+			if canvas[lastY][lastX].char == ' ' {
+				setCell(canvas, lastX, lastY, charSet.Horizontal, seriesColor)
+			}
 		}
 	}
 
@@ -308,8 +396,7 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 	result.WriteString(strings.Repeat(" ", cfg.offset+1))
 	result.WriteString("0")
 	if width > 2 {
-		// Add labels at intervals
-		labelInterval := (width) / 5
+		labelInterval := width / 5
 		if labelInterval < 1 {
 			labelInterval = 1
 		}
@@ -325,191 +412,10 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 	return String(result.String())
 }
 
-// drawCurve draws a curve between two points using Unicode box-drawing characters
-func drawCurve(canvas [][]plotCell, x1, y1, x2, y2, color int, height, width int) {
-	// Simple case: same position
-	if x1 == x2 && y1 == y2 {
-		setCell(canvas, x1, y1, '─', color, height, width)
+// setCell sets a cell in the canvas
+func setCell(canvas [][]plotCell, x, y int, char rune, color int) {
+	if y < 0 || y >= len(canvas) || x < 0 || x >= len(canvas[0]) {
 		return
 	}
-
-	// Horizontal line
-	if y1 == y2 {
-		for x := x1; x <= x2; x++ {
-			setCell(canvas, x, y1, '─', color, height, width)
-		}
-		return
-	}
-
-	// Vertical line
-	if x1 == x2 {
-		for y := y1; y <= y2; y++ {
-			setCell(canvas, x1, y, '│', color, height, width)
-		}
-		return
-	}
-
-	// Diagonal or complex path: usebresenham-like line algorithm
-	dx := abs(x2 - x1)
-	dy := abs(y2 - y1)
-
-	// Determine direction
-	xStep := 1
-	if x2 < x1 {
-		xStep = -1
-	}
-	yStep := 1
-	if y2 < y1 {
-		yStep = -1
-	}
-
-	x, y := x1, y1
-
-	if dx > dy {
-		// More horizontal movement
-		err := dy / 2
-		for x != x2 {
-			// Choose character based on movement direction
-			char := getLineChar(x, y, x+xStep, y, canvas, height, width)
-			setCell(canvas, x, y, char, color, height, width)
-
-			x += xStep
-			err += dy
-			if err >= dx {
-				y += yStep
-				err -= dx
-				// Draw corner character
-				char = getCornerChar(x-xStep, y-yStep, x, y, x+xStep, y)
-				setCell(canvas, x-xStep, y-yStep, char, color, height, width)
-			}
-		}
-		setCell(canvas, x2, y2, '─', color, height, width)
-	} else {
-		// More vertical movement
-		err := dx / 2
-		prevY := y
-		for y != y2 {
-			// Choose character based on movement direction
-			if y != prevY && x != x2 {
-				// Moving diagonally - draw corner
-				char := getCornerChar(x, prevY, x, y, x+xStep, y)
-				setCell(canvas, x, prevY, char, color, height, width)
-			} else {
-				char := getLineChar(x, y, x, y+yStep, canvas, height, width)
-				setCell(canvas, x, y, char, color, height, width)
-			}
-
-			prevY = y
-			y += yStep
-			err += dx
-			if err >= dy {
-				x += xStep
-				err -= dy
-			}
-		}
-		setCell(canvas, x2, y2, '│', color, height, width)
-	}
-}
-
-// getLineChar returns appropriate line character for direction
-func getLineChar(x1, y1, x2, y2 int, canvas [][]plotCell, height, width int) rune {
-	if x1 == x2 {
-		// Vertical movement
-		return '│'
-	}
-	if y1 == y2 {
-		// Horizontal movement
-		return '─'
-	}
-	// Diagonal - use appropriate corner based on direction
-	if x2 > x1 && y2 > y1 {
-		return '╯' // going down-right
-	}
-	if x2 > x1 && y2 < y1 {
-		return '╮' // going up-right
-	}
-	if x2 < x1 && y2 > y1 {
-		return '╰' // going down-left
-	}
-	if x2 < x1 && y2 < y1 {
-		return '╭' // going up-left
-	}
-	return '─'
-}
-
-// getCornerChar returns appropriate corner character
-func getCornerChar(prevX, prevY, curX, curY, nextX, nextY int) rune {
-	// Determine incoming and outgoing directions
-	fromLeft := prevX < curX
-	fromRight := prevX > curX
-	fromUp := prevY < curY
-	fromDown := prevY > curY
-
-	toLeft := nextX < curX
-	toRight := nextX > curX
-	toUp := nextY < curY
-	toDown := nextY > curY
-
-	// Combine to choose corner
-	if fromLeft && toDown {
-		return '╮'
-	}
-	if fromLeft && toUp {
-		return '╯'
-	}
-	if fromRight && toDown {
-		return '╭'
-	}
-	if fromRight && toUp {
-		return '╰'
-	}
-	if fromUp && toRight {
-		return '╰'
-	}
-	if fromUp && toLeft {
-		return '╯'
-	}
-	if fromDown && toRight {
-		return '╭'
-	}
-	if fromDown && toLeft {
-		return '╮'
-	}
-
-	// Simple connections
-	if fromLeft || fromRight || toLeft || toRight {
-		return '─'
-	}
-	return '│'
-}
-
-// setCell sets a cell in the canvas with bounds checking
-func setCell(canvas [][]plotCell, x int, y int, char rune, color int, height int, width int) {
-	if x < 0 || x >= width || y < 0 || y >= height {
-		return
-	}
-	// Merge with existing cell - prefer more complex characters
-	existing := canvas[y][x]
-	if existing.char == ' ' || existing.char == '─' || existing.char == '│' {
-		// Override simple characters with corners
-		if isCornerChar(char) && !isCornerChar(existing.char) {
-			canvas[y][x] = plotCell{char: char, color: color}
-		} else if existing.char == ' ' {
-			canvas[y][x] = plotCell{char: char, color: color}
-		}
-	}
-}
-
-// isCornerChar checks if a character is a corner
-func isCornerChar(c rune) bool {
-	return c == '╭' || c == '╮' || c == '╯' || c == '╰' ||
-		c == '┌' || c == '┐' || c == '└' || c == '┘'
-}
-
-// abs returns absolute value of an integer
-func abs(n int) int {
-	if n < 0 {
-		return -n
-	}
-	return n
+	canvas[y][x] = plotCell{char: char, color: color}
 }
