@@ -318,44 +318,34 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 			p0 := points[i]
 			p1 := points[i+1]
 
-			// Determine direction of movement
-			goingRight := p1.x > p0.x
-			goingDown := p1.y > p0.y
-
 			if p0.x == p1.x {
-				// Same column - draw vertical line
+				// Vertical line only
 				drawVerticalLine(canvas, p0.x, p0.y, p1.y, seriesColor, height, width)
 			} else if p0.y == p1.y {
-				// Same row - draw horizontal line
+				// Horizontal line only
 				drawHorizontalLine(canvas, p0.x, p1.x, p0.y, seriesColor, height, width)
 			} else {
-				// Both X and Y change - draw curve
-				// Determine transition point based on direction
-				var transitionX int
-				var curveStartFromLeft, curveStartFromRight bool
-				var curveEndToLeft, curveEndToRight bool
+				// Diagonal: draw horizontal then vertical with curve at junction
+				dx := p1.x - p0.x
+				dy := p1.y - p0.y
 
-				if goingRight {
-					// Moving right: transition in the middle-right
-					transitionX = p1.x - 1
-					if transitionX <= p0.x {
-						transitionX = p0.x
+				// Split point - use position closer to p0 for the curve
+				splitX := p0.x
+				if dx > 0 {
+					splitX = p0.x + 1
+					if splitX > p1.x {
+						splitX = p1.x
 					}
-					curveStartFromLeft = true
-					curveEndToRight = true
 				} else {
-					// Moving left: transition in the middle-left
-					transitionX = p0.x - 1
-					if transitionX <= p1.x {
-						transitionX = p1.x
+					splitX = p0.x - 1
+					if splitX < p1.x {
+						splitX = p1.x
 					}
-					curveStartFromRight = true
-					curveEndToLeft = true
 				}
 
-				// Draw horizontal segment before curve
-				if goingRight {
-					for x := p0.x; x < transitionX; x++ {
+				// Draw horizontal segment from p0 to splitX (exclusive of splitX)
+				if dx > 0 {
+					for x := p0.x; x < splitX; x++ {
 						if x == p0.x {
 							addConnection(canvas, x, p0.y, dirRight, seriesColor, height, width)
 						} else {
@@ -363,61 +353,56 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 						}
 					}
 				} else {
-					for x := p1.x; x < transitionX; x++ {
-						if x == p1.x {
-							addConnection(canvas, x, p1.y, dirRight, seriesColor, height, width)
+					for x := p0.x; x > splitX; x-- {
+						if x == p0.x {
+							addConnection(canvas, x, p0.y, dirLeft, seriesColor, height, width)
 						} else {
-							addConnection(canvas, x, p1.y, dirLeft|dirRight, seriesColor, height, width)
+							addConnection(canvas, x, p0.y, dirLeft|dirRight, seriesColor, height, width)
 						}
 					}
 				}
 
-				// Draw curve at transitionX
-				if goingDown {
+				// Draw curve at splitX
+				// The curve connects horizontal direction and vertical direction
+				var curveStartDir uint8
+				if dx > 0 {
+					curveStartDir = dirLeft // horizontal comes from left
+				} else {
+					curveStartDir = dirRight // horizontal comes from right
+				}
+				// The curve point has both horizontal and vertical connections
+				// But we need to also add the continuation direction
+				if dy > 0 {
 					// Going down
-					if curveStartFromLeft {
-						// ╮: from left, curves down
-						addConnection(canvas, transitionX, p0.y, dirLeft|dirDown, seriesColor, height, width)
-					} else if curveStartFromRight {
-						// ╯: from right, curves down
-						addConnection(canvas, transitionX, p0.y, dirRight|dirDown, seriesColor, height, width)
-					}
-					// Vertical segment
+					addConnection(canvas, splitX, p0.y, curveStartDir|dirDown, seriesColor, height, width)
 					for y := p0.y + 1; y < p1.y; y++ {
-						addConnection(canvas, transitionX, y, dirUp|dirDown, seriesColor, height, width)
+						addConnection(canvas, splitX, y, dirUp|dirDown, seriesColor, height, width)
 					}
-					if curveEndToRight {
-						// ╰: from up, curves right
-						addConnection(canvas, transitionX, p1.y, dirUp|dirRight, seriesColor, height, width)
-					} else if curveEndToLeft {
-						// ╭: from up, curves left
-						addConnection(canvas, transitionX, p1.y, dirUp|dirLeft, seriesColor, height, width)
+					if splitX < p1.x {
+						addConnection(canvas, splitX, p1.y, dirUp|dirRight, seriesColor, height, width)
+					} else if splitX > p1.x {
+						addConnection(canvas, splitX, p1.y, dirUp|dirLeft, seriesColor, height, width)
+					} else {
+						addConnection(canvas, splitX, p1.y, dirUp, seriesColor, height, width)
 					}
 				} else {
 					// Going up
-					if curveStartFromLeft {
-						// ╯: from left, curves up
-						addConnection(canvas, transitionX, p0.y, dirLeft|dirUp, seriesColor, height, width)
-					} else if curveStartFromRight {
-						// ╮: from right, curves up
-						addConnection(canvas, transitionX, p0.y, dirRight|dirUp, seriesColor, height, width)
+					addConnection(canvas, splitX, p0.y, curveStartDir|dirUp, seriesColor, height, width)
+					for y := p0.y - 1; y > p1.y; y-- {
+						addConnection(canvas, splitX, y, dirUp|dirDown, seriesColor, height, width)
 					}
-					// Vertical segment
-					for y := p1.y + 1; y < p0.y; y++ {
-						addConnection(canvas, transitionX, y, dirUp|dirDown, seriesColor, height, width)
-					}
-					if curveEndToRight {
-						// ╭: from down, curves right
-						addConnection(canvas, transitionX, p1.y, dirDown|dirRight, seriesColor, height, width)
-					} else if curveEndToLeft {
-						// ╰: from down, curves left
-						addConnection(canvas, transitionX, p1.y, dirDown|dirLeft, seriesColor, height, width)
+					if splitX < p1.x {
+						addConnection(canvas, splitX, p1.y, dirDown|dirRight, seriesColor, height, width)
+					} else if splitX > p1.x {
+						addConnection(canvas, splitX, p1.y, dirDown|dirLeft, seriesColor, height, width)
+					} else {
+						addConnection(canvas, splitX, p1.y, dirDown, seriesColor, height, width)
 					}
 				}
 
-				// Draw horizontal segment after curve
-				if goingRight {
-					for x := transitionX + 1; x <= p1.x; x++ {
+				// Draw horizontal segment from splitX to p1 (exclusive of splitX)
+				if dx > 0 {
+					for x := splitX + 1; x <= p1.x; x++ {
 						if x == p1.x {
 							addConnection(canvas, x, p1.y, dirLeft, seriesColor, height, width)
 						} else {
@@ -425,11 +410,11 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 						}
 					}
 				} else {
-					for x := transitionX + 1; x <= p0.x; x++ {
-						if x == p0.x {
-							addConnection(canvas, x, p0.y, dirLeft, seriesColor, height, width)
+					for x := splitX - 1; x >= p1.x; x-- {
+						if x == p1.x {
+							addConnection(canvas, x, p1.y, dirRight, seriesColor, height, width)
 						} else {
-							addConnection(canvas, x, p0.y, dirLeft|dirRight, seriesColor, height, width)
+							addConnection(canvas, x, p1.y, dirLeft|dirRight, seriesColor, height, width)
 						}
 					}
 				}
