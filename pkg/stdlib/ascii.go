@@ -329,23 +329,21 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 				dx := p1.x - p0.x
 				dy := p1.y - p0.y
 
-				// Split point - use position closer to p0 for the curve
-				splitX := p0.x
-				if dx > 0 {
-					splitX = p0.x + 1
-					if splitX > p1.x {
-						splitX = p1.x
-					}
-				} else {
-					splitX = p0.x - 1
-					if splitX < p1.x {
-						splitX = p1.x
-					}
+				// Determine curve position - one column from p0 in movement direction
+				curveX := p0.x + 1
+				if dx < 0 {
+					curveX = p0.x - 1
 				}
 
-				// Draw horizontal segment from p0 to splitX (exclusive of splitX)
+				// Check if there's actual horizontal line before/after curve
+				// hasHBefore: is there a horizontal line from p0.x to curveX? (p0.x != curveX)
+				// hasHAfter: is there a horizontal line from curveX to p1.x? (p1.x != curveX)
+				hasHBefore := (dx > 0 && p0.x < curveX) || (dx < 0 && p0.x > curveX)
+				hasHAfter := (dx > 0 && p1.x > curveX) || (dx < 0 && p1.x < curveX)
+
+				// Draw horizontal segment before curve
 				if dx > 0 {
-					for x := p0.x; x < splitX; x++ {
+					for x := p0.x; x < curveX; x++ {
 						if x == p0.x {
 							addConnection(canvas, x, p0.y, dirRight, seriesColor, height, width)
 						} else {
@@ -353,7 +351,7 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 						}
 					}
 				} else {
-					for x := p0.x; x > splitX; x-- {
+					for x := p0.x; x > curveX; x-- {
 						if x == p0.x {
 							addConnection(canvas, x, p0.y, dirLeft, seriesColor, height, width)
 						} else {
@@ -362,47 +360,62 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 					}
 				}
 
-				// Draw curve at splitX
-				// The curve connects horizontal direction and vertical direction
-				var curveStartDir uint8
-				if dx > 0 {
-					curveStartDir = dirLeft // horizontal comes from left
-				} else {
-					curveStartDir = dirRight // horizontal comes from right
-				}
-				// The curve point has both horizontal and vertical connections
-				// But we need to also add the continuation direction
+				// Draw vertical segment with curve endpoints
 				if dy > 0 {
 					// Going down
-					addConnection(canvas, splitX, p0.y, curveStartDir|dirDown, seriesColor, height, width)
+					topDir := dirDown
+					if hasHBefore {
+						if dx > 0 {
+							topDir |= dirLeft
+						} else {
+							topDir |= dirRight
+						}
+					}
+					addConnection(canvas, curveX, p0.y, topDir, seriesColor, height, width)
+
 					for y := p0.y + 1; y < p1.y; y++ {
-						addConnection(canvas, splitX, y, dirUp|dirDown, seriesColor, height, width)
+						addConnection(canvas, curveX, y, dirUp|dirDown, seriesColor, height, width)
 					}
-					if splitX < p1.x {
-						addConnection(canvas, splitX, p1.y, dirUp|dirRight, seriesColor, height, width)
-					} else if splitX > p1.x {
-						addConnection(canvas, splitX, p1.y, dirUp|dirLeft, seriesColor, height, width)
-					} else {
-						addConnection(canvas, splitX, p1.y, dirUp, seriesColor, height, width)
+
+					bottomDir := dirUp
+					if hasHAfter {
+						if dx > 0 {
+							bottomDir |= dirRight
+						} else {
+							bottomDir |= dirLeft
+						}
 					}
+					addConnection(canvas, curveX, p1.y, bottomDir, seriesColor, height, width)
 				} else {
 					// Going up
-					addConnection(canvas, splitX, p0.y, curveStartDir|dirUp, seriesColor, height, width)
+					bottomDir := dirUp
+					if hasHBefore {
+						if dx > 0 {
+							bottomDir |= dirLeft
+						} else {
+							bottomDir |= dirRight
+						}
+					}
+					addConnection(canvas, curveX, p0.y, bottomDir, seriesColor, height, width)
+
 					for y := p0.y - 1; y > p1.y; y-- {
-						addConnection(canvas, splitX, y, dirUp|dirDown, seriesColor, height, width)
+						addConnection(canvas, curveX, y, dirUp|dirDown, seriesColor, height, width)
 					}
-					if splitX < p1.x {
-						addConnection(canvas, splitX, p1.y, dirDown|dirRight, seriesColor, height, width)
-					} else if splitX > p1.x {
-						addConnection(canvas, splitX, p1.y, dirDown|dirLeft, seriesColor, height, width)
-					} else {
-						addConnection(canvas, splitX, p1.y, dirDown, seriesColor, height, width)
+
+					topDir := dirDown
+					if hasHAfter {
+						if dx > 0 {
+							topDir |= dirRight
+						} else {
+							topDir |= dirLeft
+						}
 					}
+					addConnection(canvas, curveX, p1.y, topDir, seriesColor, height, width)
 				}
 
-				// Draw horizontal segment from splitX to p1 (exclusive of splitX)
+				// Draw horizontal segment after curve
 				if dx > 0 {
-					for x := splitX + 1; x <= p1.x; x++ {
+					for x := curveX + 1; x <= p1.x; x++ {
 						if x == p1.x {
 							addConnection(canvas, x, p1.y, dirLeft, seriesColor, height, width)
 						} else {
@@ -410,7 +423,7 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 						}
 					}
 				} else {
-					for x := splitX - 1; x >= p1.x; x-- {
+					for x := curveX - 1; x >= p1.x; x-- {
 						if x == p1.x {
 							addConnection(canvas, x, p1.y, dirRight, seriesColor, height, width)
 						} else {
