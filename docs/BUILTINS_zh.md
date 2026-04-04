@@ -133,6 +133,23 @@ pln("Hello", "World")  // Hello World
 
 **别名：** `println(args...)` - 与 `pln` 功能相同，提供更好的兼容性。
 
+### plv(args...)
+
+使用 `%#v` 格式打印值（Go语法表示）。适合调试时查看值的类型和结构。
+
+```xxl
+plv("hello")           // "hello"
+plv(42)                // 42
+plv(3.14)              // 3.14
+plv(true)              // true
+plv(null)              // null
+plv([1, 2, 3])         // "[1, 2, 3]"
+plv({"a": 1})          // "{a: 1}"
+plv(bytes("hi"))       // Bytes(len=2, "hi")
+plv(chars("中文"))      // Chars(len=2, "中文")
+plv("test", 123, true) // "test" 123 true  (多个参数用空格分隔)
+```
+
 ### pl(format, args...)
 
 格式化打印，末尾自动换行。类似 Go 语言的 `fmt.Printf`，但自动在末尾添加 `\n`。
@@ -183,6 +200,16 @@ pln()                                  // 单独添加换行
 - `print`, `println`, `printf` 是为了与其他编程语言（如 Python、Java、Go）保持命名一致性而提供的别名
 - 推荐在 Xxlang 代码中使用简短的 `pr`, `pln`, `prf`
 - 在需要与其他语言代码风格保持一致时，可以使用 `print`, `println`, `printf`
+
+### spr(format, args...)
+
+格式化字符串并返回结果。`sprintf` 的别名。
+
+```xxl
+s := spr("姓名: %s, 年龄: %d", "张三", 30)  // s = "姓名: 张三, 年龄: 30"
+```
+
+**别名：** `sprintf(format, args...)` - 与 `spr` 功能相同。
 
 ### checkErr(obj, message?)
 

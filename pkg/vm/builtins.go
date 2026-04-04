@@ -594,6 +594,8 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["println"], // 504: alias for pln
 		objects.Builtins["printf"],  // 505: alias for prf
 		objects.Builtins["concatBytes"], // 506
+		objects.Builtins["plv"],     // 507: print value with %#v format
+		objects.Builtins["spr"],     // 508: alias for sprintf
 	}
 
 	if index < 0 || index >= len(builtins) {

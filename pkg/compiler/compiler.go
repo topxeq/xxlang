@@ -619,6 +619,8 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(504, "println") // alias for pln
 	s.DefineBuiltin(505, "printf")  // alias for prf
 	s.DefineBuiltin(506, "concatBytes")
+	s.DefineBuiltin(507, "plv")     // print value with %#v format
+	s.DefineBuiltin(508, "spr")     // alias for sprintf
 	return s
 }
 

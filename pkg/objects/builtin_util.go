@@ -11,6 +11,7 @@ import (
 
 func init() {
 	Builtins["sprintf"] = &Builtin{Fn: builtinSprintf}
+	Builtins["spr"] = &Builtin{Fn: builtinSprintf} // alias for sprintf
 	Builtins["toBool"] = &Builtin{Fn: builtinToBool}
 	Builtins["toInt"] = &Builtin{Fn: builtinToInt}
 	Builtins["toFloat"] = &Builtin{Fn: builtinToFloat}

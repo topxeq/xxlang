@@ -88,6 +88,18 @@ var Builtins = map[string]*Builtin{
 			return NULL
 		},
 	},
+	"plv": {
+		Fn: func(args ...Object) Object {
+			for i, arg := range args {
+				if i > 0 {
+					fmt.Print(" ")
+				}
+				fmt.Printf("%#v", objectToFormatArg(arg))
+			}
+			fmt.Println()
+			return NULL
+		},
+	},
 	"pl": {
 		Fn: func(args ...Object) Object {
 			if len(args) < 1 {

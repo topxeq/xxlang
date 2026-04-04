@@ -139,6 +139,23 @@ pln("Hello", "World")  // Hello World
 
 **Alias:** `println(args...)` - Same as `pln`, provided for better compatibility with other languages.
 
+### plv(args...)
+
+Print values using `%#v` format (Go-syntax representation). Useful for debugging to see the type and structure of values.
+
+```xxl
+plv("hello")           // "hello"
+plv(42)                // 42
+plv(3.14)              // 3.14
+plv(true)              // true
+plv(null)              // null
+plv([1, 2, 3])         // "[1, 2, 3]"
+plv({"a": 1})          // "{a: 1}"
+plv(bytes("hi"))       // Bytes(len=2, "hi")
+plv(chars("中文"))      // Chars(len=2, "中文")
+plv("test", 123, true) // "test" 123 true  (multiple args separated by space)
+```
+
 ### pl(format, args...)
 
 Formatted print with a trailing newline. Similar to Go's `fmt.Printf` but automatically adds `\n` at the end.
@@ -175,6 +192,16 @@ pln()                                   // Add newline separately
 **Format verbs:** Same as `pl`.
 
 **Alias:** `printf(format, args...)` - Same as `prf`, provided for better compatibility with other languages.
+
+### spr(format, args...)
+
+Format string and return result. Alias for `sprintf`.
+
+```xxl
+s := spr("Name: %s, Age: %d", "Alice", 30)  // s = "Name: Alice, Age: 30"
+```
+
+**Alias:** `sprintf(format, args...)` - Same as `spr`.
 
 ### Output Functions Comparison
 
