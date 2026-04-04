@@ -35,7 +35,7 @@ type plotConfig struct {
 
 func defaultConfig() plotConfig {
 	return plotConfig{
-		width: 60, height: 7, minVal: math.NaN(), maxVal: math.NaN(),
+		width: 0, height: 7, minVal: math.NaN(), maxVal: math.NaN(),
 		offset: 5, precision: 2,
 	}
 }
@@ -129,9 +129,9 @@ func connectionsToChar(conn uint8) rune {
 	case dirDown | dirLeft | dirRight:
 		return '┬'
 	case dirDown:
-		return '╵'
-	case dirUp:
 		return '╷'
+	case dirUp:
+		return '╵'
 	case dirLeft:
 		return '╶'
 	case dirRight:
@@ -205,18 +205,21 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 		cfg.maxVal = cfg.minVal + 1
 	}
 
-	// Calculate width based on max number of segments across all series
+	// Determine plot mode and canvas width
 	maxSegs := 0
 	for _, s := range series {
 		if len(s)-1 > maxSegs {
 			maxSegs = len(s) - 1
 		}
 	}
-	if maxSegs < cfg.width {
-		maxSegs = cfg.width
+
+	compactMode := cfg.width <= 0
+	w := maxSegs
+	if !compactMode {
+		w = cfg.width
 	}
 
-	h, w := cfg.height, maxSegs
+	h := cfg.height
 	canvas := make([][]plotCell, h)
 	for i := range canvas {
 		canvas[i] = make([]plotCell, w)
@@ -237,67 +240,20 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 			yn := (v - cfg.minVal) / (cfg.maxVal - cfg.minVal)
 			yp := int(yn * float64(h-1))
 			yp = max(0, min(h-1, yp))
-			rows[i] = h - 1 - yp // invert: max value at row 0 (top), min at row h-1 (bottom)
+			rows[i] = h - 1 - yp
 		}
 
-		// Charlang-style compact algorithm:
-		// Each segment i connects point i to point i+1, drawn in column i
-		// At each point, the incoming segment (col i-1) and outgoing segment (col i) both draw corners
-		// Between points, segments draw vertical lines
-
-		// First, draw all vertical lines for segments between their endpoints
-		for i := 0; i < n-1; i++ {
-			row1 := rows[i]
-			row2 := rows[i+1]
-			col := i
-
-			if row1 == row2 {
-				// Horizontal segment
-				setCell(canvas, col, row1, dirLeft|dirRight, color, h, w)
-				continue
-			}
-
-			minR := min(row1, row2)
-			maxR := max(row1, row2)
-
-			// Draw vertical lines for rows strictly between the endpoints
-			for r := minR + 1; r < maxR; r++ {
-				setCell(canvas, col, r, dirUp|dirDown, color, h, w)
-			}
-		}
-
-		// Then, draw corners at each point
-		for i := 0; i < n; i++ {
-			r := rows[i]
-
-			// Draw corner for incoming segment (col i-1) if not the first point
-			// The corner direction depends on where the segment CAME FROM (rows[i-1])
-			if i > 0 {
-				col := i - 1
-				prevRow := rows[i-1]
-				if prevRow > r {
-					// Segment went UP (from lower row to higher row numerically, but visually from bottom to top)
-					// At the endpoint, connection comes from below, draw ╭ (dirDown|dirRight)
-					setCell(canvas, col, r, dirDown|dirRight, color, h, w)
-				} else if prevRow < r {
-					// Segment went DOWN (from higher row to lower row numerically, but visually from top to bottom)
-					// At the endpoint, connection comes from above, draw ╰ (dirUp|dirRight)
-					setCell(canvas, col, r, dirUp|dirRight, color, h, w)
+		if compactMode {
+			drawCompactSeries(canvas, rows, color, h, w)
+		} else {
+			cols := make([]int, n)
+			for i := 0; i < n; i++ {
+				cols[i] = int(float64(i) * float64(w-1) / float64(n-1))
+				if cols[i] >= w {
+					cols[i] = w - 1
 				}
 			}
-
-			// Draw corner for outgoing segment (col i) if not the last point
-			if i < n-1 {
-				col := i
-				nextRow := rows[i+1]
-				if r < nextRow {
-					// Going DOWN (to lower value visually): draw ╮
-					setCell(canvas, col, r, dirLeft|dirDown, color, h, w)
-				} else if r > nextRow {
-					// Going UP (to higher value visually): draw ╯
-					setCell(canvas, col, r, dirLeft|dirUp, color, h, w)
-				}
-			}
+			drawDistributedSeries(canvas, cols, rows, color, h, w)
 		}
 	}
 
@@ -371,4 +327,202 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 	result.WriteString("\n")
 
 	return String(result.String())
+}
+
+// drawCompactSeries draws series in compact mode (one column per segment)
+func drawCompactSeries(canvas [][]plotCell, rows []int, color, h, w int) {
+	n := len(rows)
+
+	// Draw vertical lines between endpoints
+	for i := 0; i < n-1; i++ {
+		row1 := rows[i]
+		row2 := rows[i+1]
+		col := i
+
+		if row1 == row2 {
+			setCell(canvas, col, row1, dirLeft|dirRight, color, h, w)
+			continue
+		}
+
+		minR := min(row1, row2)
+		maxR := max(row1, row2)
+		for r := minR + 1; r < maxR; r++ {
+			setCell(canvas, col, r, dirUp|dirDown, color, h, w)
+		}
+	}
+
+	// Draw corners at each point
+	for i := 0; i < n; i++ {
+		r := rows[i]
+
+		// Incoming corner (col i-1)
+		if i > 0 {
+			col := i - 1
+			prevRow := rows[i-1]
+			if prevRow > r {
+				setCell(canvas, col, r, dirDown|dirRight, color, h, w) // ╭
+			} else if prevRow < r {
+				setCell(canvas, col, r, dirUp|dirRight, color, h, w) // ╰
+			}
+		}
+
+		// Outgoing corner (col i)
+		if i < n-1 {
+			col := i
+			nextRow := rows[i+1]
+			if r < nextRow {
+				setCell(canvas, col, r, dirLeft|dirDown, color, h, w) // ╮
+			} else if r > nextRow {
+				setCell(canvas, col, r, dirLeft|dirUp, color, h, w) // ╯
+			}
+		}
+	}
+}
+
+// drawDistributedSeries draws series in distributed mode (points spread across width)
+func drawDistributedSeries(canvas [][]plotCell, cols, rows []int, color, h, w int) {
+	n := len(cols)
+
+	// Draw segments between consecutive points
+	// Charlang style: vertical first, then curve, then horizontal
+	for i := 0; i < n-1; i++ {
+		x0, y0 := cols[i], rows[i]
+		x1, y1 := cols[i+1], rows[i+1]
+
+		if x0 == x1 {
+			// Vertical segment only
+			minY, maxY := min(y0, y1), max(y0, y1)
+			for y := minY + 1; y < maxY; y++ {
+				setCell(canvas, x0, y, dirUp|dirDown, color, h, w)
+			}
+		} else if y0 == y1 {
+			// Horizontal segment only
+			minX, maxX := min(x0, x1), max(x0, x1)
+			for x := minX + 1; x < maxX; x++ {
+				setCell(canvas, x, y0, dirLeft|dirRight, color, h, w)
+			}
+		} else {
+			// Diagonal: vertical first, then curve at (x0, y1), then horizontal
+			// Draw vertical interior
+			minY, maxY := min(y0, y1), max(y0, y1)
+			for y := minY + 1; y < maxY; y++ {
+				setCell(canvas, x0, y, dirUp|dirDown, color, h, w)
+			}
+			// Draw horizontal interior
+			minX, maxX := min(x0, x1), max(x0, x1)
+			for x := minX + 1; x < maxX; x++ {
+				setCell(canvas, x, y1, dirLeft|dirRight, color, h, w)
+			}
+			// Draw curve at junction (x0, y1) - where vertical meets horizontal
+			if y0 > y1 {
+				// Vertical going up (from below)
+				if x0 < x1 {
+					setCell(canvas, x0, y1, dirDown|dirRight, color, h, w) // ╭
+				} else {
+					setCell(canvas, x0, y1, dirDown|dirLeft, color, h, w) // ╮
+				}
+			} else {
+				// Vertical going down (from above)
+				if x0 < x1 {
+					setCell(canvas, x0, y1, dirUp|dirRight, color, h, w) // ╰
+				} else {
+					setCell(canvas, x0, y1, dirUp|dirLeft, color, h, w) // ╯
+				}
+			}
+		}
+	}
+
+	// Draw corners at endpoints
+	for i := 0; i < n; i++ {
+		x, y := cols[i], rows[i]
+
+		if i == 0 {
+			// Start point: outgoing segment starts here
+			if i < n-1 && (x != cols[1] || y != rows[1]) {
+				x1, y1 := cols[1], rows[1]
+				if x == x1 {
+					// Vertical only
+					if y > y1 {
+						setCell(canvas, x, y, dirUp, color, h, w)
+					} else {
+						setCell(canvas, x, y, dirDown, color, h, w)
+					}
+				} else if y == y1 {
+					// Horizontal only
+					if x < x1 {
+						setCell(canvas, x, y, dirRight, color, h, w)
+					} else {
+						setCell(canvas, x, y, dirLeft, color, h, w)
+					}
+				} else {
+					// Diagonal: vertical starts at start point (x, y) and goes to (x, y1)
+					// Start point just marks the start of vertical, curve is at (x, y1)
+					if y > y1 {
+						setCell(canvas, x, y, dirUp, color, h, w)
+					} else {
+						setCell(canvas, x, y, dirDown, color, h, w)
+					}
+				}
+			}
+		} else if i == n-1 {
+			// End point: incoming segment ends here
+			x0, y0 := cols[i-1], rows[i-1]
+			if x != x0 || y != y0 {
+				if x == x0 {
+					if y0 > y {
+						setCell(canvas, x, y, dirDown, color, h, w)
+					} else {
+						setCell(canvas, x, y, dirUp, color, h, w)
+					}
+				} else if y == y0 {
+					if x0 < x {
+						setCell(canvas, x, y, dirLeft, color, h, w)
+					} else {
+						setCell(canvas, x, y, dirRight, color, h, w)
+					}
+				} else {
+					// Diagonal: horizontal ends at end point (x, y)
+					// End point just marks the end of horizontal
+					if x0 < x {
+						setCell(canvas, x, y, dirLeft, color, h, w)
+					} else {
+						setCell(canvas, x, y, dirRight, color, h, w)
+					}
+				}
+			}
+		} else {
+			// Middle point: connect incoming and outgoing
+			x0, y0 := cols[i-1], rows[i-1]
+			x1, y1 := cols[i+1], rows[i+1]
+
+			// For diagonal segments with vertical-first approach:
+			// Incoming horizontal ends at (x, y)
+			// Outgoing vertical starts at (x, y)
+			// So we need to connect horizontal direction to vertical direction
+
+			inDir := uint8(0)
+			if x0 < x {
+				inDir = dirLeft // horizontal came from left
+			} else if x0 > x {
+				inDir = dirRight // horizontal came from right
+			} else if y0 < y {
+				inDir = dirDown // vertical came from above
+			} else if y0 > y {
+				inDir = dirUp // vertical came from below
+			}
+
+			outDir := uint8(0)
+			if x < x1 {
+				outDir = dirRight // horizontal goes right
+			} else if x > x1 {
+				outDir = dirLeft // horizontal goes left
+			} else if y < y1 {
+				outDir = dirDown // vertical goes down
+			} else if y > y1 {
+				outDir = dirUp // vertical goes up
+			}
+
+			setCell(canvas, x, y, inDir|outDir, color, h, w)
+		}
+	}
 }
