@@ -750,7 +750,7 @@ Xxlang 提供 460+ 个内置函数：
 | 通用 | `len`, `typeOf`, `toStr`, `copy`, `clone`, `equals`, `defaults` |
 | 字符串 | `substr`, `split`, `join`, `trim`, `upper`, `lower`, `containsStr`, `replace`, `startsWith`, `endsWith`, `repeat`, `charAt`, `lpad`, `rpad`, `trimLeft`, `trimRight`, `trimPrefix`, `trimSuffix`, `count`, `isDigit`, `isAlpha`, `isAlphaNum` |
 | 数学 | `abs`, `floor`, `ceil`, `sqrt`, `pow`, `min`, `max`, `round`, `clamp`, `sign`, `random`, `randomInt` |
-| 类型转换 | `int`, `float`, `string`, `toJson`, `fromJson`, `bytes`, `bigInt`, `bigFloat` |
+| 类型转换 | `int`, `float`, `string`, `toJson`, `fromJson`, `bytes`, `chars`, `bigInt`, `bigFloat` |
 | 数组 | `push`, `pop`, `first`, `last`, `rest`, `concat`, `indexOf`, `containsArr`, `sort`, `sum`, `avg`, `reverse`, `unique`, `flatten`, `without`, `take`, `drop`, `find`, `findIndex`, `includes`, `shuffle`, `sample`, `chunk`, `append`, `appendArray`, `arrayContains`, `removeItems` |
 | 映射 | `keys`, `values`, `hasKey`, `delete`, `merge`, `entries` |
 | 类型检查 | `isEmpty`, `isString`, `isNumber`, `isInt`, `isFloat`, `isArray`, `isMap`, `isBool`, `isFunction`, `isNull`, `isBigInt`, `isBigFloat` |

@@ -142,136 +142,137 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["arrayContains"], // 111
 		objects.Builtins["removeItems"],   // 112
 		objects.Builtins["bytes"],         // 113
-		objects.Builtins["plt"],           // 114
-		objects.Builtins["make"],          // 115
+		objects.Builtins["chars"],         // 114
+		objects.Builtins["plt"],           // 115
+		objects.Builtins["make"],          // 116
 		// BigInt/BigFloat
-		objects.Builtins["bigInt"],     // 116
-		objects.Builtins["bigFloat"],   // 117
-		objects.Builtins["isBigInt"],   // 118
-		objects.Builtins["isBigFloat"], // 119
+		objects.Builtins["bigInt"],     // 117
+		objects.Builtins["bigFloat"],   // 118
+		objects.Builtins["isBigInt"],   // 119
+		objects.Builtins["isBigFloat"], // 120
 		// Chars (Unicode character handling)
-		objects.Builtins["toChars"], // 120
-		objects.Builtins["charLen"], // 121
+		objects.Builtins["toChars"], // 121
+		objects.Builtins["charLen"], // 122
 		// HTTP built-in functions (for server mode)
-		objects.Builtins["writeResp"],     // 122
-		objects.Builtins["setRespHeader"], // 123
-		objects.Builtins["addRespHeader"], // 124
-		objects.Builtins["getReqHeader"],  // 125
-		objects.Builtins["getReqHeaders"], // 126
-		objects.Builtins["setCookie"],     // 127
-		objects.Builtins["getCookie"],     // 128
-		objects.Builtins["getCookies"],    // 129
-		objects.Builtins["parseForm"],     // 130
+		objects.Builtins["writeResp"],     // 123
+		objects.Builtins["setRespHeader"], // 124
+		objects.Builtins["addRespHeader"], // 125
+		objects.Builtins["getReqHeader"],  // 126
+		objects.Builtins["getReqHeaders"], // 127
+		objects.Builtins["setCookie"],     // 128
+		objects.Builtins["getCookie"],     // 129
+		objects.Builtins["getCookies"],    // 130
+		objects.Builtins["parseForm"],     // 131
 		// parseJSON, getReqBody, getReqBodyBytes moved to http module
-		objects.Builtins["status"],    // 131
-		objects.Builtins["redirect"],  // 132
-		objects.Builtins["serveFile"], // 133
+		objects.Builtins["status"],    // 132
+		objects.Builtins["redirect"],  // 133
+		objects.Builtins["serveFile"], // 134
 		// getMimeType moved to http module
-		objects.Builtins["setContentType"], // 134
-		objects.Builtins["queryParam"],     // 135
-		objects.Builtins["queryParams"],    // 136
-		objects.Builtins["formValue"],      // 137
-		objects.Builtins["httpStatusName"], // 138
-		objects.Builtins["isHttpReq"],      // 139
-		objects.Builtins["isHttpResp"],     // 140
-		objects.Builtins["urlEncode"],      // 141
-		objects.Builtins["urlDecode"],      // 142
+		objects.Builtins["setContentType"], // 135
+		objects.Builtins["queryParam"],     // 136
+		objects.Builtins["queryParams"],    // 137
+		objects.Builtins["formValue"],      // 138
+		objects.Builtins["httpStatusName"], // 139
+		objects.Builtins["isHttpReq"],      // 140
+		objects.Builtins["isHttpResp"],     // 141
+		objects.Builtins["urlEncode"],      // 142
+		objects.Builtins["urlDecode"],      // 143
 		// WebSocket functions moved to http module
 		// Concurrency built-in functions
-		objects.Builtins["makeTube"],     // 143
-		objects.Builtins["closeTube"],    // 144
-		objects.Builtins["tubeLen"],      // 145
-		objects.Builtins["tubeCap"],      // 146
-		objects.Builtins["tubeClosed"],   // 147
-		objects.Builtins["tubeSend"],     // 148
-		objects.Builtins["tubeRecv"],     // 149
-		objects.Builtins["tubeTrySend"],  // 150
-		objects.Builtins["tubeTryRecv"],  // 151
-		objects.Builtins["newMutex"],     // 152
-		objects.Builtins["newRWMutex"],   // 153
-		objects.Builtins["newWaitGroup"], // 154
-		objects.Builtins["newOnce"],      // 155
-		objects.Builtins["newCond"],      // 156
-		objects.Builtins["newAtomic"],    // 157
+		objects.Builtins["makeTube"],     // 144
+		objects.Builtins["closeTube"],    // 145
+		objects.Builtins["tubeLen"],      // 146
+		objects.Builtins["tubeCap"],      // 147
+		objects.Builtins["tubeClosed"],   // 148
+		objects.Builtins["tubeSend"],     // 149
+		objects.Builtins["tubeRecv"],     // 150
+		objects.Builtins["tubeTrySend"],  // 151
+		objects.Builtins["tubeTryRecv"],  // 152
+		objects.Builtins["newMutex"],     // 153
+		objects.Builtins["newRWMutex"],   // 154
+		objects.Builtins["newWaitGroup"], // 155
+		objects.Builtins["newOnce"],      // 156
+		objects.Builtins["newCond"],      // 157
+		objects.Builtins["newAtomic"],    // 158
 		// Context built-in functions
-		objects.Builtins["newContext"],          // 158
-		objects.Builtins["contextWithTimeout"],  // 159
-		objects.Builtins["contextWithCancel"],   // 160
-		objects.Builtins["contextWithDeadline"], // 161
-		objects.Builtins["contextCancel"],       // 162
-		objects.Builtins["contextDone"],         // 163
-		objects.Builtins["contextErr"],          // 164
-		objects.Builtins["contextIsDone"],       // 165
-		objects.Builtins["contextDeadline"],     // 166
+		objects.Builtins["newContext"],          // 159
+		objects.Builtins["contextWithTimeout"],  // 160
+		objects.Builtins["contextWithCancel"],   // 161
+		objects.Builtins["contextWithDeadline"], // 162
+		objects.Builtins["contextCancel"],       // 163
+		objects.Builtins["contextDone"],         // 164
+		objects.Builtins["contextErr"],          // 165
+		objects.Builtins["contextIsDone"],       // 166
+		objects.Builtins["contextDeadline"],     // 167
 		// HTTP Client built-in functions (getWeb family)
-		objects.Builtins["getWeb"],        // 167
-		objects.Builtins["getWebBytes"],   // 168
-		objects.Builtins["getWebObject"],  // 169
-		objects.Builtins["postWeb"],       // 170
-		objects.Builtins["postWebObject"], // 171
-		objects.Builtins["urlExists"],     // 172
-		objects.Builtins["httpStatus"],    // 173
+		objects.Builtins["getWeb"],        // 168
+		objects.Builtins["getWebBytes"],   // 169
+		objects.Builtins["getWebObject"],  // 170
+		objects.Builtins["postWeb"],       // 171
+		objects.Builtins["postWebObject"], // 172
+		objects.Builtins["urlExists"],     // 173
+		objects.Builtins["httpStatus"],    // 174
 		// Reader/Writer built-in functions
-		objects.Builtins["getWebReader"],    // 174
-		objects.Builtins["ioCopy"],          // 175
-		objects.Builtins["isReader"],        // 176
-		objects.Builtins["isWriter"],        // 177
-		objects.Builtins["newBytesReader"],  // 178
-		objects.Builtins["newStringReader"], // 179
+		objects.Builtins["getWebReader"],    // 175
+		objects.Builtins["ioCopy"],          // 176
+		objects.Builtins["isReader"],        // 177
+		objects.Builtins["isWriter"],        // 178
+		objects.Builtins["newBytesReader"],  // 179
+		objects.Builtins["newStringReader"], // 180
 		// Encryption built-in functions (Charlang compatible)
-		objects.Builtins["encryptTextByTXTE"],  // 180
-		objects.Builtins["decryptTextByTXTE"],  // 181
-		objects.Builtins["encryptDataByTXDEE"], // 182
-		objects.Builtins["decryptDataByTXDEE"], // 183
-		objects.Builtins["encryptTextByTXDEE"], // 184
-		objects.Builtins["decryptTextByTXDEE"], // 185
-		objects.Builtins["encryptData"],        // 186
-		objects.Builtins["encryptBytes"],       // 187
-		objects.Builtins["decryptData"],        // 188
-		objects.Builtins["decryptBytes"],       // 189
-		objects.Builtins["encryptText"],        // 190
-		objects.Builtins["encryptStr"],         // 191
-		objects.Builtins["decryptText"],        // 192
-		objects.Builtins["decryptStr"],         // 193
-		objects.Builtins["encryptStream"],      // 194
-		objects.Builtins["decryptStream"],      // 195
-		objects.Builtins["aesEncrypt"],         // 196
-		objects.Builtins["aesDecrypt"],         // 197
-		objects.Builtins["downloadFile"],       // 198
+		objects.Builtins["encryptTextByTXTE"],  // 181
+		objects.Builtins["decryptTextByTXTE"],  // 182
+		objects.Builtins["encryptDataByTXDEE"], // 183
+		objects.Builtins["decryptDataByTXDEE"], // 184
+		objects.Builtins["encryptTextByTXDEE"], // 185
+		objects.Builtins["decryptTextByTXDEE"], // 186
+		objects.Builtins["encryptData"],        // 187
+		objects.Builtins["encryptBytes"],       // 188
+		objects.Builtins["decryptData"],        // 189
+		objects.Builtins["decryptBytes"],       // 190
+		objects.Builtins["encryptText"],        // 191
+		objects.Builtins["encryptStr"],         // 192
+		objects.Builtins["decryptText"],        // 193
+		objects.Builtins["decryptStr"],         // 194
+		objects.Builtins["encryptStream"],      // 195
+		objects.Builtins["decryptStream"],      // 196
+		objects.Builtins["aesEncrypt"],         // 197
+		objects.Builtins["aesDecrypt"],         // 198
+		objects.Builtins["downloadFile"],       // 199
 		// Database built-in functions (String-based - Charlang compatible)
-		objects.Builtins["formatSQLValue"],  // 199
-		objects.Builtins["dbConnect"],       // 200
-		objects.Builtins["dbClose"],         // 201
-		objects.Builtins["dbQuery"],         // 202
-		objects.Builtins["dbQueryOrdered"],  // 203
-		objects.Builtins["dbQueryRecs"],     // 204
-		objects.Builtins["dbQueryMap"],      // 205
-		objects.Builtins["dbQueryMapArray"], // 206
-		objects.Builtins["dbQueryCount"],    // 207
-		objects.Builtins["dbQueryFloat"],    // 208
-		objects.Builtins["dbQueryString"],   // 209
-		objects.Builtins["dbExec"],          // 210
+		objects.Builtins["formatSQLValue"],  // 200
+		objects.Builtins["dbConnect"],       // 201
+		objects.Builtins["dbClose"],         // 202
+		objects.Builtins["dbQuery"],         // 203
+		objects.Builtins["dbQueryOrdered"],  // 204
+		objects.Builtins["dbQueryRecs"],     // 205
+		objects.Builtins["dbQueryMap"],      // 206
+		objects.Builtins["dbQueryMapArray"], // 207
+		objects.Builtins["dbQueryCount"],    // 208
+		objects.Builtins["dbQueryFloat"],    // 209
+		objects.Builtins["dbQueryString"],   // 210
+		objects.Builtins["dbExec"],          // 211
 		// Database built-in functions (Typed - preserve native types)
-		objects.Builtins["dbQueryTyped"],      // 211
-		objects.Builtins["dbQueryRowTyped"],   // 212
-		objects.Builtins["dbQueryArrayTyped"], // 213
-		objects.Builtins["dbQueryValueTyped"], // 214
+		objects.Builtins["dbQueryTyped"],      // 212
+		objects.Builtins["dbQueryRowTyped"],   // 213
+		objects.Builtins["dbQueryArrayTyped"], // 214
+		objects.Builtins["dbQueryValueTyped"], // 215
 		// OrderedMap built-in functions
-		objects.Builtins["isOrderedMap"],  // 215
-		objects.Builtins["newOrderedMap"], // 216
+		objects.Builtins["isOrderedMap"],  // 216
+		objects.Builtins["newOrderedMap"], // 217
 		// System command built-in functions
-		objects.Builtins["systemCmd"],         // 217
-		objects.Builtins["systemCmdDetached"], // 218
-		objects.Builtins["systemStart"],       // 219
+		objects.Builtins["systemCmd"],         // 218
+		objects.Builtins["systemCmdDetached"], // 219
+		objects.Builtins["systemStart"],       // 220
 		// Test assertion functions moved to testing module
-		nil, // 220: testByText removed - use testing.byText()
-		nil, // 221: testByStartsWith removed - use testing.byStartsWith()
-		nil, // 222: testByEndsWith removed - use testing.byEndsWith()
-		nil, // 223: testByContains removed - use testing.byContains()
-		nil, // 224: testByReg removed - use testing.byReg()
-		nil, // 225: testByRegContains removed - use testing.byRegContains()
-		nil, // 226: dumpVar removed - use debug.dumpVar()
-		nil, // 227: debugInfo removed - use debug.info()
+		nil, // 221: testByText removed - use testing.byText()
+		nil, // 222: testByStartsWith removed - use testing.byStartsWith()
+		nil, // 223: testByEndsWith removed - use testing.byEndsWith()
+		nil, // 224: testByContains removed - use testing.byContains()
+		nil, // 225: testByReg removed - use testing.byReg()
+		nil, // 226: testByRegContains removed - use testing.byRegContains()
+		nil, // 227: dumpVar removed - use debug.dumpVar()
+		// debugInfo removed - use debug.info() (no placeholder needed)
 		// File system built-in functions (Batch 1)
 		objects.Builtins["fileExists"],      // 228
 		objects.Builtins["isDir"],           // 229

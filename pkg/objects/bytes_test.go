@@ -280,3 +280,103 @@ func TestBytesGetMember(t *testing.T) {
 		t.Error("Expected non-nil result for 'at'")
 	}
 }
+
+// TestBuiltinBytesFromString tests the bytes() built-in with string argument
+func TestBuiltinBytesFromString(t *testing.T) {
+	// Get the bytes built-in
+	builtin, ok := Builtins["bytes"]
+	if !ok {
+		t.Fatal("bytes built-in not found")
+	}
+
+	// Test converting string to bytes
+	str := NewString("Hello")
+	result := builtin.Fn(str)
+	bytesObj, ok := result.(*Bytes)
+	if !ok {
+		t.Fatalf("Expected Bytes, got %T", result)
+	}
+	if bytesObj.String() != "Hello" {
+		t.Errorf("Expected 'Hello', got '%s'", bytesObj.String())
+	}
+	if bytesObj.Len() != 5 {
+		t.Errorf("Expected len 5, got %d", bytesObj.Len())
+	}
+
+	// Test with string containing special characters
+	str2 := NewString("abc1\t23好地方\nkshdf")
+	result2 := builtin.Fn(str2)
+	bytesObj2, ok := result2.(*Bytes)
+	if !ok {
+		t.Fatalf("Expected Bytes, got %T", result2)
+	}
+	// The string "abc1\t23好地方\nkshdf" has:
+	// "abc1" = 4 bytes, "\t" = 1 byte, "23" = 2 bytes, "好地方" = 9 bytes (3 Chinese chars, each 3 bytes in UTF-8), "\n" = 1 byte, "kshdf" = 5 bytes
+	// Total: 4 + 1 + 2 + 9 + 1 + 5 = 22 bytes
+	if bytesObj2.Len() != 22 {
+		t.Errorf("Expected len 22 for string with special chars, got %d", bytesObj2.Len())
+	}
+
+	// Test empty string
+	emptyStr := NewString("")
+	result3 := builtin.Fn(emptyStr)
+	emptyBytes, ok := result3.(*Bytes)
+	if !ok {
+		t.Fatalf("Expected Bytes, got %T", result3)
+	}
+	if emptyBytes.Len() != 0 {
+		t.Errorf("Expected len 0 for empty string, got %d", emptyBytes.Len())
+	}
+}
+
+// TestBuiltinBytesFromInts tests the bytes() built-in with integer arguments
+func TestBuiltinBytesFromInts(t *testing.T) {
+	builtin, ok := Builtins["bytes"]
+	if !ok {
+		t.Fatal("bytes built-in not found")
+	}
+
+	// Test creating bytes from integers
+	args := []Object{NewInt(72), NewInt(101), NewInt(108), NewInt(108), NewInt(111)}
+	result := builtin.Fn(args...)
+	bytesObj, ok := result.(*Bytes)
+	if !ok {
+		t.Fatalf("Expected Bytes, got %T", result)
+	}
+	if bytesObj.String() != "Hello" {
+		t.Errorf("Expected 'Hello', got '%s'", bytesObj.String())
+	}
+
+	// Test out of range error
+	outOfRange := []Object{NewInt(300)}
+	errResult := builtin.Fn(outOfRange...)
+	if _, ok := errResult.(*Error); !ok {
+		t.Error("Expected Error for out of range value")
+	}
+
+	// Test negative value error
+	negative := []Object{NewInt(-1)}
+	errResult2 := builtin.Fn(negative...)
+	if _, ok := errResult2.(*Error); !ok {
+		t.Error("Expected Error for negative value")
+	}
+}
+
+// TestBuiltinBytesFromBytes tests the bytes() built-in with Bytes argument (identity)
+func TestBuiltinBytesFromBytes(t *testing.T) {
+	builtin, ok := Builtins["bytes"]
+	if !ok {
+		t.Fatal("bytes built-in not found")
+	}
+
+	// Test passing Bytes to bytes() returns the same object
+	original := NewBytes([]byte{65, 66, 67})
+	result := builtin.Fn(original)
+	bytesObj, ok := result.(*Bytes)
+	if !ok {
+		t.Fatalf("Expected Bytes, got %T", result)
+	}
+	if bytesObj.String() != "ABC" {
+		t.Errorf("Expected 'ABC', got '%s'", bytesObj.String())
+	}
+}

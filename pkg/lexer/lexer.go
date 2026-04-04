@@ -339,8 +339,45 @@ func (l *Lexer) readString() string {
 			if l.ch == 0 {
 				break
 			}
-			processed := processEscapeSequence(l.ch)
-			result = append(result, processed)
+			// Handle \x hex escape sequence
+			if l.ch == 'x' {
+				// Save position in case we need to backtrack
+				// Try to read two hex digits
+				l.readChar()
+				if l.ch == 0 {
+					// \x at end of string, treat 'x' as literal
+					result = append(result, 'x')
+					break
+				}
+				hex1 := l.ch
+				if !isHexDigit(hex1) {
+					// Not a hex digit, treat \x as literal 'x' and continue
+					result = append(result, 'x')
+					// Don't read next char, let the main loop handle this char
+					continue
+				}
+				l.readChar()
+				if l.ch == 0 {
+					// Only one hex digit after \x, treat as literal 'x' and the hex digit
+					result = append(result, 'x')
+					result = append(result, hex1)
+					break
+				}
+				hex2 := l.ch
+				if !isHexDigit(hex2) {
+					// Second char is not hex, treat \x and first hex as literal
+					result = append(result, 'x')
+					result = append(result, hex1)
+					// Don't skip this char, let main loop handle it
+					continue
+				}
+				// Valid hex escape
+				val := hexDigitToValue(hex1)<<4 | hexDigitToValue(hex2)
+				result = append(result, val)
+			} else {
+				processed := processEscapeSequence(l.ch)
+				result = append(result, processed)
+			}
 		} else {
 			result = append(result, l.ch)
 		}
@@ -350,6 +387,25 @@ func (l *Lexer) readString() string {
 	l.readChar() // skip closing quote (or handle EOF)
 
 	return string(result)
+}
+
+// isHexDigit checks if a character is a valid hex digit
+func isHexDigit(ch byte) bool {
+	return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')
+}
+
+// hexDigitToValue converts a hex digit character to its numeric value
+func hexDigitToValue(ch byte) byte {
+	switch {
+	case ch >= '0' && ch <= '9':
+		return ch - '0'
+	case ch >= 'a' && ch <= 'f':
+		return ch - 'a' + 10
+	case ch >= 'A' && ch <= 'F':
+		return ch - 'A' + 10
+	default:
+		return 0
+	}
 }
 
 // readRawString reads a raw string literal (backtick string)

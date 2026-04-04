@@ -926,6 +926,16 @@ var charsMethods = map[string]*Builtin{
 		}
 		return NewChars(result)
 	}},
+	"toString": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for toString. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*Chars)
+		if !ok {
+			return newError("receiver for toString must be CHARS, got %s", args[0].Type())
+		}
+		return NewString(string(self.Value))
+	}},
 }
 
 // ============================================================

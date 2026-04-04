@@ -514,6 +514,73 @@ string(true)   // "true"
 string([1, 2]) // "[1, 2]"
 ```
 
+### bytes(value)
+
+Creates a Bytes object from a string or integer values.
+
+**From String:**
+```xxl
+// Convert string to bytes (UTF-8 encoding)
+var b1 = bytes("hello")
+pln(typeOf(b1))  // BYTES
+pln(b1.toString())  // "hello"
+
+// String with special characters and Unicode
+var b2 = bytes("abc\t中文\n")
+pln(len(b2))  // 11 (bytes, not characters)
+```
+
+**From Integer Values (0-255):**
+```xxl
+// Create bytes from individual byte values
+var b3 = bytes(72, 101, 108, 108, 111)
+pln(b3.toString())  // "Hello"
+
+// Empty bytes
+var empty = bytes()
+```
+
+**From Bytes (identity):**
+```xxl
+var b4 = bytes(b1)  // Returns the same Bytes object
+```
+
+### chars(value)
+
+Creates a Chars object from a string or Unicode code points. Chars represents a sequence of Unicode characters (not bytes), making it suitable for proper Unicode text processing.
+
+**From String:**
+```xxl
+// Convert string to chars (Unicode characters)
+var c1 = chars("hello")
+pln(typeOf(c1))  // CHARS
+pln(c1.toString())  // "hello"
+
+// Unicode string - counts characters, not bytes
+var c2 = chars("中文测试")
+pln(len(c2))  // 4 (characters, not bytes)
+```
+
+**From Unicode Code Points:**
+```xxl
+// Create chars from Unicode code points
+var c3 = chars(65, 66, 67, 20013)
+pln(c3.toString())  // "ABC中"
+
+// Single character
+var c4 = chars(128512)  // 😀 emoji
+```
+
+**From Chars (identity):**
+```xxl
+var c5 = chars(c1)  // Returns the same Chars object
+```
+
+**Chars vs String:**
+- `chars("中文").len()` returns 2 (character count)
+- `len("中文")` returns 6 (byte count in UTF-8)
+- Use Chars for character-level operations like slicing by character
+
 ---
 
 ## Array Functions

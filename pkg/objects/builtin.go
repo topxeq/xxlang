@@ -101,18 +101,7 @@ var Builtins = map[string]*Builtin{
 
 			formatArgs := make([]interface{}, len(args)-1)
 			for i, arg := range args[1:] {
-				switch v := arg.(type) {
-				case *Int:
-					formatArgs[i] = v.Value
-				case *Float:
-					formatArgs[i] = v.Value
-				case *String:
-					formatArgs[i] = v.Value
-				case *Bool:
-					formatArgs[i] = v.Value
-				default:
-					formatArgs[i] = v.Inspect()
-				}
+				formatArgs[i] = objectToFormatArg(arg)
 			}
 
 			fmt.Printf(format.Value+"\n", formatArgs...)
@@ -132,18 +121,7 @@ var Builtins = map[string]*Builtin{
 
 			formatArgs := make([]interface{}, len(args)-1)
 			for i, arg := range args[1:] {
-				switch v := arg.(type) {
-				case *Int:
-					formatArgs[i] = v.Value
-				case *Float:
-					formatArgs[i] = v.Value
-				case *String:
-					formatArgs[i] = v.Value
-				case *Bool:
-					formatArgs[i] = v.Value
-				default:
-					formatArgs[i] = v.Inspect()
-				}
+				formatArgs[i] = objectToFormatArg(arg)
 			}
 
 			fmt.Printf(format.Value, formatArgs...)
@@ -2030,18 +2008,7 @@ var Builtins = map[string]*Builtin{
 
 			formatArgs := make([]interface{}, len(args)-1)
 			for i, arg := range args[1:] {
-				switch v := arg.(type) {
-				case *Int:
-					formatArgs[i] = v.Value
-				case *Float:
-					formatArgs[i] = v.Value
-				case *String:
-					formatArgs[i] = v.Value
-				case *Bool:
-					formatArgs[i] = v.Value
-				default:
-					formatArgs[i] = v.Inspect()
-				}
+				formatArgs[i] = objectToFormatArg(arg)
 			}
 
 			return NewString(fmt.Sprintf(format.Value, formatArgs...))
@@ -2971,9 +2938,20 @@ var Builtins = map[string]*Builtin{
 			}
 		},
 	},
-	// bytes - create Bytes object from integer arguments
+	// bytes - create Bytes object from integer arguments or from a string
 	"bytes": {
 		Fn: func(args ...Object) Object {
+			// If single argument is a String, convert to Bytes
+			if len(args) == 1 {
+				if str, ok := args[0].(*String); ok {
+					return NewBytes([]byte(str.Value))
+				}
+				// If single argument is already Bytes, return it
+				if b, ok := args[0].(*Bytes); ok {
+					return b
+				}
+			}
+			// Multiple integer arguments: create Bytes from byte values
 			result := make([]byte, len(args))
 			for i, arg := range args {
 				switch v := arg.(type) {
@@ -2989,10 +2967,38 @@ var Builtins = map[string]*Builtin{
 					}
 					result[i] = byte(val)
 				default:
-					return newError("bytes: argument at index %d must be INT (0-255), got %s", i, arg.Type())
+					return newError("bytes: argument at index %d must be INT (0-255) or STRING, got %s", i, arg.Type())
 				}
 			}
 			return NewBytes(result)
+		},
+	},
+	// chars - create Chars object from string or Unicode code points
+	"chars": {
+		Fn: func(args ...Object) Object {
+			// If single argument is a String, convert to Chars
+			if len(args) == 1 {
+				if str, ok := args[0].(*String); ok {
+					return NewCharsFromString(str.Value)
+				}
+				// If single argument is already Chars, return it
+				if c, ok := args[0].(*Chars); ok {
+					return c
+				}
+			}
+			// Multiple integer arguments: create Chars from Unicode code points
+			runes := make([]rune, len(args))
+			for i, arg := range args {
+				switch v := arg.(type) {
+				case *Int:
+					runes[i] = rune(v.Value)
+				case *Float:
+					runes[i] = rune(int64(v.Value))
+				default:
+					return newError("chars: argument at index %d must be INT (Unicode code point) or STRING, got %s", i, arg.Type())
+				}
+			}
+			return NewChars(runes)
 		},
 	},
 	// plt - pretty table print for debugging
@@ -4683,6 +4689,141 @@ func printPrettyTable(obj Object, indent int) {
 	default:
 		fmt.Printf("%s%s\n", indentStr, obj.Inspect())
 	}
+}
+
+// objectToFormatArg converts an Object to a suitable value for fmt formatting.
+// For Bytes and Chars, it returns a wrapper that implements GoStringer for proper %#v behavior.
+func objectToFormatArg(arg Object) interface{} {
+	switch v := arg.(type) {
+	case *Int:
+		return v.Value
+	case *Float:
+		return v.Value
+	case *String:
+		return v.Value
+	case *Bool:
+		return v.Value
+	case *Null:
+		// Return a wrapper that formats null without quotes for %#v
+		return nullFormatWrapper{}
+	case *Error:
+		// Return a wrapper that formats error properly
+		return &errorFormatWrapper{err: v}
+	case *Bytes:
+		// Create a wrapper that implements GoStringer for proper %#v behavior
+		return &bytesFormatWrapper{bytes: v}
+	case *Chars:
+		// Create a wrapper that implements GoStringer for proper %#v behavior
+		return &charsFormatWrapper{chars: v}
+	default:
+		return v.Inspect()
+	}
+}
+
+// nullFormatWrapper wraps null for proper fmt formatting
+type nullFormatWrapper struct{}
+
+func (nullFormatWrapper) String() string   { return "null" }
+func (nullFormatWrapper) GoString() string { return "null" }
+
+// errorFormatWrapper wraps Error for proper fmt formatting
+type errorFormatWrapper struct {
+	err *Error
+}
+
+func (w *errorFormatWrapper) String() string   { return fmt.Sprintf("ERROR: %s", w.err.Message) }
+func (w *errorFormatWrapper) GoString() string { return fmt.Sprintf("Error(%q)", w.err.Message) }
+
+// bytesFormatWrapper wraps Bytes for proper fmt formatting
+// It implements fmt.Formatter to provide different output for %v, %#v, and %+v
+type bytesFormatWrapper struct {
+	bytes *Bytes
+}
+
+// String returns the bytes content as a string (for %v, %s)
+func (w *bytesFormatWrapper) String() string {
+	return string(w.bytes.Value)
+}
+
+// GoString returns a Go-syntax representation (for %#v)
+func (w *bytesFormatWrapper) GoString() string {
+	return w.FormatString('#')
+}
+
+// Format implements fmt.Formatter to handle all format verbs
+func (w *bytesFormatWrapper) Format(f fmt.State, verb rune) {
+	switch verb {
+	case 'v':
+		if f.Flag('#') {
+			// %#v: Go-syntax representation
+			fmt.Fprintf(f, "Bytes(len=%d, %q)", len(w.bytes.Value), string(w.bytes.Value))
+		} else if f.Flag('+') {
+			// %+v: verbose representation with content
+			fmt.Fprintf(f, "Bytes(len=%d, %q)", len(w.bytes.Value), string(w.bytes.Value))
+		} else {
+			// %v: just the content
+			fmt.Fprint(f, string(w.bytes.Value))
+		}
+	case 's':
+		fmt.Fprint(f, string(w.bytes.Value))
+	case 'q':
+		fmt.Fprintf(f, "%q", string(w.bytes.Value))
+	case 'x':
+		fmt.Fprintf(f, "%x", w.bytes.Value)
+	case 'X':
+		fmt.Fprintf(f, "%X", w.bytes.Value)
+	default:
+		fmt.Fprintf(f, "%%!%c(Bytes)", verb)
+	}
+}
+
+// FormatString returns the formatted string for a given verb
+func (w *bytesFormatWrapper) FormatString(verb rune) string {
+	return fmt.Sprintf("%"+string(verb)+"v", w)
+}
+
+// charsFormatWrapper wraps Chars for proper fmt formatting
+// It implements fmt.Formatter to provide different output for %v, %#v, and %+v
+type charsFormatWrapper struct {
+	chars *Chars
+}
+
+// String returns the chars content as a string (for %v, %s)
+func (w *charsFormatWrapper) String() string {
+	return string(w.chars.Value)
+}
+
+// GoString returns a Go-syntax representation (for %#v)
+func (w *charsFormatWrapper) GoString() string {
+	return w.FormatString('#')
+}
+
+// Format implements fmt.Formatter to handle all format verbs
+func (w *charsFormatWrapper) Format(f fmt.State, verb rune) {
+	switch verb {
+	case 'v':
+		if f.Flag('#') {
+			// %#v: Go-syntax representation
+			fmt.Fprintf(f, "Chars(len=%d, %q)", len(w.chars.Value), string(w.chars.Value))
+		} else if f.Flag('+') {
+			// %+v: verbose representation with content
+			fmt.Fprintf(f, "Chars(len=%d, %q)", len(w.chars.Value), string(w.chars.Value))
+		} else {
+			// %v: just the content
+			fmt.Fprint(f, string(w.chars.Value))
+		}
+	case 's':
+		fmt.Fprint(f, string(w.chars.Value))
+	case 'q':
+		fmt.Fprintf(f, "%q", string(w.chars.Value))
+	default:
+		fmt.Fprintf(f, "%%!%c(Chars)", verb)
+	}
+}
+
+// FormatString returns the formatted string for a given verb
+func (w *charsFormatWrapper) FormatString(verb rune) string {
+	return fmt.Sprintf("%"+string(verb)+"v", w)
 }
 
 func init() {

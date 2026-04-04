@@ -556,6 +556,73 @@ string(true)   // "true"
 string([1, 2]) // "[1, 2]"
 ```
 
+### bytes(value)
+
+从字符串或整数值创建 Bytes 对象。
+
+**从字符串创建：**
+```xxl
+// 将字符串转换为字节（UTF-8 编码）
+var b1 = bytes("hello")
+pln(typeOf(b1))  // BYTES
+pln(b1.toString())  // "hello"
+
+// 包含特殊字符和 Unicode 的字符串
+var b2 = bytes("abc\t中文\n")
+pln(len(b2))  // 11（字节数，非字符数）
+```
+
+**从整数值创建（0-255）：**
+```xxl
+// 从单个字节值创建字节
+var b3 = bytes(72, 101, 108, 108, 111)
+pln(b3.toString())  // "Hello"
+
+// 空字节
+var empty = bytes()
+```
+
+**从 Bytes 创建（返回原对象）：**
+```xxl
+var b4 = bytes(b1)  // 返回相同的 Bytes 对象
+```
+
+### chars(value)
+
+从字符串或 Unicode 码点创建 Chars 对象。Chars 表示 Unicode 字符序列（而非字节），适合进行正确的 Unicode 文本处理。
+
+**从字符串创建：**
+```xxl
+// 将字符串转换为字符（Unicode 字符）
+var c1 = chars("hello")
+pln(typeOf(c1))  // CHARS
+pln(c1.toString())  // "hello"
+
+// Unicode 字符串 - 计算字符数，非字节数
+var c2 = chars("中文测试")
+pln(len(c2))  // 4（字符数，非字节数）
+```
+
+**从 Unicode 码点创建：**
+```xxl
+// 从 Unicode 码点创建字符
+var c3 = chars(65, 66, 67, 20013)
+pln(c3.toString())  // "ABC中"
+
+// 单个字符
+var c4 = chars(128512)  // 😀 表情符号
+```
+
+**从 Chars 创建（返回原对象）：**
+```xxl
+var c5 = chars(c1)  // 返回相同的 Chars 对象
+```
+
+**Chars 与 String 的区别：**
+- `chars("中文").len()` 返回 2（字符数）
+- `len("中文")` 返回 6（UTF-8 字节数）
+- 使用 Chars 进行字符级别的操作，如按字符切片
+
 ---
 
 ## 数据库函数

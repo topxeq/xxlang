@@ -3,6 +3,7 @@ package objects
 
 import (
 	"hash/fnv"
+	"strconv"
 )
 
 // Chars represents a sequence of Unicode code points ([]rune in Go).
@@ -40,7 +41,7 @@ func (c *Chars) Type() ObjectType { return CharsType }
 func (c *Chars) TypeTag() TypeTag { return TagChars }
 
 // Inspect returns the string representation
-func (c *Chars) Inspect() string { return string(c.Value) }
+func (c *Chars) Inspect() string { return "Chars(len=" + strconv.Itoa(len(c.Value)) + ")" }
 
 // ToBool converts the chars to a boolean (true if non-empty)
 func (c *Chars) ToBool() *Bool {
@@ -90,4 +91,63 @@ func (c *Chars) Slice(start, end int) *Chars {
 		return CHARS_EMPTY
 	}
 	return NewChars(c.Value[start:end])
+}
+
+// GetMember returns a member by name for script access
+func (c *Chars) GetMember(name string) Object {
+	switch name {
+	case "len":
+		return NewInt(int64(len(c.Value)))
+	case "toString":
+		return &Builtin{Fn: func(args ...Object) Object {
+			return NewString(c.String())
+		}}
+	case "toStr":
+		return &Builtin{Fn: func(args ...Object) Object {
+			return NewString(c.String())
+		}}
+	case "toArray":
+		return &Builtin{Fn: func(args ...Object) Object {
+			elements := make([]Object, len(c.Value))
+			for i, r := range c.Value {
+				elements[i] = NewString(string(r))
+			}
+			return NewArray(elements)
+		}}
+	case "at":
+		return &Builtin{Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("at() takes exactly 1 argument")
+			}
+			idx, ok := args[0].(*Int)
+			if !ok {
+				return newError("at() requires an integer argument")
+			}
+			val, ok := c.At(int(idx.Value))
+			if !ok {
+				return newError("index out of range")
+			}
+			return NewString(val)
+		}}
+	case "slice":
+		return &Builtin{Fn: func(args ...Object) Object {
+			if len(args) < 1 || len(args) > 2 {
+				return newError("slice() takes 1 or 2 arguments")
+			}
+			start, ok := args[0].(*Int)
+			if !ok {
+				return newError("slice() requires integer arguments")
+			}
+			end := len(c.Value)
+			if len(args) == 2 {
+				endVal, ok := args[1].(*Int)
+				if !ok {
+					return newError("slice() requires integer arguments")
+				}
+				end = int(endVal.Value)
+			}
+			return c.Slice(int(start.Value), end)
+		}}
+	}
+	return NULL
 }

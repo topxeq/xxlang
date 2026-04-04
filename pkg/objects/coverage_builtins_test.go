@@ -313,8 +313,13 @@ func TestNewCharsFromStringExtra(t *testing.T) {
 // TestCharsInspectExtra tests chars inspect
 func TestCharsInspectExtra(t *testing.T) {
 	c := NewCharsFromString("hello")
-	if c.Inspect() != "hello" {
-		t.Errorf("expected 'hello', got %s", c.Inspect())
+	// Inspect returns representation format
+	if c.Inspect() != "Chars(len=5)" {
+		t.Errorf("expected 'Chars(len=5)', got %s", c.Inspect())
+	}
+	// String() returns the actual content
+	if c.String() != "hello" {
+		t.Errorf("expected 'hello', got %s", c.String())
 	}
 }
 
