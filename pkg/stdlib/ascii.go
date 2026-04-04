@@ -115,14 +115,98 @@ func ansiReset() string {
 	return "\x1b[0m"
 }
 
+// direction constants for line connections
+const (
+	dirUp    uint8 = 1
+	dirDown  uint8 = 2
+	dirLeft  uint8 = 4
+	dirRight uint8 = 8
+)
+
 // plotCell represents a cell in the plot canvas
+// Uses direction flags to track which lines pass through this cell
 type plotCell struct {
-	char  rune
-	color int
+	connections uint8 // bitmask of directions that have lines
+	color       int
+}
+
+// connectionsToChar converts connection directions to the appropriate character
+func connectionsToChar(conn uint8) rune {
+	switch conn {
+	case dirLeft | dirRight:
+		return '─'
+	case dirUp | dirDown:
+		return '│'
+	case dirLeft | dirDown:
+		return '╰'
+	case dirLeft | dirUp:
+		return '╭'
+	case dirRight | dirDown:
+		return '╯'
+	case dirRight | dirUp:
+		return '╮'
+	case dirUp | dirDown | dirLeft | dirRight:
+		return '┼'
+	case dirUp | dirDown | dirLeft:
+		return '├'
+	case dirUp | dirDown | dirRight:
+		return '┤'
+	case dirUp | dirLeft | dirRight:
+		return '┬'
+	case dirDown | dirLeft | dirRight:
+		return '┴'
+	default:
+		return ' ' // no connections or invalid combination
+	}
+}
+
+// addConnection adds a connection direction to a cell
+func addConnection(canvas [][]plotCell, x, y int, dir uint8, color int, height, width int) {
+	if x < 0 || x >= width || y < 0 || y >= height {
+		return
+	}
+	cell := canvas[y][x]
+	isNew := cell.connections == 0
+	cell.connections |= dir
+	if isNew {
+		cell.color = color
+	}
+	canvas[y][x] = cell
+}
+
+// drawHorizontalLine draws a horizontal line from x0 to x1 at row y
+func drawHorizontalLine(canvas [][]plotCell, x0, x1, y int, color int, height, width int) {
+	if x0 > x1 {
+		x0, x1 = x1, x0
+	}
+	for x := x0; x <= x1; x++ {
+		if x == x0 {
+			addConnection(canvas, x, y, dirRight, color, height, width)
+		} else if x == x1 {
+			addConnection(canvas, x, y, dirLeft, color, height, width)
+		} else {
+			addConnection(canvas, x, y, dirLeft|dirRight, color, height, width)
+		}
+	}
+}
+
+// drawVerticalLine draws a vertical line from y0 to y1 at column x
+func drawVerticalLine(canvas [][]plotCell, x, y0, y1 int, color int, height, width int) {
+	if y0 > y1 {
+		y0, y1 = y1, y0
+	}
+	for y := y0; y <= y1; y++ {
+		if y == y0 {
+			addConnection(canvas, x, y, dirDown, color, height, width)
+		} else if y == y1 {
+			addConnection(canvas, x, y, dirUp, color, height, width)
+		} else {
+			addConnection(canvas, x, y, dirUp|dirDown, color, height, width)
+		}
+	}
 }
 
 // asciiPlotDataToStr implements the plotDataToStr function
-// Based on asciigraph algorithm: https://github.com/guptarohit/asciigraph
 func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 	if len(args) < 1 {
 		return Error("plotDataToStr requires at least 1 argument")
@@ -187,7 +271,7 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 		canvas[i] = make([]plotCell, width)
 	}
 
-	// Plot each series using asciigraph algorithm
+	// Plot each series
 	for seriesIdx, s := range series {
 		if len(s) < 2 {
 			continue
@@ -201,8 +285,6 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 		n := len(s)
 
 		// Map each data point to canvas positions
-		// X: distribute across width
-		// Y: 0 = top, height-1 = bottom
 		type pt struct {
 			x, y int
 		}
@@ -214,7 +296,7 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 				points[i].x = width - 1
 			}
 
-			// Y: map value to row
+			// Y: map value to row (row 0 is top)
 			yNorm := (v - cfg.minVal) / (cfg.maxVal - cfg.minVal)
 			yPos := int(yNorm * float64(height-1))
 			if yPos < 0 {
@@ -223,7 +305,6 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 			if yPos >= height {
 				yPos = height - 1
 			}
-			// Invert: canvas row 0 is top
 			points[i].y = height - 1 - yPos
 		}
 
@@ -232,30 +313,121 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 			p0 := points[i]
 			p1 := points[i+1]
 
-			// Draw horizontal segment from p0.x to just before transition
-			// Then draw vertical transition at the last column before p1.x
+			// Determine direction of movement
+			goingRight := p1.x > p0.x
+			goingDown := p1.y > p0.y
 
 			if p0.x == p1.x {
-				// Same column - just draw vertical transition
-				drawVerticalTransition(canvas, p0.x, p0.y, p1.y, seriesColor, height, width)
+				// Same column - draw vertical line
+				drawVerticalLine(canvas, p0.x, p0.y, p1.y, seriesColor, height, width)
 			} else if p0.y == p1.y {
-				// Same Y - draw horizontal line
-				for x := p0.x; x <= p1.x; x++ {
-					setCell(canvas, x, p0.y, '─', seriesColor, height, width)
-				}
+				// Same row - draw horizontal line
+				drawHorizontalLine(canvas, p0.x, p1.x, p0.y, seriesColor, height, width)
 			} else {
-				// Both X and Y change
-				// Strategy: horizontal line then vertical transition
-				// Draw horizontal from p0.x to p1.x-1
-				for x := p0.x; x < p1.x; x++ {
-					setCell(canvas, x, p0.y, '─', seriesColor, height, width)
+				// Both X and Y change - draw curve
+				// Determine transition point based on direction
+				var transitionX int
+				var curveStartFromLeft, curveStartFromRight bool
+				var curveEndToLeft, curveEndToRight bool
+
+				if goingRight {
+					// Moving right: transition in the middle-right
+					transitionX = p1.x - 1
+					if transitionX <= p0.x {
+						transitionX = p0.x
+					}
+					curveStartFromLeft = true
+					curveEndToRight = true
+				} else {
+					// Moving left: transition in the middle-left
+					transitionX = p0.x - 1
+					if transitionX <= p1.x {
+						transitionX = p1.x
+					}
+					curveStartFromRight = true
+					curveEndToLeft = true
 				}
-				// Draw vertical transition at p1.x-1 (or p1.x if adjacent)
-				transitionX := p1.x - 1
-				if transitionX < p0.x {
-					transitionX = p0.x
+
+				// Draw horizontal segment before curve
+				if goingRight {
+					for x := p0.x; x < transitionX; x++ {
+						if x == p0.x {
+							addConnection(canvas, x, p0.y, dirRight, seriesColor, height, width)
+						} else {
+							addConnection(canvas, x, p0.y, dirLeft|dirRight, seriesColor, height, width)
+						}
+					}
+				} else {
+					for x := p1.x; x < transitionX; x++ {
+						if x == p1.x {
+							addConnection(canvas, x, p1.y, dirRight, seriesColor, height, width)
+						} else {
+							addConnection(canvas, x, p1.y, dirLeft|dirRight, seriesColor, height, width)
+						}
+					}
 				}
-				drawVerticalTransition(canvas, transitionX, p0.y, p1.y, seriesColor, height, width)
+
+				// Draw curve at transitionX
+				if goingDown {
+					// Going down
+					if curveStartFromLeft {
+						// ╮: from left, curves down
+						addConnection(canvas, transitionX, p0.y, dirLeft|dirDown, seriesColor, height, width)
+					} else if curveStartFromRight {
+						// ╯: from right, curves down
+						addConnection(canvas, transitionX, p0.y, dirRight|dirDown, seriesColor, height, width)
+					}
+					// Vertical segment
+					for y := p0.y + 1; y < p1.y; y++ {
+						addConnection(canvas, transitionX, y, dirUp|dirDown, seriesColor, height, width)
+					}
+					if curveEndToRight {
+						// ╰: from up, curves right
+						addConnection(canvas, transitionX, p1.y, dirUp|dirRight, seriesColor, height, width)
+					} else if curveEndToLeft {
+						// ╭: from up, curves left
+						addConnection(canvas, transitionX, p1.y, dirUp|dirLeft, seriesColor, height, width)
+					}
+				} else {
+					// Going up
+					if curveStartFromLeft {
+						// ╯: from left, curves up
+						addConnection(canvas, transitionX, p0.y, dirLeft|dirUp, seriesColor, height, width)
+					} else if curveStartFromRight {
+						// ╮: from right, curves up
+						addConnection(canvas, transitionX, p0.y, dirRight|dirUp, seriesColor, height, width)
+					}
+					// Vertical segment
+					for y := p1.y + 1; y < p0.y; y++ {
+						addConnection(canvas, transitionX, y, dirUp|dirDown, seriesColor, height, width)
+					}
+					if curveEndToRight {
+						// ╭: from down, curves right
+						addConnection(canvas, transitionX, p1.y, dirDown|dirRight, seriesColor, height, width)
+					} else if curveEndToLeft {
+						// ╰: from down, curves left
+						addConnection(canvas, transitionX, p1.y, dirDown|dirLeft, seriesColor, height, width)
+					}
+				}
+
+				// Draw horizontal segment after curve
+				if goingRight {
+					for x := transitionX + 1; x <= p1.x; x++ {
+						if x == p1.x {
+							addConnection(canvas, x, p1.y, dirLeft, seriesColor, height, width)
+						} else {
+							addConnection(canvas, x, p1.y, dirLeft|dirRight, seriesColor, height, width)
+						}
+					}
+				} else {
+					for x := transitionX + 1; x <= p0.x; x++ {
+						if x == p0.x {
+							addConnection(canvas, x, p0.y, dirLeft, seriesColor, height, width)
+						} else {
+							addConnection(canvas, x, p0.y, dirLeft|dirRight, seriesColor, height, width)
+						}
+					}
+				}
 			}
 		}
 	}
@@ -299,12 +471,13 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 		// Plot row
 		for col := 0; col < width; col++ {
 			cell := canvas[row][col]
-			if cell.char != 0 && cell.color > 0 {
+			char := connectionsToChar(cell.connections)
+			if char != ' ' && cell.color > 0 {
 				result.WriteString(ansiColor(cell.color))
-				result.WriteRune(cell.char)
+				result.WriteRune(char)
 				result.WriteString(ansiReset())
-			} else if cell.char != 0 {
-				result.WriteRune(cell.char)
+			} else if char != ' ' {
+				result.WriteRune(char)
 			} else {
 				result.WriteRune(' ')
 			}
@@ -342,47 +515,4 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 	result.WriteString("\n")
 
 	return String(result.String())
-}
-
-// setCell sets a cell on the canvas
-func setCell(canvas [][]plotCell, x, y int, char rune, color int, height, width int) {
-	if x < 0 || x >= width || y < 0 || y >= height {
-		return
-	}
-	canvas[y][x] = plotCell{char: char, color: color}
-}
-
-// drawVerticalTransition draws a vertical transition with arc characters
-//
-// Arc characters and their correct usage:
-//
-//	╯ : 线在右边和下边 - 从左边来，向上弯
-//	╰ : 线在左边和下边 - 从上边来，向右弯
-//	╭ : 线在左边和上边 - 从下边来，向右弯
-//	╮ : 线在右边和上边 - 从左边来，向下弯
-func drawVerticalTransition(canvas [][]plotCell, x, y0, y1, color int, height, width int) {
-	if y0 == y1 {
-		setCell(canvas, x, y0, '─', color, height, width)
-		return
-	}
-
-	if y0 > y1 {
-		// Going up on canvas (y decreasing, value increasing)
-		// Start: horizontal from left, then curve UP → ╯
-		// End: vertical from BELOW (larger y), curve right → ╭
-		setCell(canvas, x, y0, '╯', color, height, width)
-		setCell(canvas, x, y1, '╭', color, height, width)
-		for y := y1 + 1; y < y0; y++ {
-			setCell(canvas, x, y, '│', color, height, width)
-		}
-	} else {
-		// Going down on canvas (y increasing, value decreasing)
-		// Start: horizontal from left, then curve DOWN → ╮
-		// End: vertical from ABOVE (smaller y), curve right → ╰
-		setCell(canvas, x, y0, '╮', color, height, width)
-		setCell(canvas, x, y1, '╰', color, height, width)
-		for y := y0 + 1; y < y1; y++ {
-			setCell(canvas, x, y, '│', color, height, width)
-		}
-	}
 }
