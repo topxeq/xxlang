@@ -360,17 +360,22 @@ func drawVerticalTransition(canvas [][]plotCell, x, y0, y1, color int, height, w
 	}
 
 	// Draw arc at start and end, fill middle with vertical lines
+	// Use curved arc characters: ╭╮╯╰
 	if y0 > y1 {
-		// Going up on canvas
-		setCell(canvas, x, y0, '┘', color, height, width)
-		setCell(canvas, x, y1, '└', color, height, width)
+		// Going up on canvas (value increasing)
+		// Start: coming from left, going up → ╯
+		// End: came from below, going right → ╰
+		setCell(canvas, x, y0, '╯', color, height, width)
+		setCell(canvas, x, y1, '╰', color, height, width)
 		for y := y1 + 1; y < y0; y++ {
 			setCell(canvas, x, y, '│', color, height, width)
 		}
 	} else {
-		// Going down on canvas
-		setCell(canvas, x, y0, '┐', color, height, width)
-		setCell(canvas, x, y1, '┌', color, height, width)
+		// Going down on canvas (value decreasing)
+		// Start: coming from left, going down → ╮
+		// End: came from above, going right → ╭
+		setCell(canvas, x, y0, '╮', color, height, width)
+		setCell(canvas, x, y1, '╭', color, height, width)
 		for y := y0 + 1; y < y1; y++ {
 			setCell(canvas, x, y, '│', color, height, width)
 		}
