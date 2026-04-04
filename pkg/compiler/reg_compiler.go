@@ -2148,6 +2148,17 @@ func (c *RegCompiler) compileCallExpression(n *parser.CallExpression) (int, erro
 			return 0, err
 		}
 
+		// IMPORTANT: Save objReg to a dedicated safe register (R254) that won't be
+		// reused by temp register allocation. This is critical because compiling
+		// arguments may allocate many temp registers, and we need to ensure objReg
+		// is not overwritten.
+		const safeObjReg = 254 // Use R254 as safe register for method receiver
+		c.emitRegMove(safeObjReg, objReg)
+		// Free the original objReg if it was a temp register
+		if objReg >= FirstLocalRegister && objReg < NumRegisters-1 {
+			c.freeTempReg(objReg)
+		}
+
 		// First, compile all arguments to temporary registers
 		argRegs := make([]int, len(n.Arguments))
 		for i, arg := range n.Arguments {
@@ -2164,7 +2175,8 @@ func (c *RegCompiler) compileCallExpression(n *parser.CallExpression) (int, erro
 			argRegs[i] = argReg
 		}
 
-		// Now move all arguments to their final positions (R0-R7)
+		// Now move all arguments to their final positions (R0, R1, R2, ...)
+		// Note: We don't limit to R0-R7, we use as many registers as needed
 		for i, argReg := range argRegs {
 			if argReg != i {
 				c.emitRegMove(i, argReg)
@@ -2181,9 +2193,8 @@ func (c *RegCompiler) compileCallExpression(n *parser.CallExpression) (int, erro
 		// Get method name constant
 		nameIdx := c.addConstant(objects.InternString(dot.Property.Value))
 
-		// Emit method call
-		c.emitRegCallMethod(objReg, nameIdx, len(n.Arguments))
-		c.freeTempReg(objReg)
+		// Emit method call with the safe register
+		c.emitRegCallMethod(safeObjReg, nameIdx, len(n.Arguments))
 
 		return ReturnRegister, nil
 	}
