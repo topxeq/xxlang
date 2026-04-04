@@ -160,6 +160,14 @@ func connectionsToChar(conn uint8) rune {
 		return '┴' // line at up, left, right - down side is open
 	case dirDown | dirLeft | dirRight:
 		return '┬' // line at down, left, right - up side is open
+	case dirDown:
+		return '╵' // only down
+	case dirUp:
+		return '╷' // only up
+	case dirLeft:
+		return '╶' // only left
+	case dirRight:
+		return '╴' // only right
 	default:
 		return ' ' // no connections or invalid combination
 	}
