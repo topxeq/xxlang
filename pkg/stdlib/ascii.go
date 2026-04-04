@@ -16,21 +16,6 @@ func init() {
 	Register(&Module{
 		Name: "ascii",
 		Exports: map[string]objects.Object{
-			// plotDataToStr renders numeric series as ASCII plot string with colored curves.
-			// Usage: plotDataToStr(data, options...)
-			// data: array of arrays containing numeric values (multiple series)
-			// options:
-			//   -caption=string      : chart title
-			//   -width=int          : plot width (default: 60)
-			//   -height=int         : plot height (default: 10)
-			//   -min=float          : minimum value on Y axis
-			//   -max=float          : maximum value on Y axis
-			//   -offset=int         : left offset for labels (default: 5)
-			//   -precision=int      : decimal precision for labels (default: 2)
-			//   -captionColor=int   : ANSI color code for caption
-			//   -axisColor=int      : ANSI color code for axis
-			//   -labelColor=int     : ANSI color code for labels
-			//   -seriesColor=string : comma-separated ANSI color codes for series
 			"plotDataToStr": BuiltinFunc(asciiPlotDataToStr),
 		},
 	})
@@ -130,47 +115,23 @@ func ansiReset() string {
 	return "\x1b[0m"
 }
 
-// plotCell represents a cell in the plot canvas with character and color
+// plotCell represents a cell in the plot canvas
 type plotCell struct {
 	char  rune
-	color int // ANSI color code, 0 means default
+	color int
 }
 
-// charSet holds the characters used for drawing
-type charSet struct {
-	Horizontal    rune
-	Vertical      rune
-	ArcUpLeft     rune // ┘
-	ArcUpRight    rune // └
-	ArcDownLeft   rune // ┐
-	ArcDownRight  rune // ┌
-}
-
-// defaultCharSet returns the default character set for drawing
-func defaultCharSet() charSet {
-	return charSet{
-		Horizontal:    '─',
-		Vertical:      '│',
-		ArcUpLeft:     '┘',
-		ArcUpRight:    '└',
-		ArcDownLeft:   '┐',
-		ArcDownRight:  '┌',
-	}
-}
-
-// asciiPlotDataToStr implements the plotDataToStr function with continuous curves
+// asciiPlotDataToStr implements the plotDataToStr function
 func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 	if len(args) < 1 {
 		return Error("plotDataToStr requires at least 1 argument")
 	}
 
-	// Parse data series
 	dataArr, ok := args[0].(*objects.Array)
 	if !ok {
 		return Error("first argument must be an array of arrays")
 	}
 
-	// Parse options
 	cfg := parsePlotOptions(args)
 
 	// Convert data to float slices
@@ -212,128 +173,69 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 		}
 	}
 
-	// Prevent division by zero
 	if cfg.maxVal == cfg.minVal {
 		cfg.maxVal = cfg.minVal + 1
 	}
 
 	height := cfg.height
 	width := cfg.width
-	charSet := defaultCharSet()
 
-	// Create the plot canvas with cells
+	// Create canvas
 	canvas := make([][]plotCell, height)
 	for i := range canvas {
 		canvas[i] = make([]plotCell, width)
-		for j := range canvas[i] {
-			canvas[i][j] = plotCell{char: ' ', color: 0}
-		}
 	}
 
-	// Plot each series
+	// Plot each series using asciigraph-style algorithm
 	for seriesIdx, s := range series {
 		if len(s) < 2 {
 			continue
 		}
 
-		// Get color for this series
 		seriesColor := 0
 		if len(cfg.seriesColors) > seriesIdx {
 			seriesColor = cfg.seriesColors[seriesIdx]
 		}
 
-		// Calculate Y positions for all data points
 		n := len(s)
-		yPositions := make([]int, n)
+
+		// Map each data point to a canvas position
+		// X position: spread across width
+		// Y position: map value to row (inverted)
+		type pt struct {
+			x, y int
+		}
+		points := make([]pt, n)
 		for i, v := range s {
-			// Map value to Y position (0 = bottom, height-1 = top)
-			yFloat := (v - cfg.minVal) / (cfg.maxVal - cfg.minVal) * float64(height-1)
-			yPos := int(math.Round(yFloat))
+			// X: distribute across width
+			points[i].x = int(float64(i) * float64(width-1) / float64(n-1))
+			if points[i].x >= width {
+				points[i].x = width - 1
+			}
+
+			// Y: map value to row (0 at top, height-1 at bottom)
+			yNorm := (v - cfg.minVal) / (cfg.maxVal - cfg.minVal)
+			yPos := int(yNorm * float64(height-1))
 			if yPos < 0 {
 				yPos = 0
 			}
 			if yPos >= height {
 				yPos = height - 1
 			}
-			// Convert to canvas row (0 = top)
-			yPositions[i] = height - 1 - yPos
+			// Invert: canvas row 0 is top
+			points[i].y = height - 1 - yPos
 		}
 
-		// Draw the curve using linear interpolation for smooth curves
-		// Map data indices to column positions across the full width
+		// Draw lines between consecutive points using Bresenham-like interpolation
 		for i := 0; i < n-1; i++ {
-			y0 := yPositions[i]
-			y1 := yPositions[i+1]
-
-			// Calculate x positions spread across the width
-			x0 := int(float64(i) * float64(width-1) / float64(n-1))
-			x1 := int(float64(i+1) * float64(width-1) / float64(n-1))
-
-			// Draw horizontal line if same Y level
-			if y0 == y1 {
-				for x := x0; x <= x1; x++ {
-					setCell(canvas, x, y0, charSet.Horizontal, seriesColor)
-				}
-			} else {
-				// Draw curve with arcs
-				// Determine arc characters based on direction
-				var topChar, bottomChar rune
-				var topY, bottomY int
-
-				if y0 < y1 {
-					// Going down on canvas
-					topChar = charSet.ArcDownLeft
-					bottomChar = charSet.ArcUpRight
-					topY = y0
-					bottomY = y1
-				} else {
-					// Going up on canvas
-					topChar = charSet.ArcUpLeft
-					bottomChar = charSet.ArcDownRight
-					topY = y1
-					bottomY = y0
-				}
-
-				// Draw horizontal segment before vertical transition
-				if x0 < x1-1 {
-					for x := x0; x < x1-1; x++ {
-						setCell(canvas, x, y0, charSet.Horizontal, seriesColor)
-					}
-				}
-
-				// Draw the arc transition at the last column before x1
-				transitionX := x1 - 1
-				if transitionX < x0 {
-					transitionX = x0
-				}
-
-				setCell(canvas, transitionX, topY, topChar, seriesColor)
-				setCell(canvas, transitionX, bottomY, bottomChar, seriesColor)
-
-				// Fill vertical space between
-				for y := topY + 1; y < bottomY; y++ {
-					setCell(canvas, transitionX, y, charSet.Vertical, seriesColor)
-				}
-			}
-		}
-
-		// Draw the last point
-		if n > 0 {
-			lastY := yPositions[n-1]
-			lastX := int(float64(n-1) * float64(width-1) / float64(n-1))
-			if lastX >= width {
-				lastX = width - 1
-			}
-			if canvas[lastY][lastX].char == ' ' {
-				setCell(canvas, lastX, lastY, charSet.Horizontal, seriesColor)
-			}
+			drawLine(canvas, points[i].x, points[i].y, points[i+1].x, points[i+1].y, seriesColor, height, width)
 		}
 	}
 
-	// Build the output string
+	// Build output
 	var result strings.Builder
 
-	// Add caption
+	// Caption
 	if cfg.caption != "" {
 		if cfg.captionColor > 0 {
 			result.WriteString(ansiColor(cfg.captionColor))
@@ -345,9 +247,9 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 		result.WriteString("\n")
 	}
 
-	// Render Y axis and plot content
+	// Y-axis and plot content
 	for row := 0; row < height; row++ {
-		// Y-axis label
+		// Label
 		val := cfg.maxVal - float64(row)*(cfg.maxVal-cfg.minVal)/float64(height-1)
 		if cfg.labelColor > 0 {
 			result.WriteString(ansiColor(cfg.labelColor))
@@ -357,7 +259,7 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 			result.WriteString(ansiReset())
 		}
 
-		// Y-axis line
+		// Axis
 		if cfg.axisColor > 0 {
 			result.WriteString(ansiColor(cfg.axisColor))
 		}
@@ -366,15 +268,17 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 			result.WriteString(ansiReset())
 		}
 
-		// Plot content with colors
+		// Plot row
 		for col := 0; col < width; col++ {
 			cell := canvas[row][col]
-			if cell.char != ' ' && cell.color > 0 {
+			if cell.char != 0 && cell.color > 0 {
 				result.WriteString(ansiColor(cell.color))
 				result.WriteRune(cell.char)
 				result.WriteString(ansiReset())
-			} else {
+			} else if cell.char != 0 {
 				result.WriteRune(cell.char)
+			} else {
+				result.WriteRune(' ')
 			}
 		}
 		result.WriteString("\n")
@@ -412,10 +316,132 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 	return String(result.String())
 }
 
-// setCell sets a cell in the canvas
-func setCell(canvas [][]plotCell, x, y int, char rune, color int) {
-	if y < 0 || y >= len(canvas) || x < 0 || x >= len(canvas[0]) {
+// drawLine draws a line between two points on the canvas
+func drawLine(canvas [][]plotCell, x0, y0, x1, y1, color, height, width int) {
+	dx := abs(x1 - x0)
+	dy := abs(y1 - y0)
+
+	// Determine direction
+	sx := 1
+	if x1 < x0 {
+		sx = -1
+	}
+	sy := 1
+	if y1 < y0 {
+		sy = -1
+	}
+
+	x, y := x0, y0
+
+	if dx == 0 {
+		// Vertical line
+		for {
+			setCellChar(canvas, x, y, '│', color, height, width)
+			if y == y1 {
+				break
+			}
+			y += sy
+		}
+	} else if dy == 0 {
+		// Horizontal line
+		for {
+			setCellChar(canvas, x, y, '─', color, height, width)
+			if x == x1 {
+				break
+			}
+			x += sx
+		}
+	} else {
+		// Diagonal - use Bresenham-like algorithm with curve characters
+		// We'll draw a path that goes mostly horizontal, then vertical (or vice versa)
+
+		// Decide whether to go horizontal-first or vertical-first based on slope
+		if dx >= dy {
+			// More horizontal - go horizontal then vertical
+			err := 0
+			for x != x1 {
+				setCellChar(canvas, x, y, '─', color, height, width)
+				x += sx
+				err += dy
+				if err >= dx {
+					// Need to move vertically - draw corner
+					err -= dx
+					// Determine corner character
+					var corner rune
+					if sy > 0 {
+						// Going down on canvas
+						if sx > 0 {
+							corner = '┐' // right then down
+						} else {
+							corner = '┌' // left then down
+						}
+					} else {
+						// Going up on canvas
+						if sx > 0 {
+							corner = '┘' // right then up
+						} else {
+							corner = '└' // left then up
+						}
+					}
+					setCellChar(canvas, x, y, corner, color, height, width)
+					y += sy
+				}
+			}
+			// Finish vertical segment if needed
+			for y != y1 {
+				setCellChar(canvas, x, y, '│', color, height, width)
+				y += sy
+			}
+			setCellChar(canvas, x, y, '─', color, height, width)
+		} else {
+			// More vertical - go vertical then horizontal
+			err := 0
+			for y != y1 {
+				setCellChar(canvas, x, y, '│', color, height, width)
+				y += sy
+				err += dx
+				if err >= dy {
+					err -= dy
+					// Draw corner
+					var corner rune
+					if sy > 0 {
+						if sx > 0 {
+							corner = '└' // down then right
+						} else {
+							corner = '┘' // down then left
+						}
+					} else {
+						if sx > 0 {
+							corner = '┌' // up then right
+						} else {
+							corner = '┐' // up then left
+						}
+					}
+					setCellChar(canvas, x, y, corner, color, height, width)
+					x += sx
+				}
+			}
+			for x != x1 {
+				setCellChar(canvas, x, y, '─', color, height, width)
+				x += sx
+			}
+			setCellChar(canvas, x, y, '│', color, height, width)
+		}
+	}
+}
+
+// setCellChar sets a character on the canvas
+func setCellChar(canvas [][]plotCell, x, y int, char rune, color int, height, width int) {
+	if x < 0 || x >= width || y < 0 || y >= height {
 		return
 	}
 	canvas[y][x] = plotCell{char: char, color: color}
+}
+
+// abs returns absolute value
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
 }
