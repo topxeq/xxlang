@@ -1,7 +1,5 @@
 // pkg/stdlib/ascii.go
 // ASCII plotting module for the Xxlang standard library.
-// This module provides ASCII chart plotting functionality without external dependencies.
-// Implements continuous curve plotting based on asciigraph algorithm.
 package stdlib
 
 import (
@@ -21,7 +19,6 @@ func init() {
 	})
 }
 
-// plotConfig holds the configuration for ASCII plotting
 type plotConfig struct {
 	width        int
 	height       int
@@ -36,35 +33,21 @@ type plotConfig struct {
 	seriesColors []int
 }
 
-// defaultConfig returns default plot configuration
 func defaultConfig() plotConfig {
 	return plotConfig{
-		width:        60,
-		height:       10,
-		minVal:       math.NaN(),
-		maxVal:       math.NaN(),
-		offset:       5,
-		precision:    2,
-		caption:      "",
-		captionColor: 0,
-		axisColor:    0,
-		labelColor:   0,
-		seriesColors: nil,
+		width: 60, height: 7, minVal: math.NaN(), maxVal: math.NaN(),
+		offset: 5, precision: 2,
 	}
 }
 
-// parsePlotOptions parses options from arguments
 func parsePlotOptions(args []objects.Object) plotConfig {
 	cfg := defaultConfig()
-
 	for i := 1; i < len(args); i++ {
 		arg, ok := args[i].(*objects.String)
 		if !ok {
 			continue
 		}
-
 		opt := arg.Value
-
 		if strings.HasPrefix(opt, "-caption=") {
 			cfg.caption = strings.TrimPrefix(opt, "-caption=")
 		} else if strings.HasPrefix(opt, "-width=") {
@@ -87,8 +70,7 @@ func parsePlotOptions(args []objects.Object) plotConfig {
 			fmt.Sscanf(opt, "-labelColor=%d", &cfg.labelColor)
 		} else if strings.HasPrefix(opt, "-seriesColor=") {
 			colorStr := strings.TrimPrefix(opt, "-seriesColor=")
-			colors := strings.Split(colorStr, ",")
-			for _, c := range colors {
+			for _, c := range strings.Split(colorStr, ",") {
 				c = strings.TrimSpace(c)
 				if c != "" {
 					var color int
@@ -98,11 +80,9 @@ func parsePlotOptions(args []objects.Object) plotConfig {
 			}
 		}
 	}
-
 	return cfg
 }
 
-// ansiColor returns ANSI color escape sequence
 func ansiColor(code int) string {
 	if code <= 0 {
 		return ""
@@ -110,32 +90,20 @@ func ansiColor(code int) string {
 	return fmt.Sprintf("\x1b[38;5;%dm", code)
 }
 
-// ansiReset returns ANSI reset sequence
-func ansiReset() string {
-	return "\x1b[0m"
-}
+func ansiReset() string { return "\x1b[0m" }
 
-// direction constants for line connections
 const (
-	dirUp    uint8 = 1
-	dirDown  uint8 = 2
-	dirLeft  uint8 = 4
-	dirRight uint8 = 8
+	dirUp uint8 = 1 << iota
+	dirDown
+	dirLeft
+	dirRight
 )
 
-// plotCell represents a cell in the plot canvas
-// Uses direction flags to track which lines pass through this cell
 type plotCell struct {
-	connections uint8 // bitmask of directions that have lines
+	connections uint8
 	color       int
 }
 
-// connectionsToChar converts connection directions to the appropriate character
-// Arc characters (based on Unicode box drawing):
-//   ╭ : lines at right and down - curves from right-to-down or down-to-right
-//   ╮ : lines at left and down - curves from left-to-down or down-to-left
-//   ╰ : lines at right and up - curves from right-to-up or up-to-right
-//   ╯ : lines at left and up - curves from left-to-up or up-to-left
 func connectionsToChar(conn uint8) rune {
 	switch conn {
 	case dirLeft | dirRight:
@@ -143,88 +111,51 @@ func connectionsToChar(conn uint8) rune {
 	case dirUp | dirDown:
 		return '│'
 	case dirLeft | dirDown:
-		return '╮' // from left, curves down
+		return '╮'
 	case dirLeft | dirUp:
-		return '╯' // from left, curves up
+		return '╯'
 	case dirRight | dirDown:
-		return '╭' // from right, curves down
+		return '╭'
 	case dirRight | dirUp:
-		return '╰' // from right, curves up
+		return '╰'
 	case dirUp | dirDown | dirLeft | dirRight:
 		return '┼'
 	case dirUp | dirDown | dirLeft:
-		return '┤' // line at up, down, left - right side is open
+		return '┤'
 	case dirUp | dirDown | dirRight:
-		return '├' // line at up, down, right - left side is open
+		return '├'
 	case dirUp | dirLeft | dirRight:
-		return '┴' // line at up, left, right - down side is open
+		return '┴'
 	case dirDown | dirLeft | dirRight:
-		return '┬' // line at down, left, right - up side is open
+		return '┬'
 	case dirDown:
-		return '╵' // only down
+		return '╵'
 	case dirUp:
-		return '╷' // only up
+		return '╷'
 	case dirLeft:
-		return '╶' // only left
+		return '╶'
 	case dirRight:
-		return '╴' // only right
+		return '╴'
 	default:
-		return ' ' // no connections or invalid combination
+		return ' '
 	}
 }
 
-// addConnection adds a connection direction to a cell
-func addConnection(canvas [][]plotCell, x, y int, dir uint8, color int, height, width int) {
-	if x < 0 || x >= width || y < 0 || y >= height {
+func setCell(canvas [][]plotCell, x, y int, dir uint8, color int, h, w int) {
+	if x < 0 || x >= w || y < 0 || y >= h {
 		return
 	}
-	cell := canvas[y][x]
-	isNew := cell.connections == 0
-	cell.connections |= dir
-	if isNew {
-		cell.color = color
+	c := &canvas[y][x]
+	if c.connections == 0 {
+		c.color = color
 	}
-	canvas[y][x] = cell
+	c.connections |= dir
 }
 
-// drawHorizontalLine draws a horizontal line from x0 to x1 at row y
-func drawHorizontalLine(canvas [][]plotCell, x0, x1, y int, color int, height, width int) {
-	if x0 > x1 {
-		x0, x1 = x1, x0
-	}
-	for x := x0; x <= x1; x++ {
-		if x == x0 {
-			addConnection(canvas, x, y, dirRight, color, height, width)
-		} else if x == x1 {
-			addConnection(canvas, x, y, dirLeft, color, height, width)
-		} else {
-			addConnection(canvas, x, y, dirLeft|dirRight, color, height, width)
-		}
-	}
-}
-
-// drawVerticalLine draws a vertical line from y0 to y1 at column x
-func drawVerticalLine(canvas [][]plotCell, x, y0, y1 int, color int, height, width int) {
-	if y0 > y1 {
-		y0, y1 = y1, y0
-	}
-	for y := y0; y <= y1; y++ {
-		if y == y0 {
-			addConnection(canvas, x, y, dirDown, color, height, width)
-		} else if y == y1 {
-			addConnection(canvas, x, y, dirUp, color, height, width)
-		} else {
-			addConnection(canvas, x, y, dirUp|dirDown, color, height, width)
-		}
-	}
-}
-
-// asciiPlotDataToStr implements the plotDataToStr function
 func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 	if len(args) < 1 {
 		return Error("plotDataToStr requires at least 1 argument")
 	}
-
 	dataArr, ok := args[0].(*objects.Array)
 	if !ok {
 		return Error("first argument must be an array of arrays")
@@ -232,212 +163,139 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 
 	cfg := parsePlotOptions(args)
 
-	// Convert data to float slices
 	var series [][]float64
 	for _, elem := range dataArr.Elements {
-		seriesArr, ok := elem.(*objects.Array)
+		arr, ok := elem.(*objects.Array)
 		if !ok {
 			continue
 		}
 		var floats []float64
-		for _, val := range seriesArr.Elements {
-			switch v := val.(type) {
+		for _, v := range arr.Elements {
+			switch x := v.(type) {
 			case *objects.Int:
-				floats = append(floats, float64(v.Value))
+				floats = append(floats, float64(x.Value))
 			case *objects.Float:
-				floats = append(floats, v.Value)
+				floats = append(floats, x.Value)
 			}
 		}
 		if len(floats) > 0 {
 			series = append(series, floats)
 		}
 	}
-
 	if len(series) == 0 {
 		return Error("no valid data series")
 	}
 
-	// Calculate min/max if not specified
+	// Calculate min/max
 	if math.IsNaN(cfg.minVal) || math.IsNaN(cfg.maxVal) {
+		cfg.minVal = series[0][0]
+		cfg.maxVal = series[0][0]
 		for _, s := range series {
 			for _, v := range s {
-				if math.IsNaN(cfg.minVal) || v < cfg.minVal {
+				if v < cfg.minVal {
 					cfg.minVal = v
 				}
-				if math.IsNaN(cfg.maxVal) || v > cfg.maxVal {
+				if v > cfg.maxVal {
 					cfg.maxVal = v
 				}
 			}
 		}
 	}
-
 	if cfg.maxVal == cfg.minVal {
 		cfg.maxVal = cfg.minVal + 1
 	}
 
-	height := cfg.height
-	width := cfg.width
-
-	// Create canvas
-	canvas := make([][]plotCell, height)
-	for i := range canvas {
-		canvas[i] = make([]plotCell, width)
+	// Calculate width based on max number of segments across all series
+	maxSegs := 0
+	for _, s := range series {
+		if len(s)-1 > maxSegs {
+			maxSegs = len(s) - 1
+		}
+	}
+	if maxSegs < cfg.width {
+		maxSegs = cfg.width
 	}
 
-	// Plot each series
+	h, w := cfg.height, maxSegs
+	canvas := make([][]plotCell, h)
+	for i := range canvas {
+		canvas[i] = make([]plotCell, w)
+	}
+
 	for seriesIdx, s := range series {
 		if len(s) < 2 {
 			continue
 		}
-
-		seriesColor := 0
+		color := 0
 		if len(cfg.seriesColors) > seriesIdx {
-			seriesColor = cfg.seriesColors[seriesIdx]
+			color = cfg.seriesColors[seriesIdx]
 		}
 
 		n := len(s)
-
-		// Map each data point to canvas positions
-		type pt struct {
-			x, y int
-		}
-		points := make([]pt, n)
+		rows := make([]int, n)
 		for i, v := range s {
-			// X: distribute across width
-			points[i].x = int(float64(i) * float64(width-1) / float64(n-1))
-			if points[i].x >= width {
-				points[i].x = width - 1
-			}
-
-			// Y: map value to row (row 0 is top)
-			yNorm := (v - cfg.minVal) / (cfg.maxVal - cfg.minVal)
-			yPos := int(yNorm * float64(height-1))
-			if yPos < 0 {
-				yPos = 0
-			}
-			if yPos >= height {
-				yPos = height - 1
-			}
-			points[i].y = height - 1 - yPos
+			yn := (v - cfg.minVal) / (cfg.maxVal - cfg.minVal)
+			yp := int(yn * float64(h-1))
+			yp = max(0, min(h-1, yp))
+			rows[i] = h - 1 - yp // invert: max value at row 0 (top), min at row h-1 (bottom)
 		}
 
-		// Draw lines between consecutive points
+		// Charlang-style compact algorithm:
+		// Each segment i connects point i to point i+1, drawn in column i
+		// At each point, the incoming segment (col i-1) and outgoing segment (col i) both draw corners
+		// Between points, segments draw vertical lines
+
+		// First, draw all vertical lines for segments between their endpoints
 		for i := 0; i < n-1; i++ {
-			p0 := points[i]
-			p1 := points[i+1]
+			row1 := rows[i]
+			row2 := rows[i+1]
+			col := i
 
-			if p0.x == p1.x {
-				// Vertical line only
-				drawVerticalLine(canvas, p0.x, p0.y, p1.y, seriesColor, height, width)
-			} else if p0.y == p1.y {
-				// Horizontal line only
-				drawHorizontalLine(canvas, p0.x, p1.x, p0.y, seriesColor, height, width)
-			} else {
-				// Diagonal: draw horizontal then vertical with curve at junction
-				dx := p1.x - p0.x
-				dy := p1.y - p0.y
+			if row1 == row2 {
+				// Horizontal segment
+				setCell(canvas, col, row1, dirLeft|dirRight, color, h, w)
+				continue
+			}
 
-				// Determine curve position - one column from p0 in movement direction
-				curveX := p0.x + 1
-				if dx < 0 {
-					curveX = p0.x - 1
+			minR := min(row1, row2)
+			maxR := max(row1, row2)
+
+			// Draw vertical lines for rows strictly between the endpoints
+			for r := minR + 1; r < maxR; r++ {
+				setCell(canvas, col, r, dirUp|dirDown, color, h, w)
+			}
+		}
+
+		// Then, draw corners at each point
+		for i := 0; i < n; i++ {
+			r := rows[i]
+
+			// Draw corner for incoming segment (col i-1) if not the first point
+			// The corner direction depends on where the segment CAME FROM (rows[i-1])
+			if i > 0 {
+				col := i - 1
+				prevRow := rows[i-1]
+				if prevRow > r {
+					// Segment went UP (from lower row to higher row numerically, but visually from bottom to top)
+					// At the endpoint, connection comes from below, draw ╭ (dirDown|dirRight)
+					setCell(canvas, col, r, dirDown|dirRight, color, h, w)
+				} else if prevRow < r {
+					// Segment went DOWN (from higher row to lower row numerically, but visually from top to bottom)
+					// At the endpoint, connection comes from above, draw ╰ (dirUp|dirRight)
+					setCell(canvas, col, r, dirUp|dirRight, color, h, w)
 				}
+			}
 
-				// Check if there's actual horizontal line before/after curve
-				// hasHBefore: is there a horizontal line from p0.x to curveX? (p0.x != curveX)
-				// hasHAfter: is there a horizontal line from curveX to p1.x? (p1.x != curveX)
-				hasHBefore := (dx > 0 && p0.x < curveX) || (dx < 0 && p0.x > curveX)
-				hasHAfter := (dx > 0 && p1.x > curveX) || (dx < 0 && p1.x < curveX)
-
-				// Draw horizontal segment before curve
-				if dx > 0 {
-					for x := p0.x; x < curveX; x++ {
-						if x == p0.x {
-							addConnection(canvas, x, p0.y, dirRight, seriesColor, height, width)
-						} else {
-							addConnection(canvas, x, p0.y, dirLeft|dirRight, seriesColor, height, width)
-						}
-					}
-				} else {
-					for x := p0.x; x > curveX; x-- {
-						if x == p0.x {
-							addConnection(canvas, x, p0.y, dirLeft, seriesColor, height, width)
-						} else {
-							addConnection(canvas, x, p0.y, dirLeft|dirRight, seriesColor, height, width)
-						}
-					}
-				}
-
-				// Draw vertical segment with curve endpoints
-				if dy > 0 {
-					// Going down
-					topDir := dirDown
-					if hasHBefore {
-						if dx > 0 {
-							topDir |= dirLeft
-						} else {
-							topDir |= dirRight
-						}
-					}
-					addConnection(canvas, curveX, p0.y, topDir, seriesColor, height, width)
-
-					for y := p0.y + 1; y < p1.y; y++ {
-						addConnection(canvas, curveX, y, dirUp|dirDown, seriesColor, height, width)
-					}
-
-					bottomDir := dirUp
-					if hasHAfter {
-						if dx > 0 {
-							bottomDir |= dirRight
-						} else {
-							bottomDir |= dirLeft
-						}
-					}
-					addConnection(canvas, curveX, p1.y, bottomDir, seriesColor, height, width)
-				} else {
-					// Going up
-					bottomDir := dirUp
-					if hasHBefore {
-						if dx > 0 {
-							bottomDir |= dirLeft
-						} else {
-							bottomDir |= dirRight
-						}
-					}
-					addConnection(canvas, curveX, p0.y, bottomDir, seriesColor, height, width)
-
-					for y := p0.y - 1; y > p1.y; y-- {
-						addConnection(canvas, curveX, y, dirUp|dirDown, seriesColor, height, width)
-					}
-
-					topDir := dirDown
-					if hasHAfter {
-						if dx > 0 {
-							topDir |= dirRight
-						} else {
-							topDir |= dirLeft
-						}
-					}
-					addConnection(canvas, curveX, p1.y, topDir, seriesColor, height, width)
-				}
-
-				// Draw horizontal segment after curve
-				if dx > 0 {
-					for x := curveX + 1; x <= p1.x; x++ {
-						if x == p1.x {
-							addConnection(canvas, x, p1.y, dirLeft, seriesColor, height, width)
-						} else {
-							addConnection(canvas, x, p1.y, dirLeft|dirRight, seriesColor, height, width)
-						}
-					}
-				} else {
-					for x := curveX - 1; x >= p1.x; x-- {
-						if x == p1.x {
-							addConnection(canvas, x, p1.y, dirRight, seriesColor, height, width)
-						} else {
-							addConnection(canvas, x, p1.y, dirLeft|dirRight, seriesColor, height, width)
-						}
-					}
+			// Draw corner for outgoing segment (col i) if not the last point
+			if i < n-1 {
+				col := i
+				nextRow := rows[i+1]
+				if r < nextRow {
+					// Going DOWN (to lower value visually): draw ╮
+					setCell(canvas, col, r, dirLeft|dirDown, color, h, w)
+				} else if r > nextRow {
+					// Going UP (to higher value visually): draw ╯
+					setCell(canvas, col, r, dirLeft|dirUp, color, h, w)
 				}
 			}
 		}
@@ -445,8 +303,6 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 
 	// Build output
 	var result strings.Builder
-
-	// Caption
 	if cfg.caption != "" {
 		if cfg.captionColor > 0 {
 			result.WriteString(ansiColor(cfg.captionColor))
@@ -458,10 +314,8 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 		result.WriteString("\n")
 	}
 
-	// Y-axis and plot content
-	for row := 0; row < height; row++ {
-		// Label
-		val := cfg.maxVal - float64(row)*(cfg.maxVal-cfg.minVal)/float64(height-1)
+	for row := 0; row < h; row++ {
+		val := cfg.maxVal - float64(row)*(cfg.maxVal-cfg.minVal)/float64(h-1)
 		if cfg.labelColor > 0 {
 			result.WriteString(ansiColor(cfg.labelColor))
 		}
@@ -469,8 +323,6 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 		if cfg.labelColor > 0 {
 			result.WriteString(ansiReset())
 		}
-
-		// Axis
 		if cfg.axisColor > 0 {
 			result.WriteString(ansiColor(cfg.axisColor))
 		}
@@ -478,17 +330,15 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 		if cfg.axisColor > 0 {
 			result.WriteString(ansiReset())
 		}
-
-		// Plot row
-		for col := 0; col < width; col++ {
+		for col := 0; col < w; col++ {
 			cell := canvas[row][col]
-			char := connectionsToChar(cell.connections)
-			if char != ' ' && cell.color > 0 {
+			ch := connectionsToChar(cell.connections)
+			if ch != ' ' && cell.color > 0 {
 				result.WriteString(ansiColor(cell.color))
-				result.WriteRune(char)
+				result.WriteRune(ch)
 				result.WriteString(ansiReset())
-			} else if char != ' ' {
-				result.WriteRune(char)
+			} else if ch != ' ' {
+				result.WriteRune(ch)
 			} else {
 				result.WriteRune(' ')
 			}
@@ -496,29 +346,24 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 		result.WriteString("\n")
 	}
 
-	// X-axis
 	if cfg.axisColor > 0 {
 		result.WriteString(ansiColor(cfg.axisColor))
 	}
-	result.WriteString(strings.Repeat(" ", cfg.offset+1))
-	result.WriteString("└")
-	result.WriteString(strings.Repeat("─", width))
+	result.WriteString(strings.Repeat(" ", cfg.offset+1) + "└" + strings.Repeat("─", w))
 	if cfg.axisColor > 0 {
 		result.WriteString(ansiReset())
 	}
 	result.WriteString("\n")
 
-	// X-axis labels
-	result.WriteString(strings.Repeat(" ", cfg.offset+1))
-	result.WriteString("0")
-	if width > 2 {
-		labelInterval := width / 5
-		if labelInterval < 1 {
-			labelInterval = 1
+	result.WriteString(strings.Repeat(" ", cfg.offset+1) + "0")
+	if w > 2 {
+		li := w / 5
+		if li < 1 {
+			li = 1
 		}
-		for i := labelInterval; i <= width; i += labelInterval {
-			result.WriteString(strings.Repeat(" ", labelInterval-1))
-			if i <= width {
+		for i := li; i <= w; i += li {
+			result.WriteString(strings.Repeat(" ", li-1))
+			if i <= w {
 				result.WriteString(fmt.Sprintf("%d", i-1))
 			}
 		}
