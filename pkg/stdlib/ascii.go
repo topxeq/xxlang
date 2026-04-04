@@ -122,6 +122,7 @@ type plotCell struct {
 }
 
 // asciiPlotDataToStr implements the plotDataToStr function
+// Based on asciigraph algorithm: https://github.com/guptarohit/asciigraph
 func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 	if len(args) < 1 {
 		return Error("plotDataToStr requires at least 1 argument")
@@ -186,7 +187,7 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 		canvas[i] = make([]plotCell, width)
 	}
 
-	// Plot each series using asciigraph-style algorithm
+	// Plot each series using asciigraph algorithm
 	for seriesIdx, s := range series {
 		if len(s) < 2 {
 			continue
@@ -199,9 +200,9 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 
 		n := len(s)
 
-		// Map each data point to a canvas position
-		// X position: spread across width
-		// Y position: map value to row (inverted)
+		// Map each data point to canvas positions
+		// X: distribute across width
+		// Y: 0 = top, height-1 = bottom
 		type pt struct {
 			x, y int
 		}
@@ -213,7 +214,7 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 				points[i].x = width - 1
 			}
 
-			// Y: map value to row (0 at top, height-1 at bottom)
+			// Y: map value to row
 			yNorm := (v - cfg.minVal) / (cfg.maxVal - cfg.minVal)
 			yPos := int(yNorm * float64(height-1))
 			if yPos < 0 {
@@ -226,9 +227,36 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 			points[i].y = height - 1 - yPos
 		}
 
-		// Draw lines between consecutive points using Bresenham-like interpolation
+		// Draw lines between consecutive points
 		for i := 0; i < n-1; i++ {
-			drawLine(canvas, points[i].x, points[i].y, points[i+1].x, points[i+1].y, seriesColor, height, width)
+			p0 := points[i]
+			p1 := points[i+1]
+
+			// Draw horizontal segment from p0.x to just before transition
+			// Then draw vertical transition at the last column before p1.x
+
+			if p0.x == p1.x {
+				// Same column - just draw vertical transition
+				drawVerticalTransition(canvas, p0.x, p0.y, p1.y, seriesColor, height, width)
+			} else if p0.y == p1.y {
+				// Same Y - draw horizontal line
+				for x := p0.x; x <= p1.x; x++ {
+					setCell(canvas, x, p0.y, '─', seriesColor, height, width)
+				}
+			} else {
+				// Both X and Y change
+				// Strategy: horizontal line then vertical transition
+				// Draw horizontal from p0.x to p1.x-1
+				for x := p0.x; x < p1.x; x++ {
+					setCell(canvas, x, p0.y, '─', seriesColor, height, width)
+				}
+				// Draw vertical transition at p1.x-1 (or p1.x if adjacent)
+				transitionX := p1.x - 1
+				if transitionX < p0.x {
+					transitionX = p0.x
+				}
+				drawVerticalTransition(canvas, transitionX, p0.y, p1.y, seriesColor, height, width)
+			}
 		}
 	}
 
@@ -316,132 +344,35 @@ func asciiPlotDataToStr(args ...objects.Object) objects.Object {
 	return String(result.String())
 }
 
-// drawLine draws a line between two points on the canvas
-func drawLine(canvas [][]plotCell, x0, y0, x1, y1, color, height, width int) {
-	dx := abs(x1 - x0)
-	dy := abs(y1 - y0)
-
-	// Determine direction
-	sx := 1
-	if x1 < x0 {
-		sx = -1
-	}
-	sy := 1
-	if y1 < y0 {
-		sy = -1
-	}
-
-	x, y := x0, y0
-
-	if dx == 0 {
-		// Vertical line
-		for {
-			setCellChar(canvas, x, y, '│', color, height, width)
-			if y == y1 {
-				break
-			}
-			y += sy
-		}
-	} else if dy == 0 {
-		// Horizontal line
-		for {
-			setCellChar(canvas, x, y, '─', color, height, width)
-			if x == x1 {
-				break
-			}
-			x += sx
-		}
-	} else {
-		// Diagonal - use Bresenham-like algorithm with curve characters
-		// We'll draw a path that goes mostly horizontal, then vertical (or vice versa)
-
-		// Decide whether to go horizontal-first or vertical-first based on slope
-		if dx >= dy {
-			// More horizontal - go horizontal then vertical
-			err := 0
-			for x != x1 {
-				setCellChar(canvas, x, y, '─', color, height, width)
-				x += sx
-				err += dy
-				if err >= dx {
-					// Need to move vertically - draw corner
-					err -= dx
-					// Determine corner character
-					var corner rune
-					if sy > 0 {
-						// Going down on canvas
-						if sx > 0 {
-							corner = '┐' // right then down
-						} else {
-							corner = '┌' // left then down
-						}
-					} else {
-						// Going up on canvas
-						if sx > 0 {
-							corner = '┘' // right then up
-						} else {
-							corner = '└' // left then up
-						}
-					}
-					setCellChar(canvas, x, y, corner, color, height, width)
-					y += sy
-				}
-			}
-			// Finish vertical segment if needed
-			for y != y1 {
-				setCellChar(canvas, x, y, '│', color, height, width)
-				y += sy
-			}
-			setCellChar(canvas, x, y, '─', color, height, width)
-		} else {
-			// More vertical - go vertical then horizontal
-			err := 0
-			for y != y1 {
-				setCellChar(canvas, x, y, '│', color, height, width)
-				y += sy
-				err += dx
-				if err >= dy {
-					err -= dy
-					// Draw corner
-					var corner rune
-					if sy > 0 {
-						if sx > 0 {
-							corner = '└' // down then right
-						} else {
-							corner = '┘' // down then left
-						}
-					} else {
-						if sx > 0 {
-							corner = '┌' // up then right
-						} else {
-							corner = '┐' // up then left
-						}
-					}
-					setCellChar(canvas, x, y, corner, color, height, width)
-					x += sx
-				}
-			}
-			for x != x1 {
-				setCellChar(canvas, x, y, '─', color, height, width)
-				x += sx
-			}
-			setCellChar(canvas, x, y, '│', color, height, width)
-		}
-	}
-}
-
-// setCellChar sets a character on the canvas
-func setCellChar(canvas [][]plotCell, x, y int, char rune, color int, height, width int) {
+// setCell sets a cell on the canvas
+func setCell(canvas [][]plotCell, x, y int, char rune, color int, height, width int) {
 	if x < 0 || x >= width || y < 0 || y >= height {
 		return
 	}
 	canvas[y][x] = plotCell{char: char, color: color}
 }
 
-// abs returns absolute value
-func abs(n int) int {
-	if n < 0 {
-		return -n
+// drawVerticalTransition draws a vertical transition with arc characters
+func drawVerticalTransition(canvas [][]plotCell, x, y0, y1, color int, height, width int) {
+	if y0 == y1 {
+		setCell(canvas, x, y0, '─', color, height, width)
+		return
 	}
-	return n
+
+	// Draw arc at start and end, fill middle with vertical lines
+	if y0 > y1 {
+		// Going up on canvas
+		setCell(canvas, x, y0, '┘', color, height, width)
+		setCell(canvas, x, y1, '└', color, height, width)
+		for y := y1 + 1; y < y0; y++ {
+			setCell(canvas, x, y, '│', color, height, width)
+		}
+	} else {
+		// Going down on canvas
+		setCell(canvas, x, y0, '┐', color, height, width)
+		setCell(canvas, x, y1, '┌', color, height, width)
+		for y := y0 + 1; y < y1; y++ {
+			setCell(canvas, x, y, '│', color, height, width)
+		}
+	}
 }
