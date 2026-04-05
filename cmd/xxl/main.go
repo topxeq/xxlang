@@ -140,6 +140,9 @@ func main() {
 	// Set script args for scripts to access via env::scriptArgs()
 	stdlib.SetScriptArgs(scriptArgs)
 
+	// Handle service-related commands
+	handleServiceCommands(os.Args)
+
 	// Check for -pipe flag to read code from stdin
 	if pipeMode {
 		code, err := io.ReadAll(os.Stdin)
