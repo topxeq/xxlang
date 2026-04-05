@@ -14,7 +14,10 @@ func init() {
 	Register(&Module{
 		Name: "ascii",
 		Exports: map[string]objects.Object{
-			"plotDataToStr": BuiltinFunc(asciiPlotDataToStr),
+			"plotDataToStr":    BuiltinFunc(asciiPlotDataToStr),
+			"plotClearConsole": BuiltinFunc(asciiPlotClearConsole),
+			"plotMoveCursor":   BuiltinFunc(asciiPlotMoveCursor),
+			"plotConsoleSize":  BuiltinFunc(asciiPlotConsoleSize),
 		},
 	})
 }
@@ -38,6 +41,61 @@ func defaultConfig() plotConfig {
 		width: 0, height: 7, minVal: math.NaN(), maxVal: math.NaN(),
 		offset: 5, precision: 2,
 	}
+}
+
+// asciiPlotClearConsole - Clear the console screen using ANSI escape codes
+// Usage: plotClearConsole()
+// Returns null
+func asciiPlotClearConsole(args ...objects.Object) objects.Object {
+	if len(args) != 0 {
+		return &objects.Error{Message: "plotClearConsole takes no arguments"}
+	}
+	// ANSI escape codes: clear screen and move cursor to top-left
+	fmt.Print("\x1b[2J\x1b[H")
+	return objects.NULL
+}
+
+// asciiPlotMoveCursor - Move cursor to specified position
+// Usage: plotMoveCursor(row, col)
+// Returns null
+func asciiPlotMoveCursor(args ...objects.Object) objects.Object {
+	if len(args) != 2 {
+		return &objects.Error{Message: "plotMoveCursor takes 2 arguments: row, col"}
+	}
+
+	row, ok := args[0].(*objects.Int)
+	if !ok {
+		return &objects.Error{Message: "first argument to 'plotMoveCursor' must be INT"}
+	}
+
+	col, ok := args[1].(*objects.Int)
+	if !ok {
+		return &objects.Error{Message: "second argument to 'plotMoveCursor' must be INT"}
+	}
+
+	// ANSI escape code: move cursor to row, col (1-indexed)
+	fmt.Printf("\x1b[%d;%dH", row.Value+1, col.Value+1)
+	return objects.NULL
+}
+
+// asciiPlotConsoleSize - Get console size
+// Usage: size = plotConsoleSize()
+// Returns [width, height]
+func asciiPlotConsoleSize(args ...objects.Object) objects.Object {
+	if len(args) != 0 {
+		return &objects.Error{Message: "plotConsoleSize takes no arguments"}
+	}
+
+	// Try to get console size using ANSI escape codes
+	// This is a simplified implementation that returns default values
+	// For a full implementation, platform-specific code would be needed
+	width, height := 80, 24 // Default terminal size
+
+	result := &objects.Array{Elements: []objects.Object{
+		&objects.Int{Value: int64(width)},
+		&objects.Int{Value: int64(height)},
+	}}
+	return result
 }
 
 func parsePlotOptions(args []objects.Object) plotConfig {

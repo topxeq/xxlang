@@ -397,28 +397,29 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["getInput"],          // 338
 		objects.Builtins["getInputf"],         // 339
 		objects.Builtins["getChar"],           // 340
-		objects.Builtins["getMultiLineInput"], // 341
-		objects.Builtins["getPassword"],       // 342
-		objects.Builtins["confirm"],           // 343
-		objects.Builtins["readLine"],          // 344
-		objects.Builtins["getClipText"],       // 345
-		objects.Builtins["setClipText"],       // 346
+		objects.Builtins["getKey"],            // 341
+		objects.Builtins["getMultiLineInput"], // 342
+		objects.Builtins["getPassword"],       // 343
+		objects.Builtins["confirm"],           // 344
+		objects.Builtins["readLine"],          // 345
+		objects.Builtins["getClipText"],       // 346
+		objects.Builtins["setClipText"],       // 347
 		// String enhancement built-in functions (Batch 10)
-		objects.Builtins["strContainsIn"],       // 347
-		objects.Builtins["strRuneLen"],          // 348
-		objects.Builtins["strIn"],               // 349
-		objects.Builtins["strGetLastComponent"], // 350
-		objects.Builtins["strFindDiffPos"],      // 351
-		objects.Builtins["strDiff"],             // 352
-		objects.Builtins["strFindAllSub"],       // 353
-		objects.Builtins["limitStr"],            // 354
-		objects.Builtins["strQuote"],            // 355
-		objects.Builtins["strUnquote"],          // 356
-		objects.Builtins["strToInt"],            // 357
-		objects.Builtins["getTextSimilarity"],   // 358
-		objects.Builtins["fuzzyFind"],           // 359
+		objects.Builtins["strContainsIn"],       // 349
+		objects.Builtins["strRuneLen"],          // 350
+		objects.Builtins["strIn"],               // 351
+		objects.Builtins["strGetLastComponent"], // 352
+		objects.Builtins["strFindDiffPos"],      // 353
+		objects.Builtins["strDiff"],             // 354
+		objects.Builtins["strFindAllSub"],       // 355
+		objects.Builtins["limitStr"],            // 356
+		objects.Builtins["strQuote"],            // 357
+		objects.Builtins["strUnquote"],          // 358
+		objects.Builtins["strToInt"],            // 359
+		objects.Builtins["getTextSimilarity"],   // 360
+		objects.Builtins["fuzzyFind"],           // 361
 		// strRemoveBom moved to strings module
-		nil, // 360: strRemoveBom removed - use strings.removeBom()
+		nil, // 362: strRemoveBom removed - use strings.removeBom()
 		// String functions moved to string module
 		nil, // 361: wordCount removed - use string.wordCount()
 		nil, // 362: lineCount removed - use string.lineCount()

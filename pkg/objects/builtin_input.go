@@ -16,6 +16,7 @@ func init() {
 	Builtins["getInput"] = &Builtin{Fn: builtinGetInput}
 	Builtins["getInputf"] = &Builtin{Fn: builtinGetInputf}
 	Builtins["getChar"] = &Builtin{Fn: builtinGetChar}
+	Builtins["getKey"] = &Builtin{Fn: builtinGetKey}
 	Builtins["getMultiLineInput"] = &Builtin{Fn: builtinGetMultiLineInput}
 	Builtins["getPassword"] = &Builtin{Fn: builtinGetPassword}
 	Builtins["confirm"] = &Builtin{Fn: builtinConfirm}
@@ -27,6 +28,47 @@ func init() {
 }
 
 var stdinReader = bufio.NewReader(os.Stdin)
+
+// builtinGetChar - get single character input (non-blocking)
+// Note: Uses platform-specific raw keyboard input for true non-blocking behavior
+// Usage: getChar() -> string or null (null if no input available)
+func builtinGetChar(args ...Object) Object {
+	if len(args) != 0 {
+		return newError("wrong number of arguments for getChar. got=%d, want=0", len(args))
+	}
+
+	// Check if a key is available
+	if !hasKeyAvailable() {
+		return NULL
+	}
+
+	// Read the key
+	key, err := readKey()
+	if err != nil {
+		return NULL
+	}
+
+	return NewString(key)
+}
+
+// builtinGetKey - get key press with special key handling (blocking)
+// Returns key code string for special keys, character for regular keys
+// Usage: getKey() -> string
+// Special key return values: "UP", "DOWN", "LEFT", "RIGHT", "ESCAPE",
+// "ENTER", "TAB", "F1"-"F12", "HOME", "END", "PAGE_UP", "PAGE_DOWN", "DELETE"
+// Ctrl+C returns "\x03"
+func builtinGetKey(args ...Object) Object {
+	if len(args) != 0 {
+		return newError("wrong number of arguments for getKey. got=%d, want=0", len(args))
+	}
+
+	key, err := readKey()
+	if err != nil {
+		return NewString("")
+	}
+
+	return NewString(key)
+}
 
 // builtinGetInput - get user input
 // Usage: getInput() -> string
@@ -84,21 +126,6 @@ func builtinGetInputf(args ...Object) Object {
 	}
 
 	return NewString(strings.TrimRight(input, "\r\n"))
-}
-
-// builtinGetChar - get single character input
-// Usage: getChar() -> string
-func builtinGetChar(args ...Object) Object {
-	if len(args) != 0 {
-		return newError("wrong number of arguments for getChar. got=%d, want=0", len(args))
-	}
-
-	b, err := stdinReader.ReadByte()
-	if err != nil {
-		return NewString("")
-	}
-
-	return NewString(string(b))
 }
 
 // builtinGetMultiLineInput - get multi-line input until empty line

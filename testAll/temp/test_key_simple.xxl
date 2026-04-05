@@ -1,0 +1,15 @@
+// test_key_simple.xxl - Simple key test
+pln("Press keys (a-z, q to quit):")
+pln("")
+
+while (true) {
+    key := getChar()
+    if (key != null && key != "") {
+        pln("Got key: '", key, "'")
+        if (key == "q" || key == "Q") {
+            pln("Exiting...")
+            break
+        }
+    }
+    sleep(50)
+}

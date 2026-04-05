@@ -1,0 +1,37 @@
+// test_key_nb.xxl - Quick test for non-blocking keyboard input
+// Press any key to exit
+
+import "ascii"
+
+pln("Non-blocking keyboard input test")
+pln("Press any key to exit...")
+pln("")
+
+// Show a simple animation while waiting for key press
+cnt := 0
+maxCnt := 100
+
+while (cnt < maxCnt) {
+    cnt = cnt + 1
+
+    // Clear and show progress
+    ascii.plotClearConsole()
+    pln("Waiting for key press... (", cnt, "/", maxCnt, ")")
+    pln("Press any key to exit")
+
+    // Check for key press (non-blocking)
+    key := getChar()
+
+    if (key != null && key != "") {
+        pln("")
+        pln("Key pressed: '", key, "'")
+        pln("Exiting...")
+        exit()
+    }
+
+    // Small delay
+    sleep(50)
+}
+
+pln("")
+pln("Timeout - no key pressed")
