@@ -20,6 +20,7 @@ Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language impleme
 - **Exception Handling** - Full try/catch/finally/throw support
 - **Module System** - Import/export with standard library
 - **Microservice Mode** - Built-in HTTP/HTTPS server, REST API support, WebSocket
+- **Service Mode** - Run as system service (Windows/Linux/macOS), automatic startup, background task execution
 - **Database Support** - SQLite, MySQL, PostgreSQL, Oracle, MSSQL Server (pure Go drivers, no CGO)
 - **Plugin System** - WASM plugins for high-performance operations (Windows compatible, no CGO required)
 - **Rich Built-ins** - 460+ built-in functions for string, math, array, map, HTTP, concurrency, crypto and more
@@ -35,6 +36,7 @@ Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language impleme
 - [Standard Library](docs/STDLIB.md) - Standard library modules (db, json, math, etc.)
 - [Concurrency Programming](docs/CONCURRENCY.md) - Goroutines, tubes (channels), select, context, sync primitives
 - [Microservice Mode](docs/MICROSERVICE.md) - HTTP/HTTPS server, REST API, WebSocket
+- [Service Mode](docs/SERVICE.md) - Run as system service, automatic startup, background tasks
 - [Code Examples](docs/EXAMPLES.md) - Common scenarios code examples
 - [Variable Scope](docs/SCOPE.md) - Variable scope and closure behavior
 - [Embedding Guide](docs/EMBEDDING.md) - Using Xxlang in Go applications

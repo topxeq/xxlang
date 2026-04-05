@@ -20,6 +20,7 @@ Xxlang 是一个基于字节码虚拟机的脚本语言，使用 Go 语言实现
 - **异常处理** - 完整的 try/catch/finally/throw 支持
 - **模块系统** - 导入导出机制，丰富的标准库
 - **微服务模式** - 内置 HTTP/HTTPS 服务器、REST API 支持、WebSocket
+- **服务模式** - 作为系统服务运行（Windows/Linux/macOS），自动启动，后台任务执行
 - **插件系统** - WASM 插件实现高性能操作（兼容 Windows，无需 CGO）
 - **丰富的内置函数** - 460+ 个内置函数，支持字符串、数学、数组、映射、HTTP、并发、加密等
 - **交互式 REPL** - 支持多行输入和状态持久化
@@ -34,6 +35,7 @@ Xxlang 是一个基于字节码虚拟机的脚本语言，使用 Go 语言实现
 - [标准库](docs/STDLIB_zh.md) - 标准库模块（os、json、math 等）
 - [并发编程](docs/CONCURRENCY_zh.md) - Goroutine、Tube（管道）、Select、Context、同步原语
 - [微服务模式](docs/MICROSERVICE_zh.md) - HTTP/HTTPS 服务器、REST API、WebSocket
+- [服务模式](docs/SERVICE.md) - 作为系统服务运行、自动启动、后台任务
 - [代码示例](docs/EXAMPLES_zh.md) - 常用场景代码示例
 - [变量作用域](docs/SCOPE_zh.md) - 变量作用域和闭包行为
 - [嵌入指南](docs/EMBEDDING.md) - 在 Go 应用中使用 Xxlang
