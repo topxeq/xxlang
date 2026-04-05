@@ -79,6 +79,7 @@ pln(math.sin(1.57))
 - [regex](#regex) - 正则表达式
 - [crypto](#crypto) - 加密函数
 - [time](#time) - 时间日期函数
+- [ascii](#ascii) - ASCII 图表绘制
 - [fmt](#fmt) - 格式化工具
 - [encoding](#encoding) - Base64 和十六进制编解码
 - [uuid](#uuid) - UUID 生成
@@ -3490,6 +3491,147 @@ entries({"x": 10, "y": 20})  // [["x", 10], ["y", 20]]
 ```xxl
 format("你好 %s，你 %d 岁", "张三", 30)  // "你好 张三，你 30 岁"
 format("圆周率是 %.2f", 3.14159)                 // "圆周率是 3.14"
+```
+
+---
+
+## ascii
+
+ASCII 图表绘制模块，用于在控制台创建基于文本的图表和图形。
+
+### 基本用法
+
+```xxl
+import "ascii"
+
+// 使用默认设置绘制简单图表
+var data = [[10, 25, 18, 30, 45, 35, 50, 40, 60, 55]]
+var plot = ascii.plotDataToStr(data)
+pln(plot)
+
+// 使用自定义选项绘制
+var data2 = [
+    [10, 25, 18, 30, 45],
+    [5, 15, 25, 20, 30]
+]
+var plot2 = ascii.plotDataToStr(data2, "-caption=销售趋势", "-width=60", "-height=15", "-seriesColor=1,2")
+pln(plot2)
+```
+
+### 控制台控制函数
+
+```xxl
+import "ascii"
+
+// 清空控制台屏幕
+ascii.plotClearConsole()
+
+// 将光标移动到指定位置（行，列）
+ascii.plotMoveCursor(5, 10)
+
+// 获取控制台大小
+var size = ascii.plotConsoleSize()
+var width = size[0]
+var height = size[1]
+pln("控制台大小:", width, "x", height)
+```
+
+### plotDataToStr 函数
+
+**签名:** `ascii.plotDataToStr(data, [options...])`
+
+将数组数据转换为 ASCII 图表字符串。
+
+**参数:**
+- `data` - 包含数值数据系列的数组的数组
+- `options` - 可选配置字符串：
+
+| 选项 | 说明 | 默认值 |
+|------|------|--------|
+| `-width=N` | 图表宽度（字符数） | 自动（数据宽度） |
+| `-height=N` | 图表高度（行数） | 7 |
+| `-min=N` | Y 轴最小值 | 自动（从数据） |
+| `-max=N` | Y 轴最大值 | 自动（从数据） |
+| `-offset=N` | 标签偏移（Y 轴标签空间） | 5 |
+| `-precision=N` | 标签小数位数 | 2 |
+| `-caption=文本` | 图表标题 | 无 |
+| `-captionColor=N` | 标题 ANSI 颜色（0-255） | 默认 |
+| `-axisColor=N` | 坐标轴 ANSI 颜色 | 默认 |
+| `-labelColor=N` | Y 轴标签 ANSI 颜色 | 默认 |
+| `-seriesColor=N,...` | 每条系列的逗号分隔颜色 | 默认 |
+
+**示例输出:**
+```
+  60.00 ┤    ╭─╮           ╭─╮
+  50.00 ┤   ╱   ╲         ╱   ╲
+  40.00 ┤  ╱     ╲   ╭───╯     ╰──
+  30.00 ┤ ╱       ╰─╯
+  20.00 ┤╱
+  10.00 ┤
+        └───────────────────────────
+        0   5   10   15   20   25
+```
+
+### plotClearConsole 函数
+
+**签名:** `ascii.plotClearConsole()`
+
+使用 ANSI 转义码清空控制台屏幕。返回 null。
+
+### plotMoveCursor 函数
+
+**签名:** `ascii.plotMoveCursor(row, col)`
+
+将光标移动到指定位置。
+
+**参数:**
+- `row` - 行位置（从 0 开始）
+- `col` - 列位置（从 0 开始）
+
+返回 null。
+
+### plotConsoleSize 函数
+
+**签名:** `ascii.plotConsoleSize()`
+
+返回控制台大小 `[width, height]`。
+
+**返回值:** 包含两个整数的数组 `[width, height]`
+
+### ANSI 颜色码
+
+ascii 模块支持 ANSI 256 色码用于彩色输出：
+
+| 颜色名 | 代码 | 颜色名 | 代码 |
+|--------|------|--------|------|
+| 黑色 | 0 | 灰色 | 8 |
+| 红色 | 1 | 浅红 | 9 |
+| 绿色 | 2 | 浅绿 | 10 |
+| 黄色 | 3 | 浅黄 | 11 |
+| 蓝色 | 4 | 浅蓝 | 12 |
+| 紫色 | 5 | 浅紫 | 13 |
+| 青色 | 6 | 浅青 | 14 |
+| 白色 | 7 | 亮白 | 15 |
+
+完整 256 色调色板使用代码 0-255。
+
+### 示例：实时监控仪表板
+
+```xxl
+import "ascii"
+import "time"
+import "math"
+
+// 生成示例数据
+var data = []
+for (var i = 0; i < 50; i = i + 1) {
+    data = append(data, math.sin(i * 0.2) * 20 + 50)
+}
+
+// 清空屏幕并绘制
+ascii.plotClearConsole()
+var plot = ascii.plotDataToStr([data], "-caption=实时监控", "-height=12", "-seriesColor=2")
+println(plot)
 ```
 
 ---

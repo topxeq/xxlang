@@ -103,6 +103,7 @@ data := csv.read("data.csv")
 - [time](#time) - Time and date functions
 - [image](#image) - Image processing and QR codes
 - [task](#task) - Task scheduling and cron expressions
+- [ascii](#ascii) - ASCII plotting for console charts
 - [fmt](#fmt) - Formatting utilities
 - [encoding](#encoding) - Base64 and hex encoding/decoding
 - [uuid](#uuid) - UUID generation
@@ -4224,6 +4225,147 @@ client.stop()
 - **Protocol Support**: HTTP, HTTPS (CONNECT), SOCKS5
 - **Auto Detection**: Client automatically detects protocol
 - **Password Auth**: Simple password-based authentication
+
+---
+
+## ascii
+
+ASCII plotting module for creating text-based charts and graphs in the console.
+
+### Basic Usage
+
+```xxl
+import "ascii"
+
+// Simple plot with default settings
+var data = [[10, 25, 18, 30, 45, 35, 50, 40, 60, 55]]
+var plot = ascii.plotDataToStr(data)
+pln(plot)
+
+// Plot with custom options
+var data2 = [
+    [10, 25, 18, 30, 45],
+    [5, 15, 25, 20, 30]
+]
+var plot2 = ascii.plotDataToStr(data2, "-caption=Sales Trends", "-width=60", "-height=15", "-seriesColor=1,2")
+pln(plot2)
+```
+
+### Console Control Functions
+
+```xxl
+import "ascii"
+
+// Clear the console screen
+ascii.plotClearConsole()
+
+// Move cursor to specific position (row, col)
+ascii.plotMoveCursor(5, 10)
+
+// Get console size
+var size = ascii.plotConsoleSize()
+var width = size[0]
+var height = size[1]
+pln("Console size:", width, "x", height)
+```
+
+### plotDataToStr Function
+
+**Signature:** `ascii.plotDataToStr(data, [options...])`
+
+Converts array data to ASCII plot string.
+
+**Parameters:**
+- `data` - Array of arrays containing numeric data series
+- `options` - Optional configuration strings:
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-width=N` | Plot width in characters | Auto (data width) |
+| `-height=N` | Plot height in lines | 7 |
+| `-min=N` | Minimum Y value | Auto (from data) |
+| `-max=N` | Maximum Y value | Auto (from data) |
+| `-offset=N` | Label offset (space for Y labels) | 5 |
+| `-precision=N` | Decimal places for labels | 2 |
+| `-caption=text` | Chart title/caption | None |
+| `-captionColor=N` | Caption ANSI color (0-255) | Default |
+| `-axisColor=N` | Axis line ANSI color | Default |
+| `-labelColor=N` | Y-axis label ANSI color | Default |
+| `-seriesColor=N,...` | Comma-separated colors for each series | Default |
+
+**Example Output:**
+```
+  60.00 ┤    ╭─╮           ╭─╮
+  50.00 ┤   ╱   ╲         ╱   ╲
+  40.00 ┤  ╱     ╲   ╭───╯     ╰──
+  30.00 ┤ ╱       ╰─╯
+  20.00 ┤╱
+  10.00 ┤
+        └───────────────────────────
+        0   5   10   15   20   25
+```
+
+### plotClearConsole Function
+
+**Signature:** `ascii.plotClearConsole()`
+
+Clears the console screen using ANSI escape codes. Returns null.
+
+### plotMoveCursor Function
+
+**Signature:** `ascii.plotMoveCursor(row, col)`
+
+Moves the cursor to the specified position.
+
+**Parameters:**
+- `row` - Row position (0-indexed)
+- `col` - Column position (0-indexed)
+
+Returns null.
+
+### plotConsoleSize Function
+
+**Signature:** `ascii.plotConsoleSize()`
+
+Returns the console size as `[width, height]`.
+
+**Returns:** Array of two integers `[width, height]`
+
+### ANSI Color Codes
+
+The ascii module supports ANSI 256-color codes for colored output:
+
+| Color Name | Code | Color Name | Code |
+|------------|------|------------|------|
+| Black | 0 | Gray | 8 |
+| Red | 1 | Light Red | 9 |
+| Green | 2 | Light Green | 10 |
+| Yellow | 3 | Light Yellow | 11 |
+| Blue | 4 | Light Blue | 12 |
+| Magenta | 5 | Light Magenta | 13 |
+| Cyan | 6 | Light Cyan | 14 |
+| White | 7 | White (bright) | 15 |
+
+For full 256-color palette, use codes 0-255.
+
+### Example: Real-time Monitoring Dashboard
+
+```xxl
+import "ascii"
+import "time"
+import "math"
+
+// Generate sample data
+var data = []
+for (var i = 0; i < 50; i = i + 1) {
+    data = append(data, math.sin(i * 0.2) * 20 + 50)
+}
+
+// Clear screen and plot
+ascii.plotClearConsole()
+var plot = ascii.plotDataToStr([data], "-caption=Real-time Monitor", "-height=12", "-seriesColor=2")
+println(plot)
+```
 
 ---
 
