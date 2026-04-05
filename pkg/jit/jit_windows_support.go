@@ -125,7 +125,12 @@ func (ne *NativeExecutor) ExecuteFunction(fn *compiler.CompiledFunction, constan
 	copy(mem, code)
 
 	// Execute using Windows calling convention
-	result := callNativeWindows(uintptr(unsafe.Pointer(&mem[0])), &globals[0])
+	// Safety: check if globals is not empty before accessing
+	var globalsPtr *int64
+	if len(globals) > 0 {
+		globalsPtr = &globals[0]
+	}
+	result := callNativeWindows(uintptr(unsafe.Pointer(&mem[0])), globalsPtr)
 	return result, nil
 }
 

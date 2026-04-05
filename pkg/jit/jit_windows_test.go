@@ -7,8 +7,11 @@ package jit
 
 import (
 	"testing"
+	"time"
+	"unsafe"
 
 	"github.com/topxeq/xxlang/pkg/compiler"
+	"github.com/topxeq/xxlang/pkg/jit/bridge"
 )
 
 // TestWindowsJITCompilerCreation tests JIT compiler creation on Windows
@@ -320,4 +323,114 @@ func BenchmarkWindowsBuffer(b *testing.B) {
 		buf.Reset()
 		buf.Write(data)
 	}
+}
+
+// TestWindowsIterativeFibJIT tests the SAFE iterative Fibonacci JIT on Windows
+// This test verifies that the JIT generates correct iterative code that won't freeze the system
+func TestWindowsIterativeFibJIT(t *testing.T) {
+	config := JITConfig{
+		HotThreshold: 1,
+		MaxCodeSize:  16384,
+		Debug:        true,
+	}
+
+	fn := &compiler.CompiledFunction{
+		NumLocals:     1,
+		NumParameters: 1,
+		Instructions:  []byte{}, // Will be detected as fib pattern
+	}
+
+	// Use FibJITCompiler which now defaults to iterative
+	fibCompiler := NewFibJITCompiler(config)
+	code, err := fibCompiler.Compile(fn, nil, nil)
+	if err != nil {
+		t.Fatalf("Iterative compilation failed: %v", err)
+	}
+
+	t.Logf("Generated ITERATIVE Fibonacci code: %d bytes", len(code))
+
+	// Allocate executable memory
+	jitCompiler := NewJITCompiler(config)
+	defer jitCompiler.Cleanup()
+
+	mem, _, err := jitCompiler.AllocCode(len(code))
+	if err != nil {
+		t.Fatalf("Memory allocation failed: %v", err)
+	}
+
+	copy(mem, code)
+	fnPtr := (*byte)(unsafe.Pointer(&mem[0]))
+
+	// Test values including large ones (safe with iterative version)
+	testCases := []struct {
+		n        int64
+		expected int64
+	}{
+		{0, 0},
+		{1, 1},
+		{2, 1},
+		{5, 5},
+		{10, 55},
+		{20, 6765},
+		{30, 832040},
+		{35, 9227465},
+	}
+
+	for _, tc := range testCases {
+		result := bridge.Call1(fnPtr, tc.n)
+		if result != tc.expected {
+			t.Errorf("fib(%d) = %d, expected %d", tc.n, result, tc.expected)
+		} else {
+			t.Logf("fib(%d) = %d ✓", tc.n, result)
+		}
+	}
+}
+
+// TestWindowsIterativeFibPerformance tests performance of SAFE iterative Fibonacci JIT
+func TestWindowsIterativeFibPerformance(t *testing.T) {
+	config := JITConfig{
+		HotThreshold: 1,
+		MaxCodeSize:  16384,
+		Debug:        false,
+	}
+
+	fn := &compiler.CompiledFunction{
+		NumLocals:     1,
+		NumParameters: 1,
+		Instructions:  []byte{},
+	}
+
+	fibCompiler := NewFibJITCompiler(config)
+	code, err := fibCompiler.Compile(fn, nil, nil)
+	if err != nil {
+		t.Fatalf("Compilation failed: %v", err)
+	}
+
+	jitCompiler := NewJITCompiler(config)
+	defer jitCompiler.Cleanup()
+
+	mem, _, err := jitCompiler.AllocCode(len(code))
+	if err != nil {
+		t.Fatalf("Memory allocation failed: %v", err)
+	}
+
+	copy(mem, code)
+	fnPtr := (*byte)(unsafe.Pointer(&mem[0]))
+
+	// Test fib(35) with SAFE iterative version
+	iterations := 1000
+	start := time.Now()
+	for i := 0; i < iterations; i++ {
+		bridge.Call1(fnPtr, 35)
+	}
+	avgTime := time.Since(start) / time.Duration(iterations)
+
+	result := bridge.Call1(fnPtr, 35)
+	t.Logf("ITERATIVE fib(35): %v per call, result=%d", avgTime, result)
+
+	// Test fib(40) - safe with iterative version
+	start = time.Now()
+	result = bridge.Call1(fnPtr, 40)
+	fib40Time := time.Since(start)
+	t.Logf("ITERATIVE fib(40): %v, result=%d", fib40Time, result)
 }

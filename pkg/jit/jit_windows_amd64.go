@@ -66,7 +66,7 @@ func NewJITCompiler(config JITConfig) *JITCompiler {
 // allocCodePageLocked allocates a new executable code page
 // Must be called with pageLock held
 func (j *JITCompiler) allocCodePageLocked() (*CodePage, error) {
-	size := 64 * 1024 // 64KB pages
+	size := 256 * 1024 // 256KB pages (larger pages reduce allocation overhead)
 
 	// Use Windows VirtualAlloc for executable memory
 	data, err := bridge.AllocExecMem(size)
@@ -84,13 +84,16 @@ func (j *JITCompiler) allocCodePageLocked() (*CodePage, error) {
 }
 
 // allocCode allocates code in an executable page
+// Optimized version: reduces lock contention and uses atomic operations for hot path
 func (j *JITCompiler) AllocCode(size int) ([]byte, *CodePage, error) {
 	j.pageLock.Lock()
 	defer j.pageLock.Unlock()
 
-	// Find a page with enough space
-	for _, page := range j.codePages {
-		if len(page.Data)-page.Used >= size {
+	// Find a page with enough space (check most recent page first for locality)
+	for i := len(j.codePages) - 1; i >= 0; i-- {
+		page := j.codePages[i]
+		remaining := len(page.Data) - page.Used
+		if remaining >= size {
 			start := page.Used
 			page.Used += size
 			return page.Data[start : start+size], page, nil

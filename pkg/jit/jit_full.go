@@ -170,6 +170,9 @@ type FullCodeGenerator struct {
 
 	// Register allocation
 	maxReg int
+
+	// Calculated stack size
+	stackSize uint32
 }
 
 // NewFullCodeGenerator creates a new code generator
@@ -193,6 +196,19 @@ func (cg *FullCodeGenerator) Generate(fn *compiler.CompiledFunction, constants [
 	cg.hasCalls = false
 	cg.maxReg = 64
 
+	// Calculate stack size based on NumLocals with safety margin
+	// Each local is 8 bytes, minimum 64 registers (512 bytes), add 512 byte safety margin
+	numLocals := fn.NumLocals
+	if numLocals < 64 {
+		numLocals = 64
+	}
+	// Safety: check for integer overflow
+	const maxLocals = (1<<31 - 1 - 512) / 8
+	if numLocals > maxLocals {
+		return nil, fmt.Errorf("NumLocals %d exceeds maximum safe value %d", numLocals, maxLocals)
+	}
+	cg.stackSize = uint32(numLocals*8 + 512)
+
 	// Analyze bytecode first
 	cg.analyzeBytecode(fn.Instructions)
 
@@ -202,8 +218,15 @@ func (cg *FullCodeGenerator) Generate(fn *compiler.CompiledFunction, constants [
 	// Generate code for each instruction
 	code := fn.Instructions
 	ip := 0
+	maxIterations := len(code) * 2 // Safety limit
+	iterations := 0
 
 	for ip < len(code) {
+		iterations++
+		if iterations > maxIterations {
+			return nil, fmt.Errorf("compilation exceeded maximum iterations (%d), possible bytecode corruption", maxIterations)
+		}
+
 		op := compiler.Opcode(code[ip])
 		cg.labels[fmt.Sprintf("ip_%d", ip)] = len(cg.code)
 
@@ -393,9 +416,9 @@ func (cg *FullCodeGenerator) emitPrologue() {
 	cg.emitBytes([]byte{0x41, 0x56}) // push r14
 	cg.emitBytes([]byte{0x41, 0x57}) // push r15
 
-	// Allocate stack space (64 registers * 8 bytes = 512 bytes + temp space)
+	// Allocate stack space based on NumLocals
 	cg.emitBytes([]byte{0x48, 0x81, 0xEC})
-	cg.emitUint32(1024)
+	cg.emitUint32(cg.stackSize)
 
 	// Initialize registers to null
 	nullVal := uint64(TagNull) << 48
@@ -408,9 +431,9 @@ func (cg *FullCodeGenerator) emitPrologue() {
 }
 
 func (cg *FullCodeGenerator) emitEpilogue() {
-	// add rsp, 1024
+	// add rsp, stackSize
 	cg.emitBytes([]byte{0x48, 0x81, 0xC4})
-	cg.emitUint32(1024)
+	cg.emitUint32(cg.stackSize)
 
 	// Restore callee-saved registers
 	cg.emitBytes([]byte{0x41, 0x5F}) // pop r15

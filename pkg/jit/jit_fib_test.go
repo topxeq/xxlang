@@ -71,6 +71,7 @@ func TestJITFibonacciTailRecursive(t *testing.T) {
 		}
 
 		jitCompiler := NewJITCompiler(config)
+		defer jitCompiler.Cleanup()
 
 		// Find the fibHelper function in constants
 		var fibHelperFn *compiler.CompiledFunction
@@ -95,7 +96,6 @@ func TestJITFibonacciTailRecursive(t *testing.T) {
 		}
 
 		t.Logf("JIT compiled successfully: %d bytes", cf.Size)
-		jitCompiler.Cleanup()
 	})
 }
 
@@ -144,6 +144,7 @@ func TestJITSimpleLoop(t *testing.T) {
 	}
 
 	jitCompiler := NewJITCompiler(config)
+	defer jitCompiler.Cleanup()
 
 	mainFn := &compiler.CompiledFunction{
 		Instructions:  bytecode.Instructions,
@@ -158,7 +159,6 @@ func TestJITSimpleLoop(t *testing.T) {
 	}
 
 	t.Logf("JIT compiled successfully: %d bytes", cf.Size)
-	jitCompiler.Cleanup()
 }
 
 // TestJITArithmetic tests JIT compilation of arithmetic operations
@@ -207,6 +207,7 @@ func TestJITArithmetic(t *testing.T) {
 	}
 
 	jitCompiler := NewJITCompiler(config)
+	defer jitCompiler.Cleanup()
 
 	mainFn := &compiler.CompiledFunction{
 		Instructions:  bytecode.Instructions,
@@ -221,7 +222,6 @@ func TestJITArithmetic(t *testing.T) {
 	}
 
 	t.Logf("JIT compiled successfully: %d bytes", cf.Size)
-	jitCompiler.Cleanup()
 }
 
 // TestJITComparisons tests JIT compilation of comparison operations
@@ -272,6 +272,7 @@ func TestJITComparisons(t *testing.T) {
 	}
 
 	jitCompiler := NewJITCompiler(config)
+	defer jitCompiler.Cleanup()
 
 	mainFn := &compiler.CompiledFunction{
 		Instructions:  bytecode.Instructions,
@@ -286,5 +287,4 @@ func TestJITComparisons(t *testing.T) {
 	}
 
 	t.Logf("JIT compiled successfully: %d bytes", cf.Size)
-	jitCompiler.Cleanup()
 }

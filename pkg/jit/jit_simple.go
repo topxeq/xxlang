@@ -844,24 +844,102 @@ func (cg *SimpleCodeGenerator) compileNot(dst, src int) {
 	cg.emitMovRaxToSlot(dst)
 }
 
+// compileDiv divides two registers with zero-check
+// If divisor is zero, returns 0 to avoid hardware exception
 func (cg *SimpleCodeGenerator) compileDiv(dst, left, right int) {
-	cg.emitMovSlotToRax(left)
+	// Load divisor into rcx first for zero check
 	cg.emitMovSlotToRcx(right)
+
+	// Test if divisor is zero
+	cg.emitBytes([]byte{0x48, 0x85, 0xC9}) // test rcx, rcx
+
+	// jz to return_zero (placeholder)
+	jzPos := len(cg.code)
+	cg.emitBytes([]byte{0x74, 0x00}) // jz rel8
+
+	// Load dividend
+	cg.emitMovSlotToRax(left)
+
 	// cqo (sign extend)
 	cg.emitBytes([]byte{0x48, 0x99})
+
 	// idiv rcx
 	cg.emitBytes([]byte{0x48, 0xF7, 0xF9})
+
+	// Store result and jump over zero case
 	cg.emitMovRaxToSlot(dst)
+	jmpPos := len(cg.code)
+	cg.emitBytes([]byte{0xEB, 0x00}) // jmp rel8 (placeholder)
+
+	// Return zero case
+	returnZeroPos := len(cg.code)
+	// Use safe jump offset with validation
+	divOffset1 := returnZeroPos - (jzPos + 2)
+	if !CanUseShortJump(divOffset1) {
+		fmt.Printf("[JIT WARNING] Jump offset %d exceeds rel8 range in div/mod zero check\n", divOffset1)
+	}
+	cg.code[jzPos+1] = byte(int8(divOffset1))
+
+	// Set result to 0
+	cg.emitBytes([]byte{0x48, 0x31, 0xC0}) // xor rax, rax
+	cg.emitMovRaxToSlot(dst)
+
+	// Fix up jump over zero case
+	endPos := len(cg.code)
+	divOffset2 := endPos - (jmpPos + 2)
+	if !CanUseShortJump(divOffset2) {
+		fmt.Printf("[JIT WARNING] Jump offset %d exceeds rel8 range in div/mod skip\n", divOffset2)
+	}
+	cg.code[jmpPos+1] = byte(int8(divOffset2))
 }
 
+// compileMod computes modulo of two registers with zero-check
+// If divisor is zero, returns 0 to avoid hardware exception
 func (cg *SimpleCodeGenerator) compileMod(dst, left, right int) {
-	cg.emitMovSlotToRax(left)
+	// Load divisor into rcx first for zero check
 	cg.emitMovSlotToRcx(right)
+
+	// Test if divisor is zero
+	cg.emitBytes([]byte{0x48, 0x85, 0xC9}) // test rcx, rcx
+
+	// jz to return_zero (placeholder)
+	jzPos := len(cg.code)
+	cg.emitBytes([]byte{0x74, 0x00}) // jz rel8
+
+	// Load dividend
+	cg.emitMovSlotToRax(left)
+
 	cg.emitBytes([]byte{0x48, 0x99})
 	cg.emitBytes([]byte{0x48, 0xF7, 0xF9})
+
 	// mov rax, rdx (remainder)
 	cg.emitBytes([]byte{0x48, 0x89, 0xD0})
+
+	// Store result and jump over zero case
 	cg.emitMovRaxToSlot(dst)
+	jmpPos := len(cg.code)
+	cg.emitBytes([]byte{0xEB, 0x00}) // jmp rel8 (placeholder)
+
+	// Return zero case
+	returnZeroPos := len(cg.code)
+	// Use safe jump offset with validation
+	divOffset1 := returnZeroPos - (jzPos + 2)
+	if !CanUseShortJump(divOffset1) {
+		fmt.Printf("[JIT WARNING] Jump offset %d exceeds rel8 range in div/mod zero check\n", divOffset1)
+	}
+	cg.code[jzPos+1] = byte(int8(divOffset1))
+
+	// Set result to 0
+	cg.emitBytes([]byte{0x48, 0x31, 0xC0}) // xor rax, rax
+	cg.emitMovRaxToSlot(dst)
+
+	// Fix up jump over zero case
+	endPos := len(cg.code)
+	divOffset2 := endPos - (jmpPos + 2)
+	if !CanUseShortJump(divOffset2) {
+		fmt.Printf("[JIT WARNING] Jump offset %d exceeds rel8 range in div/mod skip\n", divOffset2)
+	}
+	cg.code[jmpPos+1] = byte(int8(divOffset2))
 }
 
 func (cg *SimpleCodeGenerator) compileNeg(dst, src int) {

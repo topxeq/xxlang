@@ -313,9 +313,17 @@ func (c *FibJITCompiler) compileIterativeFibonacci(fn *compiler.CompiledFunction
 
 	// Fix up jump targets
 	// jle: from jlePos to baseCaseReturn (base case: n <= 1, return n directly)
-	c.code[jlePos+1] = byte(int8(baseCaseReturn - (jlePos + 2)))
+	offset1 := baseCaseReturn - (jlePos + 2)
+	if !CanUseShortJump(offset1) {
+		fmt.Printf("[JIT WARNING] Jump offset %d exceeds rel8 range in fib jle\n", offset1)
+	}
+	c.code[jlePos+1] = byte(int8(offset1))
 	// jge: from jgePos back to loopStart (i <= n, continue loop)
-	c.code[jgePos+1] = byte(int8(loopStart - (jgePos + 2)))
+	offset2 := loopStart - (jgePos + 2)
+	if !CanUseShortJump(offset2) {
+		fmt.Printf("[JIT WARNING] Jump offset %d exceeds rel8 range in fib jge\n", offset2)
+	}
+	c.code[jgePos+1] = byte(int8(offset2))
 
 	return c.code, nil
 }
@@ -874,37 +882,103 @@ func (c *FibJITCompiler) compileMul(dst, left, right int) {
 	c.emitMovRaxToSlot(dst)
 }
 
-// compileDiv divides two registers
+// compileDiv divides two registers with zero-check
+// If divisor is zero, returns 0 to avoid hardware exception
 func (c *FibJITCompiler) compileDiv(dst, left, right int) {
+	// Load divisor into rcx first for zero check
+	c.emitMovSlotToRax(right)
+	c.emitBytes([]byte{0x48, 0x89, 0xC1}) // mov rcx, rax
+
+	// Test if divisor is zero
+	c.emitBytes([]byte{0x48, 0x85, 0xC9}) // test rcx, rcx
+
+	// jz to return_zero (placeholder)
+	jzPos := len(c.code)
+	c.emitBytes([]byte{0x74, 0x00}) // jz rel8
+
+	// Load dividend
 	c.emitMovSlotToRax(left)
 	c.emitBytes([]byte{0x48, 0x99}) // cqo (sign extend)
-	// idiv [rbp - offset]
-	offset := c.localOffset(right)
-	if offset <= 127 {
-		c.emitBytes([]byte{0x48, 0xF7, 0x7D})
-		c.emitByte(byte(-offset))
-	} else {
-		c.emitBytes([]byte{0x48, 0xF7, 0xBD})
-		c.emitUint32(uint32(-offset))
-	}
+
+	// idiv rcx
+	c.emitBytes([]byte{0x48, 0xF7, 0xF9}) // idiv rcx
+
+	// Store result and jump over zero case
 	c.emitMovRaxToSlot(dst)
+	jmpPos := len(c.code)
+	c.emitBytes([]byte{0xEB, 0x00}) // jmp rel8 (placeholder)
+
+	// Return zero case
+	returnZeroPos := len(c.code)
+	// Use safe jump offset with validation
+	divOffset1 := returnZeroPos - (jzPos + 2)
+	if !CanUseShortJump(divOffset1) {
+		fmt.Printf("[JIT WARNING] Jump offset %d exceeds rel8 range in div/mod zero check\n", divOffset1)
+	}
+	c.code[jzPos+1] = byte(int8(divOffset1))
+
+	// Set result to 0
+	c.emitBytes([]byte{0x48, 0x31, 0xC0}) // xor rax, rax
+	c.emitMovRaxToSlot(dst)
+
+	// Fix up jump over zero case
+	endPos := len(c.code)
+	divOffset2 := endPos - (jmpPos + 2)
+	if !CanUseShortJump(divOffset2) {
+		fmt.Printf("[JIT WARNING] Jump offset %d exceeds rel8 range in div/mod skip\n", divOffset2)
+	}
+	c.code[jmpPos+1] = byte(int8(divOffset2))
 }
 
-// compileMod computes modulo of two registers
+// compileMod computes modulo of two registers with zero-check
+// If divisor is zero, returns 0 to avoid hardware exception
 func (c *FibJITCompiler) compileMod(dst, left, right int) {
+	// Load divisor into rcx first for zero check
+	c.emitMovSlotToRax(right)
+	c.emitBytes([]byte{0x48, 0x89, 0xC1}) // mov rcx, rax
+
+	// Test if divisor is zero
+	c.emitBytes([]byte{0x48, 0x85, 0xC9}) // test rcx, rcx
+
+	// jz to return_zero (placeholder)
+	jzPos := len(c.code)
+	c.emitBytes([]byte{0x74, 0x00}) // jz rel8
+
+	// Load dividend
 	c.emitMovSlotToRax(left)
-	c.emitBytes([]byte{0x48, 0x99})
-	offset := c.localOffset(right)
-	if offset <= 127 {
-		c.emitBytes([]byte{0x48, 0xF7, 0x7D})
-		c.emitByte(byte(-offset))
-	} else {
-		c.emitBytes([]byte{0x48, 0xF7, 0xBD})
-		c.emitUint32(uint32(-offset))
-	}
+	c.emitBytes([]byte{0x48, 0x99}) // cqo (sign extend)
+
+	// idiv rcx
+	c.emitBytes([]byte{0x48, 0xF7, 0xF9}) // idiv rcx
+
 	// Result is in rdx (remainder)
 	c.emitBytes([]byte{0x48, 0x89, 0xD0}) // mov rax, rdx
+
+	// Store result and jump over zero case
 	c.emitMovRaxToSlot(dst)
+	jmpPos := len(c.code)
+	c.emitBytes([]byte{0xEB, 0x00}) // jmp rel8 (placeholder)
+
+	// Return zero case
+	returnZeroPos := len(c.code)
+	// Use safe jump offset with validation
+	divOffset1 := returnZeroPos - (jzPos + 2)
+	if !CanUseShortJump(divOffset1) {
+		fmt.Printf("[JIT WARNING] Jump offset %d exceeds rel8 range in div/mod zero check\n", divOffset1)
+	}
+	c.code[jzPos+1] = byte(int8(divOffset1))
+
+	// Set result to 0
+	c.emitBytes([]byte{0x48, 0x31, 0xC0}) // xor rax, rax
+	c.emitMovRaxToSlot(dst)
+
+	// Fix up jump over zero case
+	endPos := len(c.code)
+	divOffset2 := endPos - (jmpPos + 2)
+	if !CanUseShortJump(divOffset2) {
+		fmt.Printf("[JIT WARNING] Jump offset %d exceeds rel8 range in div/mod skip\n", divOffset2)
+	}
+	c.code[jmpPos+1] = byte(int8(divOffset2))
 }
 
 // compileNeg negates a register

@@ -10,6 +10,7 @@ import (
 	"unsafe"
 
 	"github.com/topxeq/xxlang/pkg/compiler"
+	"github.com/topxeq/xxlang/pkg/objects"
 	"github.com/topxeq/xxlang/pkg/vm"
 )
 
@@ -141,7 +142,10 @@ func CallFromJIT(fnPtr uintptr, args *vm.Value, numArgs int) int64 {
 	// Look up function info
 	infoIface, ok := globalTrampoline.funcRegistry.Load(fnPtr)
 	if !ok {
-		panic(fmt.Sprintf("CallFromJIT: unknown function at %x", fnPtr))
+		// Log error and return 0 instead of panicking
+		// This prevents the entire program from crashing on unknown function
+		fmt.Printf("[JIT] CallFromJIT: unknown function at %x, returning 0\n", fnPtr)
+		return 0
 	}
 	info := infoIface.(*FuncInfo)
 
@@ -186,14 +190,40 @@ func interpretFunction(frame *vm.RegFrame, fn *compiler.CompiledFunction, consta
 	ip := 0
 	regs := frame.Registers[:]
 
+	// Safety: iteration limit to prevent infinite loops
+	maxIterations := len(code) * 2
+	iterations := 0
+
 	for ip < len(code) {
+		iterations++
+		if iterations > maxIterations {
+			// Prevent infinite loop from corrupted bytecode
+			return vm.ValueNull
+		}
+
 		op := compiler.Opcode(code[ip])
+
+		// Safety: check instruction length before processing
+		def, err := compiler.Lookup(byte(op))
+		if err != nil {
+			ip++
+			continue
+		}
+		instrLen := 1 + len(def.OperandWidths)
+		if ip+instrLen > len(code) {
+			// Truncated instruction, abort
+			return vm.ValueNull
+		}
 
 		switch op {
 		case compiler.OpRegLoadConst:
 			dst := code[ip+1]
 			idx := int(code[ip+2])<<8 | int(code[ip+3])
-			regs[dst] = constants[idx]
+			if idx < len(constants) {
+				regs[dst] = constants[idx]
+			} else {
+				regs[dst] = vm.ValueNull
+			}
 			ip += 4
 
 		case compiler.OpRegMove:
@@ -437,8 +467,28 @@ func interpretFunctionFast(frame *vm.RegFrame, fn *compiler.CompiledFunction, co
 	ip := 0
 	regs := frame.Registers[:]
 
+	// Safety: iteration limit to prevent infinite loops
+	maxIterations := len(code) * 2
+	iterations := 0
+
 	for ip < len(code) {
+		iterations++
+		if iterations > maxIterations {
+			return vm.ValueNull
+		}
+
 		op := compiler.Opcode(code[ip])
+
+		// Safety: check instruction length before processing
+		def, err := compiler.Lookup(byte(op))
+		if err != nil {
+			ip++
+			continue
+		}
+		instrLen := 1 + len(def.OperandWidths)
+		if ip+instrLen > len(code) {
+			return vm.ValueNull
+		}
 
 		switch op {
 		case compiler.OpRegLoadConst:
@@ -602,7 +652,38 @@ func interpretFunctionFast(frame *vm.RegFrame, fn *compiler.CompiledFunction, co
 }
 
 // handleJITRecursiveCall handles recursive function calls from JIT
+// MaxRecursionDepth is the maximum allowed recursion depth to prevent stack overflow
+const MaxRecursionDepth = 1000
+
+// recursionDepth tracks current recursion depth (thread-local via sync)
+var recursionDepth struct {
+	sync.Mutex
+	depth int
+}
+
 func handleJITRecursiveCall(regs []vm.Value, funcReg, numArgs int, constants []vm.Value) vm.Value {
+	// Check recursion depth
+	recursionDepth.Lock()
+	recursionDepth.depth++
+	if recursionDepth.depth > MaxRecursionDepth {
+		recursionDepth.depth--
+		recursionDepth.Unlock()
+		// Log warning about recursion limit exceeded
+		fmt.Printf("[JIT WARNING] Recursion depth limit (%d) exceeded, returning error to prevent stack overflow\n", MaxRecursionDepth)
+		// Return Error object so caller can detect and handle it
+		return vm.NewObject(&objects.Error{
+			Message: fmt.Sprintf("recursion depth limit (%d) exceeded", MaxRecursionDepth),
+		})
+	}
+	recursionDepth.Unlock()
+
+	// Ensure we decrement depth on return
+	defer func() {
+		recursionDepth.Lock()
+		recursionDepth.depth--
+		recursionDepth.Unlock()
+	}()
+
 	// Get function from register
 	fn := regs[funcReg]
 

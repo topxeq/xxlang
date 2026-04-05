@@ -82,6 +82,7 @@ func TestJITRecursiveFibonacci(t *testing.T) {
 		}
 
 		jitCompiler := NewJITCompiler(config)
+		defer jitCompiler.Cleanup()
 		cf, err := jitCompiler.Compile(fibFn, constants, nil)
 		if err != nil {
 			t.Logf("JIT compilation result: %v (expected for recursive functions)", err)
@@ -89,7 +90,6 @@ func TestJITRecursiveFibonacci(t *testing.T) {
 		}
 
 		t.Logf("JIT compiled successfully: %d bytes", cf.Size)
-		jitCompiler.Cleanup()
 	})
 }
 
@@ -166,6 +166,7 @@ func TestJITTailRecursiveFibonacci(t *testing.T) {
 		}
 
 		jitCompiler := NewJITCompiler(config)
+		defer jitCompiler.Cleanup()
 		cf, err := jitCompiler.Compile(fibHelperFn, constants, nil)
 		if err != nil {
 			t.Logf("JIT compilation result: %v", err)
@@ -173,7 +174,6 @@ func TestJITTailRecursiveFibonacci(t *testing.T) {
 		}
 
 		t.Logf("JIT compiled successfully: %d bytes", cf.Size)
-		jitCompiler.Cleanup()
 	})
 }
 

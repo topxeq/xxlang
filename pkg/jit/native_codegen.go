@@ -1323,27 +1323,17 @@ func (cg *NativeCodeGenerator) compileMul(dst, left, right int) {
 func (cg *NativeCodeGenerator) compileDiv(dst, left, right int) {
 	// Division in x86-64: idiv uses rdx:rax / src
 	// Result: quotient in rax, remainder in rdx
+	// SAFETY: Check for division by zero to avoid hardware exception
 
-	cg.loadRegToRax(left)
-	cg.emitBytes([]byte{0x48, 0x99}) // cqo: sign-extend rax to rdx:rax
-
+	// First, load divisor to rcx for zero check
 	if right < 8 {
-		// Need to move right to a register and use idiv
-		// Save right value in rcx if it's not already there
 		if right == 2 {
-			cg.emitBytes([]byte{0x48, 0xF7, 0xF9}) // idiv rcx
+			// Already in rcx, just test it
 		} else {
-			// Move right to rcx first
 			cg.loadRegToRax(right)
 			cg.emitBytes([]byte{0x48, 0x89, 0xC1}) // mov rcx, rax
-			// Restore left
-			cg.loadRegToRax(left)
-			cg.emitBytes([]byte{0x48, 0x99}) // cqo
-			cg.emitBytes([]byte{0x48, 0xF7, 0xF9}) // idiv rcx
 		}
 	} else if right < 12 {
-		// VM regs 8-11 are in R12-R15
-		// Move to rcx and divide
 		switch right {
 		case 8:
 			cg.emitBytes([]byte{0x49, 0x89, 0xE1}) // mov rcx, r12
@@ -1354,34 +1344,68 @@ func (cg *NativeCodeGenerator) compileDiv(dst, left, right int) {
 		case 11:
 			cg.emitBytes([]byte{0x49, 0x89, 0xF9}) // mov rcx, r15
 		}
-		cg.emitBytes([]byte{0x48, 0xF7, 0xF9}) // idiv rcx
 	} else {
-		// VM regs 12+ on stack
+		// Load from stack to rcx
 		offset := 48 + (right-12)*8
-		cg.emitBytes([]byte{0x48, 0xF7, 0xBD}) // idiv [rbp - offset]
+		cg.emitBytes([]byte{0x48, 0x8B, 0x8D}) // mov rcx, [rbp - offset]
 		cg.emitUint32(uint32(offset))
 	}
 
+	// Test if divisor is zero
+	cg.emitBytes([]byte{0x48, 0x85, 0xC9}) // test rcx, rcx
+
+	// jz to return_zero (placeholder)
+	jzPos := len(cg.code)
+	cg.emitBytes([]byte{0x74, 0x00}) // jz rel8
+
+	// Load dividend
+	cg.loadRegToRax(left)
+	cg.emitBytes([]byte{0x48, 0x99}) // cqo: sign-extend rax to rdx:rax
+
+	// idiv rcx
+	cg.emitBytes([]byte{0x48, 0xF7, 0xF9}) // idiv rcx
+
+	// Store result and jump over zero case
 	cg.storeRaxToReg(dst)
+	jmpPos := len(cg.code)
+	cg.emitBytes([]byte{0xEB, 0x00}) // jmp rel8 (placeholder)
+
+	// Return zero case
+	returnZeroPos := len(cg.code)
+	// Use safe jump offset with validation
+	divOffset1 := returnZeroPos - (jzPos + 2)
+	if !CanUseShortJump(divOffset1) {
+		fmt.Printf("[JIT WARNING] Jump offset %d exceeds rel8 range in div/mod zero check\n", divOffset1)
+	}
+	cg.code[jzPos+1] = byte(int8(divOffset1))
+
+	// Set result to 0
+	cg.emitBytes([]byte{0x48, 0x31, 0xC0}) // xor rax, rax
+	cg.storeRaxToReg(dst)
+
+	// Fix up jump over zero case
+	endPos := len(cg.code)
+	divOffset2 := endPos - (jmpPos + 2)
+	if !CanUseShortJump(divOffset2) {
+		fmt.Printf("[JIT WARNING] Jump offset %d exceeds rel8 range in div/mod skip\n", divOffset2)
+	}
+	cg.code[jmpPos+1] = byte(int8(divOffset2))
 }
 
 func (cg *NativeCodeGenerator) compileMod(dst, left, right int) {
 	// Mod is the remainder after division
-	cg.loadRegToRax(left)
-	cg.emitBytes([]byte{0x48, 0x99}) // cqo
+	// SAFETY: Check for division by zero to avoid hardware exception
 
+	// First, load divisor to rcx for zero check
 	if right < 8 {
 		if right == 3 {
-			cg.emitBytes([]byte{0x48, 0xF7, 0xFA}) // idiv rdx
+			// Already in rdx, move to rcx
+			cg.emitBytes([]byte{0x48, 0x89, 0xD1}) // mov rcx, rdx
 		} else {
 			cg.loadRegToRax(right)
 			cg.emitBytes([]byte{0x48, 0x89, 0xC1}) // mov rcx, rax
-			cg.loadRegToRax(left)
-			cg.emitBytes([]byte{0x48, 0x99})
-			cg.emitBytes([]byte{0x48, 0xF7, 0xF9})
 		}
 	} else if right < 12 {
-		// VM regs 8-11 are in R12-R15
 		switch right {
 		case 8:
 			cg.emitBytes([]byte{0x49, 0x89, 0xE1}) // mov rcx, r12
@@ -1392,17 +1416,55 @@ func (cg *NativeCodeGenerator) compileMod(dst, left, right int) {
 		case 11:
 			cg.emitBytes([]byte{0x49, 0x89, 0xF9}) // mov rcx, r15
 		}
-		cg.emitBytes([]byte{0x48, 0xF7, 0xF9}) // idiv rcx
 	} else {
-		// VM regs 12+ on stack
+		// Load from stack to rcx
 		offset := 48 + (right-12)*8
-		cg.emitBytes([]byte{0x48, 0xF7, 0xBD}) // idiv [rbp - offset]
+		cg.emitBytes([]byte{0x48, 0x8B, 0x8D}) // mov rcx, [rbp - offset]
 		cg.emitUint32(uint32(offset))
 	}
 
+	// Test if divisor is zero
+	cg.emitBytes([]byte{0x48, 0x85, 0xC9}) // test rcx, rcx
+
+	// jz to return_zero (placeholder)
+	jzPos := len(cg.code)
+	cg.emitBytes([]byte{0x74, 0x00}) // jz rel8
+
+	// Load dividend
+	cg.loadRegToRax(left)
+	cg.emitBytes([]byte{0x48, 0x99}) // cqo
+
+	// idiv rcx
+	cg.emitBytes([]byte{0x48, 0xF7, 0xF9}) // idiv rcx
+
 	// Result is in rdx (remainder)
 	cg.emitBytes([]byte{0x48, 0x89, 0xD0}) // mov rax, rdx
+
+	// Store result and jump over zero case
 	cg.storeRaxToReg(dst)
+	jmpPos := len(cg.code)
+	cg.emitBytes([]byte{0xEB, 0x00}) // jmp rel8 (placeholder)
+
+	// Return zero case
+	returnZeroPos := len(cg.code)
+	// Use safe jump offset with validation
+	divOffset1 := returnZeroPos - (jzPos + 2)
+	if !CanUseShortJump(divOffset1) {
+		fmt.Printf("[JIT WARNING] Jump offset %d exceeds rel8 range in div/mod zero check\n", divOffset1)
+	}
+	cg.code[jzPos+1] = byte(int8(divOffset1))
+
+	// Set result to 0
+	cg.emitBytes([]byte{0x48, 0x31, 0xC0}) // xor rax, rax
+	cg.storeRaxToReg(dst)
+
+	// Fix up jump over zero case
+	endPos := len(cg.code)
+	divOffset2 := endPos - (jmpPos + 2)
+	if !CanUseShortJump(divOffset2) {
+		fmt.Printf("[JIT WARNING] Jump offset %d exceeds rel8 range in div/mod skip\n", divOffset2)
+	}
+	cg.code[jmpPos+1] = byte(int8(divOffset2))
 }
 
 func (cg *NativeCodeGenerator) compileNeg(dst, src int) {

@@ -40,6 +40,9 @@ type CodeGenerator struct {
 
 	// Number of registers used
 	numRegs int
+
+	// Calculated stack size
+	stackSize uint32
 }
 
 type fixup struct {
@@ -67,6 +70,19 @@ func (cg *CodeGenerator) Generate(fn *compiler.CompiledFunction, constants []vm.
 	cg.globals = globals
 	cg.fn = fn
 
+	// Calculate stack size based on NumLocals with safety margin
+	// Each local is 8 bytes, minimum 64 registers (512 bytes), add 256 byte safety margin
+	numLocals := fn.NumLocals
+	if numLocals < 64 {
+		numLocals = 64
+	}
+	// Safety: check for integer overflow
+	const maxLocals = (1<<31 - 1 - 256) / 8 // Maximum safe value to avoid overflow
+	if numLocals > maxLocals {
+		return nil, fmt.Errorf("NumLocals %d exceeds maximum safe value %d", numLocals, maxLocals)
+	}
+	cg.stackSize = uint32(numLocals*8 + 256) // locals + safety margin
+
 	// Count registers needed
 	cg.numRegs = 32 // Default register count
 
@@ -76,10 +92,29 @@ func (cg *CodeGenerator) Generate(fn *compiler.CompiledFunction, constants []vm.
 	// Main dispatch loop
 	code := fn.Instructions
 	ip := 0
+	maxIterations := len(code) * 2 // Safety limit: at most 2 iterations per byte
+	iterations := 0
 
 	for ip < len(code) {
+		iterations++
+		if iterations > maxIterations {
+			return nil, fmt.Errorf("compilation exceeded maximum iterations (%d), possible bytecode corruption", maxIterations)
+		}
+
 		op := compiler.Opcode(code[ip])
 		cg.labels[fmt.Sprintf("ip_%d", ip)] = len(cg.code)
+
+		// Check if we have enough bytes for the instruction
+		def, err := compiler.Lookup(byte(op))
+		if err != nil {
+			// Unknown opcode, skip it
+			ip++
+			continue
+		}
+		instrLen := 1 + len(def.OperandWidths)
+		if ip+instrLen > len(code) {
+			return nil, fmt.Errorf("truncated instruction at IP %d: need %d bytes, have %d", ip, instrLen, len(code)-ip)
+		}
 
 		switch op {
 		// Data movement
@@ -199,10 +234,9 @@ func (cg *CodeGenerator) emitPrologue() {
 	cg.emitBytes([]byte{0x41, 0x57}) // push r15
 
 	// sub rsp, stack_size (for registers as local storage)
-	// Each register is a uint64 (8 bytes), allocate space for 64 registers
-	stackSize := uint32(512)
+	// Use calculated stack size based on NumLocals
 	cg.emitBytes([]byte{0x48, 0x81, 0xEC})
-	cg.emitUint32(stackSize)
+	cg.emitUint32(cg.stackSize)
 
 	// Initialize all registers to null (0x7FFE000000000000)
 	// This prevents garbage values from causing issues
@@ -220,7 +254,7 @@ func (cg *CodeGenerator) emitPrologue() {
 func (cg *CodeGenerator) emitEpilogue() {
 	// add rsp, stack_size
 	cg.emitBytes([]byte{0x48, 0x81, 0xC4})
-	cg.emitUint32(512)
+	cg.emitUint32(cg.stackSize)
 
 	// pop r15-r12
 	cg.emitBytes([]byte{0x41, 0x5F}) // pop r15
@@ -295,9 +329,26 @@ func (cg *CodeGenerator) storeRcxToReg(reg int) {
 // Opcode compilation functions
 // ============================================================================
 
+// safeReadByte reads a byte from code at offset with bounds checking
+// Returns 0 if out of bounds (safe default for most opcodes)
+func (cg *CodeGenerator) safeReadByte(code []byte, offset int) byte {
+	if offset < 0 || offset >= len(code) {
+		return 0
+	}
+	return code[offset]
+}
+
+// safeReadUint16 reads a uint16 from code at offset with bounds checking
+func (cg *CodeGenerator) safeReadUint16(code []byte, offset int) uint16 {
+	if offset < 0 || offset+1 >= len(code) {
+		return 0
+	}
+	return uint16(code[offset])<<8 | uint16(code[offset+1])
+}
+
 func (cg *CodeGenerator) compileOpRegLoadConst(code []byte, ip *int) {
-	dst := int(code[*ip+1])
-	constIdx := int(code[*ip+2])<<8 | int(code[*ip+3])
+	dst := int(cg.safeReadByte(code, *ip+1))
+	constIdx := int(cg.safeReadUint16(code, *ip+2))
 
 	var val uint64
 	if constIdx < len(cg.constants) {
@@ -350,10 +401,31 @@ func (cg *CodeGenerator) compileOpRegDiv(code []byte, ip *int) {
 	cg.loadRegToRax(left)
 	cg.loadRegToRcx(right)
 
+	// Check for division by zero
+	// test rcx, rcx
+	cg.emitBytes([]byte{0x48, 0x85, 0xC9})
+	// jz div_zero (skip division, return 0)
+	jzPos := len(cg.code)
+	cg.emitBytes([]byte{0x74, 0x00}) // jz rel8 (placeholder)
+
+	// Normal division path
 	// cqo (sign-extend rax into rdx:rax)
 	cg.emitBytes([]byte{0x48, 0x99})
 	// idiv rcx
 	cg.emitBytes([]byte{0x48, 0xF7, 0xF9})
+	// jmp done
+	jmpPos := len(cg.code)
+	cg.emitBytes([]byte{0xEB, 0x00}) // jmp rel8 (placeholder)
+
+	// Division by zero: return 0
+	divZeroPos := len(cg.code)
+	cg.code[jzPos+1] = byte(divZeroPos - (jzPos + 2))
+	// xor rax, rax (result = 0)
+	cg.emitBytes([]byte{0x48, 0x31, 0xC0})
+
+	// Done
+	donePos := len(cg.code)
+	cg.code[jmpPos+1] = byte(donePos - (jmpPos + 2))
 
 	cg.storeRaxToReg(dst)
 	*ip += 4
@@ -367,12 +439,33 @@ func (cg *CodeGenerator) compileOpRegMod(code []byte, ip *int) {
 	cg.loadRegToRax(left)
 	cg.loadRegToRcx(right)
 
+	// Check for division by zero
+	// test rcx, rcx
+	cg.emitBytes([]byte{0x48, 0x85, 0xC9})
+	// jz mod_zero (skip division, return 0)
+	jzPos := len(cg.code)
+	cg.emitBytes([]byte{0x74, 0x00}) // jz rel8 (placeholder)
+
+	// Normal modulo path
 	// cqo
 	cg.emitBytes([]byte{0x48, 0x99})
 	// idiv rcx (remainder in rdx)
 	cg.emitBytes([]byte{0x48, 0xF7, 0xF9})
 	// mov rax, rdx
 	cg.emitBytes([]byte{0x48, 0x89, 0xD0})
+	// jmp done
+	jmpPos := len(cg.code)
+	cg.emitBytes([]byte{0xEB, 0x00}) // jmp rel8 (placeholder)
+
+	// Division by zero: return 0
+	modZeroPos := len(cg.code)
+	cg.code[jzPos+1] = byte(modZeroPos - (jzPos + 2))
+	// xor rax, rax (result = 0)
+	cg.emitBytes([]byte{0x48, 0x31, 0xC0})
+
+	// Done
+	donePos := len(cg.code)
+	cg.code[jmpPos+1] = byte(donePos - (jmpPos + 2))
 
 	cg.storeRaxToReg(dst)
 	*ip += 4

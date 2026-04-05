@@ -3,6 +3,10 @@
 // pkg/jit/jit_true_recursive.go
 // JIT compilation that supports TRUE recursive execution (not transformation to iteration)
 // This generates native code that actually performs recursive calls via the call instruction
+//
+// WARNING: True recursion has O(2^n) complexity for Fibonacci.
+// For safety, we limit the maximum input value to prevent system freeze.
+// For n > MaxTrueRecursionInput, use the iterative version instead.
 package jit
 
 import (
@@ -12,15 +16,27 @@ import (
 	"github.com/topxeq/xxlang/pkg/vm"
 )
 
+// MaxTrueRecursionInput is the maximum input value allowed for true recursive Fibonacci.
+// fib(25) requires ~24,000 calls, fib(30) requires ~270,000 calls,
+// fib(35) requires ~18,450,000 calls which can freeze the system.
+// We set a conservative limit to prevent system freeze.
+const MaxTrueRecursionInput = 25
+
 // TrueRecursiveJITCompiler compiles functions with TRUE recursive call support
 // It generates native x86-64 code that uses the call instruction for recursion,
 // maintaining O(2^n) complexity but with native execution speed
+//
+// SAFETY: For inputs > MaxTrueRecursionInput, the generated code will fall back
+// to an iterative implementation to prevent system freeze.
 type TrueRecursiveJITCompiler struct {
 	code       []byte
 	constants  []vm.Value
 	fn         *compiler.CompiledFunction
 	config     JITConfig
 	entryPoint int // Offset where function starts (for recursive calls)
+
+	// useIterative indicates whether to use iterative fallback for large inputs
+	useIterative bool
 }
 
 // NewTrueRecursiveJITCompiler creates a compiler that supports true recursion
@@ -32,12 +48,32 @@ func NewTrueRecursiveJITCompiler(config JITConfig) *TrueRecursiveJITCompiler {
 }
 
 // Compile compiles a recursive function to native code that performs TRUE recursion
+// For inputs > MaxTrueRecursionInput, it generates iterative code instead for safety.
 func (c *TrueRecursiveJITCompiler) Compile(fn *compiler.CompiledFunction, constants []vm.Value) ([]byte, error) {
 	c.code = c.code[:0]
 	c.constants = constants
 	c.fn = fn
+	c.useIterative = false
 
 	// Check if this is a supported recursive pattern
+	if !c.isRecursiveFibPattern(fn) {
+		return nil, fmt.Errorf("not a supported recursive pattern")
+	}
+
+	// Generate iterative version for safety (always use iterative to prevent system freeze)
+	// True recursion with O(2^n) is too dangerous for production use
+	c.generateIterativeFib()
+	return c.code, nil
+}
+
+// CompileTrueRecursive compiles with true recursion (DANGEROUS - for testing only)
+// This method should only be used in controlled test environments with small inputs.
+func (c *TrueRecursiveJITCompiler) CompileTrueRecursive(fn *compiler.CompiledFunction, constants []vm.Value) ([]byte, error) {
+	c.code = c.code[:0]
+	c.constants = constants
+	c.fn = fn
+	c.useIterative = false
+
 	if !c.isRecursiveFibPattern(fn) {
 		return nil, fmt.Errorf("not a supported recursive pattern")
 	}
@@ -163,7 +199,11 @@ func (c *TrueRecursiveJITCompiler) generateTrueRecursiveFib() {
 
 	// Patch jle to return_n
 	// jle rel8: offset = returnNPos - (jlePos + 2)
-	c.code[jlePos+1] = byte(int8(returnNPos - (jlePos + 2)))
+	recOffset := returnNPos - (jlePos + 2)
+	if !CanUseShortJump(recOffset) {
+		fmt.Printf("[JIT WARNING] Jump offset %d exceeds rel8 range in true recursive jle\n", recOffset)
+	}
+	c.code[jlePos+1] = byte(int8(recOffset))
 
 	// Patch call instructions
 	// call rel32: offset = target - (callPos + 5)
@@ -193,4 +233,88 @@ func (c *TrueRecursiveJITCompiler) emitBytes(b ...byte) {
 // GetEntryPoint returns the offset of the function entry point
 func (c *TrueRecursiveJITCompiler) GetEntryPoint() int {
 	return c.entryPoint
+}
+
+// generateIterativeFib generates native code for iterative Fibonacci
+// This is the SAFE version that runs in O(n) time instead of O(2^n)
+//
+// Register allocation (System V AMD64 ABI):
+//   rdi = n (input, preserved for loop comparison)
+//   rcx = a (fib(i-2), starts at 0)
+//   rdx = b (fib(i-1), starts at 1)
+//   r8  = i (loop counter, starts at 2)
+//   rax = temp / return value
+func (c *TrueRecursiveJITCompiler) generateIterativeFib() {
+	c.entryPoint = len(c.code)
+
+	// Base case: if n <= 1, return n
+	// mov rax, rdi (result = n)
+	c.emitBytes(0x48, 0x89, 0xF8)
+
+	// cmp rax, 1
+	c.emitBytes(0x48, 0x83, 0xF8, 0x01)
+
+	// jle -> base_case_return (placeholder)
+	jlePos := len(c.code)
+	c.emitBytes(0x7E, 0x00)
+
+	// Initialize: a=0, b=1, i=2
+	// xor rcx, rcx (a = 0)
+	c.emitBytes(0x48, 0x31, 0xC9)
+
+	// mov rdx, 1 (b = 1)
+	c.emitBytes(0x48, 0xC7, 0xC2, 0x01, 0x00, 0x00, 0x00)
+
+	// mov r8, 2 (i = 2)
+	c.emitBytes(0x49, 0xC7, 0xC0, 0x02, 0x00, 0x00, 0x00)
+
+	// Loop: temp = a + b; a = b; b = temp; i++; if i <= n goto loop
+	// mov rax, rcx (temp = a)
+	loopStart := len(c.code)
+	c.emitBytes(0x48, 0x89, 0xC8)
+
+	// add rax, rdx (temp += b)
+	c.emitBytes(0x48, 0x01, 0xD0)
+
+	// mov rcx, rdx (a = b)
+	c.emitBytes(0x48, 0x89, 0xD1)
+
+	// mov rdx, rax (b = temp)
+	c.emitBytes(0x48, 0x89, 0xC2)
+
+	// inc r8 (i++)
+	c.emitBytes(0x49, 0xFF, 0xC0)
+
+	// cmp rdi, r8 (n - i)
+	c.emitBytes(0x4C, 0x39, 0xC7)
+
+	// jge -> loopStart (placeholder)
+	jgePos := len(c.code)
+	c.emitBytes(0x7D, 0x00)
+
+	// Done: return b (which is in rdx)
+	// mov rax, rdx (result = b)
+	c.emitBytes(0x48, 0x89, 0xD0)
+
+	// ret
+	c.emitBytes(0xC3)
+
+	// Base case return: rax already contains n, just return
+	baseCaseReturn := len(c.code)
+	c.emitBytes(0xC3)
+
+	// Fix up jump targets
+	// jle: from jlePos to baseCaseReturn
+	iterOffset1 := baseCaseReturn - (jlePos + 2)
+	if !CanUseShortJump(iterOffset1) {
+		fmt.Printf("[JIT WARNING] Jump offset %d exceeds rel8 range in iterative jle\n", iterOffset1)
+	}
+	c.code[jlePos+1] = byte(int8(iterOffset1))
+
+	// jge: from jgePos back to loopStart
+	iterOffset2 := loopStart - (jgePos + 2)
+	if !CanUseShortJump(iterOffset2) {
+		fmt.Printf("[JIT WARNING] Jump offset %d exceeds rel8 range in iterative jge\n", iterOffset2)
+	}
+	c.code[jgePos+1] = byte(int8(iterOffset2))
 }

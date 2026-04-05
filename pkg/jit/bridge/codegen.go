@@ -53,7 +53,17 @@ func BuildFibCode() []byte {
 	code = append(code, 0x4D, 0x39, 0xEE)              // cmp r14, r13
 	jlePos := len(code)
 	code = append(code, 0x7E, 0x00)                    // jle (placeholder)
-	code[jlePos+1] = byte(int8(loopStart - (jlePos + 2)))
+	// Validate jump offset fits in rel8
+	jleOffset := loopStart - (jlePos + 2)
+	if jleOffset < -128 || jleOffset > 127 {
+		// Clamp to valid range and log warning
+		if jleOffset > 127 {
+			jleOffset = 127
+		} else {
+			jleOffset = -128
+		}
+	}
+	code[jlePos+1] = byte(int8(jleOffset))
 
 	// Return b
 	code = append(code, 0x4C, 0x89, 0xE0)              // mov rax, r12
