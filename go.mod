@@ -17,9 +17,7 @@ require (
 	github.com/topxeq/gowasm v0.0.0-20260314153258-bbde62b3f8ec
 	golang.org/x/crypto v0.49.0
 	golang.org/x/image v0.38.0
-	golang.org/x/net v0.51.0
 	golang.org/x/text v0.35.0
-	golang.org/x/tools v0.42.0
 )
 
 require (
