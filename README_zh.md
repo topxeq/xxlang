@@ -37,6 +37,7 @@ Xxlang 是一个基于字节码虚拟机的脚本语言，使用 Go 语言实现
 - [微服务模式](docs/MICROSERVICE_zh.md) - HTTP/HTTPS 服务器、REST API、WebSocket
 - [服务模式](docs/SERVICE.md) - 作为系统服务运行、自动启动、后台任务
 - [GUI 编程](docs/GUI_zh.md) - WebView2 桌面应用与双向通信
+- [SSH 模块](docs/SSH_zh.md) - SSH/SFTP 远程服务器管理与文件传输
 - [代码示例](docs/EXAMPLES_zh.md) - 常用场景代码示例
 - [变量作用域](docs/SCOPE_zh.md) - 变量作用域和闭包行为
 - [嵌入指南](docs/EMBEDDING.md) - 在 Go 应用中使用 Xxlang
