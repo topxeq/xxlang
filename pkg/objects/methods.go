@@ -86,6 +86,9 @@ var TypeMethods = map[ObjectType]map[string]*Builtin{
 	TomlDocumentType: tomlDocumentMethods,
 	// Time
 	TimeType: timeMethods,
+	// Rod browser (web scraping)
+	RodBrowserType:     rodBrowserMethods,
+	RodHTMLElementType: rodHTMLElementMethods,
 }
 
 // GetMethod returns the builtin method for the given object type and method name
@@ -9481,5 +9484,584 @@ var timeMethods = map[string]*Builtin{
 			return newError("receiver for toMap must be Time, got %s", args[0].Type())
 		}
 		return self.ToMap()
+	}},
+}
+
+// ============================================================
+// RodBrowser Methods (Web Scraping with Rod)
+// ============================================================
+
+var rodBrowserMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	// Navigation
+	"get": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for get. got=%d, want=2 (self + url)", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for get must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.Get(args[1:]...)
+	}},
+	"close": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for close. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for close must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.Close(args[1:]...)
+	}},
+	"refresh": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for refresh. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for refresh must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.Refresh(args[1:]...)
+	}},
+	"back": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for back. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for back must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.Back(args[1:]...)
+	}},
+	"forward": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for forward. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for forward must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.Forward(args[1:]...)
+	}},
+	// Element operations
+	"find": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for find. got=%d, want=2 (self + selector)", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for find must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.Find(args[1:]...)
+	}},
+	"findAll": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for findAll. got=%d, want=2 (self + selector)", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for findAll must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.FindAll(args[1:]...)
+	}},
+	"exists": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for exists. got=%d, want=2 (self + selector)", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for exists must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.Exists(args[1:]...)
+	}},
+	"click": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for click. got=%d, want=2 (self + selector)", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for click must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.Click(args[1:]...)
+	}},
+	"fill": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for fill. got=%d, want=3 (self + selector + value)", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for fill must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.Fill(args[1:]...)
+	}},
+	"wait": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for wait. got=%d, want=2 (self + selector)", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for wait must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.Wait(args[1:]...)
+	}},
+	"waitLoad": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for waitLoad. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for waitLoad must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.WaitLoad(args[1:]...)
+	}},
+	// JavaScript execution
+	"eval": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for eval. got=%d, want=2 (self + js)", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for eval must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.Eval(args[1:]...)
+	}},
+	"inject": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for inject. got=%d, want=2 (self + js)", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for inject must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.Inject(args[1:]...)
+	}},
+	// Page content
+	"html": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for html. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for html must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.HTML(args[1:]...)
+	}},
+	"text": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for text. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for text must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.Text(args[1:]...)
+	}},
+	// Storage (localStorage, sessionStorage, cookies)
+	"getLocalStorage": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getLocalStorage. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for getLocalStorage must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.GetLocalStorage(args[1:]...)
+	}},
+	"getSessionStorage": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getSessionStorage. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for getSessionStorage must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.GetSessionStorage(args[1:]...)
+	}},
+	"setLocalStorage": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for setLocalStorage. got=%d, want=3 (self + key + value)", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for setLocalStorage must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.SetLocalStorage(args[1:]...)
+	}},
+	"setSessionStorage": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for setSessionStorage. got=%d, want=3 (self + key + value)", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for setSessionStorage must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.SetSessionStorage(args[1:]...)
+	}},
+	"getCookies": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getCookies. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for getCookies must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.GetCookies(args[1:]...)
+	}},
+	"setCookies": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for setCookies. got=%d, want=2 (self + cookies)", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for setCookies must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.SetCookies(args[1:]...)
+	}},
+	"clearCookies": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for clearCookies. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for clearCookies must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.ClearCookies(args[1:]...)
+	}},
+	"saveStorage": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for saveStorage. got=%d, want=2 (self + path)", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for saveStorage must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.SaveStorage(args[1:]...)
+	}},
+	"loadStorage": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for loadStorage. got=%d, want=2 (self + path)", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for loadStorage must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.LoadStorage(args[1:]...)
+	}},
+	// Screenshot
+	"screenshot": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for screenshot. got=%d, want=2 (self + path)", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for screenshot must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.Screenshot(args[1:]...)
+	}},
+	// Viewport and User Agent
+	"setViewport": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for setViewport. got=%d, want=3 (self + width + height)", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for setViewport must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.SetViewport(args[1:]...)
+	}},
+	"setUserAgent": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for setUserAgent. got=%d, want=2 (self + ua)", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for setUserAgent must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.SetUserAgent(args[1:]...)
+	}},
+}
+
+// RodHTMLElementMethods - methods for RodHTMLElement
+var rodHTMLElementMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+	// Content extraction
+	"getText": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getText. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for getText must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.GetText(args[1:]...)
+	}},
+	"getAttr": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for getAttr. got=%d, want=2 (self + name)", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for getAttr must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.GetAttr(args[1:]...)
+	}},
+	"getProperty": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for getProperty. got=%d, want=2 (self + name)", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for getProperty must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.GetProperty(args[1:]...)
+	}},
+	"getInnerHTML": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getInnerHTML. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for getInnerHTML must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.GetInnerHTML(args[1:]...)
+	}},
+	"getOuterHTML": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getOuterHTML. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for getOuterHTML must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.GetOuterHTML(args[1:]...)
+	}},
+	"getTagName": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getTagName. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for getTagName must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.GetTagName(args[1:]...)
+	}},
+	"getValue": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getValue. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for getValue must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.GetValue(args[1:]...)
+	}},
+	// DOM traversal
+	"find": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for find. got=%d, want=2 (self + selector)", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for find must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.Find(args[1:]...)
+	}},
+	"findAll": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for findAll. got=%d, want=2 (self + selector)", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for findAll must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.FindAll(args[1:]...)
+	}},
+	// Interaction
+	"click": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for click. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for click must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.Click(args[1:]...)
+	}},
+	"input": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for input. got=%d, want=2 (self + value)", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for input must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.Input(args[1:]...)
+	}},
+	"typeText": {Fn: func(args ...Object) Object {
+		if len(args) < 2 {
+			return newError("wrong number of arguments for typeText. got=%d, want>=2 (self + text)", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for typeText must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.TypeText(args[1:]...)
+	}},
+	"setValue": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for setValue. got=%d, want=2 (self + value)", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for setValue must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.SetValue(args[1:]...)
+	}},
+	"select": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for select. got=%d, want=2 (self + value)", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for select must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.Select(args[1:]...)
+	}},
+	"check": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for check. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for check must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.Check(args[1:]...)
+	}},
+	"uncheck": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for uncheck. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for uncheck must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.Uncheck(args[1:]...)
+	}},
+	"focus": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for focus. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for focus must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.Focus(args[1:]...)
+	}},
+	"blur": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for blur. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for blur must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.Blur(args[1:]...)
+	}},
+	"hover": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for hover. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for hover must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.Hover(args[1:]...)
+	}},
+	"press": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for press. got=%d, want=2 (self + key)", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for press must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.Press(args[1:]...)
+	}},
+	"selectAll": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for selectAll. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for selectAll must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.SelectAll(args[1:]...)
+	}},
+	"drag": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for drag. got=%d, want=3 (self + x + y)", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for drag must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.Drag(args[1:]...)
+	}},
+	// State checking
+	"isVisible": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for isVisible. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for isVisible must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.IsVisible(args[1:]...)
+	}},
+	"isEnabled": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for isEnabled. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for isEnabled must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.IsEnabled(args[1:]...)
+	}},
+	// Wait for state
+	"waitFor": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for waitFor. got=%d, want=2 (self + state)", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for waitFor must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.WaitFor(args[1:]...)
+	}},
+	// Screenshot
+	"screenshot": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for screenshot. got=%d, want=2 (self + path)", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for screenshot must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.Screenshot(args[1:]...)
+	}},
+	// Position and size
+	"getBoundingClientRect": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getBoundingClientRect. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodHTMLElement)
+		if !ok {
+			return newError("receiver for getBoundingClientRect must be ROD_HTML_ELEMENT, got %s", args[0].Type())
+		}
+		return self.GetBoundingClientRect(args[1:]...)
 	}},
 }

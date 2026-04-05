@@ -1,0 +1,121 @@
+// test_browser.xxl
+// Test browser module for web scraping with Rod
+
+pln("=== Testing Browser Module ===")
+
+// Import modules
+import "browser"
+import "strings"
+
+// Create a new browser instance (headless mode)
+pln("Launching browser...")
+var opts = {"headless": true}
+var br = browser.open(opts)
+
+// Check if browser launched successfully
+if (typeOf(br) == "STRING" && strings.hasPrefix(br, "[error]")) {
+    pln("Error launching browser: ", br)
+    return
+}
+
+pln("Browser launched: ", br)
+
+// Test 1: Navigate to a simple page
+pln("\n=== Test 1: Navigation ===")
+var url = "https://example.com"
+pln("Navigating to: ", url)
+br.get(url)
+pln("Page loaded successfully")
+
+// Test 2: Get page HTML and text
+pln("\n=== Test 2: Get page content ===")
+var html = br.html()
+pln("HTML length: ", html.len())
+
+var text = br.text()
+pln("Page text (first 50 chars): ", strings.substr(text, 0, 50))
+
+// Test 3: Find elements
+pln("\n=== Test 3: Find elements ===")
+var h1 = br.find("h1")
+if (h1 != null) {
+    var h1Text = h1.getText()
+    pln("H1 text: ", h1Text)
+} else {
+    pln("H1 element not found")
+}
+
+// Test 4: Get all links
+pln("\n=== Test 4: Get all links ===")
+var links = br.findAll("a")
+pln("Number of links found: ", links.len())
+
+if (links.len() > 0) {
+    var firstLink = links[0]
+    var linkText = firstLink.getText()
+    var linkHref = firstLink.getAttr("href")
+    pln("First link text: ", linkText)
+    pln("First link href: ", linkHref)
+}
+
+// Test 5: JavaScript execution
+pln("\n=== Test 5: JavaScript execution ===")
+var title = br.eval("document.title")
+pln("Page title: ", title)
+
+var userAgent = br.eval("navigator.userAgent")
+pln("User Agent: ", userAgent)
+
+// Test 6: localStorage operations
+pln("\n=== Test 6: localStorage operations ===")
+br.setLocalStorage("testKey", "testValue")
+pln("Set localStorage testKey=testValue")
+
+var localData = br.getLocalStorage()
+pln("localStorage: ", localData)
+
+// Test 7: sessionStorage operations
+pln("\n=== Test 7: sessionStorage operations ===")
+br.setSessionStorage("sessionKey", "sessionValue")
+pln("Set sessionStorage sessionKey=sessionValue")
+
+var sessionData = br.getSessionStorage()
+pln("sessionStorage: ", sessionData)
+
+// Test 8: Viewport settings
+pln("\n=== Test 8: Viewport settings ===")
+br.setViewport(1920, 1080)
+pln("Viewport set to 1920x1080")
+
+// Test 9: Screenshot
+pln("\n=== Test 9: Screenshot ===")
+var screenshotPath = "temp/browser_test_screenshot.png"
+br.screenshot(screenshotPath)
+pln("Screenshot saved to: ", screenshotPath)
+
+// Test 10: Cookies operations
+pln("\n=== Test 10: Cookies operations ===")
+var cookies = br.getCookies()
+pln("Number of cookies: ", cookies.len())
+
+// Test 11: Navigation history
+pln("\n=== Test 11: Navigation history ===")
+br.get("https://example.com")
+pln("Navigated to example.com")
+br.back()
+pln("Navigated back")
+// Skip forward test since back might not have history
+// br.forward()
+// pln("Navigated forward")
+
+// Test 12: Refresh page
+pln("\n=== Test 12: Refresh page ===")
+br.refresh()
+pln("Page refreshed")
+
+// Close the browser
+pln("\n=== Closing browser ===")
+br.close()
+pln("Browser closed")
+
+pln("\n=== All browser tests completed! ===")

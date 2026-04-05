@@ -125,6 +125,9 @@ const (
 	TomlDocumentType ObjectType = "TOML_DOCUMENT"
 	// Time type
 	TimeType ObjectType = "TIME"
+	// Rod browser types (for web scraping)
+	RodBrowserType      ObjectType = "ROD_BROWSER"
+	RodHTMLElementType  ObjectType = "ROD_HTML_ELEMENT"
 )
 
 // TypeTag is a fast integer type identifier for hot path checks
@@ -247,6 +250,9 @@ const (
 	TagYAMLDocument
 	// Time tag
 	TagTime
+	// Rod browser tags
+	TagRodBrowser
+	TagRodHTMLElement
 	TagUnknown
 )
 
