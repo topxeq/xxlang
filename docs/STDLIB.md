@@ -101,8 +101,7 @@ data := csv.read("data.csv")
 - [regex](#regex) - Regular expressions
 - [crypto](#crypto) - Cryptographic functions
 - [time](#time) - Time and date functions
-- [image](#image) - Image processing and QR codes
-- [task](#task) - Task scheduling and cron expressions
+- [gui](#gui) - WebView2 GUI programming (Windows)
 - [ascii](#ascii) - ASCII plotting for console charts
 - [fmt](#fmt) - Formatting utilities
 - [encoding](#encoding) - Base64 and hex encoding/decoding
@@ -3454,6 +3453,143 @@ time.daysInMonth(2024, 2)  // 29 (leap year)
 time.daysInMonth(2023, 2)  // 28
 time.daysInMonth(2024, 1)  // 31
 ```
+
+---
+
+## gui
+
+WebView2 GUI programming module for creating desktop applications with web technologies.
+
+**Platform:** Windows only (requires WebView2 runtime)
+
+### Window Creation
+
+#### `gui.createWindow(title, width, height)`
+
+Creates a new WebView2 window.
+
+```xxl
+import "gui"
+
+var window = gui.createWindow("My App", 800, 600)
+```
+
+#### `gui.setHTML(handle, html)`
+
+Sets HTML content of the WebView.
+
+```xxl
+gui.setHTML(window, "<h1>Hello</h1>")
+```
+
+#### `gui.loadURL(handle, url)`
+
+Navigates to a URL.
+
+```xxl
+gui.loadURL(window, "https://example.com")
+```
+
+### JavaScript Execution
+
+#### `gui.evalJS(handle, script)`
+
+Executes JavaScript and returns result (blocking).
+
+```xxl
+var title = gui.evalJS(window, "document.title")
+```
+
+#### `gui.evalJSAsync(handle, script)`
+
+Executes JavaScript without waiting (non-blocking).
+
+```xxl
+gui.evalJSAsync(window, "updateUI({count: 100})")
+```
+
+### Message Handling
+
+#### `gui.poll(handle)`
+
+Processes a single window message. Returns TRUE if message processed.
+
+```xxl
+gui.poll(window)
+```
+
+#### `gui.hasMessages(handle)`
+
+Checks if WebView messages are waiting.
+
+```xxl
+if (gui.hasMessages(window)) {
+    var msg = gui.popMessage(window)
+}
+```
+
+#### `gui.popMessage(handle)`
+
+Gets the next message from the queue (JSON string from JavaScript).
+
+```xxl
+var msg = gui.popMessage(window)
+var data = json.fromJson(msg)
+```
+
+### Window Control
+
+#### `gui.loop(handle)`
+
+Runs the window message loop (blocking).
+
+```xxl
+gui.loop(window)
+```
+
+#### `gui.isClosed(handle)`
+
+Checks if window is closed.
+
+```xxl
+while (!gui.isClosed(window)) {
+    // Main loop
+}
+```
+
+#### `gui.close(handle)`
+
+Closes the window.
+
+```xxl
+gui.close(window)
+```
+
+### Utility
+
+#### `gui.getVersion()`
+
+Returns installed WebView2 runtime version.
+
+```xxl
+var version = gui.getVersion()
+```
+
+### Two-Way Communication
+
+**JavaScript → Xxlang:**
+```javascript
+// In HTML
+window.chrome.webview.postMessage({cmd: "save", data: {value: 123}});
+```
+
+**Xxlang → JavaScript:**
+```xxl
+// Send data to frontend
+gui.evalJSAsync(window, "window.xxlang.onData({count: 100})")
+```
+
+**See [GUI Programming Guide](GUI.md) for complete documentation and examples.**
 
 ---
 

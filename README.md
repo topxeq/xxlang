@@ -37,6 +37,7 @@ Xxlang (Chinese: 现象语言) is a bytecode VM-based scripting language impleme
 - [Concurrency Programming](docs/CONCURRENCY.md) - Goroutines, tubes (channels), select, context, sync primitives
 - [Microservice Mode](docs/MICROSERVICE.md) - HTTP/HTTPS server, REST API, WebSocket
 - [Service Mode](docs/SERVICE.md) - Run as system service, automatic startup, background tasks
+- [GUI Programming](docs/GUI.md) - WebView2 desktop applications with two-way communication
 - [Code Examples](docs/EXAMPLES.md) - Common scenarios code examples
 - [Variable Scope](docs/SCOPE.md) - Variable scope and closure behavior
 - [Embedding Guide](docs/EMBEDDING.md) - Using Xxlang in Go applications

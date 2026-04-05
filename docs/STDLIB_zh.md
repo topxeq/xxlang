@@ -79,6 +79,7 @@ pln(math.sin(1.57))
 - [regex](#regex) - 正则表达式
 - [crypto](#crypto) - 加密函数
 - [time](#time) - 时间日期函数
+- [gui](#gui) - WebView2 GUI 编程（Windows）
 - [ascii](#ascii) - ASCII 图表绘制
 - [fmt](#fmt) - 格式化工具
 - [encoding](#encoding) - Base64 和十六进制编解码
@@ -3102,6 +3103,143 @@ time.daysInMonth(2024, 2)  // 29 (闰年)
 time.daysInMonth(2023, 2)  // 28
 time.daysInMonth(2024, 1)  // 31
 ```
+
+---
+
+## gui
+
+WebView2 GUI 编程模块，用于使用 Web 技术创建桌面应用程序。
+
+**平台:** 仅 Windows（需要 WebView2 运行时）
+
+### 窗口创建
+
+#### `gui.createWindow(title, width, height)`
+
+创建新的 WebView2 窗口。
+
+```xxl
+import "gui"
+
+var window = gui.createWindow("我的应用", 800, 600)
+```
+
+#### `gui.setHTML(handle, html)`
+
+设置 WebView 的 HTML 内容。
+
+```xxl
+gui.setHTML(window, "<h1>你好</h1>")
+```
+
+#### `gui.loadURL(handle, url)`
+
+导航到指定 URL。
+
+```xxl
+gui.loadURL(window, "https://example.com")
+```
+
+### JavaScript 执行
+
+#### `gui.evalJS(handle, script)`
+
+执行 JavaScript 并返回结果（阻塞）。
+
+```xxl
+var title = gui.evalJS(window, "document.title")
+```
+
+#### `gui.evalJSAsync(handle, script)`
+
+执行 JavaScript 不等待（非阻塞）。
+
+```xxl
+gui.evalJSAsync(window, "updateUI({count: 100})")
+```
+
+### 消息处理
+
+#### `gui.poll(handle)`
+
+处理单个窗口消息。返回 TRUE 如果处理了消息。
+
+```xxl
+gui.poll(window)
+```
+
+#### `gui.hasMessages(handle)`
+
+检查是否有 WebView 消息等待。
+
+```xxl
+if (gui.hasMessages(window)) {
+    var msg = gui.popMessage(window)
+}
+```
+
+#### `gui.popMessage(handle)`
+
+从队列中获取下一条消息（来自 JavaScript 的 JSON 字符串）。
+
+```xxl
+var msg = gui.popMessage(window)
+var data = json.fromJson(msg)
+```
+
+### 窗口控制
+
+#### `gui.loop(handle)`
+
+运行窗口消息循环（阻塞）。
+
+```xxl
+gui.loop(window)
+```
+
+#### `gui.isClosed(handle)`
+
+检查窗口是否已关闭。
+
+```xxl
+while (!gui.isClosed(window)) {
+    // 主循环
+}
+```
+
+#### `gui.close(handle)`
+
+关闭窗口。
+
+```xxl
+gui.close(window)
+```
+
+### 工具
+
+#### `gui.getVersion()`
+
+返回已安装的 WebView2 运行时版本。
+
+```xxl
+var version = gui.getVersion()
+```
+
+### 双向通信
+
+**JavaScript → Xxlang：**
+```javascript
+// 在 HTML 中
+window.chrome.webview.postMessage({cmd: "save", data: {value: 123}});
+```
+
+**Xxlang → JavaScript：**
+```xxl
+// 发送数据到前端
+gui.evalJSAsync(window, "window.xxlang.onData({count: 100})")
+```
+
+**完整文档和示例见 [GUI 编程指南](GUI_zh.md)。**
 
 ---
 
