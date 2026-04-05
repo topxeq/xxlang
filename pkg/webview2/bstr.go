@@ -9,6 +9,11 @@ import (
 	"unsafe"
 )
 
+// maxValidPointer is the maximum valid user-space pointer address.
+// On 64-bit Windows, user-space addresses are typically below 0x7fff00000000.
+// On 32-bit Windows, the maximum is 0x7fffffff (2GB user space).
+const maxValidPointer = uintptr(1<<(unsafe.Sizeof(uintptr(0))*8-1) - 1)
+
 var (
 	oleaut32DLL      = syscall.NewLazyDLL("oleaut32.dll")
 	sysAllocString   = oleaut32DLL.NewProc("SysAllocString")
@@ -35,8 +40,8 @@ func BSTRToString(bstr BSTR) string {
 	}
 
 	// Validate pointer is in reasonable range (not too high)
-	// Typical Windows user-space addresses are below 0x7fff00000000
-	if bstr > 0x7fff00000000 {
+	// Typical Windows user-space addresses are below maxValidPointer
+	if uintptr(bstr) > maxValidPointer {
 		return ""
 	}
 
@@ -71,7 +76,7 @@ func BSTRToString(bstr BSTR) string {
 		// Access each character with explicit pointer arithmetic
 		charPtr := (*uint16)(unsafe.Pointer(uintptr(unsafe.Pointer(utf16Ptr)) + uintptr(i)*2))
 		// Check if pointer is still valid (basic sanity)
-		if uintptr(unsafe.Pointer(charPtr)) > 0x7fff00000000 || uintptr(unsafe.Pointer(charPtr)) < 0x10000 {
+		if uintptr(unsafe.Pointer(charPtr)) > maxValidPointer || uintptr(unsafe.Pointer(charPtr)) < 0x10000 {
 			// Invalid pointer encountered, return what we have
 			break
 		}
