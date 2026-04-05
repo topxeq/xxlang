@@ -1,0 +1,494 @@
+// ============================================================
+// Xxlang SSH Module - Complete Examples
+// ============================================================
+// This file demonstrates all SSH functionality in Xxlang,
+// showing how to replace sshrun and achieve more with scripts.
+// ============================================================
+
+// ============================================================
+// Example 1: Quick Commands (One-liners)
+// ============================================================
+
+import "ssh"
+
+// Execute a single command and get output
+var output = ssh.exec("192.168.1.100", 22, "root", "password123", "uptime")
+println("Server uptime:", output)
+
+// Test connection before running commands
+if (ssh.testConnection("192.168.1.100", 22, "root", "password123")) {
+    println("Server is reachable")
+} else {
+    println("Cannot connect to server")
+}
+
+
+// ============================================================
+// Example 2: File Transfer (Replacing sshrun upload/download)
+// ============================================================
+
+import "ssh"
+
+// Upload a file (replaces: sshrun -type upload -localPath xxl -remotePath /root/)
+ssh.upload("8.146.231.222", 22, "root", "tmpAdmin_2022",
+           "xxl-linux", "/root/xxl")
+println("File uploaded successfully!")
+
+// Download a file (replaces: sshrun -type download)
+ssh.download("8.146.231.222", 22, "root", "tmpAdmin_2022",
+             "/root/config.txt", "local_config.txt")
+println("File downloaded successfully!")
+
+// Upload with key authentication
+ssh.uploadWithKey("server.com", 22, "user", "~/.ssh/id_rsa",
+                  "local.txt", "/remote/path/file.txt")
+
+
+// ============================================================
+// Example 3: SSH Client Object (Full Control)
+// ============================================================
+
+import "ssh"
+
+// Create and connect client
+var client = ssh.newClient()
+client.connect("8.146.231.222", 22, "root", "tmpAdmin_2022")
+
+// Check connection status
+println("Connected:", client.is_connected())
+println("Host:", client.getHost())
+println("User:", client.getUser())
+
+// Execute multiple commands
+var hostname = client.exec("hostname")
+println("Hostname:", hostname)
+
+var kernel = client.exec("uname -r")
+println("Kernel:", kernel)
+
+var disk = client.exec("df -h /")
+println("Disk usage:\n", disk)
+
+// Close when done
+client.close()
+
+
+// ============================================================
+// Example 4: Connection with SSH Key
+// ============================================================
+
+import "ssh"
+
+// Connect with private key file
+var client = ssh.connectWithKey("server.com", 22, "deploy", "~/.ssh/id_rsa")
+
+// Or connect with key string (useful for storing keys in config)
+var keyStr = io.readFile("/home/user/.ssh/id_rsa")
+var client2 = ssh.connectWithKeyStr("server.com", 22, "deploy", keyStr)
+
+// Connect with full config
+var config = {
+    "host": "server.com",
+    "port": 22,
+    "user": "deploy",
+    "keyPath": "~/.ssh/id_rsa",
+    "keyPassphrase": "optional-passphrase",
+    "timeout": 60,
+    "ignoreHostKey": true
+}
+var client3 = ssh.connectWithConfig(config)
+
+
+// ============================================================
+// Example 5: Advanced File Operations
+// ============================================================
+
+import "ssh"
+
+var client = ssh.connect("8.146.231.222", 22, "root", "tmpAdmin_2022")
+
+// Create directories
+client.mkdir("/tmp/xxlang_test")
+client.mkdirAll("/tmp/xxlang_test/subdir1/subdir2")
+
+// Upload file
+client.upload("local_script.xxl", "/tmp/xxlang_test/script.xxl")
+
+// List directory contents
+var files = client.listDir("/tmp/xxlang_test")
+for (var i = 0; i < len(files); i = i + 1) {
+    println("File:", files[i]["name"], "Size:", files[i]["size"], "Dir:", files[i]["isDir"])
+}
+
+// Get file info
+var info = client.stat("/tmp/xxlang_test/script.xxl")
+println("File size:", info["size"])
+println("Is file:", info["isFile"])
+
+// Check if path exists
+if (client.exists("/tmp/xxlang_test")) {
+    println("Directory exists")
+}
+
+// Rename file
+client.rename("/tmp/xxlang_test/script.xxl", "/tmp/xxlang_test/renamed.xxl")
+
+// Delete file
+client.remove("/tmp/xxlang_test/renamed.xxl")
+
+// Delete directory recursively
+client.removeDir("/tmp/xxlang_test")
+
+client.close()
+
+
+// ============================================================
+// Example 6: Upload/Download Directories (Recursive)
+// ============================================================
+
+import "ssh"
+
+var client = ssh.connect("8.146.231.222", 22, "root", "tmpAdmin_2022")
+
+// Upload entire directory
+client.uploadDir("./project", "/remote/deploy/project")
+println("Directory uploaded!")
+
+// Download entire directory
+client.downloadDir("/var/log/myapp", "./logs/myapp")
+println("Logs downloaded!")
+
+client.close()
+
+
+// ============================================================
+// Example 7: Stream Command Output (Real-time)
+// ============================================================
+
+import "ssh"
+
+var client = ssh.connect("8.146.231.222", 22, "root", "tmpAdmin_2022")
+
+// Stream output line by line (good for long-running commands)
+// Note: execStream takes a callback function
+client.execStream("tail -f /var/log/syslog", func(line) {
+    println("[SYSLOG]", line)
+    // Can add logic to stop tailing based on content
+})
+
+client.close()
+
+
+// ============================================================
+// Example 8: Port Forwarding (SSH Tunnel)
+// ============================================================
+
+import "ssh"
+
+var client = ssh.connect("8.146.231.222", 22, "root", "tmpAdmin_2022")
+
+// Create local port forward
+// Access local:8080 -> forwards to internal-service:80 through SSH tunnel
+var listener = client.localForward(8080, "internal-service", 80)
+println("SSH tunnel established: localhost:8080 -> internal-service:80")
+
+// Keep tunnel open
+sleep(3600)  // Keep for 1 hour
+
+// Close tunnel
+listener.close()
+client.close()
+
+
+// ============================================================
+// Example 9: Execute Remote Script
+// ============================================================
+
+import "ssh"
+
+var client = ssh.connect("8.146.231.222", 22, "root", "tmpAdmin_2022")
+
+// Method 1: Run local script content on remote server
+var scriptContent = io.readFile("./deploy.xxl")
+var result = client.runScriptStr(scriptContent)
+println("Remote script output:", result)
+
+// Method 2: Upload then execute
+client.upload("./deploy.xxl", "/tmp/deploy.xxl")
+client.exec("chmod +x /tmp/deploy.xxl")
+var output = client.exec("/tmp/deploy.xxl")
+println(output)
+
+client.close()
+
+
+// ============================================================
+// Example 10: Batch Operations on Multiple Servers
+// ============================================================
+
+import "ssh"
+
+// Server list
+var servers = [
+    {"host": "server1.example.com", "user": "deploy", "pass": "pass1"},
+    {"host": "server2.example.com", "user": "deploy", "pass": "pass2"},
+    {"host": "server3.example.com", "user": "deploy", "pass": "pass3"}
+]
+
+// Command to run on all servers
+var cmd = "uptime && df -h / && free -m"
+
+// Execute on each server
+for (var i = 0; i < len(servers); i = i + 1) {
+    var server = servers[i]
+    println("\n=== Connecting to", server["host"], "===")
+
+    try {
+        var client = ssh.connect(server["host"], 22, server["user"], server["pass"])
+        var output = client.exec(cmd)
+        println(output)
+        client.close()
+    } catch (e) {
+        println("Failed to connect:", e)
+    }
+}
+
+
+// ============================================================
+// Example 11: Deploy Application (Complete Workflow)
+// ============================================================
+
+import "ssh"
+import "io"
+import "json"
+
+func deployApp(host, user, password, appDir) {
+    println("=== Deploying to", host, "===")
+
+    var client = ssh.connect(host, 22, user, password)
+
+    // Step 1: Create deployment directory
+    println("Creating deployment directory...")
+    client.mkdirAll(appDir)
+
+    // Step 2: Upload application files
+    println("Uploading application...")
+    client.uploadDir("./build", appDir + "/app")
+
+    // Step 3: Upload configuration
+    println("Uploading configuration...")
+    var config = {
+        "port": 8080,
+        "debug": false,
+        "database": "mysql://localhost:3306/app"
+    }
+    client.writefile(appDir + "/config.json", json.encode(config))
+
+    // Step 4: Set permissions
+    println("Setting permissions...")
+    client.exec("chmod +x " + appDir + "/app/start.sh")
+
+    // Step 5: Backup old version (if exists)
+    println("Creating backup...")
+    client.exec("if [ -d " + appDir + "/current ]; then cp -r " + appDir + "/current " + appDir + "/backup_$(date +%Y%m%d_%H%M%S); fi")
+
+    // Step 6: Update symlink
+    println("Updating symlink...")
+    client.exec("ln -sfn " + appDir + "/app " + appDir + "/current")
+
+    // Step 7: Restart service
+    println("Restarting service...")
+    var restartOutput = client.exec("systemctl restart myapp && systemctl status myapp --no-pager")
+    println(restartOutput)
+
+    // Step 8: Health check
+    println("Running health check...")
+    var healthOutput = client.exec("curl -s http://localhost:8080/health")
+    println("Health check:", healthOutput)
+
+    client.close()
+    println("=== Deployment complete ===\n")
+}
+
+// Usage:
+// deployApp("8.146.231.222", "root", "tmpAdmin_2022", "/opt/myapp")
+
+
+// ============================================================
+// Example 12: Monitor Multiple Servers
+// ============================================================
+
+import "ssh"
+import "time"
+import "io"
+
+func monitorServers() {
+    var servers = [
+        {"host": "web1.example.com", "user": "admin", "pass": "xxx"},
+        {"host": "web2.example.com", "user": "admin", "pass": "xxx"},
+        {"host": "db1.example.com", "user": "admin", "pass": "xxx"}
+    ]
+
+    var logFile = "/var/log/server_monitor.log"
+
+    while (true) {
+        var timestamp = time.dateTime()
+        var logEntry = "\n[" + timestamp + "] === Server Status Check ===\n"
+
+        for (var i = 0; i < len(servers); i = i + 1) {
+            var server = servers[i]
+            logEntry = logEntry + "\n--- " + server["host"] + " ---\n"
+
+            try {
+                var client = ssh.connect(server["host"], 22, server["user"], server["pass"])
+
+                // Check load average
+                var load = client.exec("cat /proc/loadavg")
+                logEntry = logEntry + "Load: " + load + "\n"
+
+                // Check disk space
+                var disk = client.exec("df -h / | tail -1 | awk '{print $5}'")
+                logEntry = logEntry + "Disk: " + disk + "\n"
+
+                // Check memory
+                var mem = client.exec("free -m | grep Mem | awk '{print $3 \"/\" $2 \" MB used\"}'")
+                logEntry = logEntry + "Memory: " + mem + "\n"
+
+                // Check uptime
+                var uptime = client.exec("uptime -p")
+                logEntry = logEntry + "Uptime: " + uptime + "\n"
+
+                client.close()
+            } catch (e) {
+                logEntry = logEntry + "ERROR: Connection failed - " + toStr(e) + "\n"
+            }
+        }
+
+        // Append to log file
+        io.appendFile(logFile, logEntry + "\n")
+        println(logEntry)
+
+        // Check every 5 minutes
+        sleep(300)
+    }
+}
+
+// Usage:
+// monitorServers()
+
+
+// ============================================================
+// Example 13: Replace sshrun Common Patterns
+// ============================================================
+
+import "ssh"
+
+// ========== sshrun Pattern 1: Upload and Execute ==========
+// sshrun: sshrun -host X -user Y -password Z -type upload -localPath script.xxl -remotePath /tmp/
+//         sshrun -host X -user Y -password Z -cmd "bash /tmp/script.xxl"
+
+// Xxlang equivalent:
+var client = ssh.connect("8.146.231.222", 22, "root", "tmpAdmin_2022")
+client.upload("script.xxl", "/tmp/script.xxl")
+var result = client.exec("bash /tmp/script.xxl")
+println(result)
+client.close()
+
+// ========== sshrun Pattern 2: Execute Multiple Commands ==========
+// sshrun: sshrun -host X -user Y -password Z -cmd "cmd1 && cmd2 && cmd3"
+
+// Xxlang equivalent:
+var client = ssh.connect("8.146.231.222", 22, "root", "tmpAdmin_2022")
+
+// Single command with chaining
+var result = client.exec("cmd1 && cmd2 && cmd3")
+
+// Or multiple separate commands (better error handling)
+var r1 = client.exec("cmd1")
+var r2 = client.exec("cmd2")
+var r3 = client.exec("cmd3")
+
+client.close()
+
+// ========== sshrun Pattern 3: Download Config ==========
+// sshrun: sshrun -host X -user Y -password Z -type download -remotePath /etc/app/config.json -localPath ./config.json
+
+// Xxlang equivalent:
+ssh.download("8.146.231.222", 22, "root", "tmpAdmin_2022",
+             "/etc/app/config.json", "./config.json")
+
+// ========== sshrun Pattern 4: Check Remote File ==========
+// sshrun: sshrun -host X -user Y -password Z -cmd "test -f /path/file && echo exists"
+
+// Xxlang equivalent:
+var client = ssh.connect("8.146.231.222", 22, "root", "tmpAdmin_2022")
+if (client.exists("/path/file")) {
+    println("File exists!")
+}
+client.close()
+
+// ========== sshrun Pattern 5: Get Remote File Content ==========
+// sshrun: sshrun -host X -user Y -password Z -cmd "cat /path/file"
+
+// Xxlang equivalent:
+var client = ssh.connect("8.146.231.222", 22, "root", "tmpAdmin_2022")
+var content = client.readFile("/path/file")
+println(content)
+// Or use shortcut
+var content2 = io.readFileFromSSH("8.146.231.222", 22, "root", "tmpAdmin_2022", "/path/file")
+client.close()
+
+
+// ============================================================
+// Example 14: HEX Path Support (For Windows Git Bash Users)
+// ============================================================
+
+// Note: Unlike sshrun, Xxlang SSH does NOT need HEX path encoding!
+// Xxlang is pure Go with no MSYS2 path conversion issues.
+
+// This works directly on Windows Git Bash:
+ssh.upload("server.com", 22, "user", "pass", "file.txt", "/root/file.txt")
+
+// No need for: sshrun -remotePath "HEX_2f726f6f742f"
+// Xxlang handles paths correctly on all platforms!
+
+
+// ============================================================
+// Example 15: Error Handling and Retry Logic
+// ============================================================
+
+import "ssh"
+import "time"
+
+func uploadWithRetry(host, port, user, pass, localPath, remotePath, maxRetries) {
+    var attempt = 1
+
+    while (attempt <= maxRetries) {
+        try {
+            var client = ssh.connect(host, port, user, pass)
+            client.upload(localPath, remotePath)
+            client.close()
+            println("Upload successful on attempt", attempt)
+            return true
+        } catch (e) {
+            println("Upload failed (attempt", attempt, "):", e)
+
+            if (attempt < maxRetries) {
+                println("Retrying in 5 seconds...")
+                sleep(5)
+            }
+            attempt = attempt + 1
+        }
+    }
+
+    println("Upload failed after", maxRetries, "attempts")
+    return false
+}
+
+// Usage:
+// uploadWithRetry("server.com", 22, "user", "pass", "file.tar.gz", "/tmp/file.tar.gz", 3)
+
+
+// ============================================================
+// End of Examples
+// ============================================================
