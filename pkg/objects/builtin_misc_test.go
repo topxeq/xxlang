@@ -355,13 +355,17 @@ func TestCleanPath(t *testing.T) {
 }
 
 func TestIsAbsPath(t *testing.T) {
-	result := isAbsPath("C:\\path\\to\\file.txt")
+	// Test Unix-style paths (works on all platforms)
+	result := isAbsPath("/path/to/file.txt")
 	if !result {
-		t.Error("expected true for absolute Windows path")
+		t.Error("expected true for absolute Unix path")
 	}
 
 	result = isAbsPath("path/to/file.txt")
 	if result {
 		t.Error("expected false for relative path")
 	}
+
+	// Note: Windows-style paths only work as absolute on Windows
+	// On Linux, filepath.IsAbs returns false for "C:\path"
 }

@@ -46,6 +46,10 @@ type RegVM struct {
 	// If the hook returns true, it handled the call and the VM should skip normal execution
 	nativeCallHook func(fn *compiler.CompiledFunction, args []Value, frame *RegFrame) (Value, bool)
 
+	// Fast native check - returns true if the function might be handled by nativeCallHook
+	// This is called before collecting args, allowing quick skip for non-JIT functions
+	fastNativeCheck func(fn *compiler.CompiledFunction) bool
+
 	// Symbol table for continuous code execution (Eval)
 	symbolTable *compiler.SymbolTable
 
@@ -268,6 +272,24 @@ func (vm *RegVM) SetSourcePath(path string) {
 // If the hook returns true for handled, the VM skips normal execution
 func (vm *RegVM) SetNativeCallHook(hook func(fn *compiler.CompiledFunction, args []Value, frame *RegFrame) (Value, bool)) {
 	vm.nativeCallHook = hook
+}
+
+// HasNativeHook returns true if a native call hook is set
+// This is a fast check that can be used to skip hook overhead
+func (vm *RegVM) HasNativeHook() bool {
+	return vm.nativeCallHook != nil
+}
+
+// ClearNativeCallHook removes the native call hook
+func (vm *RegVM) ClearNativeCallHook() {
+	vm.nativeCallHook = nil
+	vm.fastNativeCheck = nil
+}
+
+// SetFastNativeCheck sets a fast check function for native execution
+// This is called before collecting args to quickly skip non-JIT functions
+func (vm *RegVM) SetFastNativeCheck(check func(fn *compiler.CompiledFunction) bool) {
+	vm.fastNativeCheck = check
 }
 
 // SetLoader sets the module loader
@@ -2916,18 +2938,23 @@ func (vm *RegVM) callClosure(closure *Closure, numArgs int, callerFrame *RegFram
 
 	// Check if there's a native call hook that can handle this function
 	if vm.nativeCallHook != nil {
-		// Collect arguments from R0-R7
-		args := make([]Value, numArgs)
-		for i := 0; i < numArgs; i++ {
-			args[i] = callerFrame.Registers[i]
-		}
+		// Fast check: skip if function is definitely not JIT-compiled
+		if vm.fastNativeCheck != nil && !vm.fastNativeCheck(fn) {
+			// Skip native hook entirely
+		} else {
+			// Collect arguments from R0-R7
+			args := make([]Value, numArgs)
+			for i := 0; i < numArgs; i++ {
+				args[i] = callerFrame.Registers[i]
+			}
 
-		// Try the native hook
-		result, handled := vm.nativeCallHook(fn, args, callerFrame)
-		if handled {
-			// Store result in return register and return without creating a new frame
-			callerFrame.Registers[compiler.ReturnRegister] = result
-			return nil
+			// Try the native hook
+			result, handled := vm.nativeCallHook(fn, args, callerFrame)
+			if handled {
+				// Store result in return register and return without creating a new frame
+				callerFrame.Registers[compiler.ReturnRegister] = result
+				return nil
+			}
 		}
 	}
 
@@ -3014,18 +3041,23 @@ func (vm *RegVM) callCompiledFunction(fn *compiler.CompiledFunction, numArgs int
 
 	// Check if there's a native call hook that can handle this function
 	if vm.nativeCallHook != nil {
-		// Collect arguments from R0-R7
-		args := make([]Value, numArgs)
-		for i := 0; i < numArgs; i++ {
-			args[i] = callerFrame.Registers[i]
-		}
+		// Fast check: skip if function is definitely not JIT-compiled
+		if vm.fastNativeCheck != nil && !vm.fastNativeCheck(fn) {
+			// Skip native hook entirely
+		} else {
+			// Collect arguments from R0-R7
+			args := make([]Value, numArgs)
+			for i := 0; i < numArgs; i++ {
+				args[i] = callerFrame.Registers[i]
+			}
 
-		// Try the native hook
-		result, handled := vm.nativeCallHook(fn, args, callerFrame)
-		if handled {
-			// Store result in return register and return without creating a new frame
-			callerFrame.Registers[compiler.ReturnRegister] = result
-			return nil
+			// Try the native hook
+			result, handled := vm.nativeCallHook(fn, args, callerFrame)
+			if handled {
+				// Store result in return register and return without creating a new frame
+				callerFrame.Registers[compiler.ReturnRegister] = result
+				return nil
+			}
 		}
 	}
 

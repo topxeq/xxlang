@@ -214,6 +214,13 @@ type JITVM struct {
 	// Native function registry for compiled functions
 	nativeRegistry *NativeFunctionRegistry
 
+	// Inline cache: maps function pointer directly to native function
+	nativeFuncCache map[*compiler.CompiledFunction]*NativeFunction
+
+	// Cached globals (int64 representation)
+	cachedGlobals     []int64
+	cachedGlobalsLock sync.RWMutex
+
 	// Statistics
 	nativeExecs int64
 	interpExecs int64
@@ -222,15 +229,17 @@ type JITVM struct {
 // NewJITVM creates a new JIT-enabled VM
 func NewJITVM(bytecode *compiler.Bytecode, config JITConfig) *JITVM {
 	j := &JITVM{
-		RegVM:          vm.NewRegVM(bytecode),
-		jit:            NewJITCompiler(config),
-		nativeExec:     NewNativeExecutor(config),
-		nativeRegistry: NewNativeFunctionRegistry(config),
-		config:         config,
-		enabled:        true,
-		bytecode:       bytecode,
+		RegVM:            vm.NewRegVM(bytecode),
+		jit:              NewJITCompiler(config),
+		nativeExec:       NewNativeExecutor(config),
+		nativeRegistry:   NewNativeFunctionRegistry(config),
+		nativeFuncCache:  make(map[*compiler.CompiledFunction]*NativeFunction),
+		config:           config,
+		enabled:          true,
+		bytecode:         bytecode,
 	}
 	j.compileNativeFunctions()
+	j.updateCachedGlobals()
 	j.setupNativeCallHook()
 	return j
 }
@@ -238,15 +247,17 @@ func NewJITVM(bytecode *compiler.Bytecode, config JITConfig) *JITVM {
 // NewJITVMWithGlobals creates a JIT VM with custom globals
 func NewJITVMWithGlobals(bytecode *compiler.Bytecode, globals []vm.Value, config JITConfig) *JITVM {
 	j := &JITVM{
-		RegVM:          vm.NewRegVMWithGlobals(bytecode, globals),
-		jit:            NewJITCompiler(config),
-		nativeExec:     NewNativeExecutor(config),
-		nativeRegistry: NewNativeFunctionRegistry(config),
-		config:         config,
-		enabled:        true,
-		bytecode:       bytecode,
+		RegVM:            vm.NewRegVMWithGlobals(bytecode, globals),
+		jit:              NewJITCompiler(config),
+		nativeExec:       NewNativeExecutor(config),
+		nativeRegistry:   NewNativeFunctionRegistry(config),
+		nativeFuncCache:  make(map[*compiler.CompiledFunction]*NativeFunction),
+		config:           config,
+		enabled:          true,
+		bytecode:         bytecode,
 	}
 	j.compileNativeFunctions()
+	j.updateCachedGlobals()
 	j.setupNativeCallHook()
 	return j
 }
@@ -362,11 +373,20 @@ func (j *JITVM) compileNativeFunctions() {
 	// Find all functions in constants and compile them
 	for i, c := range j.bytecode.Constants {
 		if fn, ok := c.(*compiler.CompiledFunction); ok {
+			// Skip simple functions (they are faster in interpreter)
+			if !j.shouldCompile(fn) {
+				continue
+			}
+
 			// First try: pure native execution (no function calls)
 			if CanExecuteNatively(fn) {
 				err := j.nativeRegistry.CompileFunction(fn, i, intConstants)
 				if err != nil && j.config.Debug {
 					fmt.Printf("[JIT] Failed to compile function at const[%d]: %v\n", i, err)
+				}
+				// Add to inline cache on success
+				if nativeFn := j.nativeRegistry.Get(i); nativeFn != nil {
+					j.nativeFuncCache[fn] = nativeFn
 				}
 				continue
 			}
@@ -380,35 +400,96 @@ func (j *JITVM) compileNativeFunctions() {
 					if j.config.Debug {
 						fmt.Printf("[JIT] Failed to compile recursive function at const[%d]: %v\n", i, err)
 					}
-				} else if j.config.Debug {
-					fmt.Printf("[JIT] Successfully compiled recursive function at const[%d]\n", i)
+				} else {
+					if j.config.Debug {
+						fmt.Printf("[JIT] Successfully compiled recursive function at const[%d]\n", i)
+					}
+					// Add to inline cache on success
+					if nativeFn := j.nativeRegistry.Get(i); nativeFn != nil {
+						j.nativeFuncCache[fn] = nativeFn
+					}
 				}
 			}
 		}
 	}
 }
 
-// setupNativeCallHook sets up the VM hook for native function execution
-func (j *JITVM) setupNativeCallHook() {
-	// Create a function index map for quick lookup
-	// We need to map CompiledFunction pointers to their constant indices
-	fnToIdx := make(map[*compiler.CompiledFunction]int)
-	for i, c := range j.bytecode.Constants {
-		if fn, ok := c.(*compiler.CompiledFunction); ok {
-			fnToIdx[fn] = i
-		}
+// shouldCompile determines if a function is worth JIT compiling
+func (j *JITVM) shouldCompile(fn *compiler.CompiledFunction) bool {
+	// Minimum bytecode size threshold (in bytes)
+	const minCodeSize = 20
+
+	if len(fn.Instructions) < minCodeSize {
+		return false
 	}
 
-	// Set up the native call hook
-	j.RegVM.SetNativeCallHook(func(fn *compiler.CompiledFunction, args []vm.Value, frame *vm.RegFrame) (vm.Value, bool) {
-		// Check if this function has a native version
-		idx, ok := fnToIdx[fn]
-		if !ok {
-			return vm.ValueNull, false
+	// Count instruction complexity
+	complexity := 0
+	for i := 0; i < len(fn.Instructions); {
+		op := compiler.Opcode(fn.Instructions[i])
+		def, err := compiler.Lookup(byte(op))
+		if err != nil {
+			break
 		}
 
-		nativeFn := j.nativeRegistry.Get(idx)
-		if nativeFn == nil {
+		// Loops and branches add complexity
+		if op == compiler.OpRegJump || op == compiler.OpRegJumpIfFalse ||
+			op == compiler.OpRegJumpIfTrue || op == compiler.OpRegLoopCountAdd {
+			complexity += 5
+		}
+		// Function calls (recursion) add significant complexity
+		if op == compiler.OpRegCall || op == compiler.OpRegTailCall {
+			complexity += 10
+		}
+		complexity++
+
+		width := 1
+		for _, w := range def.OperandWidths {
+			width += w
+		}
+		i += width
+	}
+
+	const minComplexity = 5
+	return complexity >= minComplexity
+}
+
+// updateCachedGlobals updates the cached int64 representation of globals
+func (j *JITVM) updateCachedGlobals() {
+	j.cachedGlobalsLock.Lock()
+	defer j.cachedGlobalsLock.Unlock()
+
+	vmGlobals := j.GetGlobals()
+	if j.cachedGlobals == nil || len(j.cachedGlobals) != len(vmGlobals) {
+		j.cachedGlobals = make([]int64, len(vmGlobals))
+	}
+	for i, g := range vmGlobals {
+		if g.IsInt() {
+			j.cachedGlobals[i], _ = g.ToInt()
+		} else {
+			j.cachedGlobals[i] = 0
+		}
+	}
+}
+
+// setupNativeCallHook sets up the VM hook for native function execution
+func (j *JITVM) setupNativeCallHook() {
+	// Only set up hook if we have compiled native functions
+	if len(j.nativeFuncCache) == 0 {
+		return
+	}
+
+	// Set up fast check for native functions
+	j.RegVM.SetFastNativeCheck(func(fn *compiler.CompiledFunction) bool {
+		_, ok := j.nativeFuncCache[fn]
+		return ok
+	})
+
+	// Set up the native call hook with inline cache
+	j.RegVM.SetNativeCallHook(func(fn *compiler.CompiledFunction, args []vm.Value, frame *vm.RegFrame) (vm.Value, bool) {
+		// Fast path: check inline cache directly
+		nativeFn, ok := j.nativeFuncCache[fn]
+		if !ok {
 			return vm.ValueNull, false
 		}
 
@@ -420,17 +501,13 @@ func (j *JITVM) setupNativeCallHook() {
 			}
 		}
 
-		// Get globals
-		vmGlobals := j.GetGlobals()
-		globals := make([]int64, len(vmGlobals))
-		for i, g := range vmGlobals {
-			if g.IsInt() {
-				globals[i], _ = g.ToInt()
-			}
-		}
+		// Use cached globals
+		j.cachedGlobalsLock.RLock()
+		globals := j.cachedGlobals
+		j.cachedGlobalsLock.RUnlock()
 
 		if j.config.Debug {
-			fmt.Printf("[JIT] Native hook called: const[%d], args=%v, numParams=%d\n", idx, intArgs, nativeFn.NumParams)
+			fmt.Printf("[JIT] Native hook called: args=%v, numParams=%d\n", intArgs, nativeFn.NumParams)
 		}
 
 		// Execute native function
@@ -438,7 +515,7 @@ func (j *JITVM) setupNativeCallHook() {
 		j.nativeExecs++
 
 		if j.config.Debug {
-			fmt.Printf("[JIT] Native hook executed function at const[%d], result=%d\n", idx, result)
+			fmt.Printf("[JIT] Native hook executed, result=%d\n", result)
 		}
 
 		return vm.NewInt(result), true

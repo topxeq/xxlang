@@ -35,6 +35,11 @@ func TestSSHClient_Type(t *testing.T) {
 }
 
 func TestSSHClient_ConnectPassword(t *testing.T) {
+	// Skip SSH tests that require network mock server (can hang in some environments)
+	if testing.Short() {
+		t.Skip("skipping SSH integration test in short mode")
+	}
+
 	// Create and start mock server
 	server := mock.NewSSHMockServer(mock.DefaultConfig())
 	server.SetUserPassword("testuser", "testpass")
@@ -92,6 +97,9 @@ func TestSSHClient_ConnectPassword(t *testing.T) {
 }
 
 func TestSSHClient_ConnectWithConfig(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping SSH integration test in short mode")
+	}
 	server := mock.NewSSHMockServer(mock.DefaultConfig())
 	server.SetUserPassword("configuser", "configpass")
 
@@ -122,6 +130,9 @@ func TestSSHClient_ConnectWithConfig(t *testing.T) {
 }
 
 func TestSSHClient_WrongPassword(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping SSH integration test in short mode")
+	}
 	server := mock.NewSSHMockServer(mock.DefaultConfig())
 	server.SetUserPassword("testuser", "correctpass")
 
@@ -147,6 +158,9 @@ func TestSSHClient_ExecNotConnected(t *testing.T) {
 }
 
 func TestSSHClient_Close(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping SSH integration test in short mode")
+	}
 	server := mock.NewSSHMockServer(mock.DefaultConfig())
 	server.SetUserPassword("testuser", "testpass")
 
@@ -198,6 +212,9 @@ func TestSSHClient_HashKey(t *testing.T) {
 }
 
 func TestSSHClient_DoubleConnect(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping SSH integration test in short mode")
+	}
 	server := mock.NewSSHMockServer(mock.DefaultConfig())
 	server.SetUserPassword("testuser", "testpass")
 
@@ -228,6 +245,9 @@ func TestSSHClient_DoubleConnect(t *testing.T) {
 }
 
 func TestSSHClient_CommandResponses(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping SSH integration test in short mode")
+	}
 	server := mock.NewSSHMockServer(mock.DefaultConfig())
 	server.SetUserPassword("testuser", "testpass")
 	server.SetCommandResponse("ls -la", "total 0\n")
@@ -274,6 +294,9 @@ func TestSSHClient_CommandResponses(t *testing.T) {
 }
 
 func TestSSHClient_ExecFull(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping SSH integration test in short mode")
+	}
 	server := mock.NewSSHMockServer(mock.DefaultConfig())
 	server.SetUserPassword("testuser", "testpass")
 	server.SetCommandResponse("test command", "output\n")
@@ -314,6 +337,9 @@ func TestSSHClient_ExecFull(t *testing.T) {
 }
 
 func TestSSHClient_FileOperations(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping SSH integration test in short mode")
+	}
 	server := mock.NewSSHMockServer(mock.DefaultConfig())
 	server.SetUserPassword("testuser", "testpass")
 	server.SetCommandResponse("cat '/tmp/test.txt'", "file content\n")

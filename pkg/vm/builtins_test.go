@@ -815,7 +815,7 @@ func TestAdditionalBuiltinSprintf(t *testing.T) {
 }
 
 func TestAdditionalBuiltinCoalesce(t *testing.T) {
-	coalesce := getBuiltin(401)
+	coalesce := getBuiltin(402) // coalesce is at index 402
 	if coalesce == nil {
 		t.Skip("coalesce builtin not available")
 	}
@@ -826,7 +826,7 @@ func TestAdditionalBuiltinCoalesce(t *testing.T) {
 			t.Errorf("coalesce(NULL, 42) = %d, expected 42", intResult.Value)
 		}
 	} else {
-		t.Fatalf("coalesce returned %T, expected *Int", result)
+		t.Fatalf("coalesce returned %T: %v, expected *Int", result, result)
 	}
 
 	// coalesce with both non-null

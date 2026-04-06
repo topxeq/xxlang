@@ -31,6 +31,14 @@ type JITVM struct {
 	// When OpRegClosure loads a native function into a register, we track it here
 	registerToNative map[int]int
 
+	// Cached globals (int64 representation) - updated when globals change
+	cachedGlobals     []int64
+	cachedGlobalsLock sync.RWMutex
+
+	// Inline cache: maps function pointer directly to native function
+	// This avoids the map lookup overhead in the hot path
+	nativeFuncCache map[*compiler.CompiledFunction]*NativeCompiledFunc
+
 	// Statistics
 	nativeExecs int64
 	interpExecs int64
@@ -44,13 +52,16 @@ func NewJITVM(bytecode *compiler.Bytecode, config JITConfig) *JITVM {
 		nativeExec:       NewNativeExecutor(config),
 		nativeRegistry:   NewNativeFunctionRegistry(config),
 		registerToNative: make(map[int]int),
+		nativeFuncCache:  make(map[*compiler.CompiledFunction]*NativeCompiledFunc),
 		config:           config,
 		enabled:          true,
 		bytecode:         bytecode,
 	}
 	// Pre-compile native-executable functions
 	j.compileNativeFunctions()
-	// Set up native call hook
+	// Pre-cache globals
+	j.updateCachedGlobals()
+	// Set up native call hook only if we have compiled functions
 	j.setupNativeCallHook()
 	return j
 }
@@ -63,13 +74,16 @@ func NewJITVMWithGlobals(bytecode *compiler.Bytecode, globals []vm.Value, config
 		nativeExec:       NewNativeExecutor(config),
 		nativeRegistry:   NewNativeFunctionRegistry(config),
 		registerToNative: make(map[int]int),
+		nativeFuncCache:  make(map[*compiler.CompiledFunction]*NativeCompiledFunc),
 		config:           config,
 		enabled:          true,
 		bytecode:         bytecode,
 	}
 	// Pre-compile native-executable functions
 	j.compileNativeFunctions()
-	// Set up native call hook
+	// Pre-cache globals
+	j.updateCachedGlobals()
+	// Set up native call hook only if we have compiled functions
 	j.setupNativeCallHook()
 	return j
 }
@@ -171,29 +185,27 @@ func (j *JITVM) runHybrid() error {
 
 // setupNativeCallHook sets up the VM hook for native function execution
 func (j *JITVM) setupNativeCallHook() {
-	// Create a function index map for quick lookup
-	// We need to map CompiledFunction pointers to their constant indices
-	fnToIdx := make(map[*compiler.CompiledFunction]int)
-	for i, c := range j.bytecode.Constants {
-		if fn, ok := c.(*compiler.CompiledFunction); ok {
-			fnToIdx[fn] = i
-		}
+	// Only set up hook if we have compiled native functions
+	if len(j.nativeFuncCache) == 0 {
+		return
 	}
 
-	// Set up the native call hook
+	// Set up fast check for native functions
+	j.RegVM.SetFastNativeCheck(func(fn *compiler.CompiledFunction) bool {
+		_, ok := j.nativeFuncCache[fn]
+		return ok
+	})
+
+	// Set up the native call hook with inline cache
 	j.RegVM.SetNativeCallHook(func(fn *compiler.CompiledFunction, args []vm.Value, frame *vm.RegFrame) (vm.Value, bool) {
-		// Check if this function has a native version
-		idx, ok := fnToIdx[fn]
+		// Fast path: check inline cache directly
+		nativeFn, ok := j.nativeFuncCache[fn]
 		if !ok {
+			// Not a compiled function, let interpreter handle it
 			return vm.ValueNull, false
 		}
 
-		nativeFn := j.nativeRegistry.Get(idx)
-		if nativeFn == nil {
-			return vm.ValueNull, false
-		}
-
-		// Convert arguments to int64
+		// Convert arguments to int64 (only for compiled functions)
 		intArgs := make([]int64, len(args))
 		for i, arg := range args {
 			if arg.IsInt() {
@@ -201,17 +213,13 @@ func (j *JITVM) setupNativeCallHook() {
 			}
 		}
 
-		// Get globals
-		vmGlobals := j.GetGlobals()
-		globals := make([]int64, len(vmGlobals))
-		for i, g := range vmGlobals {
-			if g.IsInt() {
-				globals[i], _ = g.ToInt()
-			}
-		}
+		// Use cached globals
+		j.cachedGlobalsLock.RLock()
+		globals := j.cachedGlobals
+		j.cachedGlobalsLock.RUnlock()
 
 		if j.config.Debug {
-			fmt.Printf("[JIT] Native hook called: const[%d], args=%v, numParams=%d\n", idx, intArgs, nativeFn.NumParams)
+			fmt.Printf("[JIT] Native hook called: args=%v, numParams=%d\n", intArgs, nativeFn.NumParams)
 		}
 
 		// Execute native function
@@ -219,11 +227,30 @@ func (j *JITVM) setupNativeCallHook() {
 		j.nativeExecs++
 
 		if j.config.Debug {
-			fmt.Printf("[JIT] Native hook executed function at const[%d], result=%d\n", idx, result)
+			fmt.Printf("[JIT] Native hook executed, result=%d\n", result)
 		}
 
 		return vm.NewInt(result), true
 	})
+}
+
+// updateCachedGlobals updates the cached int64 representation of globals
+func (j *JITVM) updateCachedGlobals() {
+	j.cachedGlobalsLock.Lock()
+	defer j.cachedGlobalsLock.Unlock()
+
+	vmGlobals := j.GetGlobals()
+	// Only allocate if needed
+	if j.cachedGlobals == nil || len(j.cachedGlobals) != len(vmGlobals) {
+		j.cachedGlobals = make([]int64, len(vmGlobals))
+	}
+	for i, g := range vmGlobals {
+		if g.IsInt() {
+			j.cachedGlobals[i], _ = g.ToInt()
+		} else {
+			j.cachedGlobals[i] = 0
+		}
+	}
 }
 
 // compileNativeFunctions pre-compiles all native-executable functions
@@ -251,11 +278,20 @@ func (j *JITVM) compileNativeFunctions() {
 	// Find all functions in constants and compile them
 	for i, c := range j.bytecode.Constants {
 		if fn, ok := c.(*compiler.CompiledFunction); ok {
+			// Skip simple functions (they are faster in interpreter)
+			if !j.shouldCompile(fn) {
+				continue
+			}
+
 			// First try: pure native execution (no function calls)
 			if CanExecuteNatively(fn) {
 				err := j.nativeRegistry.CompileFunction(fn, i, intConstants)
 				if err != nil && j.config.Debug {
 					fmt.Printf("[JIT] Failed to compile function at const[%d]: %v\n", i, err)
+				}
+				// Add to inline cache on success
+				if nativeFn := j.nativeRegistry.Get(i); nativeFn != nil {
+					j.nativeFuncCache[fn] = nativeFn
 				}
 				continue
 			}
@@ -269,12 +305,75 @@ func (j *JITVM) compileNativeFunctions() {
 					if j.config.Debug {
 						fmt.Printf("[JIT] Failed to compile recursive function at const[%d]: %v\n", i, err)
 					}
-				} else if j.config.Debug {
-					fmt.Printf("[JIT] Successfully compiled recursive function at const[%d]\n", i)
+				} else {
+					if j.config.Debug {
+						fmt.Printf("[JIT] Successfully compiled recursive function at const[%d]\n", i)
+					}
+					// Add to inline cache on success
+					if nativeFn := j.nativeRegistry.Get(i); nativeFn != nil {
+						j.nativeFuncCache[fn] = nativeFn
+					}
 				}
 			}
 		}
 	}
+}
+
+// shouldCompile determines if a function is worth JIT compiling
+// Simple functions are often faster in the interpreter due to lower overhead
+func (j *JITVM) shouldCompile(fn *compiler.CompiledFunction) bool {
+	// Minimum bytecode size threshold (in bytes)
+	// Functions smaller than this are faster in interpreter
+	const minCodeSize = 20
+
+	// Functions with very few instructions are not worth compiling
+	if len(fn.Instructions) < minCodeSize {
+		if j.config.Debug {
+			fmt.Printf("[JIT] Skipping small function (%d bytes, threshold %d)\n",
+				len(fn.Instructions), minCodeSize)
+		}
+		return false
+	}
+
+	// Count instruction complexity
+	complexity := 0
+	for i := 0; i < len(fn.Instructions); {
+		op := compiler.Opcode(fn.Instructions[i])
+		def, err := compiler.Lookup(byte(op))
+		if err != nil {
+			break
+		}
+
+		// Loops and branches add complexity
+		if op == compiler.OpRegJump || op == compiler.OpRegJumpIfFalse ||
+			op == compiler.OpRegJumpIfTrue || op == compiler.OpRegLoopCountAdd {
+			complexity += 5
+		}
+		// Function calls (recursion) add significant complexity
+		if op == compiler.OpRegCall || op == compiler.OpRegTailCall {
+			complexity += 10
+		}
+		// Basic operations
+		complexity++
+
+		width := 1
+		for _, w := range def.OperandWidths {
+			width += w
+		}
+		i += width
+	}
+
+	// Minimum complexity threshold - lower for recursive functions
+	const minComplexity = 5
+	if complexity < minComplexity {
+		if j.config.Debug {
+			fmt.Printf("[JIT] Skipping simple function (complexity %d, threshold %d)\n",
+				complexity, minComplexity)
+		}
+		return false
+	}
+
+	return true
 }
 
 // ExecuteNativeFunction executes a natively-compiled function with arguments
@@ -284,14 +383,10 @@ func (j *JITVM) ExecuteNativeFunction(constIdx int, args ...int64) (int64, bool)
 		return 0, false
 	}
 
-	// Convert globals to int64 array
-	vmGlobals := j.GetGlobals()
-	globals := make([]int64, len(vmGlobals))
-	for i, g := range vmGlobals {
-		if g.IsInt() {
-			globals[i], _ = g.ToInt()
-		}
-	}
+	// Use cached globals
+	j.cachedGlobalsLock.RLock()
+	globals := j.cachedGlobals
+	j.cachedGlobalsLock.RUnlock()
 
 	return nativeFn.Execute(globals, args...), true
 }

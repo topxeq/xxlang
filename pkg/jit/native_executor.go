@@ -299,16 +299,27 @@ func (p *NativeProgram) Run(globals []int64) int64 {
 // Native function registry for inter-function calls
 // ============================================================================
 
+// NativeReturnType indicates what type a native function returns
+type NativeReturnType int
+
+const (
+	ReturnTypeUnknown NativeReturnType = iota
+	ReturnTypeInt
+	ReturnTypeBool
+	ReturnTypeNull
+)
+
 // NativeCompiledFunc represents a natively-compiled function
 type NativeCompiledFunc struct {
-	Entry       uintptr    // Native code entry point
-	Code        []byte     // Native code bytes
-	Page        *CodePage  // Memory page (for cleanup)
-	NumParams   int        // Number of parameters
-	NumLocals   int        // Number of local variables
-	Constants   []int64    // Integer constants
-	IsRecursive bool       // True if function is self-recursive
-	UseBridgeABI bool      // True if function uses System V ABI (bridge.Call1/2/3)
+	Entry        uintptr           // Native code entry point
+	Code         []byte            // Native code bytes
+	Page         *CodePage         // Memory page (for cleanup)
+	NumParams    int               // Number of parameters
+	NumLocals    int               // Number of local variables
+	Constants    []int64           // Integer constants
+	IsRecursive  bool              // True if function is self-recursive
+	UseBridgeABI bool              // True if function uses System V ABI (bridge.Call1/2/3)
+	ReturnType   NativeReturnType  // Type of the return value
 }
 
 // NativeFunctionRegistry manages compiled native functions
@@ -352,6 +363,9 @@ func (r *NativeFunctionRegistry) CompileFunction(fn *compiler.CompiledFunction, 
 	// Check if recursive (has tail calls)
 	isRecursive := containsTailCall(fn.Instructions)
 
+	// Analyze return type
+	returnType := analyzeReturnType(fn.Instructions)
+
 	r.functions[constIdx] = &NativeCompiledFunc{
 		Entry:       uintptr(unsafe.Pointer(&mem[0])),
 		Code:        code,
@@ -360,11 +374,12 @@ func (r *NativeFunctionRegistry) CompileFunction(fn *compiler.CompiledFunction, 
 		NumLocals:   fn.NumLocals,
 		Constants:   constants,
 		IsRecursive: isRecursive,
+		ReturnType:  returnType,
 	}
 
 	if r.config.Debug {
-		fmt.Printf("[JIT] Compiled function at const[%d]: %d bytes, %d params, recursive=%v\n",
-			constIdx, len(code), fn.NumParameters, isRecursive)
+		fmt.Printf("[JIT] Compiled function at const[%d]: %d bytes, %d params, recursive=%v, returnType=%v\n",
+			constIdx, len(code), fn.NumParameters, isRecursive, returnType)
 	}
 
 	return nil
@@ -426,6 +441,51 @@ func containsTailCall(code []byte) bool {
 		i += width
 	}
 	return false
+}
+
+// analyzeReturnType analyzes bytecode to determine the return type of a function
+func analyzeReturnType(code []byte) NativeReturnType {
+	// Look at instructions before OpReturn to determine return type
+	for i := 0; i < len(code); {
+		op := compiler.Opcode(code[i])
+
+		// Check if this is a return instruction
+		if op == compiler.OpReturn {
+			// Look at previous instruction to see what was pushed
+			if i > 0 {
+				prevOp := compiler.Opcode(code[i-1])
+				// Check common patterns
+				switch prevOp {
+				case compiler.OpConstant:
+					// Check the constant type - need to look at operand
+					// For now, assume unknown (would need constants array to determine)
+					return ReturnTypeUnknown
+				case compiler.OpTrue, compiler.OpFalse, compiler.OpRegTrue, compiler.OpRegFalse:
+					return ReturnTypeBool
+				case compiler.OpNull, compiler.OpRegNull:
+					return ReturnTypeNull
+				case compiler.OpAdd, compiler.OpSub, compiler.OpMul, compiler.OpDiv, compiler.OpMod,
+					compiler.OpRegAdd, compiler.OpRegSub, compiler.OpRegMul, compiler.OpRegDiv, compiler.OpRegMod:
+					return ReturnTypeInt
+				case compiler.OpEqual, compiler.OpNotEqual,
+					compiler.OpRegEqual, compiler.OpRegNotEqual,
+					compiler.OpRegLess, compiler.OpRegLessEqual, compiler.OpRegGreater, compiler.OpRegGreaterEqual:
+					return ReturnTypeBool
+				}
+			}
+		}
+
+		def, err := compiler.Lookup(byte(op))
+		if err != nil {
+			break
+		}
+		width := 1
+		for _, w := range def.OperandWidths {
+			width += w
+		}
+		i += width
+	}
+	return ReturnTypeUnknown
 }
 
 // containsCall checks if bytecode contains OpRegCall or OpRegTailCall
