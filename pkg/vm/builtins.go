@@ -404,6 +404,7 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["readLine"],          // 345
 		objects.Builtins["getClipText"],       // 346
 		objects.Builtins["setClipText"],       // 347
+		nil, // 348: placeholder for index stability (skipped in compiler)
 		// String enhancement built-in functions (Batch 10)
 		objects.Builtins["strContainsIn"],       // 349
 		objects.Builtins["strRuneLen"],          // 350
@@ -420,9 +421,7 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["fuzzyFind"],           // 361
 		// strRemoveBom moved to strings module
 		nil, // 362: strRemoveBom removed - use strings.removeBom()
-		// String functions moved to string module
-		nil, // 361: wordCount removed - use string.wordCount()
-		nil, // 362: lineCount removed - use string.lineCount()
+		// String functions moved to string module (363-369 not defined in compiler)
 		nil, // 363: reverseStr removed - use string.reverse()
 		nil, // 364: capitalize removed - use string.capitalize()
 		nil, // 365: title removed - use string.title()
@@ -543,33 +542,25 @@ func getBuiltin(index int) *objects.Builtin {
 		nil,                             // 466: getImageInfo removed
 		nil,                             // 467: resizeImage removed
 		objects.Builtins["createImage"], // 468: kept as builtin (alias)
-		// Network communication built-in functions (Batch 20)
-		// Note: newFtpClient, newSshClient removed - use ftp.connect() and ssh.connect() instead
-		nil, // 469: newFtpClient removed
-		nil, // 470: newSshClient removed
-		// Excel/XLSX functions - use xlsx.create(), xlsx.open(), csv.read(), csv.write()
-		nil, // 471: newExcel removed
-		nil, // 472: openExcel removed
-		nil, // 473: readCsv removed
-		nil, // 474: writeCsv removed
-		// Data format built-in functions (Batch 22)
-		// XML functions - use xml.parse(), xml.parseFile(), xml.create()
-		nil, // 475: parseXml removed
-		nil, // 476: parseXmlFile removed
-		nil, // 477: newXmlDoc removed
-		// YAML functions - use yaml.parse(), yaml.stringify(), yaml.toJson(), yaml.fromJson()
-		nil, // 478: parseYaml removed
-		nil, // 479: toYaml removed
-		nil, // 480: yamlToJson removed
-		nil, // 481: jsonToYaml removed
-		// TOML functions - use toml.parse(), toml.encode(), toml.create(), toml.isValid()
-		nil, // 482: parseToml removed
-		nil, // 483: toToml removed
-		nil, // 484: newToml removed
-		nil, // 485: tomlValid removed
-		// Email sending functions - use mail.newClient(), mail.send()
-		nil, // 486: sendMail removed
-		nil, // 487: newMailClient removed
+		nil, // 469: placeholder (not defined in compiler)
+		nil, // 470: placeholder
+		nil, // 471: placeholder
+		nil, // 472: placeholder
+		nil, // 473: placeholder
+		nil, // 474: placeholder
+		nil, // 475: placeholder
+		nil, // 476: placeholder
+		nil, // 477: placeholder
+		nil, // 478: placeholder
+		nil, // 479: placeholder
+		nil, // 480: placeholder
+		nil, // 481: placeholder
+		nil, // 482: placeholder
+		nil, // 483: placeholder
+		nil, // 484: placeholder
+		nil, // 485: placeholder
+		nil, // 486: placeholder
+		nil, // 487: placeholder
 		// Byte-index string functions (Batch 23)
 		objects.Builtins["byteIndexOf"], // 488
 		objects.Builtins["byteSubstr"],  // 489
