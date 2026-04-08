@@ -101,45 +101,46 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["md5"],          // 80
 		objects.Builtins["sha256"],       // 81
 		// Time & UUID
-		objects.Builtins["sleep"], // 82
-		objects.Builtins["now"],   // 83
-		objects.Builtins["nowMs"], // 84
-		objects.Builtins["uuid"],  // 85
+		objects.Builtins["sleep"],    // 82
+		objects.Builtins["sleepSec"], // 83
+		objects.Builtins["now"],      // 84
+		objects.Builtins["nowMs"],    // 85
+		objects.Builtins["uuid"],     // 86
 		// String enhancement
-		objects.Builtins["trimPrefix"], // 86
-		objects.Builtins["trimSuffix"], // 87
+		objects.Builtins["trimPrefix"], // 87
+		objects.Builtins["trimSuffix"], // 88
 		objects.Builtins["count"],      // 88
 		objects.Builtins["isDigit"],    // 89
 		objects.Builtins["isAlpha"],    // 90
-		objects.Builtins["isAlphaNum"], // 91
+		objects.Builtins["isAlphaNum"], // 92
 		// Array enhancement
 		objects.Builtins["find"],      // 92
-		objects.Builtins["findIndex"], // 93
+		objects.Builtins["findIndex"], // 94
 		objects.Builtins["includes"],  // 94
 		objects.Builtins["shuffle"],   // 95
 		objects.Builtins["sample"],    // 96
 		objects.Builtins["chunk"],     // 97
 		// Command line argument utilities
 		objects.Builtins["getSwitch"],    // 98
-		objects.Builtins["switchExists"], // 99
+		objects.Builtins["switchExists"], // 100
 		// Output utilities
 		objects.Builtins["pl"],  // 100
-		objects.Builtins["prf"], // 101
+		objects.Builtins["prf"], // 102
 		// Validation utilities
 		objects.Builtins["checkErr"],   // 102
-		objects.Builtins["checkEmpty"], // 103
+		objects.Builtins["checkEmpty"], // 104
 		// OTP utilities
-		objects.Builtins["genOtpCode"], // 104
+		objects.Builtins["genOtpCode"], // 105
 		// Type conversion
 		objects.Builtins["toStr"],    // 105
 		objects.Builtins["toJson"],   // 106
-		objects.Builtins["fromJson"], // 107
+		objects.Builtins["fromJson"], // 108
 		// Dynamic code
-		objects.Builtins["delegate"], // 108
+		objects.Builtins["delegate"], // 109
 		// Array functions (Charlang compatibility)
 		objects.Builtins["append"],        // 109
 		objects.Builtins["appendArray"],   // 110
-		objects.Builtins["arrayContains"], // 111
+		objects.Builtins["arrayContains"], // 112
 		objects.Builtins["removeItems"],   // 112
 		objects.Builtins["bytes"],         // 113
 		objects.Builtins["chars"],         // 114
@@ -149,16 +150,16 @@ func getBuiltin(index int) *objects.Builtin {
 		objects.Builtins["bigInt"],     // 117
 		objects.Builtins["bigFloat"],   // 118
 		objects.Builtins["isBigInt"],   // 119
-		objects.Builtins["isBigFloat"], // 120
+		objects.Builtins["isBigFloat"], // 121
 		// Chars (Unicode character handling)
-		objects.Builtins["toChars"], // 121
-		objects.Builtins["charLen"], // 122
+		objects.Builtins["toChars"], // 122
+		objects.Builtins["charLen"], // 123
 		// HTTP built-in functions (for server mode)
 		objects.Builtins["writeResp"],     // 123
-		objects.Builtins["setRespHeader"], // 124
-		objects.Builtins["addRespHeader"], // 125
+		objects.Builtins["setRespHeader"], // 125
+		objects.Builtins["addRespHeader"], // 126
 		objects.Builtins["getReqHeader"],  // 126
-		objects.Builtins["getReqHeaders"], // 127
+		objects.Builtins["getReqHeaders"], // 128
 		objects.Builtins["setCookie"],     // 128
 		objects.Builtins["getCookie"],     // 129
 		objects.Builtins["getCookies"],    // 130
@@ -166,13 +167,13 @@ func getBuiltin(index int) *objects.Builtin {
 		// parseJSON, getReqBody, getReqBodyBytes moved to http module
 		objects.Builtins["status"],    // 132
 		objects.Builtins["redirect"],  // 133
-		objects.Builtins["serveFile"], // 134
+		objects.Builtins["serveFile"], // 135
 		// getMimeType moved to http module
-		objects.Builtins["setContentType"], // 135
+		objects.Builtins["setContentType"], // 136
 		objects.Builtins["queryParam"],     // 136
 		objects.Builtins["queryParams"],    // 137
 		objects.Builtins["formValue"],      // 138
-		objects.Builtins["httpStatusName"], // 139
+		objects.Builtins["httpStatusName"], // 140
 		objects.Builtins["isHttpReq"],      // 140
 		objects.Builtins["isHttpResp"],     // 141
 		objects.Builtins["urlEncode"],      // 142

@@ -2219,6 +2219,24 @@ var Builtins = map[string]*Builtin{
 			return NULL
 		},
 	},
+	"sleepSec": {
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for sleepSec. got=%d, want=1", len(args))
+			}
+
+			// Support both Int and Float
+			switch arg := args[0].(type) {
+			case *Int:
+				time.Sleep(time.Duration(arg.Value) * time.Second)
+			case *Float:
+				time.Sleep(time.Duration(arg.Value * float64(time.Second)))
+			default:
+				return newError("argument to 'sleepSec' must be numeric (seconds), got %s", args[0].Type())
+			}
+			return NULL
+		},
+	},
 	"now": {
 		Fn: func(args ...Object) Object {
 			return NewInt(time.Now().Unix())

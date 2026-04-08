@@ -125,16 +125,20 @@ func init() {
 				return Null()
 			}),
 
-			// sleepSec pauses execution for the specified duration in seconds
+			// sleepSec pauses execution for the specified duration in seconds (supports floats)
 			"sleepSec": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				if len(args) != 1 {
 					return Error("sleepSec() takes exactly 1 argument (seconds)")
 				}
-				sec, ok := args[0].(*objects.Int)
-				if !ok {
-					return Error("sleepSec() requires an integer argument (seconds)")
+				// Support both Int and Float
+				switch arg := args[0].(type) {
+				case *objects.Int:
+					time.Sleep(time.Duration(arg.Value) * time.Second)
+				case *objects.Float:
+					time.Sleep(time.Duration(arg.Value * float64(time.Second)))
+				default:
+					return Error("sleepSec() requires a numeric argument (seconds)")
 				}
-				time.Sleep(time.Duration(sec.Value) * time.Second)
 				return Null()
 			}),
 

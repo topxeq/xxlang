@@ -38,6 +38,12 @@ br.get("https://example.com")
 // Wait for page load
 br.waitLoad()
 
+// Wait for page to become stable (no network activity)
+br.waitStable()
+
+// Set browser window to fullscreen
+br.fullscreen()
+
 // Refresh page
 br.refresh()
 

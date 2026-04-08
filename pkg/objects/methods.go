@@ -9616,6 +9616,26 @@ var rodBrowserMethods = map[string]*Builtin{
 		}
 		return self.WaitLoad(args[1:]...)
 	}},
+		"waitStable": {Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for waitStable. got=%d, want=1", len(args))
+			}
+			self, ok := args[0].(*RodBrowser)
+			if !ok {
+				return newError("receiver for waitStable must be ROD_BROWSER, got %s", args[0].Type())
+			}
+			return self.WaitStable(args[1:]...)
+		}},
+		"fullscreen": {Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for fullscreen. got=%d, want=1", len(args))
+			}
+			self, ok := args[0].(*RodBrowser)
+			if !ok {
+				return newError("receiver for fullscreen must be ROD_BROWSER, got %s", args[0].Type())
+			}
+			return self.Fullscreen(args[1:]...)
+		}},
 	// JavaScript execution
 	"eval": {Fn: func(args ...Object) Object {
 		if len(args) != 2 {

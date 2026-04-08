@@ -227,6 +227,18 @@ func (b *RodBrowser) WaitLoad(args ...Object) Object {
 	return b
 }
 
+// WaitStable - wait for page to become stable (no network activity)
+func (b *RodBrowser) WaitStable(args ...Object) Object {
+	b.page.MustWaitStable()
+	return b
+}
+
+// Fullscreen - set browser window to fullscreen
+func (b *RodBrowser) Fullscreen(args ...Object) Object {
+	b.page.MustWindowFullscreen()
+	return b
+}
+
 // Exists - check if element exists
 func (b *RodBrowser) Exists(args ...Object) Object {
 	if len(args) < 1 {
