@@ -36,6 +36,7 @@ func NewBrowser(args ...Object) Object {
 	autoDownload := true
 	proxy := ""
 	userAgent := ""
+	noSandbox := false // Default to false for security
 
 	// Parse options
 	if len(args) > 0 {
@@ -65,6 +66,11 @@ func NewBrowser(args ...Object) Object {
 					userAgent = uas.Value
 				}
 			}
+			if nsPair, ok := opts.Pairs[NewString("noSandbox").HashKey()]; ok {
+				if nsb, ok := nsPair.Value.(*Bool); ok {
+					noSandbox = nsb.Value
+				}
+			}
 		}
 	}
 
@@ -81,6 +87,12 @@ func NewBrowser(args ...Object) Object {
 		l = l.Set("disable-gpu")
 	} else {
 		l = l.Headless(false)
+	}
+
+	// On Linux, add --no-sandbox flag (required when running as root)
+	// Users can also explicitly enable it via noSandbox option
+	if runtime.GOOS == "linux" || noSandbox {
+		l = l.NoSandbox(true)
 	}
 
 	// Set Chrome path or find system Chrome
