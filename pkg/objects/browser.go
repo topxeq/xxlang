@@ -69,7 +69,19 @@ func NewBrowser(args ...Object) Object {
 	}
 
 	// Create launcher
-	l := launcher.New().Headless(headless)
+	l := launcher.New()
+
+	// Set headless mode
+	if headless {
+		// Use the newer headless mode (--headless=new) which is more stable
+		l = l.HeadlessNew(true)
+		// Additional flags to prevent window flash on Windows
+		l = l.Set("no-startup-window")
+		l = l.Set("disable-backgrounding-occluded-windows")
+		l = l.Set("disable-gpu")
+	} else {
+		l = l.Headless(false)
+	}
 
 	// Set Chrome path or find system Chrome
 	if chromePath != "" {
