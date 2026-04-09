@@ -283,6 +283,20 @@ func (t *BackupTask) SetTargetLocal(path string) {
 	t.Target = NewLocalSource(path)
 }
 
+// SetSourceRemote sets the source to a remote path via SSH.
+func (t *BackupTask) SetSourceRemote(client *SSHClient, path string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.Source = NewRemoteSource(client, path)
+}
+
+// SetTargetRemote sets the target to a remote path via SSH.
+func (t *BackupTask) SetTargetRemote(client *SSHClient, path string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.Target = NewRemoteSource(client, path)
+}
+
 // SetOnProgress sets the progress callback.
 func (t *BackupTask) SetOnProgress(cb func(*BackupProgress)) {
 	t.OnProgress = cb

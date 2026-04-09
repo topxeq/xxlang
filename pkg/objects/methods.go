@@ -10128,6 +10128,44 @@ var rodHTMLElementMethods = map[string]*Builtin{
 			self.SetTargetLocal(path.Value)
 			return NULL
 		}},
+		"setSourceRemote": {Fn: func(args ...Object) Object {
+			if len(args) != 3 {
+				return newError("wrong number of arguments for setSourceRemote. got=%d, want=3", len(args))
+			}
+			self, ok := args[0].(*BackupTask)
+			if !ok {
+				return newError("receiver must be BACKUP_TASK, got %s", args[0].Type())
+			}
+			client, ok := args[1].(*SSHClient)
+			if !ok {
+				return newError("second argument must be SSH_CLIENT, got %s", args[1].Type())
+			}
+			path, ok := args[2].(*String)
+			if !ok {
+				return newError("third argument must be STRING, got %s", args[2].Type())
+			}
+			self.SetSourceRemote(client, path.Value)
+			return NULL
+		}},
+		"setTargetRemote": {Fn: func(args ...Object) Object {
+			if len(args) != 3 {
+				return newError("wrong number of arguments for setTargetRemote. got=%d, want=3", len(args))
+			}
+			self, ok := args[0].(*BackupTask)
+			if !ok {
+				return newError("receiver must be BACKUP_TASK, got %s", args[0].Type())
+			}
+			client, ok := args[1].(*SSHClient)
+			if !ok {
+				return newError("second argument must be SSH_CLIENT, got %s", args[1].Type())
+			}
+			path, ok := args[2].(*String)
+			if !ok {
+				return newError("third argument must be STRING, got %s", args[2].Type())
+			}
+			self.SetTargetRemote(client, path.Value)
+			return NULL
+		}},
 		"setMode": {Fn: func(args ...Object) Object {
 			if len(args) != 2 {
 				return newError("wrong number of arguments for setMode. got=%d, want=2", len(args))
