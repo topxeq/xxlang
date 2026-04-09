@@ -2,6 +2,8 @@
 package objects
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -107,5 +109,89 @@ func TestBackupTaskSetTargetLocal(t *testing.T) {
 	task.SetTargetLocal("/tmp/target")
 	if task.Target == nil {
 		t.Fatal("expected Target to be set")
+	}
+}
+
+// ============================================================
+// BackupTask Run Tests
+// ============================================================
+
+func TestBackupTaskRunIncremental(t *testing.T) {
+	srcDir := t.TempDir()
+	os.WriteFile(filepath.Join(srcDir, "file1.txt"), []byte("content1"), 0644)
+	os.WriteFile(filepath.Join(srcDir, "file2.txt"), []byte("content2"), 0644)
+	dstDir := t.TempDir()
+
+	task := NewBackupTask()
+	task.SetSourceLocal(srcDir)
+	task.SetTargetLocal(dstDir)
+
+	result := task.Run()
+	if !result.Success {
+		t.Errorf("expected Success=true, errors: %v", result.Errors)
+	}
+	if result.FilesCopied != 2 {
+		t.Errorf("expected FilesCopied=2, got %d", result.FilesCopied)
+	}
+	if _, err := os.Stat(filepath.Join(dstDir, "file1.txt")); err != nil {
+		t.Error("file1.txt not copied")
+	}
+}
+
+func TestBackupTaskRunIncrementalSkip(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	os.WriteFile(filepath.Join(srcDir, "same.txt"), []byte("same content"), 0644)
+	os.WriteFile(filepath.Join(dstDir, "same.txt"), []byte("same content"), 0644)
+
+	task := NewBackupTask()
+	task.SetSourceLocal(srcDir)
+	task.SetTargetLocal(dstDir)
+
+	result := task.Run()
+	if !result.Success {
+		t.Errorf("expected Success=true")
+	}
+	if result.FilesSkipped < 1 {
+		t.Errorf("expected at least 1 file skipped, got %d", result.FilesSkipped)
+	}
+}
+
+func TestBackupTaskRunFull(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	os.WriteFile(filepath.Join(srcDir, "file.txt"), []byte("content"), 0644)
+
+	task := NewBackupTask()
+	task.SetSourceLocal(srcDir)
+	task.SetTargetLocal(dstDir)
+	task.SetMode("full")
+
+	result := task.Run()
+	if result.FilesCopied != 1 {
+		t.Errorf("expected FilesCopied=1, got %d", result.FilesCopied)
+	}
+}
+
+func TestBackupTaskRunMirror(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	os.WriteFile(filepath.Join(srcDir, "file1.txt"), []byte("content"), 0644)
+	os.WriteFile(filepath.Join(dstDir, "file2.txt"), []byte("extra"), 0644)
+
+	task := NewBackupTask()
+	task.SetSourceLocal(srcDir)
+	task.SetTargetLocal(dstDir)
+	task.SetMode("mirror")
+
+	result := task.Run()
+	if !result.Success {
+		t.Errorf("expected Success=true")
+	}
+	if result.FilesDeleted != 1 {
+		t.Errorf("expected FilesDeleted=1, got %d", result.FilesDeleted)
+	}
+	if _, err := os.Stat(filepath.Join(dstDir, "file2.txt")); !os.IsNotExist(err) {
+		t.Error("file2.txt should have been deleted")
 	}
 }

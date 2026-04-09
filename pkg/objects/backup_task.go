@@ -4,6 +4,7 @@ package objects
 
 import (
 	"fmt"
+	"path/filepath"
 	"sync"
 	"unsafe"
 )
@@ -179,6 +180,9 @@ type BackupTask struct {
 	DeleteExtra     bool   // delete files in target not in source
 	ConflictPolicy  string // "overwrite", "skip", "rename"
 
+	// Exclude patterns
+	excludePatterns []string
+
 	// Progress callback
 	OnProgress func(*BackupProgress)
 
@@ -321,4 +325,324 @@ func (t *BackupTask) SetConflictPolicy(policy string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.ConflictPolicy = policy
+}
+
+// SetExcludePatterns sets patterns to exclude.
+func (t *BackupTask) SetExcludePatterns(patterns []string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	// Store exclude patterns - this will be used by shouldExclude
+	t.excludePatterns = patterns
+}
+
+// GetExcludePatterns returns the exclude patterns.
+func (t *BackupTask) GetExcludePatterns() []string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.excludePatterns
+}
+
+// ============================================================
+// Run - Main backup execution
+// ============================================================
+
+// Run executes the backup task and returns the result.
+func (t *BackupTask) Run() *BackupResult {
+	// Create a fresh result
+	t.Result = NewBackupResult()
+	t.Progress = NewBackupProgress()
+
+	// Validate source and target are set
+	if t.Source == nil {
+		t.Result.AddError("source is not set")
+		return t.Result
+	}
+	if t.Target == nil {
+		t.Result.AddError("target is not set")
+		return t.Result
+	}
+
+	// List files from source
+	sourceFiles, err := t.Source.ListFiles()
+	if err != nil {
+		t.Result.AddError("failed to list source files: " + err.Error())
+		return t.Result
+	}
+
+	// Filter out directories and excluded files
+	var filesToProcess []BackupFileInfo
+	for _, file := range sourceFiles {
+		if file.IsDir {
+			continue
+		}
+		if t.shouldExclude(file.Path) {
+			continue
+		}
+		filesToProcess = append(filesToProcess, file)
+	}
+
+	// Initialize progress
+	t.Progress.TotalFiles = len(filesToProcess)
+	t.notifyProgress(t.Progress)
+
+	// Build target file map for quick lookup
+	targetFiles, err := t.Target.ListFiles()
+	if err != nil {
+		// Target might not exist yet - that's OK for initial backup
+		targetFiles = []BackupFileInfo{}
+	}
+	targetMap := make(map[string]BackupFileInfo)
+	for _, file := range targetFiles {
+		if !file.IsDir {
+			targetMap[file.Path] = file
+		}
+	}
+
+	// Process each source file
+	for _, srcFile := range filesToProcess {
+		t.Progress.SetCurrentFile(srcFile.Path, "check")
+		t.notifyProgress(t.Progress)
+
+		needCopy, _ := t.needCopyFile(srcFile, targetMap)
+		if needCopy {
+			t.Progress.SetCurrentFile(srcFile.Path, "copy")
+			t.notifyProgress(t.Progress)
+
+			// Read from source
+			content, err := t.Source.ReadFile(srcFile.Path)
+			if err != nil {
+				t.Result.AddError("failed to read source file " + srcFile.Path + ": " + err.Error())
+				t.Progress.IncrementProcessed()
+				t.Progress.UpdatePercent()
+				t.notifyProgress(t.Progress)
+				continue
+			}
+
+			// Write to target
+			err = t.Target.WriteFile(srcFile.Path, content)
+			if err != nil {
+				t.Result.AddError("failed to write target file " + srcFile.Path + ": " + err.Error())
+				t.Progress.IncrementProcessed()
+				t.Progress.UpdatePercent()
+				t.notifyProgress(t.Progress)
+				continue
+			}
+
+			t.Result.FilesCopied++
+			t.Result.BytesTransferred += int64(len(content))
+		} else {
+			t.Progress.SetCurrentFile(srcFile.Path, "skip")
+			t.notifyProgress(t.Progress)
+			t.Result.FilesSkipped++
+		}
+
+		t.Result.FilesChecked++
+		t.Progress.IncrementProcessed()
+		t.Progress.UpdatePercent()
+		t.notifyProgress(t.Progress)
+	}
+
+	// Delete extra files in target if mirror mode or DeleteExtra is set
+	if t.DeleteExtra || t.Mode == "mirror" {
+		t.deleteExtraFiles(targetMap, sourceFiles)
+	}
+
+	// Mark as success if no errors
+	t.Result.Success = !t.Result.HasErrors()
+	return t.Result
+}
+
+// needCopyFile determines if a file needs to be copied.
+// Returns true and reason if copy is needed, false and empty string otherwise.
+func (t *BackupTask) needCopyFile(srcFile BackupFileInfo, targetMap map[string]BackupFileInfo) (bool, string) {
+	// Full mode always copies
+	if t.Mode == "full" {
+		return true, "full"
+	}
+
+	// Check if file exists in target
+	targetFile, exists := targetMap[srcFile.Path]
+	if !exists {
+		return true, "new"
+	}
+
+	// Compare based on strategy
+	switch t.CompareStrategy {
+	case "sizeTime":
+		// Compare size first
+		if srcFile.Size != targetFile.Size {
+			return true, "size"
+		}
+		// Same size, check modification time
+		if srcFile.MTime.After(targetFile.MTime) {
+			return true, "newer"
+		}
+		// Same size and not newer - skip
+		return false, ""
+
+	case "hash":
+		// Calculate hashes and compare
+		srcHash, err := t.Source.CalculateHash(srcFile.Path, t.HashAlgorithm)
+		if err != nil {
+			// If we can't compute hash, fall back to size/time
+			if srcFile.Size != targetFile.Size {
+				return true, "size"
+			}
+			if srcFile.MTime.After(targetFile.MTime) {
+				return true, "newer"
+			}
+			return false, ""
+		}
+		targetHash, err := t.Target.CalculateHash(srcFile.Path, t.HashAlgorithm)
+		if err != nil {
+			// Target hash failed - assume different
+			return true, "hash"
+		}
+		if srcHash != targetHash {
+			return true, "hash"
+		}
+		return false, ""
+
+	case "sizeOnly":
+		// Only compare size
+		if srcFile.Size != targetFile.Size {
+			return true, "size"
+		}
+		return false, ""
+
+	default:
+		// Default to size/time comparison
+		if srcFile.Size != targetFile.Size {
+			return true, "size"
+		}
+		if srcFile.MTime.After(targetFile.MTime) {
+			return true, "newer"
+		}
+		return false, ""
+	}
+}
+
+// shouldExclude checks if a path should be excluded based on patterns.
+func (t *BackupTask) shouldExclude(path string) bool {
+	patterns := t.GetExcludePatterns()
+	if len(patterns) == 0 {
+		return false
+	}
+
+	for _, pattern := range patterns {
+		// Try filepath.Match first
+		matched, err := filepathMatch(pattern, path)
+		if err == nil && matched {
+			return true
+		}
+		// Also check if pattern is a substring
+		if containsSubstring(path, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// deleteExtraFiles deletes files in target that don't exist in source.
+func (t *BackupTask) deleteExtraFiles(targetMap map[string]BackupFileInfo, sourceFiles []BackupFileInfo) {
+	// Build source map for quick lookup
+	sourceMap := make(map[string]bool)
+	for _, file := range sourceFiles {
+		if !file.IsDir {
+			sourceMap[file.Path] = true
+		}
+	}
+
+	// Find and delete extra files
+	for path := range targetMap {
+		if !sourceMap[path] {
+			t.Progress.SetCurrentFile(path, "delete")
+			t.notifyProgress(t.Progress)
+
+			err := t.Target.DeleteFile(path)
+			if err != nil {
+				t.Result.AddError("failed to delete extra file " + path + ": " + err.Error())
+				continue
+			}
+			t.Result.FilesDeleted++
+		}
+	}
+}
+
+// notifyProgress calls the progress callback if set.
+func (t *BackupTask) notifyProgress(progress *BackupProgress) {
+	if t.OnProgress != nil {
+		t.OnProgress(progress)
+	}
+}
+
+// CheckConflicts detects potential conflicts without modifying files.
+func (t *BackupTask) CheckConflicts() []string {
+	conflicts := []string{}
+
+	if t.Source == nil || t.Target == nil {
+		return conflicts
+	}
+
+	// List files from both source and target
+	sourceFiles, err := t.Source.ListFiles()
+	if err != nil {
+		return conflicts
+	}
+
+	targetFiles, err := t.Target.ListFiles()
+	if err != nil {
+		return conflicts
+	}
+
+	// Build target map
+	targetMap := make(map[string]BackupFileInfo)
+	for _, file := range targetFiles {
+		if !file.IsDir {
+			targetMap[file.Path] = file
+		}
+	}
+
+	// Check for conflicts
+	for _, srcFile := range sourceFiles {
+		if srcFile.IsDir {
+			continue
+		}
+		if t.shouldExclude(srcFile.Path) {
+			continue
+		}
+
+		_, exists := targetMap[srcFile.Path]
+		if exists {
+			// Check if files differ
+			needCopy, _ := t.needCopyFile(srcFile, targetMap)
+			if needCopy && t.ConflictPolicy == "skip" {
+				conflicts = append(conflicts, srcFile.Path)
+			}
+		}
+	}
+
+	return conflicts
+}
+
+// filepathMatch is a helper for pattern matching (windows-safe).
+func filepathMatch(pattern, path string) (bool, error) {
+	// Use filepath.Match which handles platform-specific separators
+	return filepath.Match(pattern, path)
+}
+
+// containsSubstring checks if s contains substr.
+func containsSubstring(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		(len(s) > len(substr) && containsAt(s, substr)))
+}
+
+// containsAt checks if s contains substr at any position.
+func containsAt(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
