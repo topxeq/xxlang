@@ -89,6 +89,9 @@ var TypeMethods = map[ObjectType]map[string]*Builtin{
 	// Rod browser (web scraping)
 	RodBrowserType:     rodBrowserMethods,
 	RodHTMLElementType: rodHTMLElementMethods,
+	// Backup types
+	BackupTaskType:   backupTaskMethods,
+	BackupResultType: backupResultMethods,
 }
 
 // GetMethod returns the builtin method for the given object type and method name
@@ -10085,3 +10088,204 @@ var rodHTMLElementMethods = map[string]*Builtin{
 		return self.GetBoundingClientRect(args[1:]...)
 	}},
 }
+
+	// ============================================================
+	// BackupTask Methods
+	// ============================================================
+
+	var backupTaskMethods = map[string]*Builtin{
+		"typeOf": {Fn: universalTypeOf},
+		"toStr":  {Fn: universalToStr},
+
+		// Configuration methods
+		"setSourceLocal": {Fn: func(args ...Object) Object {
+			if len(args) != 2 {
+				return newError("wrong number of arguments for setSourceLocal. got=%d, want=2", len(args))
+			}
+			self, ok := args[0].(*BackupTask)
+			if !ok {
+				return newError("receiver for setSourceLocal must be BACKUP_TASK, got %s", args[0].Type())
+			}
+			path, ok := args[1].(*String)
+			if !ok {
+				return newError("argument for setSourceLocal must be STRING, got %s", args[1].Type())
+			}
+			self.SetSourceLocal(path.Value)
+			return NULL
+		}},
+		"setTargetLocal": {Fn: func(args ...Object) Object {
+			if len(args) != 2 {
+				return newError("wrong number of arguments for setTargetLocal. got=%d, want=2", len(args))
+			}
+			self, ok := args[0].(*BackupTask)
+			if !ok {
+				return newError("receiver for setTargetLocal must be BACKUP_TASK, got %s", args[0].Type())
+			}
+			path, ok := args[1].(*String)
+			if !ok {
+				return newError("argument for setTargetLocal must be STRING, got %s", args[1].Type())
+			}
+			self.SetTargetLocal(path.Value)
+			return NULL
+		}},
+		"setMode": {Fn: func(args ...Object) Object {
+			if len(args) != 2 {
+				return newError("wrong number of arguments for setMode. got=%d, want=2", len(args))
+			}
+			self, ok := args[0].(*BackupTask)
+			if !ok {
+				return newError("receiver for setMode must be BACKUP_TASK, got %s", args[0].Type())
+			}
+			mode, ok := args[1].(*String)
+			if !ok {
+				return newError("argument for setMode must be STRING, got %s", args[1].Type())
+			}
+			self.SetMode(mode.Value)
+			return NULL
+		}},
+		"setCompareStrategy": {Fn: func(args ...Object) Object {
+			if len(args) != 2 {
+				return newError("wrong number of arguments for setCompareStrategy. got=%d, want=2", len(args))
+			}
+			self, ok := args[0].(*BackupTask)
+			if !ok {
+				return newError("receiver for setCompareStrategy must be BACKUP_TASK, got %s", args[0].Type())
+			}
+			strategy, ok := args[1].(*String)
+			if !ok {
+				return newError("argument for setCompareStrategy must be STRING, got %s", args[1].Type())
+			}
+			self.SetCompareStrategy(strategy.Value)
+			return NULL
+		}},
+		"setConflictPolicy": {Fn: func(args ...Object) Object {
+			if len(args) != 2 {
+				return newError("wrong number of arguments for setConflictPolicy. got=%d, want=2", len(args))
+			}
+			self, ok := args[0].(*BackupTask)
+			if !ok {
+				return newError("receiver for setConflictPolicy must be BACKUP_TASK, got %s", args[0].Type())
+			}
+			policy, ok := args[1].(*String)
+			if !ok {
+				return newError("argument for setConflictPolicy must be STRING, got %s", args[1].Type())
+			}
+			self.SetConflictPolicy(policy.Value)
+			return NULL
+		}},
+		"setExclude": {Fn: func(args ...Object) Object {
+			if len(args) != 2 {
+				return newError("wrong number of arguments for setExclude. got=%d, want=2", len(args))
+			}
+			self, ok := args[0].(*BackupTask)
+			if !ok {
+				return newError("receiver for setExclude must be BACKUP_TASK, got %s", args[0].Type())
+			}
+			arr, ok := args[1].(*Array)
+			if !ok {
+				return newError("argument for setExclude must be ARRAY, got %s", args[1].Type())
+			}
+			// Convert array to string slice
+			patterns := make([]string, 0, len(arr.Elements))
+			for _, elem := range arr.Elements {
+				if str, ok := elem.(*String); ok {
+					patterns = append(patterns, str.Value)
+				}
+			}
+			self.SetExcludePatterns(patterns)
+			return NULL
+		}},
+		"setDryRun": {Fn: func(args ...Object) Object {
+			if len(args) != 2 {
+				return newError("wrong number of arguments for setDryRun. got=%d, want=2", len(args))
+			}
+			self, ok := args[0].(*BackupTask)
+			if !ok {
+				return newError("receiver for setDryRun must be BACKUP_TASK, got %s", args[0].Type())
+			}
+				_ = self // avoid unused variable error
+			// Note: BackupTask currently does not have a dry-run field
+			// This method is a placeholder for future implementation
+			// The argument is accepted but not used yet
+			return NULL
+		}},
+		// Execution methods
+		"run": {Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for run. got=%d, want=1", len(args))
+			}
+			self, ok := args[0].(*BackupTask)
+			if !ok {
+				return newError("receiver for run must be BACKUP_TASK, got %s", args[0].Type())
+			}
+			result := self.Run()
+			return result
+		}},
+		"checkConflicts": {Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for checkConflicts. got=%d, want=1", len(args))
+			}
+			self, ok := args[0].(*BackupTask)
+			if !ok {
+				return newError("receiver for checkConflicts must be BACKUP_TASK, got %s", args[0].Type())
+			}
+			conflicts := self.CheckConflicts()
+			// Convert string slice to array
+			elements := make([]Object, 0, len(conflicts))
+			for _, c := range conflicts {
+				elements = append(elements, NewString(c))
+			}
+			return &Array{Elements: elements}
+		}},
+	}
+
+	// ============================================================
+	// BackupResult Methods
+	// ============================================================
+
+	var backupResultMethods = map[string]*Builtin{
+		"typeOf": {Fn: universalTypeOf},
+		"toStr":  {Fn: universalToStr},
+
+		// Status methods
+		"isSuccess": {Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for isSuccess. got=%d, want=1", len(args))
+			}
+			self, ok := args[0].(*BackupResult)
+			if !ok {
+				return newError("receiver for isSuccess must be BACKUP_RESULT, got %s", args[0].Type())
+			}
+			return &Bool{Value: self.Success}
+		}},
+		"hasConflicts": {Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for hasConflicts. got=%d, want=1", len(args))
+			}
+			self, ok := args[0].(*BackupResult)
+			if !ok {
+				return newError("receiver for hasConflicts must be BACKUP_RESULT, got %s", args[0].Type())
+			}
+			return &Bool{Value: self.HasConflicts()}
+		}},
+		"hasErrors": {Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for hasErrors. got=%d, want=1", len(args))
+			}
+			self, ok := args[0].(*BackupResult)
+			if !ok {
+				return newError("receiver for hasErrors must be BACKUP_RESULT, got %s", args[0].Type())
+			}
+			return &Bool{Value: self.HasErrors()}
+		}},
+		"summary": {Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for summary. got=%d, want=1", len(args))
+			}
+			self, ok := args[0].(*BackupResult)
+			if !ok {
+				return newError("receiver for summary must be BACKUP_RESULT, got %s", args[0].Type())
+			}
+			return NewString(self.Summary())
+		}},
+	}
