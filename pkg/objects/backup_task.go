@@ -89,3 +89,73 @@ func (r *BackupResult) Summary() string {
 	return fmt.Sprintf("Backup completed: %d copied, %d skipped, %d deleted, %d errors",
 		r.FilesCopied, r.FilesSkipped, r.FilesDeleted, len(r.Errors))
 }
+
+// ============================================================
+// BackupProgress - Progress state during backup
+// ============================================================
+
+// BackupProgress holds progress state during backup execution.
+type BackupProgress struct {
+	mu               sync.Mutex
+	TotalFiles       int
+	ProcessedFiles   int
+	CurrentFile      string
+	CurrentAction    string // "copy", "skip", "delete", "check"
+	BytesTransferred int64
+	TotalBytes       int64
+	Percent          float64
+}
+
+// NewBackupProgress creates a new BackupProgress.
+func NewBackupProgress() *BackupProgress {
+	return &BackupProgress{}
+}
+
+// Type returns the object type.
+func (p *BackupProgress) Type() ObjectType { return BackupProgressType }
+
+// TypeTag returns the fast type tag.
+func (p *BackupProgress) TypeTag() TypeTag { return TagBackupProgress }
+
+// Inspect returns a string representation.
+func (p *BackupProgress) Inspect() string {
+	return fmt.Sprintf("BackupProgress(percent=%.1f, file=%s)", p.Percent, p.CurrentFile)
+}
+
+// ToBool returns true.
+func (p *BackupProgress) ToBool() *Bool { return TRUE }
+
+// HashKey returns a hash key.
+func (p *BackupProgress) HashKey() HashKey {
+	return HashKey{
+		Type:  BackupProgressType,
+		Value: uint64(uintptr(unsafe.Pointer(p))),
+	}
+}
+
+// UpdatePercent calculates and updates the percentage.
+func (p *BackupProgress) UpdatePercent() float64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.TotalFiles == 0 {
+		p.Percent = 0
+		return 0
+	}
+	p.Percent = float64(p.ProcessedFiles) * 100.0 / float64(p.TotalFiles)
+	return p.Percent
+}
+
+// SetCurrentFile sets the current file being processed.
+func (p *BackupProgress) SetCurrentFile(file string, action string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.CurrentFile = file
+	p.CurrentAction = action
+}
+
+// IncrementProcessed increments the processed files count.
+func (p *BackupProgress) IncrementProcessed() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.ProcessedFiles++
+}
