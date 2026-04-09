@@ -85,6 +85,109 @@ func init() {
 				return task.Run()
 			}),
 
+			// localToRemote performs a quick local-to-remote backup.
+			// Arguments: client (SSHClient), localDir (string), remoteDir (string), opts? (map)
+			// Returns: BackupResult
+			"localToRemote": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 3 || len(args) > 4 {
+					return Error("localToRemote takes 3 or 4 arguments (client, localDir, remoteDir, options?)")
+				}
+				client, ok := args[0].(*objects.SSHClient)
+				if !ok {
+					return Error("first argument must be SSHClient")
+				}
+				localDir, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("second argument must be string (localDir)")
+				}
+				remoteDir, ok := args[2].(*objects.String)
+				if !ok {
+					return Error("third argument must be string (remoteDir)")
+				}
+
+				task := objects.NewBackupTask()
+				task.SetSourceLocal(localDir.Value)
+				task.SetTargetRemote(client, remoteDir.Value)
+
+				if len(args) == 4 {
+					if optsMap, ok := args[3].(*objects.Map); ok {
+						applyBackupOptions(task, optsMap)
+					}
+				}
+
+				return task.Run()
+			}),
+
+			// remoteToLocal performs a quick remote-to-local backup.
+			// Arguments: client (SSHClient), remoteDir (string), localDir (string), opts? (map)
+			// Returns: BackupResult
+			"remoteToLocal": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 3 || len(args) > 4 {
+					return Error("remoteToLocal takes 3 or 4 arguments (client, remoteDir, localDir, options?)")
+				}
+				client, ok := args[0].(*objects.SSHClient)
+				if !ok {
+					return Error("first argument must be SSHClient")
+				}
+				remoteDir, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("second argument must be string (remoteDir)")
+				}
+				localDir, ok := args[2].(*objects.String)
+				if !ok {
+					return Error("third argument must be string (localDir)")
+				}
+
+				task := objects.NewBackupTask()
+				task.SetSourceRemote(client, remoteDir.Value)
+				task.SetTargetLocal(localDir.Value)
+
+				if len(args) == 4 {
+					if optsMap, ok := args[3].(*objects.Map); ok {
+						applyBackupOptions(task, optsMap)
+					}
+				}
+
+				return task.Run()
+			}),
+
+			// remoteToRemote performs a quick remote-to-remote backup.
+			// Arguments: srcClient (SSHClient), dstClient (SSHClient), srcDir (string), dstDir (string), opts? (map)
+			// Returns: BackupResult
+			"remoteToRemote": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 4 || len(args) > 5 {
+					return Error("remoteToRemote takes 4 or 5 arguments (srcClient, dstClient, srcDir, dstDir, options?)")
+				}
+				srcClient, ok := args[0].(*objects.SSHClient)
+				if !ok {
+					return Error("first argument must be SSHClient")
+				}
+				dstClient, ok := args[1].(*objects.SSHClient)
+				if !ok {
+					return Error("second argument must be SSHClient")
+				}
+				srcDir, ok := args[2].(*objects.String)
+				if !ok {
+					return Error("third argument must be string (srcDir)")
+				}
+				dstDir, ok := args[3].(*objects.String)
+				if !ok {
+					return Error("fourth argument must be string (dstDir)")
+				}
+
+				task := objects.NewBackupTask()
+				task.SetSourceRemote(srcClient, srcDir.Value)
+				task.SetTargetRemote(dstClient, dstDir.Value)
+
+				if len(args) == 5 {
+					if optsMap, ok := args[4].(*objects.Map); ok {
+						applyBackupOptions(task, optsMap)
+					}
+				}
+
+				return task.Run()
+			}),
+
 			// ============================================================
 			// Type Check Functions
 			// ============================================================
