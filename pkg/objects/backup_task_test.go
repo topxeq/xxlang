@@ -63,3 +63,49 @@ func TestBackupProgressUpdatePercent(t *testing.T) {
 		t.Errorf("expected percent=50.0, got %f", percent)
 	}
 }
+
+// ============================================================
+// BackupTask Tests
+// ============================================================
+
+func TestBackupTaskNew(t *testing.T) {
+	task := NewBackupTask()
+	if task == nil {
+		t.Fatal("expected BackupTask instance")
+	}
+	if task.Mode != "incremental" {
+		t.Errorf("expected default Mode='incremental', got '%s'", task.Mode)
+	}
+}
+
+func TestBackupTaskNewWithOptions(t *testing.T) {
+	task := NewBackupTaskWithOptions(map[string]interface{}{
+		"mode":       "mirror",
+		"deleteExtra": true,
+	})
+	if task.Mode != "mirror" {
+		t.Errorf("expected Mode='mirror', got '%s'", task.Mode)
+	}
+	if task.DeleteExtra != true {
+		t.Errorf("expected DeleteExtra=true")
+	}
+}
+
+func TestBackupTaskSetSourceLocal(t *testing.T) {
+	task := NewBackupTask()
+	task.SetSourceLocal("/tmp/source")
+	if task.Source == nil {
+		t.Fatal("expected Source to be set")
+	}
+	if task.Source.GetBasePath() != "/tmp/source" {
+		t.Errorf("expected BasePath='/tmp/source', got '%s'", task.Source.GetBasePath())
+	}
+}
+
+func TestBackupTaskSetTargetLocal(t *testing.T) {
+	task := NewBackupTask()
+	task.SetTargetLocal("/tmp/target")
+	if task.Target == nil {
+		t.Fatal("expected Target to be set")
+	}
+}

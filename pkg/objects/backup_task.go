@@ -159,3 +159,166 @@ func (p *BackupProgress) IncrementProcessed() {
 	defer p.mu.Unlock()
 	p.ProcessedFiles++
 }
+
+// ============================================================
+// BackupTask - Main backup task configuration
+// ============================================================
+
+// BackupTask holds the configuration and state for a backup operation.
+type BackupTask struct {
+	mu sync.Mutex
+
+	// Source and target
+	Source BackupSource
+	Target BackupSource
+
+	// Configuration
+	Mode            string // "incremental", "mirror", "full"
+	CompareStrategy string // "sizeTime", "hash", "sizeOnly"
+	HashAlgorithm   string // "md5", "sha1"
+	DeleteExtra     bool   // delete files in target not in source
+	ConflictPolicy  string // "overwrite", "skip", "rename"
+
+	// Progress callback
+	OnProgress func(*BackupProgress)
+
+	// Result
+	Result   *BackupResult
+	Progress *BackupProgress
+}
+
+// NewBackupTask creates a new BackupTask with default values.
+func NewBackupTask() *BackupTask {
+	return &BackupTask{
+		Mode:            "incremental",
+		CompareStrategy: "sizeTime",
+		HashAlgorithm:   "md5",
+		DeleteExtra:     false,
+		ConflictPolicy:  "overwrite",
+		Result:          NewBackupResult(),
+		Progress:        NewBackupProgress(),
+	}
+}
+
+// NewBackupTaskWithOptions creates a BackupTask with custom options.
+func NewBackupTaskWithOptions(opts map[string]interface{}) *BackupTask {
+	task := NewBackupTask()
+
+	if mode, ok := opts["mode"].(string); ok {
+		task.Mode = mode
+		// Mirror mode automatically sets DeleteExtra
+		if mode == "mirror" {
+			task.DeleteExtra = true
+		}
+	}
+	if strategy, ok := opts["compareStrategy"].(string); ok {
+		task.CompareStrategy = strategy
+	}
+	if algo, ok := opts["hashAlgorithm"].(string); ok {
+		task.HashAlgorithm = algo
+	}
+	if del, ok := opts["deleteExtra"].(bool); ok {
+		task.DeleteExtra = del
+	}
+	if policy, ok := opts["conflictPolicy"].(string); ok {
+		task.ConflictPolicy = policy
+	}
+	if onProgress, ok := opts["onProgress"].(func(*BackupProgress)); ok {
+		task.OnProgress = onProgress
+	}
+
+	return task
+}
+
+// Type returns the object type.
+func (t *BackupTask) Type() ObjectType { return BackupTaskType }
+
+// TypeTag returns the fast type tag.
+func (t *BackupTask) TypeTag() TypeTag { return TagBackupTask }
+
+// Inspect returns a string representation.
+func (t *BackupTask) Inspect() string {
+	return fmt.Sprintf("BackupTask(mode=%s, source=%s, target=%s)",
+		t.Mode, t.sourcePath(), t.targetPath())
+}
+
+// ToBool returns true.
+func (t *BackupTask) ToBool() *Bool { return TRUE }
+
+// HashKey returns a hash key.
+func (t *BackupTask) HashKey() HashKey {
+	return HashKey{
+		Type:  BackupTaskType,
+		Value: uint64(uintptr(unsafe.Pointer(t))),
+	}
+}
+
+// sourcePath returns the source path string.
+func (t *BackupTask) sourcePath() string {
+	if t.Source == nil {
+		return "<nil>"
+	}
+	return t.Source.GetBasePath()
+}
+
+// targetPath returns the target path string.
+func (t *BackupTask) targetPath() string {
+	if t.Target == nil {
+		return "<nil>"
+	}
+	return t.Target.GetBasePath()
+}
+
+// SetSourceLocal sets the source to a local path.
+func (t *BackupTask) SetSourceLocal(path string) {
+	t.Source = NewLocalSource(path)
+}
+
+// SetTargetLocal sets the target to a local path.
+func (t *BackupTask) SetTargetLocal(path string) {
+	t.Target = NewLocalSource(path)
+}
+
+// SetOnProgress sets the progress callback.
+func (t *BackupTask) SetOnProgress(cb func(*BackupProgress)) {
+	t.OnProgress = cb
+}
+
+// SetMode sets the backup mode.
+func (t *BackupTask) SetMode(mode string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.Mode = mode
+	// Mirror mode automatically sets DeleteExtra
+	if mode == "mirror" {
+		t.DeleteExtra = true
+	}
+}
+
+// SetCompareStrategy sets the compare strategy.
+func (t *BackupTask) SetCompareStrategy(strategy string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.CompareStrategy = strategy
+}
+
+// SetHashAlgorithm sets the hash algorithm.
+func (t *BackupTask) SetHashAlgorithm(algo string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.HashAlgorithm = algo
+}
+
+// SetDeleteExtra sets whether to delete extra files in target.
+func (t *BackupTask) SetDeleteExtra(del bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.DeleteExtra = del
+}
+
+// SetConflictPolicy sets the conflict policy.
+func (t *BackupTask) SetConflictPolicy(policy string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.ConflictPolicy = policy
+}
