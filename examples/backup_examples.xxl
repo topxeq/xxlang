@@ -1,0 +1,128 @@
+// ============================================================
+// Xxlang Backup Module - Examples
+// ============================================================
+
+import "backup"
+import "ssh"
+
+// ============================================================
+// Example 1: Local-to-Local Backup (Basic)
+// ============================================================
+
+// Simple local backup
+var result = backup.localToLocal("/data/project", "/backup/project", null)
+println("Copied: " + result.filesCopied.toStr())
+println("Skipped: " + result.filesSkipped.toStr())
+println("Duration: " + result.duration.toStr() + "s")
+
+// ============================================================
+// Example 2: Local-to-Local with Options
+// ============================================================
+
+var result2 = backup.localToLocal("/data/project", "/backup/project", {
+    "mode": "mirror",
+    "exclude": ["*.tmp", "*.log", "node_modules/*"],
+    "dryRun": false
+})
+
+if (result2.hasErrors()) {
+    println("Errors:")
+    for (err in result2.errors) {
+        println("  " + err)
+    }
+}
+
+println(result2.summary())
+
+// ============================================================
+// Example 3: Using BackupTask Object
+// ============================================================
+
+var task = backup.newTask()
+task.setSourceLocal("/data/project")
+task.setTargetLocal("/backup/project")
+task.setMode("incremental")
+task.setConflictPolicy("versionBackup")
+task.setExclude(["*.tmp", "*.bak"])
+
+var result3 = task.run()
+println("Backup completed: " + result3.isSuccess().toStr())
+
+// ============================================================
+// Example 4: Check Conflicts Before Backup
+// ============================================================
+
+var task4 = backup.newTask()
+task4.setSourceLocal("/data/project")
+task4.setTargetLocal("/backup/project")
+
+var conflicts = task4.checkConflicts()
+if (len(conflicts) > 0) {
+    println("Found " + len(conflicts).toStr() + " conflicts:")
+    for (file in conflicts) {
+        println("  " + file)
+    }
+} else {
+    println("No conflicts, safe to backup")
+    var result4 = task4.run()
+    println(result4.summary())
+}
+
+// ============================================================
+// Example 5: Local-to-Remote Backup (Push to Server)
+// ============================================================
+
+var client = ssh.connect("server.com", 22, "root", "password")
+
+var result5 = backup.localToRemote(client, "/data/project", "/backup/project", {
+    "mode": "incremental",
+    "compareStrategy": "sizeTime"
+})
+
+println("Pushed " + result5.filesCopied.toStr() + " files to server")
+client.close()
+
+// ============================================================
+// Example 6: Remote-to-Local Backup (Pull from Server)
+// ============================================================
+
+var client6 = ssh.connect("server.com", 22, "root", "password")
+
+var result6 = backup.remoteToLocal(client6, "/var/log/app", "./logs/app", {
+    "exclude": ["*.gz", "*.old"]
+})
+
+println("Downloaded " + result6.bytesTransferred.toStr() + " bytes")
+client6.close()
+
+// ============================================================
+// Example 7: Remote-to-Remote Backup (Server-to-Server)
+// ============================================================
+
+var srcServer = ssh.connect("server1.com", 22, "root", "password1")
+var dstServer = ssh.connect("server2.com", 22, "root", "password2")
+
+var result7 = backup.remoteToRemote(srcServer, dstServer, "/data/app", "/backup/app", {
+    "mode": "mirror",
+    "compareStrategy": "hash",
+    "hashAlgorithm": "md5"
+})
+
+println("Server-to-server sync: " + result7.summary())
+
+srcServer.close()
+dstServer.close()
+
+// ============================================================
+// Example 8: Dry Run (Preview Changes)
+// ============================================================
+
+var result8 = backup.localToLocal("/data/project", "/backup/project", {
+    "mode": "mirror",
+    "dryRun": true
+})
+
+println("Dry run preview:")
+println("  Would copy: " + result8.filesCopied.toStr())
+println("  Would delete: " + result8.filesDeleted.toStr())
+println("  Would skip: " + result8.filesSkipped.toStr())
