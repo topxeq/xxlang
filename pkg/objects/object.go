@@ -128,6 +128,10 @@ const (
 	// Rod browser types (for web scraping)
 	RodBrowserType      ObjectType = "ROD_BROWSER"
 	RodHTMLElementType  ObjectType = "ROD_HTML_ELEMENT"
+	// Backup types
+	BackupTaskType    ObjectType = "BACKUP_TASK"
+	BackupResultType  ObjectType = "BACKUP_RESULT"
+	BackupProgressType ObjectType = "BACKUP_PROGRESS"
 )
 
 // TypeTag is a fast integer type identifier for hot path checks
@@ -253,6 +257,10 @@ const (
 	// Rod browser tags
 	TagRodBrowser
 	TagRodHTMLElement
+	// Backup tags
+	TagBackupTask
+	TagBackupResult
+	TagBackupProgress
 	TagUnknown
 )
 
