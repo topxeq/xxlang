@@ -257,3 +257,113 @@ func TestBackupLocalToLocalArgValidation(t *testing.T) {
 		t.Error("expected error for wrong destination type")
 	}
 }
+
+func TestBackupLocalToLocalFull(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+
+	// Create source files
+	os.WriteFile(filepath.Join(srcDir, "file1.txt"), []byte("content1"), 0644)
+	os.WriteFile(filepath.Join(srcDir, "file2.txt"), []byte("content2"), 0644)
+	os.Mkdir(filepath.Join(srcDir, "subdir"), 0755)
+	os.WriteFile(filepath.Join(srcDir, "subdir", "file3.txt"), []byte("content3"), 0644)
+
+	module := Get("backup")
+	localToLocal := module.Exports["localToLocal"].(*objects.Builtin)
+
+	result := localToLocal.Fn(
+		objects.NewString(srcDir),
+		objects.NewString(dstDir),
+		objects.NULL,
+	)
+
+	backupResult, ok := result.(*objects.BackupResult)
+	if !ok {
+		t.Fatalf("expected BackupResult, got %T", result)
+	}
+	if !backupResult.Success {
+		t.Errorf("expected Success=true, errors: %v", backupResult.Errors)
+	}
+	if backupResult.FilesCopied != 3 {
+		t.Errorf("expected FilesCopied=3, got %d", backupResult.FilesCopied)
+	}
+
+	// Verify directory structure preserved
+	if _, err := os.Stat(filepath.Join(dstDir, "subdir", "file3.txt")); err != nil {
+		t.Error("subdir/file3.txt should exist")
+	}
+}
+
+func TestBackupLocalToLocalMirror(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+
+	// Source has file1.txt
+	os.WriteFile(filepath.Join(srcDir, "file1.txt"), []byte("content"), 0644)
+
+	// Target has file2.txt (extra file)
+	os.WriteFile(filepath.Join(dstDir, "file2.txt"), []byte("extra"), 0644)
+
+	module := Get("backup")
+	localToLocal := module.Exports["localToLocal"].(*objects.Builtin)
+
+	// Create options map
+	opts := &objects.Map{}
+	opts.Pairs = make(map[objects.HashKey]objects.MapPair)
+	opts.Pairs[objects.NewString("mode").HashKey()] = objects.MapPair{
+		Key:   objects.NewString("mode"),
+		Value: objects.NewString("mirror"),
+	}
+
+	result := localToLocal.Fn(
+		objects.NewString(srcDir),
+		objects.NewString(dstDir),
+		opts,
+	)
+
+	backupResult, ok := result.(*objects.BackupResult)
+	if !ok {
+		t.Fatalf("expected BackupResult, got %T", result)
+	}
+	if !backupResult.Success {
+		t.Errorf("expected Success=true, errors: %v", backupResult.Errors)
+	}
+	if backupResult.FilesDeleted != 1 {
+		t.Errorf("expected FilesDeleted=1, got %d", backupResult.FilesDeleted)
+	}
+
+	// file2.txt should be deleted
+	if _, err := os.Stat(filepath.Join(dstDir, "file2.txt")); !os.IsNotExist(err) {
+		t.Error("file2.txt should have been deleted")
+	}
+}
+
+func TestBackupLocalToLocalIncrementalSkip(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+
+	// Create identical files
+	content := []byte("same content")
+	os.WriteFile(filepath.Join(srcDir, "same.txt"), content, 0644)
+	os.WriteFile(filepath.Join(dstDir, "same.txt"), content, 0644)
+
+	module := Get("backup")
+	localToLocal := module.Exports["localToLocal"].(*objects.Builtin)
+
+	result := localToLocal.Fn(
+		objects.NewString(srcDir),
+		objects.NewString(dstDir),
+		objects.NULL,
+	)
+
+	backupResult, ok := result.(*objects.BackupResult)
+	if !ok {
+		t.Fatalf("expected BackupResult, got %T", result)
+	}
+	if !backupResult.Success {
+		t.Errorf("expected Success=true, errors: %v", backupResult.Errors)
+	}
+	if backupResult.FilesSkipped < 1 {
+		t.Errorf("expected at least 1 file skipped, got %d", backupResult.FilesSkipped)
+	}
+}
