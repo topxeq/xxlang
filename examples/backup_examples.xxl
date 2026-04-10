@@ -11,9 +11,9 @@ import "ssh"
 
 // Simple local backup
 var result = backup.localToLocal("/data/project", "/backup/project", null)
-println("Copied: " + result.filesCopied.toStr())
-println("Skipped: " + result.filesSkipped.toStr())
-println("Duration: " + result.duration.toStr() + "s")
+println("Copied: " + result.getFilesCopied().toStr())
+println("Skipped: " + result.getFilesSkipped().toStr())
+println("Duration: " + result.getDuration().toStr() + "s")
 
 // ============================================================
 // Example 2: Local-to-Local with Options
@@ -21,14 +21,14 @@ println("Duration: " + result.duration.toStr() + "s")
 
 var result2 = backup.localToLocal("/data/project", "/backup/project", {
     "mode": "mirror",
-    "exclude": ["*.tmp", "*.log", "node_modules/*"],
-    "dryRun": false
+    "exclude": ["*.tmp", "*.log", "node_modules/*"]
 })
 
 if (result2.hasErrors()) {
     println("Errors:")
-    for (err in result2.errors) {
-        println("  " + err)
+    var errors = result2.getErrors()
+    for (var i = 0; i < len(errors); i = i + 1) {
+        println("  " + errors[i])
     }
 }
 
@@ -45,8 +45,9 @@ task.setMode("incremental")
 task.setConflictPolicy("versionBackup")
 task.setExclude(["*.tmp", "*.bak"])
 
-var result3 = task.run()
+var result3 = task.execute()
 println("Backup completed: " + result3.isSuccess().toStr())
+println("Files copied: " + result3.getFilesCopied().toStr())
 
 // ============================================================
 // Example 4: Check Conflicts Before Backup
@@ -59,12 +60,12 @@ task4.setTargetLocal("/backup/project")
 var conflicts = task4.checkConflicts()
 if (len(conflicts) > 0) {
     println("Found " + len(conflicts).toStr() + " conflicts:")
-    for (file in conflicts) {
-        println("  " + file)
+    for (var i = 0; i < len(conflicts); i = i + 1) {
+        println("  " + conflicts[i])
     }
 } else {
     println("No conflicts, safe to backup")
-    var result4 = task4.run()
+    var result4 = task4.execute()
     println(result4.summary())
 }
 
@@ -79,7 +80,7 @@ var result5 = backup.localToRemote(client, "/data/project", "/backup/project", {
     "compareStrategy": "sizeTime"
 })
 
-println("Pushed " + result5.filesCopied.toStr() + " files to server")
+println("Pushed " + result5.getFilesCopied().toStr() + " files to server")
 client.close()
 
 // ============================================================
@@ -92,7 +93,7 @@ var result6 = backup.remoteToLocal(client6, "/var/log/app", "./logs/app", {
     "exclude": ["*.gz", "*.old"]
 })
 
-println("Downloaded " + result6.bytesTransferred.toStr() + " bytes")
+println("Downloaded " + result6.getBytesTransferred().toStr() + " bytes")
 client6.close()
 
 // ============================================================
@@ -104,8 +105,7 @@ var dstServer = ssh.connect("server2.com", 22, "root", "password2")
 
 var result7 = backup.remoteToRemote(srcServer, dstServer, "/data/app", "/backup/app", {
     "mode": "mirror",
-    "compareStrategy": "hash",
-    "hashAlgorithm": "md5"
+    "compareStrategy": "hash"
 })
 
 println("Server-to-server sync: " + result7.summary())
@@ -114,15 +114,86 @@ srcServer.close()
 dstServer.close()
 
 // ============================================================
-// Example 8: Dry Run (Preview Changes)
+// Example 8: Hash Verification for Critical Backups
 // ============================================================
 
-var result8 = backup.localToLocal("/data/project", "/backup/project", {
-    "mode": "mirror",
-    "dryRun": true
-})
+var task8 = backup.newTask()
+task8.setSourceLocal("/data/critical")
+task8.setTargetLocal("/backup/critical")
+task8.setCompareStrategy("hash")  // Use MD5 hash for verification
 
-println("Dry run preview:")
-println("  Would copy: " + result8.filesCopied.toStr())
-println("  Would delete: " + result8.filesDeleted.toStr())
-println("  Would skip: " + result8.filesSkipped.toStr())
+var result8 = task8.execute()
+println("Hash verification backup:")
+println("  Files copied: " + result8.getFilesCopied().toStr())
+println("  Files skipped: " + result8.getFilesSkipped().toStr())
+println("  Bytes transferred: " + result8.getBytesTransferred().toStr())
+
+// ============================================================
+// Example 9: Mirror Mode with Delete Extra
+// ============================================================
+
+var task9 = backup.newTask()
+task9.setSourceLocal("/data/web")
+task9.setTargetLocal("/backup/web")
+task9.setMode("mirror")  // Makes target identical to source
+task9.setExclude([".git/*", "node_modules/*"])
+
+var result9 = task9.execute()
+println("Mirror sync result:")
+println("  Files copied: " + result9.getFilesCopied().toStr())
+println("  Files deleted: " + result9.getFilesDeleted().toStr())
+println("  Summary: " + result9.summary())
+
+// ============================================================
+// Example 10: BackupResult Methods Reference
+// ============================================================
+
+// BackupResult provides these getter methods:
+// - isSuccess() -> bool
+// - hasErrors() -> bool
+// - hasConflicts() -> bool
+// - getFilesCopied() -> int
+// - getFilesSkipped() -> int
+// - getFilesDeleted() -> int
+// - getBytesTransferred() -> int
+// - getDuration() -> float (seconds)
+// - getErrors() -> array of strings
+// - getConflicts() -> array of strings
+// - summary() -> string
+
+var result10 = backup.localToLocal("/src", "/dst", null)
+
+// Check status
+if (result10.isSuccess()) {
+    println("Backup succeeded!")
+} else {
+    println("Backup failed!")
+}
+
+// Get statistics
+println("Statistics:")
+println("  Copied: " + result10.getFilesCopied().toStr())
+println("  Skipped: " + result10.getFilesSkipped().toStr())
+println("  Deleted: " + result10.getFilesDeleted().toStr())
+println("  Duration: " + result10.getDuration().toStr() + " seconds")
+println("  Data transferred: " + result10.getBytesTransferred().toStr() + " bytes")
+
+// Check for issues
+if (result10.hasErrors()) {
+    var errs = result10.getErrors()
+    println("Errors (" + len(errs).toStr() + "):")
+    for (var i = 0; i < len(errs); i = i + 1) {
+        println("  " + errs[i])
+    }
+}
+
+if (result10.hasConflicts()) {
+    var confs = result10.getConflicts()
+    println("Conflicts (" + len(confs).toStr() + "):")
+    for (var i = 0; i < len(confs); i = i + 1) {
+        println("  " + confs[i])
+    }
+}
+
+// Get summary string
+println("Summary: " + result10.summary())

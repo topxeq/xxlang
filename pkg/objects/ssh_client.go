@@ -4,13 +4,13 @@ package objects
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -22,13 +22,14 @@ import (
 
 // SSHClient represents an SSH client connection.
 type SSHClient struct {
-	mu         sync.Mutex
-	client     *ssh.Client
-	sftpClient interface{} // *sftp.Client, using interface{} to avoid import if not needed
-	host       string
-	port       int
-	user       string
-	connected  bool
+	mu          sync.Mutex
+	client      *ssh.Client
+	sftpChannel ssh.Channel  // SFTP subsystem channel for binary file transfer
+	sftpNextID  uint32       // SFTP request ID counter
+	host        string
+	port        int
+	user        string
+	connected   bool
 }
 
 // Type returns the object type.
@@ -241,12 +242,10 @@ func (c *SSHClient) Close() error {
 		return nil
 	}
 
-	// Close SFTP client if open
-	if c.sftpClient != nil {
-		if closer, ok := c.sftpClient.(interface{ Close() error }); ok {
-			closer.Close()
-		}
-		c.sftpClient = nil
+	// Close SFTP channel if open
+	if c.sftpChannel != nil {
+		c.sftpChannel.Close()
+		c.sftpChannel = nil
 	}
 
 	err := c.client.Close()
@@ -385,31 +384,653 @@ func (c *SSHClient) RunScriptStr(scriptStr string) (string, error) {
 }
 
 // ============================================================
-// File Operations (SFTP-like using SSH exec)
+// File Operations (via SFTP binary transfer)
 // ============================================================
 
-// ReadFile reads a remote file content.
+// ReadFile reads a remote file content via SFTP binary transfer.
 func (c *SSHClient) ReadFile(remotePath string) (string, error) {
-	// Use cat command to read file
-	output, err := c.Exec(fmt.Sprintf("cat %s", escapeShellArg(remotePath)))
+	data, err := c.ReadBytes(remotePath)
 	if err != nil {
-		return "", fmt.Errorf("failed to read remote file: %w", err)
+		return "", err
 	}
-	return output, nil
+	return string(data), nil
+}
+
+// ReadBytes reads a remote file and returns raw bytes via SFTP binary transfer.
+func (c *SSHClient) ReadBytes(remotePath string) ([]byte, error) {
+	c.mu.Lock()
+
+	if !c.connected {
+		c.mu.Unlock()
+		return nil, errors.New("not connected")
+	}
+
+	// Initialize SFTP channel if not yet open
+	if err := c.initSftp(); err != nil {
+		c.mu.Unlock()
+		return nil, fmt.Errorf("failed to initialize SFTP: %w", err)
+	}
+
+	// Open remote file for reading
+	handle, err := c.sftpOpenFile(remotePath, sshFxfRead)
+	if err != nil {
+		c.mu.Unlock()
+		return nil, fmt.Errorf("failed to open remote file: %w", err)
+	}
+
+	// Read all data in 32KB chunks
+	var data []byte
+	offset := uint64(0)
+	chunkSize := uint32(32768)
+
+	for {
+		chunk, err := c.sftpReadChunk(handle, offset, chunkSize)
+		if err != nil {
+			c.sftpCloseHandle(handle)
+			c.mu.Unlock()
+			return nil, fmt.Errorf("failed to read data: %w", err)
+		}
+		if len(chunk) == 0 {
+			break
+		}
+		data = append(data, chunk...)
+		offset += uint64(len(chunk))
+		if uint32(len(chunk)) < chunkSize {
+			break
+		}
+	}
+
+	c.sftpCloseHandle(handle)
+	c.mu.Unlock()
+	return data, nil
 }
 
 // WriteFile writes content to a remote file.
 func (c *SSHClient) WriteFile(remotePath, content string) error {
-	// Use cat with heredoc to write file
-	cmd := fmt.Sprintf("cat > %s << 'XXLANG_EOF'\n%s\nXXLANG_EOF", remotePath, content)
-	_, err := c.Exec(cmd)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.connected {
+		return errors.New("not connected")
+	}
+
+	return c.writeFileInternal(remotePath, content)
+}
+
+// writeFileInternal writes content to a remote file via SFTP (internal, assumes lock held).
+func (c *SSHClient) writeFileInternal(remotePath, content string) error {
+	// Initialize SFTP channel if not yet open
+	if err := c.initSftp(); err != nil {
+		return fmt.Errorf("failed to initialize SFTP: %w", err)
+	}
+
+	// Create parent directory if needed
+	dir := filepath.Dir(remotePath)
+	if dir != "." && dir != "/" && dir != "" {
+		c.sftpMkdir(dir)
+	}
+
+	// Open remote file for writing (create or truncate)
+	handle, err := c.sftpOpenFile(remotePath, sshFxfWrite|sshFxfCreat|sshFxfTrunc)
 	if err != nil {
-		return fmt.Errorf("failed to write remote file: %w", err)
+		return fmt.Errorf("failed to open remote file: %w", err)
+	}
+	defer c.sftpCloseHandle(handle)
+
+	// Write data in 32KB chunks
+	data := []byte(content)
+	offset := uint64(0)
+	chunkSize := uint32(32768)
+
+	for offset < uint64(len(data)) {
+		end := offset + uint64(chunkSize)
+		if end > uint64(len(data)) {
+			end = uint64(len(data))
+		}
+		if err := c.sftpWriteChunk(handle, offset, data[offset:end]); err != nil {
+			return fmt.Errorf("failed to write data: %w", err)
+		}
+		offset = end
+	}
+
+	return nil
+}
+
+// execInternal executes a command without locking the mutex.
+func (c *SSHClient) execInternal(cmd string) (string, error) {
+	if !c.connected {
+		return "", errors.New("not connected")
+	}
+
+	session, err := c.client.NewSession()
+	if err != nil {
+		return "", fmt.Errorf("failed to create session: %w", err)
+	}
+	defer session.Close()
+
+	output, err := session.CombinedOutput(cmd)
+	if err != nil {
+		return string(output), err
+	}
+	return string(output), nil
+}
+
+// ============================================================
+// SFTP Binary Transfer
+// ============================================================
+
+// SFTP packet types and flags (must match sftp_client.go constants).
+const (
+	sshFxpInit    = 1
+	sshFxpVersion = 2
+	sshFxpOpen    = 3
+	sshFxpClose   = 4
+	sshFxpRead    = 5
+	sshFxpWrite   = 6
+	sshFxpLstat   = 7
+	sshFxpOpendir = 11
+	sshFxpReaddir = 12
+	sshFxpRemove  = 13
+	sshFxpMkdir   = 14
+	sshFxpRmdir   = 15
+	sshFxpStat    = 17
+	sshFxpRename  = 18
+	sshFxpStatus  = 101
+	sshFxpHandle  = 102
+	sshFxpData    = 103
+	sshFxpName    = 104
+	sshFxpAttrs   = 105
+
+	sshFxfWrite = 0x00000002
+	sshFxfCreat = 0x00000008
+	sshFxfTrunc = 0x00000010
+	sshFxfRead  = 0x00000001
+
+	// SFTP file attribute flags
+	sftpAttrSize        = 0x00000001
+	sftpAttrUidGid      = 0x00000002
+	sftpAttrPermissions = 0x00000004
+	sftpAttrAcmodtime   = 0x00000008
+)
+
+// initSftp lazily initializes the SFTP subsystem channel over the existing SSH connection.
+// This must be called with c.mu held.
+func (c *SSHClient) initSftp() error {
+	if c.sftpChannel != nil {
+		return nil
+	}
+
+	// Open an SSH channel for the SFTP subsystem
+	channel, reqs, err := c.client.OpenChannel("session", nil)
+	if err != nil {
+		return fmt.Errorf("failed to open SFTP channel: %w", err)
+	}
+	go ssh.DiscardRequests(reqs)
+
+	// Request the SFTP subsystem
+	_, err = channel.SendRequest("subsystem", true, ssh.Marshal(struct {
+		Subsystem string
+	}{Subsystem: "sftp"}))
+	if err != nil {
+		channel.Close()
+		return fmt.Errorf("failed to start SFTP subsystem: %w", err)
+	}
+
+	// Send SFTP INIT packet
+	initPkt := make([]byte, 5)
+	binary.BigEndian.PutUint32(initPkt[0:4], 1) // length
+	initPkt[4] = byte(sshFxpInit)
+	if _, err := channel.Write(initPkt); err != nil {
+		channel.Close()
+		return fmt.Errorf("failed to send SFTP INIT: %w", err)
+	}
+
+	// Read VERSION response
+	resp, err := sftpReadPacket(channel)
+	if err != nil {
+		channel.Close()
+		return fmt.Errorf("failed to read SFTP VERSION: %w", err)
+	}
+	if len(resp) == 0 || resp[0] != byte(sshFxpVersion) {
+		channel.Close()
+		return fmt.Errorf("unexpected SFTP response, expected VERSION")
+	}
+
+	c.sftpChannel = channel
+	c.sftpNextID = 0
+	return nil
+}
+
+// sftpNextRequestID returns the next SFTP request ID.
+func (c *SSHClient) sftpNextRequestID() uint32 {
+	c.sftpNextID++
+	return c.sftpNextID
+}
+
+// sftpSendPacket sends an SFTP packet over the channel.
+func (c *SSHClient) sftpSendPacket(pkt []byte) error {
+	length := uint32(len(pkt))
+	buf := make([]byte, 4+length)
+	binary.BigEndian.PutUint32(buf[0:4], length)
+	copy(buf[4:], pkt)
+	_, err := c.sftpChannel.Write(buf)
+	return err
+}
+
+// sftpOpenFile opens a remote file via SFTP and returns the handle.
+func (c *SSHClient) sftpOpenFile(path string, flags uint32) (string, error) {
+	id := c.sftpNextRequestID()
+	pkt := make([]byte, 1+4+4+len(path)+4+4)
+	pkt[0] = byte(sshFxpOpen)
+	binary.BigEndian.PutUint32(pkt[1:5], id)
+	binary.BigEndian.PutUint32(pkt[5:9], uint32(len(path)))
+	copy(pkt[9:9+len(path)], path)
+	pos := 9 + len(path)
+	binary.BigEndian.PutUint32(pkt[pos:pos+4], flags)
+	binary.BigEndian.PutUint32(pkt[pos+4:pos+8], 0) // attrs
+
+	if err := c.sftpSendPacket(pkt); err != nil {
+		return "", err
+	}
+
+	resp, err := sftpReadPacket(c.sftpChannel)
+	if err != nil {
+		return "", err
+	}
+	if len(resp) == 0 || resp[0] != byte(sshFxpHandle) {
+		return "", fmt.Errorf("expected SFTP HANDLE response, got type %d", resp[0])
+	}
+	return string(resp[1:5]), nil
+}
+
+// sftpCloseHandle closes an SFTP file handle.
+func (c *SSHClient) sftpCloseHandle(handle string) error {
+	id := c.sftpNextRequestID()
+	pkt := make([]byte, 1+4+4)
+	pkt[0] = byte(sshFxpClose)
+	binary.BigEndian.PutUint32(pkt[1:5], id)
+	copy(pkt[5:9], handle)
+
+	if err := c.sftpSendPacket(pkt); err != nil {
+		return err
+	}
+	return c.sftpExpectStatus(id)
+}
+
+// sftpWriteChunk writes a chunk of data at the given offset.
+func (c *SSHClient) sftpWriteChunk(handle string, offset uint64, data []byte) error {
+	id := c.sftpNextRequestID()
+	pkt := make([]byte, 1+4+4+8+4+len(data))
+	pkt[0] = byte(sshFxpWrite)
+	binary.BigEndian.PutUint32(pkt[1:5], id)
+	copy(pkt[5:9], handle)
+	binary.BigEndian.PutUint64(pkt[9:17], offset)
+	binary.BigEndian.PutUint32(pkt[17:21], uint32(len(data)))
+	copy(pkt[21:], data)
+
+	if err := c.sftpSendPacket(pkt); err != nil {
+		return err
+	}
+	return c.sftpExpectStatus(id)
+}
+
+// sftpReadChunk reads a chunk of data at the given offset.
+func (c *SSHClient) sftpReadChunk(handle string, offset uint64, length uint32) ([]byte, error) {
+	id := c.sftpNextRequestID()
+	pkt := make([]byte, 1+4+4+8+4)
+	pkt[0] = byte(sshFxpRead)
+	binary.BigEndian.PutUint32(pkt[1:5], id)
+	copy(pkt[5:9], handle)
+	binary.BigEndian.PutUint64(pkt[9:17], offset)
+	binary.BigEndian.PutUint32(pkt[17:21], length)
+
+	if err := c.sftpSendPacket(pkt); err != nil {
+		return nil, err
+	}
+
+	resp, err := sftpReadPacket(c.sftpChannel)
+	if err != nil {
+		return nil, err
+	}
+	if len(resp) == 0 {
+		return nil, errors.New("empty SFTP response")
+	}
+	if resp[0] == byte(sshFxpStatus) {
+		return nil, nil // EOF or error, treat as EOF
+	}
+	if resp[0] != byte(sshFxpData) {
+		return nil, fmt.Errorf("expected SFTP DATA response, got type %d", resp[0])
+	}
+	dataLen := binary.BigEndian.Uint32(resp[1:5])
+	return resp[5 : 5+dataLen], nil
+}
+
+// sftpMkdir creates a remote directory via SFTP.
+func (c *SSHClient) sftpMkdir(path string) error {
+	id := c.sftpNextRequestID()
+	pkt := make([]byte, 1+4+4+len(path)+4)
+	pkt[0] = byte(sshFxpMkdir)
+	binary.BigEndian.PutUint32(pkt[1:5], id)
+	binary.BigEndian.PutUint32(pkt[5:9], uint32(len(path)))
+	copy(pkt[9:9+len(path)], path)
+	binary.BigEndian.PutUint32(pkt[9+len(path):], 0) // attrs
+
+	if err := c.sftpSendPacket(pkt); err != nil {
+		return err
+	}
+	// Ignore status response errors (directory may already exist)
+	sftpReadPacket(c.sftpChannel)
+	return nil
+}
+
+// sftpExpectStatus reads and validates a STATUS response.
+func (c *SSHClient) sftpExpectStatus(expectedID uint32) error {
+	resp, err := sftpReadPacket(c.sftpChannel)
+	if err != nil {
+		return err
+	}
+	if len(resp) < 5 || resp[0] != byte(sshFxpStatus) {
+		return fmt.Errorf("expected SFTP STATUS response")
+	}
+	respID := binary.BigEndian.Uint32(resp[1:5])
+	statusCode := binary.BigEndian.Uint32(resp[5:9])
+	if respID != expectedID {
+		return fmt.Errorf("SFTP response ID mismatch: expected %d, got %d", expectedID, respID)
+	}
+	if statusCode != 0 {
+		return fmt.Errorf("SFTP error status: %d", statusCode)
 	}
 	return nil
 }
 
-// Upload uploads a local file to remote server.
+// sftpExpectStatusOk reads a STATUS response and returns true if OK.
+func (c *SSHClient) sftpExpectStatusOk() bool {
+	resp, err := sftpReadPacket(c.sftpChannel)
+	if err != nil {
+		return false
+	}
+	if len(resp) < 9 || resp[0] != byte(sshFxpStatus) {
+		return false
+	}
+	statusCode := binary.BigEndian.Uint32(resp[5:9])
+	return statusCode == 0
+}
+
+// sftpStat returns file info via SFTP STAT (follows symlinks).
+func (c *SSHClient) sftpStat(path string) (*SftpFileInfo, error) {
+	id := c.sftpNextRequestID()
+	pkt := make([]byte, 1+4+4+len(path))
+	pkt[0] = byte(sshFxpStat)
+	binary.BigEndian.PutUint32(pkt[1:5], id)
+	binary.BigEndian.PutUint32(pkt[5:9], uint32(len(path)))
+	copy(pkt[9:], path)
+
+	if err := c.sftpSendPacket(pkt); err != nil {
+		return nil, err
+	}
+	return c.sftpExpectAttrs(id)
+}
+
+// sftpLstat returns file info via SFTP LSTAT (does not follow symlinks).
+func (c *SSHClient) sftpLstat(path string) (*SftpFileInfo, error) {
+	id := c.sftpNextRequestID()
+	pkt := make([]byte, 1+4+4+len(path))
+	pkt[0] = byte(sshFxpLstat)
+	binary.BigEndian.PutUint32(pkt[1:5], id)
+	binary.BigEndian.PutUint32(pkt[5:9], uint32(len(path)))
+	copy(pkt[9:], path)
+
+	if err := c.sftpSendPacket(pkt); err != nil {
+		return nil, err
+	}
+	return c.sftpExpectAttrs(id)
+}
+
+// sftpExpectAttrs reads and parses an ATTRS response.
+func (c *SSHClient) sftpExpectAttrs(expectedID uint32) (*SftpFileInfo, error) {
+	resp, err := sftpReadPacket(c.sftpChannel)
+	if err != nil {
+		return nil, err
+	}
+	if len(resp) == 0 || resp[0] != byte(sshFxpAttrs) {
+		return nil, fmt.Errorf("expected SFTP ATTRS response")
+	}
+	respID := binary.BigEndian.Uint32(resp[1:5])
+	if respID != expectedID {
+		return nil, fmt.Errorf("SFTP response ID mismatch")
+	}
+
+	info := &SftpFileInfo{}
+	pos := 5
+	if pos+4 > len(resp) {
+		return info, nil
+	}
+	attrFlags := binary.BigEndian.Uint32(resp[pos : pos+4])
+	pos += 4
+
+	if attrFlags&sftpAttrSize != 0 && pos+8 <= len(resp) {
+		info.Size = int64(binary.BigEndian.Uint64(resp[pos : pos+8]))
+		pos += 8
+	}
+	if attrFlags&sftpAttrUidGid != 0 {
+		pos += 8
+	}
+	if attrFlags&sftpAttrPermissions != 0 && pos+4 <= len(resp) {
+		info.Mode = binary.BigEndian.Uint32(resp[pos : pos+4])
+		info.IsDir = (info.Mode & 0040000) != 0
+	}
+	return info, nil
+}
+
+// sftpRemove removes a remote file via SFTP.
+func (c *SSHClient) sftpRemove(path string) error {
+	id := c.sftpNextRequestID()
+	pkt := make([]byte, 1+4+4+len(path))
+	pkt[0] = byte(sshFxpRemove)
+	binary.BigEndian.PutUint32(pkt[1:5], id)
+	binary.BigEndian.PutUint32(pkt[5:9], uint32(len(path)))
+	copy(pkt[9:], path)
+	if err := c.sftpSendPacket(pkt); err != nil {
+		return err
+	}
+	return c.sftpExpectStatus(id)
+}
+
+// sftpRmdir removes a remote directory via SFTP.
+func (c *SSHClient) sftpRmdir(path string) error {
+	id := c.sftpNextRequestID()
+	pkt := make([]byte, 1+4+4+len(path))
+	pkt[0] = byte(sshFxpRmdir)
+	binary.BigEndian.PutUint32(pkt[1:5], id)
+	binary.BigEndian.PutUint32(pkt[5:9], uint32(len(path)))
+	copy(pkt[9:], path)
+	if err := c.sftpSendPacket(pkt); err != nil {
+		return err
+	}
+	return c.sftpExpectStatus(id)
+}
+
+// sftpRename renames a remote file or directory via SFTP.
+func (c *SSHClient) sftpRename(oldPath, newPath string) error {
+	id := c.sftpNextRequestID()
+	pkt := make([]byte, 1+4+4+len(oldPath)+4+len(newPath))
+	pkt[0] = byte(sshFxpRename)
+	binary.BigEndian.PutUint32(pkt[1:5], id)
+	binary.BigEndian.PutUint32(pkt[5:9], uint32(len(oldPath)))
+	copy(pkt[9:9+len(oldPath)], oldPath)
+	pos := 9 + len(oldPath)
+	binary.BigEndian.PutUint32(pkt[pos:pos+4], uint32(len(newPath)))
+	copy(pkt[pos+4:], newPath)
+	if err := c.sftpSendPacket(pkt); err != nil {
+		return err
+	}
+	return c.sftpExpectStatus(id)
+}
+
+// sftpListDir lists directory contents via SFTP OPENDIR/READDIR.
+func (c *SSHClient) sftpListDir(path string) ([]SftpFileInfo, error) {
+	id := c.sftpNextRequestID()
+	pkt := make([]byte, 1+4+4+len(path))
+	pkt[0] = byte(sshFxpOpendir)
+	binary.BigEndian.PutUint32(pkt[1:5], id)
+	binary.BigEndian.PutUint32(pkt[5:9], uint32(len(path)))
+	copy(pkt[9:], path)
+	if err := c.sftpSendPacket(pkt); err != nil {
+		return nil, err
+	}
+
+	resp, err := sftpReadPacket(c.sftpChannel)
+	if err != nil {
+		return nil, err
+	}
+	if len(resp) == 0 || resp[0] != byte(sshFxpHandle) {
+		return nil, fmt.Errorf("expected SFTP HANDLE response for opendir")
+	}
+	handle := string(resp[1:5])
+
+	var result []SftpFileInfo
+	for {
+		id := c.sftpNextRequestID()
+		pkt := make([]byte, 1+4+4)
+		pkt[0] = byte(sshFxpReaddir)
+		binary.BigEndian.PutUint32(pkt[1:5], id)
+		copy(pkt[5:9], handle)
+		if err := c.sftpSendPacket(pkt); err != nil {
+			break
+		}
+
+		resp, err := sftpReadPacket(c.sftpChannel)
+		if err != nil || len(resp) == 0 || resp[0] == byte(sshFxpStatus) || resp[0] != byte(sshFxpName) {
+			break
+		}
+
+		count := binary.BigEndian.Uint32(resp[1:5])
+		pos := 5
+		for i := uint32(0); i < count; i++ {
+			if pos+4 > len(resp) {
+				break
+			}
+			nameLen := binary.BigEndian.Uint32(resp[pos : pos+4])
+			pos += 4
+			if pos+int(nameLen) > len(resp) {
+				break
+			}
+			name := string(resp[pos : pos+int(nameLen)])
+			pos += int(nameLen)
+
+			// Skip long name
+			if pos+4 > len(resp) {
+				break
+			}
+			longNameLen := binary.BigEndian.Uint32(resp[pos : pos+4])
+			pos += 4 + int(longNameLen)
+
+			// Parse attrs
+			if pos+4 > len(resp) {
+				break
+			}
+			attrFlags := binary.BigEndian.Uint32(resp[pos : pos+4])
+			pos += 4
+
+			var size int64
+			var mode uint32
+			isDir := false
+
+			if attrFlags&sftpAttrSize != 0 {
+				if pos+8 <= len(resp) {
+					size = int64(binary.BigEndian.Uint64(resp[pos : pos+8]))
+				}
+				pos += 8
+			}
+			if attrFlags&sftpAttrUidGid != 0 {
+				pos += 8
+			}
+			if attrFlags&sftpAttrPermissions != 0 && pos+4 <= len(resp) {
+				mode = binary.BigEndian.Uint32(resp[pos : pos+4])
+				isDir = (mode & 0040000) != 0
+				pos += 4
+			}
+			if attrFlags&sftpAttrAcmodtime != 0 {
+				pos += 8
+			}
+
+			if name == "." || name == ".." {
+				continue
+			}
+			result = append(result, SftpFileInfo{
+				Name:  name,
+				Size:  size,
+				Mode:  mode,
+				IsDir: isDir,
+			})
+		}
+	}
+
+	c.sftpCloseHandle(handle)
+	return result, nil
+}
+
+// sftpWalkDir recursively walks a remote directory via SFTP.
+func (c *SSHClient) sftpWalkDir(path string) ([]SftpFileInfo, error) {
+	var result []SftpFileInfo
+	entries, err := c.sftpListDir(path)
+	if err != nil {
+		return nil, err
+	}
+	for _, entry := range entries {
+		fullPath := path + "/" + entry.Name
+		if entry.IsDir {
+			sub, err := c.sftpWalkDir(fullPath)
+			if err != nil {
+				continue
+			}
+			result = append(result, sub...)
+		} else {
+			result = append(result, SftpFileInfo{
+				Name:  fullPath,
+				Size:  entry.Size,
+				Mode:  entry.Mode,
+				IsDir: false,
+			})
+		}
+	}
+	return result, nil
+}
+
+// sftpMkdirAll creates a directory and all parents via SFTP.
+func (c *SSHClient) sftpMkdirAll(path string) error {
+	info, err := c.sftpStat(path)
+	if err == nil && info.IsDir {
+		return nil
+	}
+	parent := filepath.Dir(path)
+	if parent != path && parent != "." && parent != "/" && parent != "" {
+		if err := c.sftpMkdirAll(parent); err != nil {
+			return err
+		}
+	}
+	c.sftpMkdir(path)
+	return nil
+}
+
+// sftpReadPacket reads an SFTP packet from the channel.
+func sftpReadPacket(r io.Reader) ([]byte, error) {
+	lenBuf := make([]byte, 4)
+	if _, err := io.ReadFull(r, lenBuf); err != nil {
+		return nil, err
+	}
+	length := binary.BigEndian.Uint32(lenBuf)
+	if length > 32*1024*1024 {
+		return nil, errors.New("SFTP packet too large")
+	}
+	pkt := make([]byte, length)
+	if _, err := io.ReadFull(r, pkt); err != nil {
+		return nil, err
+	}
+	return pkt, nil
+}
+
+// Upload uploads a local file to remote server via SFTP.
 func (c *SSHClient) Upload(localPath, remotePath string) error {
 	// Read local file
 	localContent, err := os.ReadFile(localPath)
@@ -417,245 +1038,327 @@ func (c *SSHClient) Upload(localPath, remotePath string) error {
 		return fmt.Errorf("failed to read local file: %w", err)
 	}
 
-	// Create remote directory if needed
-	remoteDir := filepath.Dir(remotePath)
-	if remoteDir != "." && remoteDir != "/" {
-		// Use mkdir -p with error suppression
-		c.Exec(fmt.Sprintf("mkdir -p %s 2>/dev/null || true", escapeShellArg(remoteDir)))
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.connected {
+		return errors.New("not connected")
 	}
 
-	// Write to remote file using base64 encoding for binary safety
-	encoded := encodeBase64(localContent)
-	cmd := fmt.Sprintf("echo '%s' | base64 -d > %s", encoded, escapeShellArg(remotePath))
-	_, err = c.Exec(cmd)
+	// Initialize SFTP channel
+	if err := c.initSftp(); err != nil {
+		return fmt.Errorf("failed to initialize SFTP: %w", err)
+	}
+
+	// Create remote directory if needed
+	remoteDir := filepath.Dir(remotePath)
+	if remoteDir != "." && remoteDir != "/" && remoteDir != "" {
+		c.sftpMkdir(remoteDir)
+	}
+
+	// Open remote file for writing (create or truncate)
+	handle, err := c.sftpOpenFile(remotePath, sshFxfWrite|sshFxfCreat|sshFxfTrunc)
 	if err != nil {
-		return fmt.Errorf("failed to upload file: %w", err)
+		return fmt.Errorf("failed to open remote file: %w", err)
+	}
+	defer c.sftpCloseHandle(handle)
+
+	// Write data in 32KB chunks
+	offset := uint64(0)
+	chunkSize := uint32(32768)
+
+	for offset < uint64(len(localContent)) {
+		end := offset + uint64(chunkSize)
+		if end > uint64(len(localContent)) {
+			end = uint64(len(localContent))
+		}
+		if err := c.sftpWriteChunk(handle, offset, localContent[offset:end]); err != nil {
+			return fmt.Errorf("failed to write data: %w", err)
+		}
+		offset = end
 	}
 
 	return nil
 }
 
-// Download downloads a remote file to local.
+// Download downloads a remote file to local via SFTP.
 func (c *SSHClient) Download(remotePath, localPath string) error {
-	// Use base64 encoding for binary safety
-	output, err := c.Exec(fmt.Sprintf("base64 %s", escapeShellArg(remotePath)))
+	data, err := c.ReadBytes(remotePath)
 	if err != nil {
-		return fmt.Errorf("failed to download file: %w", err)
-	}
-
-	// Decode base64
-	decoded, err := decodeBase64(strings.TrimSpace(output))
-	if err != nil {
-		return fmt.Errorf("failed to decode downloaded content: %w", err)
+		return err
 	}
 
 	// Create local directory if needed
 	localDir := filepath.Dir(localPath)
-	if localDir != "." {
+	if localDir != "." && localDir != "" {
 		if err := os.MkdirAll(localDir, 0755); err != nil {
 			return fmt.Errorf("failed to create local directory: %w", err)
 		}
 	}
 
 	// Write to local file
-	if err := os.WriteFile(localPath, decoded, 0644); err != nil {
+	if err := os.WriteFile(localPath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write local file: %w", err)
 	}
 
 	return nil
 }
 
-// Mkdir creates a remote directory.
+// Mkdir creates a remote directory via SFTP.
 func (c *SSHClient) Mkdir(remotePath string) error {
-	_, err := c.Exec(fmt.Sprintf("mkdir %s", escapeShellArg(remotePath)))
-	if err != nil {
-		return fmt.Errorf("failed to create directory: %w", err)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.connected {
+		return errors.New("not connected")
 	}
-	return nil
+	if err := c.initSftp(); err != nil {
+		return err
+	}
+	return c.sftpMkdir(remotePath)
 }
 
-// MkdirAll creates a remote directory with parents.
+// MkdirAll creates a remote directory with parents via SFTP.
 func (c *SSHClient) MkdirAll(remotePath string) error {
-	_, err := c.Exec(fmt.Sprintf("mkdir -p %s", escapeShellArg(remotePath)))
-	if err != nil {
-		return fmt.Errorf("failed to create directory: %w", err)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.connected {
+		return errors.New("not connected")
 	}
-	return nil
+	if err := c.initSftp(); err != nil {
+		return err
+	}
+	return c.sftpMkdirAll(remotePath)
 }
 
-// Remove removes a remote file.
+// Remove removes a remote file via SFTP.
 func (c *SSHClient) Remove(remotePath string) error {
-	_, err := c.Exec(fmt.Sprintf("rm -f %s", escapeShellArg(remotePath)))
-	if err != nil {
-		return fmt.Errorf("failed to remove file: %w", err)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.connected {
+		return errors.New("not connected")
 	}
-	return nil
+	if err := c.initSftp(); err != nil {
+		return err
+	}
+	return c.sftpRemove(remotePath)
 }
 
-// RemoveDir removes a remote directory recursively.
+// RemoveDir removes a remote directory recursively via SFTP.
 func (c *SSHClient) RemoveDir(remotePath string) error {
-	_, err := c.Exec(fmt.Sprintf("rm -rf %s", escapeShellArg(remotePath)))
-	if err != nil {
-		return fmt.Errorf("failed to remove directory: %w", err)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.connected {
+		return errors.New("not connected")
 	}
-	return nil
+	if err := c.initSftp(); err != nil {
+		return err
+	}
+	return c.sftpRemoveDirRecursive(remotePath)
 }
 
-// Rename renames a remote file or directory.
+// sftpRemoveDirRecursive recursively removes a directory via SFTP.
+func (c *SSHClient) sftpRemoveDirRecursive(path string) error {
+	entries, err := c.sftpListDir(path)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		fullPath := path + "/" + entry.Name
+		if entry.IsDir {
+			if err := c.sftpRemoveDirRecursive(fullPath); err != nil {
+				return err
+			}
+		} else {
+			if err := c.sftpRemove(fullPath); err != nil {
+				return err
+			}
+		}
+	}
+	return c.sftpRmdir(path)
+}
+
+// Rename renames a remote file or directory via SFTP.
 func (c *SSHClient) Rename(oldPath, newPath string) error {
-	_, err := c.Exec(fmt.Sprintf("mv %s %s", escapeShellArg(oldPath), escapeShellArg(newPath)))
-	if err != nil {
-		return fmt.Errorf("failed to rename: %w", err)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.connected {
+		return errors.New("not connected")
 	}
-	return nil
+	if err := c.initSftp(); err != nil {
+		return err
+	}
+	return c.sftpRename(oldPath, newPath)
 }
 
-// Stat returns file information.
+// Stat returns file information via SFTP.
 func (c *SSHClient) Stat(remotePath string) (map[string]interface{}, error) {
-	output, err := c.Exec(fmt.Sprintf("stat -c '%%s|%%Y|%%F' %s 2>/dev/null", escapeShellArg(remotePath)))
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.connected {
+		return nil, errors.New("not connected")
+	}
+	if err := c.initSftp(); err != nil {
+		return nil, err
+	}
+
+	info, err := c.sftpStat(remotePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat file: %w", err)
 	}
 
-	parts := strings.Split(strings.TrimSpace(output), "|")
-	if len(parts) < 3 {
-		return nil, errors.New("unexpected stat output format")
-	}
-
-	size, _ := strconv.ParseInt(parts[0], 10, 64)
-	mtime, _ := strconv.ParseInt(parts[1], 10, 64)
-	fileType := parts[2]
-
 	return map[string]interface{}{
-		"size":     size,
-		"mtime":    mtime,
-		"type":     strings.TrimSpace(fileType),
-		"path":     remotePath,
-		"isDir":    strings.TrimSpace(fileType) == "directory",
-		"isFile":   strings.TrimSpace(fileType) == "regular file",
+		"size":   info.Size,
+		"path":   remotePath,
+		"isDir":  info.IsDir,
+		"isFile": !info.IsDir,
+		"mode":   sftpModeToString(info.Mode, info.IsDir),
 	}, nil
 }
 
-// Exists checks if a path exists.
+// sftpModeToString converts SFTP permission bits to a ls-style string.
+func sftpModeToString(mode uint32, isDir bool) string {
+	var buf [10]byte
+	if isDir {
+		buf[0] = 'd'
+	} else {
+		buf[0] = '-'
+	}
+	perms := []uint32{0400, 0200, 0100, 040, 020, 010, 04, 02, 01}
+	ch := []byte{'r', 'w', 'x', 'r', 'w', 'x', 'r', 'w', 'x'}
+	for i, p := range perms {
+		if mode&p != 0 {
+			buf[i+1] = ch[i]
+		} else {
+			buf[i+1] = '-'
+		}
+	}
+	return string(buf[:])
+}
+
+// Exists checks if a path exists via SFTP.
 func (c *SSHClient) Exists(remotePath string) bool {
-	_, err := c.Exec(fmt.Sprintf("test -e %s", escapeShellArg(remotePath)))
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.connected {
+		return false
+	}
+	if err := c.initSftp(); err != nil {
+		return false
+	}
+	_, err := c.sftpStat(remotePath)
 	return err == nil
 }
 
-// IsDir checks if path is a directory.
+// IsDir checks if path is a directory via SFTP.
 func (c *SSHClient) IsDir(remotePath string) bool {
-	_, err := c.Exec(fmt.Sprintf("test -d %s", escapeShellArg(remotePath)))
-	return err == nil
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.connected {
+		return false
+	}
+	if err := c.initSftp(); err != nil {
+		return false
+	}
+	info, err := c.sftpStat(remotePath)
+	return err == nil && info.IsDir
 }
 
-// IsFile checks if path is a regular file.
+// IsFile checks if path is a regular file via SFTP.
 func (c *SSHClient) IsFile(remotePath string) bool {
-	_, err := c.Exec(fmt.Sprintf("test -f %s", escapeShellArg(remotePath)))
-	return err == nil
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.connected {
+		return false
+	}
+	if err := c.initSftp(); err != nil {
+		return false
+	}
+	info, err := c.sftpStat(remotePath)
+	return err == nil && !info.IsDir
 }
 
-// ListDir lists directory contents.
+// ListDir lists directory contents via SFTP.
 func (c *SSHClient) ListDir(remotePath string) ([]map[string]interface{}, error) {
-	output, err := c.Exec(fmt.Sprintf("ls -la %s 2>/dev/null", escapeShellArg(remotePath)))
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.connected {
+		return nil, errors.New("not connected")
+	}
+	if err := c.initSftp(); err != nil {
+		return nil, err
+	}
+
+	entries, err := c.sftpListDir(remotePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list directory: %w", err)
 	}
 
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	var result []map[string]interface{}
-
-	for _, line := range lines {
-		if line == "" || strings.HasPrefix(line, "total ") {
-			continue
-		}
-
-		// Parse ls -la output
-		fields := strings.Fields(line)
-		if len(fields) < 9 {
-			continue
-		}
-
-		// Skip . and ..
-		name := strings.Join(fields[8:], " ")
-		if name == "." || name == ".." {
-			continue
-		}
-
-		mode := fields[0]
-		size, _ := strconv.ParseInt(fields[4], 10, 64)
-
+	result := make([]map[string]interface{}, 0, len(entries))
+	for _, e := range entries {
 		result = append(result, map[string]interface{}{
-			"name":  name,
-			"mode":  mode,
-			"size":  size,
-			"isDir": strings.HasPrefix(mode, "d"),
+			"name":  e.Name,
+			"size":  e.Size,
+			"isDir": e.IsDir,
+			"mode":  sftpModeToString(e.Mode, e.IsDir),
 		})
 	}
-
 	return result, nil
 }
 
-// WalkDir recursively lists directory contents.
+// WalkDir recursively lists all files in a directory via SFTP.
 func (c *SSHClient) WalkDir(remotePath string) ([]map[string]interface{}, error) {
-	output, err := c.Exec(fmt.Sprintf("find %s -type f -o -type d 2>/dev/null", escapeShellArg(remotePath)))
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.connected {
+		return nil, errors.New("not connected")
+	}
+	if err := c.initSftp(); err != nil {
+		return nil, err
+	}
+
+	entries, err := c.sftpWalkDir(remotePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to walk directory: %w", err)
 	}
 
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	var result []map[string]interface{}
-
-	for _, line := range lines {
-		if line == "" {
-			continue
-		}
-
-		isDir, _ := c.Exec(fmt.Sprintf("test -d %s", escapeShellArg(line)))
+	result := make([]map[string]interface{}, 0, len(entries))
+	for _, e := range entries {
 		result = append(result, map[string]interface{}{
-			"path":  line,
-			"isDir": isDir == "",
+			"path":  e.Name,
+			"size":  e.Size,
+			"isDir": e.IsDir,
 		})
 	}
-
 	return result, nil
 }
 
-// UploadDir uploads a local directory to remote.
+// UploadDir uploads a local directory to remote via SFTP.
 func (c *SSHClient) UploadDir(localDir, remoteDir string) error {
-	// Create remote directory
 	if err := c.MkdirAll(remoteDir); err != nil {
 		return err
 	}
-
-	// Walk local directory
 	return filepath.Walk(localDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-
 		relPath, err := filepath.Rel(localDir, path)
 		if err != nil {
 			return err
 		}
-
 		remotePath := filepath.Join(remoteDir, relPath)
-
 		if info.IsDir() {
 			return c.MkdirAll(remotePath)
 		}
-
 		return c.Upload(path, remotePath)
 	})
 }
 
-// DownloadDir downloads a remote directory to local.
+// DownloadDir downloads a remote directory to local via SFTP.
 func (c *SSHClient) DownloadDir(remoteDir, localDir string) error {
-	// Create local directory
 	if err := os.MkdirAll(localDir, 0755); err != nil {
 		return err
 	}
 
-	// Get remote file list
 	files, err := c.WalkDir(remoteDir)
 	if err != nil {
 		return err
@@ -668,10 +1371,9 @@ func (c *SSHClient) DownloadDir(remoteDir, localDir string) error {
 			continue
 		}
 		relPath = strings.TrimPrefix(relPath, "/")
-
 		localPath := filepath.Join(localDir, relPath)
 
-		if file["isDir"].(bool) {
+		if isDir, ok := file["isDir"].(bool); ok && isDir {
 			if err := os.MkdirAll(localPath, 0755); err != nil {
 				return err
 			}
@@ -681,7 +1383,6 @@ func (c *SSHClient) DownloadDir(remoteDir, localDir string) error {
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -742,111 +1443,6 @@ func (c *SSHClient) GetClient() *ssh.Client {
 // ============================================================
 // Helper Functions
 // ============================================================
-
-// escapeShellArg escapes a shell argument.
-func escapeShellArg(arg string) string {
-	return "'" + strings.ReplaceAll(arg, "'", "'\\''") + "'"
-}
-
-// encodeBase64 encodes bytes to base64 string.
-func encodeBase64(data []byte) string {
-	return strings.ReplaceAll(string(encodeBase64Bytes(data)), "\n", "")
-}
-
-// decodeBase64 decodes base64 string to bytes.
-func decodeBase64(s string) ([]byte, error) {
-	return decodeBase64String(s)
-}
-
-// Simple base64 implementation to avoid importing encoding/base64
-// These are implemented inline for simplicity
-
-var base64Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-
-func encodeBase64Bytes(data []byte) []byte {
-	if len(data) == 0 {
-		return nil
-	}
-
-	var result []byte
-	for i := 0; i < len(data); i += 3 {
-		var n uint32
-		remaining := len(data) - i
-
-		n = uint32(data[i]) << 16
-		if remaining > 1 {
-			n |= uint32(data[i+1]) << 8
-		}
-		if remaining > 2 {
-			n |= uint32(data[i+2])
-		}
-
-		result = append(result, base64Chars[(n>>18)&0x3F])
-		result = append(result, base64Chars[(n>>12)&0x3F])
-
-		if remaining > 1 {
-			result = append(result, base64Chars[(n>>6)&0x3F])
-		} else {
-			result = append(result, '=')
-		}
-
-		if remaining > 2 {
-			result = append(result, base64Chars[n&0x3F])
-		} else {
-			result = append(result, '=')
-		}
-	}
-
-	return result
-}
-
-func decodeBase64String(s string) ([]byte, error) {
-	// Remove any whitespace/newlines
-	s = strings.Map(func(r rune) rune {
-		if r == '\n' || r == '\r' || r == ' ' {
-			return -1
-		}
-		return r
-	}, s)
-
-	if len(s)%4 != 0 {
-		return nil, errors.New("invalid base64 string length")
-	}
-
-	// Build decode table
-	decodeTable := make(map[byte]int)
-	for i := 0; i < 64; i++ {
-		decodeTable[base64Chars[i]] = i
-	}
-
-	var result []byte
-	for i := 0; i < len(s); i += 4 {
-		var n uint32
-		padCount := 0
-
-		for j := 0; j < 4; j++ {
-			if s[i+j] == '=' {
-				padCount++
-				continue
-			}
-			val, ok := decodeTable[s[i+j]]
-			if !ok {
-				return nil, fmt.Errorf("invalid base64 character: %c", s[i+j])
-			}
-			n |= uint32(val) << uint(18-j*6)
-		}
-
-		result = append(result, byte((n>>16)&0xFF))
-		if padCount < 2 {
-			result = append(result, byte((n>>8)&0xFF))
-		}
-		if padCount < 1 {
-			result = append(result, byte(n&0xFF))
-		}
-	}
-
-	return result, nil
-}
 
 // ============================================================
 // knownhosts implementation (minimal, for host key verification)

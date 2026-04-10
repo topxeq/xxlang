@@ -461,7 +461,7 @@ func init() {
 				}
 				defer client.Close()
 
-				// Write bytes to remote file using base64 encoding for binary safety
+				// Write bytes to remote file via SFTP binary transfer
 				if err := client.WriteFile(remotePath.Value, string(dataBytes.Value)); err != nil {
 					return Error("uploadBytes failed: " + err.Error())
 				}

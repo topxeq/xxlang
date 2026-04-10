@@ -65,6 +65,32 @@ func (m *MockSSHClient) Exists(path string) bool {
 	return ok
 }
 
+func (m *MockSSHClient) ReadBytes(path string) ([]byte, error) {
+	if m.files == nil {
+		m.files = make(map[string][]byte)
+	}
+	if content, ok := m.files[path]; ok {
+		return content, nil
+	}
+	return nil, os.ErrNotExist
+}
+
+func (m *MockSSHClient) WalkDir(path string) ([]map[string]interface{}, error) {
+	return nil, nil
+}
+
+func (m *MockSSHClient) IsDir(path string) bool {
+	if m.fileInfo == nil {
+		m.fileInfo = make(map[string]map[string]interface{})
+	}
+	if info, ok := m.fileInfo[path]; ok {
+		if isDir, ok := info["isDir"].(bool); ok {
+			return isDir
+		}
+	}
+	return false
+}
+
 func TestLocalSourceNew(t *testing.T) {
 	src := NewLocalSource("/tmp/test")
 	if src == nil {

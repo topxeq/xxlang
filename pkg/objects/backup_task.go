@@ -376,6 +376,9 @@ func (t *BackupTask) Run() *BackupResult {
 		return t.Result
 	}
 
+	// Ensure target base directory exists
+	t.Target.MkdirAll("")
+
 	// List files from source
 	sourceFiles, err := t.Source.ListFiles()
 	if err != nil {

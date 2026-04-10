@@ -368,8 +368,10 @@ func applyBackupOptions(task *objects.BackupTask, m *objects.Map) {
 		task.SetConflictPolicy(policy)
 	}
 
-	// Apply excludePatterns
+	// Apply excludePatterns (also accepts "exclude")
 	if patterns, ok := getStringArray("excludePatterns"); ok {
+		task.SetExcludePatterns(patterns)
+	} else if patterns, ok := getStringArray("exclude"); ok {
 		task.SetExcludePatterns(patterns)
 	}
 }

@@ -10248,13 +10248,13 @@ var rodHTMLElementMethods = map[string]*Builtin{
 			return NULL
 		}},
 		// Execution methods
-		"run": {Fn: func(args ...Object) Object {
+		"execute": {Fn: func(args ...Object) Object {
 			if len(args) != 1 {
-				return newError("wrong number of arguments for run. got=%d, want=1", len(args))
+				return newError("wrong number of arguments for execute. got=%d, want=1", len(args))
 			}
 			self, ok := args[0].(*BackupTask)
 			if !ok {
-				return newError("receiver for run must be BACKUP_TASK, got %s", args[0].Type())
+				return newError("receiver for execute must be BACKUP_TASK, got %s", args[0].Type())
 			}
 			result := self.Run()
 			return result
@@ -10325,5 +10325,85 @@ var rodHTMLElementMethods = map[string]*Builtin{
 				return newError("receiver for summary must be BACKUP_RESULT, got %s", args[0].Type())
 			}
 			return NewString(self.Summary())
+		}},
+
+		// Data getter methods
+		"getFilesCopied": {Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for getFilesCopied. got=%d, want=1", len(args))
+			}
+			self, ok := args[0].(*BackupResult)
+			if !ok {
+				return newError("receiver for getFilesCopied must be BACKUP_RESULT, got %s", args[0].Type())
+			}
+			return NewInt(int64(self.FilesCopied))
+		}},
+		"getFilesSkipped": {Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for getFilesSkipped. got=%d, want=1", len(args))
+			}
+			self, ok := args[0].(*BackupResult)
+			if !ok {
+				return newError("receiver for getFilesSkipped must be BACKUP_RESULT, got %s", args[0].Type())
+			}
+			return NewInt(int64(self.FilesSkipped))
+		}},
+		"getFilesDeleted": {Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for getFilesDeleted. got=%d, want=1", len(args))
+			}
+			self, ok := args[0].(*BackupResult)
+			if !ok {
+				return newError("receiver for getFilesDeleted must be BACKUP_RESULT, got %s", args[0].Type())
+			}
+			return NewInt(int64(self.FilesDeleted))
+		}},
+		"getBytesTransferred": {Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for getBytesTransferred. got=%d, want=1", len(args))
+			}
+			self, ok := args[0].(*BackupResult)
+			if !ok {
+				return newError("receiver for getBytesTransferred must be BACKUP_RESULT, got %s", args[0].Type())
+			}
+			return NewInt(self.BytesTransferred)
+		}},
+		"getDuration": {Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for getDuration. got=%d, want=1", len(args))
+			}
+			self, ok := args[0].(*BackupResult)
+			if !ok {
+				return newError("receiver for getDuration must be BACKUP_RESULT, got %s", args[0].Type())
+			}
+			return NewFloat(self.Duration)
+		}},
+		"getErrors": {Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for getErrors. got=%d, want=1", len(args))
+			}
+			self, ok := args[0].(*BackupResult)
+			if !ok {
+				return newError("receiver for getErrors must be BACKUP_RESULT, got %s", args[0].Type())
+			}
+			elements := make([]Object, len(self.Errors))
+			for i, e := range self.Errors {
+				elements[i] = NewString(e)
+			}
+			return &Array{Elements: elements}
+		}},
+		"getConflicts": {Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments for getConflicts. got=%d, want=1", len(args))
+			}
+			self, ok := args[0].(*BackupResult)
+			if !ok {
+				return newError("receiver for getConflicts must be BACKUP_RESULT, got %s", args[0].Type())
+			}
+			elements := make([]Object, len(self.Conflicts))
+			for i, c := range self.Conflicts {
+				elements[i] = NewString(c)
+			}
+			return &Array{Elements: elements}
 		}},
 	}

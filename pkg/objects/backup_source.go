@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -114,10 +113,10 @@ func (s *LocalSource) ReadFile(relPath string) ([]byte, error) {
 // WriteFile writes content to file.
 func (s *LocalSource) WriteFile(relPath string, content []byte) error {
 	fullPath := filepath.Join(s.BasePath, relPath)
-	// Create parent directories if needed
+	// Create parent directories if needed (including base path)
 	dir := filepath.Dir(fullPath)
-	if dir != "." && dir != s.BasePath {
-		os.MkdirAll(dir, 0755)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
 	}
 	return os.WriteFile(fullPath, content, 0644)
 }
@@ -176,10 +175,14 @@ type SSHClientInterface interface {
 	Exec(cmd string) (string, error)
 	// ReadFile reads a remote file content.
 	ReadFile(path string) (string, error)
+	// ReadBytes reads a remote file and returns raw bytes.
+	ReadBytes(path string) ([]byte, error)
 	// WriteFile writes content to a remote file.
 	WriteFile(path, content string) error
 	// ListDir lists directory contents.
 	ListDir(path string) ([]map[string]interface{}, error)
+	// WalkDir recursively lists all files in a directory.
+	WalkDir(path string) ([]map[string]interface{}, error)
 	// Stat returns file information.
 	Stat(path string) (map[string]interface{}, error)
 	// MkdirAll creates directory with parents.
@@ -188,6 +191,8 @@ type SSHClientInterface interface {
 	Remove(path string) error
 	// Exists checks if a path exists.
 	Exists(path string) bool
+	// IsDir checks if path is a directory.
+	IsDir(path string) bool
 }
 
 // ============================================================
@@ -213,81 +218,67 @@ func (s *RemoteSource) GetBasePath() string {
 	return s.BasePath
 }
 
-// ListFiles returns all files under the base path using find command.
+// ListFiles returns all files under the base path via SFTP WalkDir.
 func (s *RemoteSource) ListFiles() ([]BackupFileInfo, error) {
-	// Use find command to get all files recursively
-	cmd := fmt.Sprintf("find %s -type f -o -type d 2>/dev/null | head -n 10000", escapeRemotePath(s.BasePath))
-	output, err := s.Client.Exec(cmd)
+	entries, err := s.Client.WalkDir(s.BasePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list remote files: %w", err)
 	}
 
-	lines := strings.Split(strings.TrimSpace(output), "\n")
 	var files []BackupFileInfo
-
-	for _, line := range lines {
-		if line == "" || line == s.BasePath {
-			continue
-		}
-
-		// Get relative path
-		relPath := strings.TrimPrefix(line, s.BasePath)
+	for _, entry := range entries {
+		path, _ := entry["path"].(string)
+		relPath := strings.TrimPrefix(path, s.BasePath)
 		relPath = strings.TrimPrefix(relPath, "/")
 		if relPath == "" {
 			continue
 		}
 
-		// Get file info using stat
-		info, err := s.GetFileInfo(relPath)
-		if err != nil {
-			continue // Skip files we can't stat
-		}
-		files = append(files, info)
+		isDir, _ := entry["isDir"].(bool)
+		size, _ := entry["size"].(int64)
+
+		files = append(files, BackupFileInfo{
+			Path:  relPath,
+			Size:  size,
+			IsDir: isDir,
+		})
 	}
 
 	return files, nil
 }
 
-// GetFileInfo returns info for a single file using stat command.
+// GetFileInfo returns info for a single file using SFTP Stat.
 func (s *RemoteSource) GetFileInfo(relPath string) (BackupFileInfo, error) {
 	fullPath := s.BasePath + "/" + relPath
-	// Use stat command with custom format: size|mtime|filetype
-	cmd := "stat -c '" + "%s" + "|" + "%Y" + "|" + "%F" + "' " + escapeRemotePath(fullPath) + " 2>/dev/null"
-	output, err := s.Client.Exec(cmd)
+	info, err := s.Client.Stat(fullPath)
 	if err != nil {
 		return BackupFileInfo{}, fmt.Errorf("failed to stat remote file: %w", err)
 	}
 
-	parts := strings.Split(strings.TrimSpace(output), "|")
-	if len(parts) < 3 {
-		return BackupFileInfo{}, errors.New("unexpected stat output format")
-	}
-
-	size, _ := strconv.ParseInt(parts[0], 10, 64)
-	mtimeUnix, _ := strconv.ParseInt(parts[1], 10, 64)
-	fileType := strings.TrimSpace(parts[2])
+	size, _ := info["size"].(int64)
+	isDir, _ := info["isDir"].(bool)
 
 	return BackupFileInfo{
 		Path:  relPath,
 		Size:  size,
-		MTime: time.Unix(mtimeUnix, 0),
-		IsDir: fileType == "directory",
+		IsDir: isDir,
 	}, nil
 }
 
-// ReadFile reads file content from remote.
+// ReadFile reads file content from remote via SFTP binary transfer.
 func (s *RemoteSource) ReadFile(relPath string) ([]byte, error) {
 	fullPath := s.BasePath + "/" + relPath
-	content, err := s.Client.ReadFile(fullPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read remote file: %w", err)
-	}
-	return []byte(content), nil
+	return s.Client.ReadBytes(fullPath)
 }
 
 // WriteFile writes content to remote file.
 func (s *RemoteSource) WriteFile(relPath string, content []byte) error {
 	fullPath := s.BasePath + "/" + relPath
+	// Create parent directory if needed
+	dir := fullPath[:strings.LastIndex(fullPath, "/")]
+	if dir != "" && dir != s.BasePath {
+		s.Client.MkdirAll(dir)
+	}
 	return s.Client.WriteFile(fullPath, string(content))
 }
 
@@ -309,35 +300,21 @@ func (s *RemoteSource) Exists(relPath string) bool {
 	return s.Client.Exists(fullPath)
 }
 
-// CalculateHash computes hash of remote file content using md5sum/sha1sum.
+// CalculateHash computes hash of remote file content by reading via SFTP and hashing locally.
 func (s *RemoteSource) CalculateHash(relPath string, algo string) (string, error) {
-	fullPath := s.BasePath + "/" + relPath
+	data, err := s.ReadFile(relPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read file for hashing: %w", err)
+	}
 
-	var cmd string
 	switch strings.ToLower(algo) {
 	case "md5":
-		cmd = fmt.Sprintf("md5sum %s 2>/dev/null", escapeRemotePath(fullPath))
+		hash := md5.Sum(data)
+		return fmt.Sprintf("%x", hash), nil
 	case "sha1":
-		cmd = fmt.Sprintf("sha1sum %s 2>/dev/null", escapeRemotePath(fullPath))
+		hash := sha1.Sum(data)
+		return fmt.Sprintf("%x", hash), nil
 	default:
 		return "", errors.New("unsupported hash algorithm: " + algo)
 	}
-
-	output, err := s.Client.Exec(cmd)
-	if err != nil {
-		return "", fmt.Errorf("failed to calculate hash: %w", err)
-	}
-
-	// Output format: "hashvalue  filename"
-	parts := strings.Fields(strings.TrimSpace(output))
-	if len(parts) < 1 {
-		return "", errors.New("unexpected hash output format")
-	}
-
-	return parts[0], nil
-}
-
-// escapeRemotePath wraps path in single quotes for shell safety.
-func escapeRemotePath(path string) string {
-	return "'" + strings.ReplaceAll(path, "'", "'\\''") + "'"
 }
