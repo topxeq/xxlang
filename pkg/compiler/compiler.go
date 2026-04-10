@@ -135,7 +135,7 @@ func NewSymbolTable() *SymbolTable {
 	// Time & UUID
 	s.DefineBuiltin(82, "sleep")
 	s.DefineBuiltin(83, "sleepSec")
-	s.DefineBuiltin(84, "now")
+	s.DefineBuiltin(495, "now")
 	s.DefineBuiltin(85, "nowMs")
 	s.DefineBuiltin(86, "uuid")
 	// String enhancement
@@ -162,7 +162,7 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(103, "checkErr")
 	s.DefineBuiltin(104, "checkEmpty")
 	// OTP utilities
-	s.DefineBuiltin(105, "genOtpCode")
+	s.DefineBuiltin(453, "genOtpCode")
 	// Type conversion
 	s.DefineBuiltin(106, "toStr")
 	s.DefineBuiltin(107, "toJson")
@@ -539,24 +539,24 @@ func NewSymbolTable() *SymbolTable {
 	s.DefineBuiltin(434, "bytesStartsWith")
 	s.DefineBuiltin(435, "bytesEndsWith")
 	s.DefineBuiltin(436, "bytesContains")
-	s.DefineBuiltin(437, "bytesIndex")
-	s.DefineBuiltin(438, "compareBytes")
-	s.DefineBuiltin(439, "compareText")
+	s.DefineBuiltin(438, "bytesIndex")
+	s.DefineBuiltin(439, "compareBytes")
+	s.DefineBuiltin(440, "compareText")
 	// Miscellaneous built-in functions (Batch 15)
-	s.DefineBuiltin(440, "getRandomInt")
-	s.DefineBuiltin(441, "getRandomFloat")
-	s.DefineBuiltin(442, "getRandomStr")
-	s.DefineBuiltin(443, "createTempDir")
-	s.DefineBuiltin(444, "createTempFile")
-	s.DefineBuiltin(445, "changeDir")
-	s.DefineBuiltin(446, "lookPath")
-	s.DefineBuiltin(447, "joinUrlPath")
-	s.DefineBuiltin(448, "parseUrl")
-	s.DefineBuiltin(449, "parseQuery")
-	s.DefineBuiltin(450, "isHttps")
-	s.DefineBuiltin(451, "genToken")
-	s.DefineBuiltin(452, "genOtpCode")
-	s.DefineBuiltin(453, "checkOtpCode")
+	s.DefineBuiltin(441, "getRandomInt")
+	s.DefineBuiltin(442, "getRandomFloat")
+	s.DefineBuiltin(443, "getRandomStr")
+	s.DefineBuiltin(444, "createTempDir")
+	s.DefineBuiltin(445, "createTempFile")
+	s.DefineBuiltin(446, "changeDir")
+	s.DefineBuiltin(447, "lookPath")
+	s.DefineBuiltin(448, "joinUrlPath")
+	s.DefineBuiltin(449, "parseUrl")
+	s.DefineBuiltin(450, "parseQuery")
+	s.DefineBuiltin(451, "isHttps")
+	s.DefineBuiltin(452, "genToken")
+	s.DefineBuiltin(453, "genOtpCode")
+	s.DefineBuiltin(454, "checkOtpCode")
 	// Unicode/Text processing built-in functions (Batch 16)
 	s.DefineBuiltin(454, "toPinYin")
 	s.DefineBuiltin(455, "kanaToRomaji")
@@ -575,7 +575,7 @@ func NewSymbolTable() *SymbolTable {
 	// s.DefineBuiltin(465, "scanQr")
 	// s.DefineBuiltin(466, "getImageInfo")
 	// s.DefineBuiltin(467, "resizeImage")
-	s.DefineBuiltin(468, "createImage") // kept as builtin (alias to image.createImage)
+	s.DefineBuiltin(477, "createImage") // kept as builtin (alias to image.createImage)
 	// Network communication functions - newFtpClient, newSshClient moved to ftp/ssh modules
 	// s.DefineBuiltin(469, "newFtpClient")
 	// s.DefineBuiltin(470, "newSshClient")
@@ -603,26 +603,26 @@ func NewSymbolTable() *SymbolTable {
 	// s.DefineBuiltin(486, "sendMail")
 	// s.DefineBuiltin(487, "newMailClient")
 	// Byte-index string functions
-	s.DefineBuiltin(488, "byteIndexOf")
-	s.DefineBuiltin(489, "byteSubstr")
-	s.DefineBuiltin(490, "byteLen")
+	s.DefineBuiltin(489, "byteIndexOf")
+	s.DefineBuiltin(490, "byteSubstr")
+	s.DefineBuiltin(491, "byteLen")
 	// String enhancement (Batch 24)
-	s.DefineBuiltin(491, "strCount")
+	s.DefineBuiltin(492, "strCount")
 	// Simple encoding (Batch 25)
-	s.DefineBuiltin(492, "simpleEncode")
-	s.DefineBuiltin(493, "simpleDecode")
+	s.DefineBuiltin(493, "simpleEncode")
+	s.DefineBuiltin(494, "simpleDecode")
 	// Time enhancement (Batch 26)
-	s.DefineBuiltin(494, "now")
-	s.DefineBuiltin(495, "getNowStrCompact")
-	s.DefineBuiltin(496, "timeToTimeStamp")
-	s.DefineBuiltin(497, "timeStampToTime")
+	s.DefineBuiltin(495, "now")
+	s.DefineBuiltin(496, "getNowStrCompact")
+	s.DefineBuiltin(497, "timeToTimeStamp")
+	s.DefineBuiltin(498, "timeStampToTime")
 	// Print aliases (Batch 27)
-	s.DefineBuiltin(503, "print")   // alias for pr
-	s.DefineBuiltin(504, "println") // alias for pln
-	s.DefineBuiltin(505, "printf")  // alias for prf
-	s.DefineBuiltin(506, "concatBytes")
-	s.DefineBuiltin(507, "plv")     // print value with %#v format
-	s.DefineBuiltin(508, "spr")     // alias for sprintf
+	s.DefineBuiltin(504, "print")   // alias for pr
+	s.DefineBuiltin(505, "println") // alias for pln
+	s.DefineBuiltin(506, "printf")  // alias for prf
+	s.DefineBuiltin(507, "concatBytes")
+	s.DefineBuiltin(508, "plv")     // print value with %#v format
+	s.DefineBuiltin(509, "spr")     // alias for sprintf
 	return s
 }
 
