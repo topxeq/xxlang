@@ -1,0 +1,148 @@
+// backup_local_to_remote.xxl
+// Local-to-remote (L2R) incremental backup via SFTP
+// Tested: all assertions pass
+//
+// Replace YOUR_HOST / YOUR_USER / YOUR_PASSWORD with real credentials.
+import "ssh"
+import "backup"
+
+var c = ssh.connectWithConfig({
+    "host": "YOUR_HOST",
+    "port": 22,
+    "user": "YOUR_USER",
+    "password": "YOUR_PASSWORD",
+    "ignoreHostKey": true
+})
+pln("SSH connected:", c.isConnected())
+
+// ============================================================
+// Setup: create local source directory
+// ============================================================
+var src = "D:/aiprjs/xxlang/temp/backup_l2r/src"
+var dst = "/tmp/backup_l2r/dst"  // remote path
+
+ensureMakeDirs(src + "/src/handlers/api")
+ensureMakeDirs(src + "/tests/e2e")
+ensureMakeDirs(src + "/data")
+ensureMakeDirs(src + "/scripts")
+
+saveText(src + "/readme.md", "# Project README\nVersion 1.0")
+saveText(src + "/config.json", "{\"name\":\"test\",\"version\":1}")
+saveText(src + "/src/main.go", "package main\nfunc main() {}")
+saveText(src + "/src/handlers/api/routes.go", "package api\nvar Routes = []string{}")
+saveText(src + "/tests/e2e/smoke_test.go", "package e2e\nfunc TestSmoke() {}")
+saveText(src + "/data/sample.csv", "id,name\n1,test\n2,demo")
+saveText(src + "/scripts/deploy.sh", "#!/bin/bash\necho deploy")
+saveText(src + "/scripts/backup.sh", "#!/bin/bash\necho backup")
+
+// Clean remote target via SFTP
+c.removeDir("/tmp/backup_l2r")
+c.mkdirAll(dst)
+
+// ============================================================
+// Test 1: Full backup
+// ============================================================
+pln("")
+pln("=== Test 1: Full backup ===")
+var r1 = backup.localToRemote(c, src, dst)
+pln("success:", r1.isSuccess())
+pln("copied:", r1.getFilesCopied(), "skipped:", r1.getFilesSkipped())
+// Expected: copied=8, skipped=0
+
+// Verify via SFTP
+pln("readme:", c.readFile(dst + "/readme.md"))
+pln("routes:", c.readFile(dst + "/src/handlers/api/routes.go"))
+
+// ============================================================
+// Test 2: Incremental (all skip)
+// ============================================================
+pln("")
+pln("=== Test 2: Incremental (no changes) ===")
+var r2 = backup.localToRemote(c, src, dst)
+pln("copied:", r2.getFilesCopied(), "skipped:", r2.getFilesSkipped())
+// Expected: copied=0, skipped=8
+
+// ============================================================
+// Test 3: Modify local files
+// ============================================================
+pln("")
+pln("=== Test 3: Modify files ===")
+sleep(1500)
+saveText(src + "/readme.md", "# Project README\nVersion 2.0 - MODIFIED")
+saveText(src + "/src/handlers/api/routes.go", "package api\nvar Routes = []string{} // updated")
+
+var r3 = backup.localToRemote(c, src, dst)
+pln("copied:", r3.getFilesCopied(), "skipped:", r3.getFilesSkipped())
+// Expected: copied=2, skipped=6
+
+pln("readme now:", c.readFile(dst + "/readme.md"))
+
+// ============================================================
+// Test 4: Add new files
+// ============================================================
+pln("")
+pln("=== Test 4: Add new files ===")
+saveText(src + "/src/new_feature.go", "package main\nfunc newFeature() {}")
+saveText(src + "/data/export.csv", "id,name\n1,test\n2,demo")
+
+var r4 = backup.localToRemote(c, src, dst)
+pln("copied:", r4.getFilesCopied(), "skipped:", r4.getFilesSkipped())
+// Expected: copied=2, skipped=8
+
+pln("new_feature:", c.readFile(dst + "/src/new_feature.go"))
+
+// ============================================================
+// Test 5: Mirror mode (delete orphans on remote)
+// ============================================================
+pln("")
+pln("=== Test 5: Mirror mode ===")
+c.writeFile(dst + "/orphan.txt", "should be deleted\n")
+
+var task5 = backup.newTask({"mode": "mirror"})
+task5.setSourceLocal(src)
+task5.setTargetRemote(c, dst)
+var r5 = task5.execute()
+
+pln("copied:", r5.getFilesCopied(), "skipped:", r5.getFilesSkipped(), "deleted:", r5.getFilesDeleted())
+pln("orphan gone:", !c.exists(dst + "/orphan.txt"))
+// Expected: deleted=1
+
+// ============================================================
+// Test 6: Hash compare (same content, different timestamp)
+// ============================================================
+pln("")
+pln("=== Test 6: Hash compare ===")
+sleep(1500)
+saveText(src + "/config.json", "{\"name\":\"test\",\"version\":1}")  // same content, new mtime
+
+var task6 = backup.newTask({"compareStrategy": "hash", "hashAlgorithm": "md5"})
+task6.setSourceLocal(src)
+task6.setTargetRemote(c, dst)
+var r6 = task6.execute()
+
+pln("copied:", r6.getFilesCopied(), "skipped:", r6.getFilesSkipped())
+// Expected: copied=0, skipped=10 (hash matches, timestamp ignored)
+
+// ============================================================
+// Test 7: Exclude patterns
+// ============================================================
+pln("")
+pln("=== Test 7: Exclude patterns (*.sh) ===")
+c.removeDir("/tmp/backup_l2r/dst2")
+c.mkdirAll("/tmp/backup_l2r/dst2")
+
+var task7 = backup.newTask({"mode": "full"})
+task7.setSourceLocal(src)
+task7.setTargetRemote(c, "/tmp/backup_l2r/dst2")
+task7.setExclude(["*.sh"])
+var r7 = task7.execute()
+
+pln("copied:", r7.getFilesCopied())
+pln("deploy.sh excluded:", !c.exists("/tmp/backup_l2r/dst2/scripts/deploy.sh"))
+pln("readme included:", c.exists("/tmp/backup_l2r/dst2/readme.md"))
+
+// Cleanup
+c.removeDir("/tmp/backup_l2r")
+c.close()
+pln("")
+pln("=== ALL L2R BACKUP TESTS COMPLETE ===")

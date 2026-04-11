@@ -53,7 +53,7 @@ client.close()
 
 **示例：**
 ```xxl
-var client = ssh.connect("192.168.1.100", 22, "root", "password123")
+var client = ssh.connect("YOUR_SERVER", 22, "root", "YOUR_PASSWORD")
 ```
 
 ---
@@ -154,7 +154,7 @@ client.connect("server.com", 22, "user", "pass")
 
 **示例：**
 ```xxl
-var output = ssh.exec("192.168.1.100", 22, "root", "pass", "uptime")
+var output = ssh.exec("YOUR_SERVER", 22, "root", "pass", "uptime")
 ```
 
 ---

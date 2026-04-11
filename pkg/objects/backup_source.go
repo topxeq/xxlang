@@ -78,6 +78,8 @@ func (s *LocalSource) ListFiles() ([]BackupFileInfo, error) {
 		if relPath == "." {
 			return nil
 		}
+		// Normalize to forward slashes for cross-platform compatibility
+		relPath = strings.ReplaceAll(relPath, "\\", "/")
 		files = append(files, BackupFileInfo{
 			Path:  relPath,
 			Size:  info.Size(),
@@ -236,9 +238,11 @@ func (s *RemoteSource) ListFiles() ([]BackupFileInfo, error) {
 
 		isDir, _ := entry["isDir"].(bool)
 		size, _ := entry["size"].(int64)
+		modTime, _ := entry["modTime"].(int64)
 
 		files = append(files, BackupFileInfo{
 			Path:  relPath,
+			MTime: time.Unix(modTime, 0),
 			Size:  size,
 			IsDir: isDir,
 		})
@@ -257,9 +261,11 @@ func (s *RemoteSource) GetFileInfo(relPath string) (BackupFileInfo, error) {
 
 	size, _ := info["size"].(int64)
 	isDir, _ := info["isDir"].(bool)
+	modTime, _ := info["modTime"].(int64)
 
 	return BackupFileInfo{
 		Path:  relPath,
+		MTime: time.Unix(modTime, 0),
 		Size:  size,
 		IsDir: isDir,
 	}, nil

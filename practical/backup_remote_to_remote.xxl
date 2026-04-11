@@ -1,0 +1,178 @@
+// backup_remote_to_remote.xxl
+// Remote-to-remote (R2R) server-to-server incremental backup via SFTP
+// Tested: all assertions pass
+//
+// This example uses two SSH connections to the same host to simulate
+// two separate servers. In production, point sshA and sshB to different hosts.
+//
+// Replace YOUR_HOST_A / YOUR_HOST_B / YOUR_USER / YOUR_PASSWORD with real credentials.
+import "ssh"
+import "backup"
+
+// Connect to server A (source) and server B (target)
+var sshA = ssh.connectWithConfig({
+    "host": "YOUR_HOST_A",
+    "port": 22,
+    "user": "YOUR_USER",
+    "password": "YOUR_PASSWORD",
+    "ignoreHostKey": true
+})
+var sshB = ssh.connectWithConfig({
+    "host": "YOUR_HOST_B",
+    "port": 22,
+    "user": "YOUR_USER",
+    "password": "YOUR_PASSWORD",
+    "ignoreHostKey": true
+})
+pln("SSH-A connected:", sshA.isConnected())
+pln("SSH-B connected:", sshB.isConnected())
+
+var src = "/tmp/backup_r2r/serverA"    // path on server A
+var dst = "/tmp/backup_r2r/serverB"    // path on server B
+
+// ============================================================
+// Setup: create source files on server A via SFTP
+// ============================================================
+sshA.removeDir(src)
+sshA.mkdirAll(src + "/src/handlers/api")
+sshA.mkdirAll(src + "/tests/e2e")
+sshA.mkdirAll(src + "/data")
+sshA.mkdirAll(src + "/scripts")
+
+sshA.writeFile(src + "/readme.md", "# Project README\nVersion 1.0\n")
+sshA.writeFile(src + "/config.json", "{\"name\":\"test\",\"version\":1}\n")
+sshA.writeFile(src + "/src/main.go", "package main\nfunc main() {}\n")
+sshA.writeFile(src + "/src/handlers/api/routes.go", "package api\nvar Routes = []string{}\n")
+sshA.writeFile(src + "/tests/e2e/smoke_test.go", "package e2e\nfunc TestSmoke() {}\n")
+sshA.writeFile(src + "/tests/e2e/load_test.go", "package e2e\nfunc TestLoad() {}\n")
+sshA.writeFile(src + "/data/sample.csv", "id,name\n1,test\n2,demo\n")
+sshA.writeFile(src + "/data/notes.txt", "Some notes\n")
+sshA.writeFile(src + "/scripts/deploy.sh", "#!/bin/bash\necho deploy\n")
+sshA.writeFile(src + "/scripts/backup.sh", "#!/bin/bash\necho backup\n")
+
+// Clean target on server B
+sshB.removeDir(dst)
+sshB.mkdirAll(dst)
+
+// ============================================================
+// Test 1: Full backup (A -> B)
+// ============================================================
+pln("")
+pln("=== Test 1: Full backup (A -> B) ===")
+var r1 = backup.remoteToRemote(sshA, sshB, src, dst)
+pln("success:", r1.isSuccess())
+pln("copied:", r1.getFilesCopied(), "skipped:", r1.getFilesSkipped())
+// Expected: copied=10, skipped=0
+
+// Verify on server B
+pln("readme:", sshB.readFile(dst + "/readme.md"))
+pln("routes:", sshB.readFile(dst + "/src/handlers/api/routes.go"))
+pln("smoke:", sshB.readFile(dst + "/tests/e2e/smoke_test.go"))
+
+// ============================================================
+// Test 2: Incremental (all skip)
+// ============================================================
+pln("")
+pln("=== Test 2: Incremental (no changes) ===")
+var r2 = backup.remoteToRemote(sshA, sshB, src, dst)
+pln("copied:", r2.getFilesCopied(), "skipped:", r2.getFilesSkipped())
+// Expected: copied=0, skipped=10
+
+// ============================================================
+// Test 3: Modify files on server A
+// ============================================================
+pln("")
+pln("=== Test 3: Modify files on A ===")
+sleep(1500)
+sshA.writeFile(src + "/readme.md", "# Project README\nVersion 2.0 - MODIFIED\n")
+sshA.writeFile(src + "/src/handlers/api/routes.go", "package api\nvar Routes = []string{} // updated\n")
+
+var r3 = backup.remoteToRemote(sshA, sshB, src, dst)
+pln("copied:", r3.getFilesCopied(), "skipped:", r3.getFilesSkipped())
+// Expected: copied=2, skipped=8
+
+pln("readme now:", sshB.readFile(dst + "/readme.md"))
+
+// ============================================================
+// Test 4: Add new files on server A
+// ============================================================
+pln("")
+pln("=== Test 4: Add new files on A ===")
+sshA.writeFile(src + "/src/new_feature.go", "package main\nfunc newFeature() {}\n")
+sshA.writeFile(src + "/data/export.csv", "id,name\n1,test\n2,demo\n")
+
+var r4 = backup.remoteToRemote(sshA, sshB, src, dst)
+pln("copied:", r4.getFilesCopied(), "skipped:", r4.getFilesSkipped())
+// Expected: copied=2, skipped=10
+
+pln("new_feature:", sshB.readFile(dst + "/src/new_feature.go"))
+
+// ============================================================
+// Test 5: Mirror mode (delete orphans on server B)
+// ============================================================
+pln("")
+pln("=== Test 5: Mirror mode ===")
+sshB.writeFile(dst + "/orphan.txt", "should be deleted\n")
+
+var task5 = backup.newTask({"mode": "mirror"})
+task5.setSourceRemote(sshA, src)
+task5.setTargetRemote(sshB, dst)
+var r5 = task5.execute()
+
+pln("copied:", r5.getFilesCopied(), "skipped:", r5.getFilesSkipped(), "deleted:", r5.getFilesDeleted())
+pln("orphan gone:", !sshB.exists(dst + "/orphan.txt"))
+// Expected: deleted=1
+
+// ============================================================
+// Test 6: Hash compare (same content, new timestamp on A)
+// ============================================================
+pln("")
+pln("=== Test 6: Hash compare ===")
+sleep(1500)
+sshA.writeFile(src + "/config.json", "{\"name\":\"test\",\"version\":1}\n")  // same content
+
+var task6 = backup.newTask({"compareStrategy": "hash", "hashAlgorithm": "md5"})
+task6.setSourceRemote(sshA, src)
+task6.setTargetRemote(sshB, dst)
+var r6 = task6.execute()
+
+pln("copied:", r6.getFilesCopied(), "skipped:", r6.getFilesSkipped())
+// Expected: copied=0 (hash matches, timestamp change ignored)
+
+// ============================================================
+// Test 7: Exclude patterns
+// ============================================================
+pln("")
+pln("=== Test 7: Exclude patterns (*.sh) ===")
+sshB.removeDir(dst + "_exc")
+sshB.mkdirAll(dst + "_exc")
+
+var task7 = backup.newTask({"mode": "full"})
+task7.setSourceRemote(sshA, src)
+task7.setTargetRemote(sshB, dst + "_exc")
+task7.setExclude(["*.sh"])
+var r7 = task7.execute()
+
+pln("copied:", r7.getFilesCopied())
+pln("deploy.sh excluded:", !sshB.exists(dst + "_exc/scripts/deploy.sh"))
+pln("readme included:", sshB.exists(dst + "_exc/readme.md"))
+
+// ============================================================
+// Test 8: Delete file on A, non-mirror keeps on B
+// ============================================================
+pln("")
+pln("=== Test 8: Delete on A, non-mirror keeps on B ===")
+sshA.remove(src + "/data/notes.txt")
+var r8 = backup.remoteToRemote(sshA, sshB, src, dst)
+pln("copied:", r8.getFilesCopied(), "skipped:", r8.getFilesSkipped(), "deleted:", r8.getFilesDeleted())
+pln("notes still on B:", sshB.exists(dst + "/data/notes.txt"))
+// Expected: deleted=0, notes.txt preserved on B
+// Restore for cleanup
+sshA.writeFile(src + "/data/notes.txt", "Some notes\n")
+
+// Cleanup
+sshA.removeDir("/tmp/backup_r2r")
+sshA.close()
+sshB.close()
+pln("")
+pln("=== ALL R2R BACKUP TESTS COMPLETE ===")

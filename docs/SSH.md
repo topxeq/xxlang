@@ -53,7 +53,7 @@ Create and connect to an SSH server with password authentication.
 
 **Example:**
 ```xxl
-var client = ssh.connect("192.168.1.100", 22, "root", "password123")
+var client = ssh.connect("YOUR_SERVER", 22, "root", "YOUR_PASSWORD")
 ```
 
 ---
@@ -154,7 +154,7 @@ Quick execute a single command without managing connection.
 
 **Example:**
 ```xxl
-var output = ssh.exec("192.168.1.100", 22, "root", "pass", "uptime")
+var output = ssh.exec("YOUR_SERVER", 22, "root", "pass", "uptime")
 ```
 
 ---

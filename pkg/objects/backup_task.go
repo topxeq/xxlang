@@ -491,7 +491,7 @@ func (t *BackupTask) needCopyFile(srcFile BackupFileInfo, targetMap map[string]B
 			return true, "size"
 		}
 		// Same size, check modification time
-		if srcFile.MTime.After(targetFile.MTime) {
+		if srcFile.MTime.Unix() > targetFile.MTime.Unix() {
 			return true, "newer"
 		}
 		// Same size and not newer - skip
@@ -505,7 +505,8 @@ func (t *BackupTask) needCopyFile(srcFile BackupFileInfo, targetMap map[string]B
 			if srcFile.Size != targetFile.Size {
 				return true, "size"
 			}
-			if srcFile.MTime.After(targetFile.MTime) {
+			// Compare mtime at second precision (SFTP returns seconds only)
+			if srcFile.MTime.Unix() > targetFile.MTime.Unix() {
 				return true, "newer"
 			}
 			return false, ""
@@ -532,7 +533,7 @@ func (t *BackupTask) needCopyFile(srcFile BackupFileInfo, targetMap map[string]B
 		if srcFile.Size != targetFile.Size {
 			return true, "size"
 		}
-		if srcFile.MTime.After(targetFile.MTime) {
+		if srcFile.MTime.Unix() > targetFile.MTime.Unix() {
 			return true, "newer"
 		}
 		return false, ""

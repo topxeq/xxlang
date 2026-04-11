@@ -218,15 +218,21 @@ func (s *SSHMockServer) handleChannel(newChan ssh.NewChannel) {
 	}
 	defer channel.Close()
 
-	// Handle requests
+	// Handle requests synchronously; close the channel after exec/shell completes
 	for req := range requests {
-		s.wg.Add(1)
-		go s.handleRequest(channel, req)
+		s.handleRequest(channel, req)
+		if req.Type == "exec" || req.Type == "shell" {
+			// Session is done after command execution, close channel
+			return
+		}
 	}
 }
 
 func (s *SSHMockServer) handleRequest(channel ssh.Channel, req *ssh.Request) {
-	defer s.wg.Add(-1)
+	// Reply to the request first if requested (required for exec, shell, etc.)
+	if req.WantReply {
+		req.Reply(true, nil)
+	}
 
 	switch req.Type {
 	case "exec":
@@ -245,8 +251,10 @@ func (s *SSHMockServer) handleRequest(channel ssh.Channel, req *ssh.Request) {
 		s.mu.RUnlock()
 
 		if !ok {
-			// Default response
-			response = ""
+			// Default: echo the command arguments for "echo" commands
+			if strings.HasPrefix(payload.Command, "echo ") {
+				response = strings.TrimPrefix(payload.Command, "echo ") + "\n"
+			}
 		}
 
 		// Send stdout data
@@ -255,12 +263,9 @@ func (s *SSHMockServer) handleRequest(channel ssh.Channel, req *ssh.Request) {
 		// Send exit status
 		channel.SendRequest("exit-status", false, ssh.Marshal(struct{ ExitStatus uint32 }{ExitStatus: 0}))
 
-	default:
-		// Unknown request type
-	}
-
-	if req.WantReply {
-		channel.SendRequest(req.Type, false, nil)
+	case "subsystem":
+		// SFTP subsystem - not supported in mock, just close
+		channel.SendRequest("exit-status", false, ssh.Marshal(struct{ ExitStatus uint32 }{ExitStatus: 1}))
 	}
 }
 

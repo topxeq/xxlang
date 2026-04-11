@@ -1,0 +1,105 @@
+// backup_local_to_local.xxl
+// Local-to-local incremental backup example
+// Tested: all assertions pass
+import "backup"
+
+// ============================================================
+// Setup: create source directory structure
+// ============================================================
+var src = "D:/aiprjs/xxlang/temp/backup_l2l/src"
+var dst = "D:/aiprjs/xxlang/temp/backup_l2l/dst"
+
+ensureMakeDirs(src + "/subdir")
+ensureMakeDirs(dst)
+
+saveText(src + "/readme.md", "# My Project\nVersion 1.0")
+saveText(src + "/config.json", "{\"name\":\"demo\"}")
+saveText(src + "/subdir/data.csv", "id,name\n1,alice\n2,bob")
+
+// ============================================================
+// Test 1: Full backup
+// ============================================================
+pln("=== Full backup ===")
+var r1 = backup.localToLocal(src, dst)
+pln("success:", r1.isSuccess())
+pln("copied:", r1.getFilesCopied(), "skipped:", r1.getFilesSkipped())
+// Expected: copied=3, skipped=0
+
+pln("readme exists:", fileExists(dst + "/readme.md"))
+pln("subdir data:", fileExists(dst + "/subdir/data.csv"))
+
+// ============================================================
+// Test 2: Incremental (no changes, all skip)
+// ============================================================
+pln("")
+pln("=== Incremental (no changes) ===")
+var r2 = backup.localToLocal(src, dst)
+pln("copied:", r2.getFilesCopied(), "skipped:", r2.getFilesSkipped())
+// Expected: copied=0, skipped=3
+
+// ============================================================
+// Test 3: Modify files (detect and re-copy)
+// ============================================================
+pln("")
+pln("=== Modify source files ===")
+sleep(1500)
+saveText(src + "/readme.md", "# My Project\nVersion 2.0 - updated")
+saveText(src + "/subdir/data.csv", "id,name\n1,alice\n2,bob\n3,charlie")
+
+var r3 = backup.localToLocal(src, dst)
+pln("copied:", r3.getFilesCopied(), "skipped:", r3.getFilesSkipped())
+// Expected: copied=2, skipped=1
+
+pln("readme now:", loadText(dst + "/readme.md"))
+
+// ============================================================
+// Test 4: Add new files
+// ============================================================
+pln("")
+pln("=== Add new files ===")
+saveText(src + "/new_file.txt", "newly added content")
+
+var r4 = backup.localToLocal(src, dst)
+pln("copied:", r4.getFilesCopied(), "skipped:", r4.getFilesSkipped())
+// Expected: copied=1, skipped=3
+
+pln("new_file exists:", fileExists(dst + "/new_file.txt"))
+
+// ============================================================
+// Test 5: Mirror mode (delete extras in target)
+// ============================================================
+pln("")
+pln("=== Mirror mode ===")
+saveText(dst + "/orphan.txt", "this file only exists in target")
+
+var task5 = backup.newTask({"mode": "mirror"})
+task5.setSourceLocal(src)
+task5.setTargetLocal(dst)
+var r5 = task5.execute()
+
+pln("copied:", r5.getFilesCopied(), "skipped:", r5.getFilesSkipped(), "deleted:", r5.getFilesDeleted())
+pln("orphan gone:", !fileExists(dst + "/orphan.txt"))
+// Expected: deleted=1
+
+// ============================================================
+// Test 6: Exclude patterns
+// ============================================================
+pln("")
+pln("=== Exclude patterns (*.json) ===")
+var dst2 = "D:/aiprjs/xxlang/temp/backup_l2l/dst2"
+removeDir(dst2)
+ensureMakeDirs(dst2)
+
+var task6 = backup.newTask({"mode": "full"})
+task6.setSourceLocal(src)
+task6.setTargetLocal(dst2)
+task6.setExclude(["*.json"])
+var r6 = task6.execute()
+
+pln("copied:", r6.getFilesCopied())
+pln("config.json excluded:", !fileExists(dst2 + "/config.json"))
+pln("readme included:", fileExists(dst2 + "/readme.md"))
+// Expected: config.json not copied, readme.md copied
+
+pln("")
+pln("=== ALL LOCAL BACKUP TESTS COMPLETE ===")

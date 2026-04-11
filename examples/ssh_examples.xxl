@@ -12,11 +12,11 @@
 import "ssh"
 
 // Execute a single command and get output
-var output = ssh.exec("192.168.1.100", 22, "root", "password123", "uptime")
+var output = ssh.exec("YOUR_SERVER", 22, "root", "YOUR_PASSWORD", "uptime")
 println("Server uptime:", output)
 
 // Test connection before running commands
-if (ssh.testConnection("192.168.1.100", 22, "root", "password123")) {
+if (ssh.testConnection("YOUR_SERVER", 22, "root", "YOUR_PASSWORD")) {
     println("Server is reachable")
 } else {
     println("Cannot connect to server")
@@ -30,12 +30,12 @@ if (ssh.testConnection("192.168.1.100", 22, "root", "password123")) {
 import "ssh"
 
 // Upload a file (replaces: sshrun -type upload -localPath xxl -remotePath /root/)
-ssh.upload("8.146.231.222", 22, "root", "tmpAdmin_2022",
+ssh.upload("YOUR_SERVER", 22, "root", "YOUR_PASSWORD",
            "xxl-linux", "/root/xxl")
 println("File uploaded successfully!")
 
 // Download a file (replaces: sshrun -type download)
-ssh.download("8.146.231.222", 22, "root", "tmpAdmin_2022",
+ssh.download("YOUR_SERVER", 22, "root", "YOUR_PASSWORD",
              "/root/config.txt", "local_config.txt")
 println("File downloaded successfully!")
 
@@ -52,7 +52,7 @@ import "ssh"
 
 // Create and connect client
 var client = ssh.newClient()
-client.connect("8.146.231.222", 22, "root", "tmpAdmin_2022")
+client.connect("YOUR_SERVER", 22, "root", "YOUR_PASSWORD")
 
 // Check connection status
 println("Connected:", client.is_connected())
@@ -105,7 +105,7 @@ var client3 = ssh.connectWithConfig(config)
 
 import "ssh"
 
-var client = ssh.connect("8.146.231.222", 22, "root", "tmpAdmin_2022")
+var client = ssh.connect("YOUR_SERVER", 22, "root", "YOUR_PASSWORD")
 
 // Create directories
 client.mkdir("/tmp/xxlang_test")
@@ -148,7 +148,7 @@ client.close()
 
 import "ssh"
 
-var client = ssh.connect("8.146.231.222", 22, "root", "tmpAdmin_2022")
+var client = ssh.connect("YOUR_SERVER", 22, "root", "YOUR_PASSWORD")
 
 // Upload entire directory
 client.uploadDir("./project", "/remote/deploy/project")
@@ -167,7 +167,7 @@ client.close()
 
 import "ssh"
 
-var client = ssh.connect("8.146.231.222", 22, "root", "tmpAdmin_2022")
+var client = ssh.connect("YOUR_SERVER", 22, "root", "YOUR_PASSWORD")
 
 // Stream output line by line (good for long-running commands)
 // Note: execStream takes a callback function
@@ -185,7 +185,7 @@ client.close()
 
 import "ssh"
 
-var client = ssh.connect("8.146.231.222", 22, "root", "tmpAdmin_2022")
+var client = ssh.connect("YOUR_SERVER", 22, "root", "YOUR_PASSWORD")
 
 // Create local port forward
 // Access local:8080 -> forwards to internal-service:80 through SSH tunnel
@@ -206,7 +206,7 @@ client.close()
 
 import "ssh"
 
-var client = ssh.connect("8.146.231.222", 22, "root", "tmpAdmin_2022")
+var client = ssh.connect("YOUR_SERVER", 22, "root", "YOUR_PASSWORD")
 
 // Method 1: Run local script content on remote server
 var scriptContent = io.readFile("./deploy.xxl")
@@ -311,7 +311,7 @@ func deployApp(host, user, password, appDir) {
 }
 
 // Usage:
-// deployApp("8.146.231.222", "root", "tmpAdmin_2022", "/opt/myapp")
+// deployApp("YOUR_SERVER", "root", "YOUR_PASSWORD", "/opt/myapp")
 
 
 // ============================================================
@@ -388,7 +388,7 @@ import "ssh"
 //         sshrun -host X -user Y -password Z -cmd "bash /tmp/script.xxl"
 
 // Xxlang equivalent:
-var client = ssh.connect("8.146.231.222", 22, "root", "tmpAdmin_2022")
+var client = ssh.connect("YOUR_SERVER", 22, "root", "YOUR_PASSWORD")
 client.upload("script.xxl", "/tmp/script.xxl")
 var result = client.exec("bash /tmp/script.xxl")
 println(result)
@@ -398,7 +398,7 @@ client.close()
 // sshrun: sshrun -host X -user Y -password Z -cmd "cmd1 && cmd2 && cmd3"
 
 // Xxlang equivalent:
-var client = ssh.connect("8.146.231.222", 22, "root", "tmpAdmin_2022")
+var client = ssh.connect("YOUR_SERVER", 22, "root", "YOUR_PASSWORD")
 
 // Single command with chaining
 var result = client.exec("cmd1 && cmd2 && cmd3")
@@ -414,14 +414,14 @@ client.close()
 // sshrun: sshrun -host X -user Y -password Z -type download -remotePath /etc/app/config.json -localPath ./config.json
 
 // Xxlang equivalent:
-ssh.download("8.146.231.222", 22, "root", "tmpAdmin_2022",
+ssh.download("YOUR_SERVER", 22, "root", "YOUR_PASSWORD",
              "/etc/app/config.json", "./config.json")
 
 // ========== sshrun Pattern 4: Check Remote File ==========
 // sshrun: sshrun -host X -user Y -password Z -cmd "test -f /path/file && echo exists"
 
 // Xxlang equivalent:
-var client = ssh.connect("8.146.231.222", 22, "root", "tmpAdmin_2022")
+var client = ssh.connect("YOUR_SERVER", 22, "root", "YOUR_PASSWORD")
 if (client.exists("/path/file")) {
     println("File exists!")
 }
@@ -431,11 +431,11 @@ client.close()
 // sshrun: sshrun -host X -user Y -password Z -cmd "cat /path/file"
 
 // Xxlang equivalent:
-var client = ssh.connect("8.146.231.222", 22, "root", "tmpAdmin_2022")
+var client = ssh.connect("YOUR_SERVER", 22, "root", "YOUR_PASSWORD")
 var content = client.readFile("/path/file")
 println(content)
 // Or use shortcut
-var content2 = io.readFileFromSSH("8.146.231.222", 22, "root", "tmpAdmin_2022", "/path/file")
+var content2 = io.readFileFromSSH("YOUR_SERVER", 22, "root", "YOUR_PASSWORD", "/path/file")
 client.close()
 
 

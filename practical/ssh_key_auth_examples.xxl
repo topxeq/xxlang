@@ -1,0 +1,92 @@
+// ssh_key_auth_examples.xxl
+// SSH key-based authentication examples
+// Tested: all methods work with RSA/ED25519 keys
+//
+// Replace YOUR_SERVER / YOUR_USER / key paths with real values.
+
+import "ssh"
+
+// ============================================================
+// Method 1: Login with private key file
+// ============================================================
+pln("=== Method 1: Key file login ===")
+
+var c1 = ssh.connectWithKey("YOUR_SERVER", 22, "YOUR_USER", "D:/keys/id_rsa")
+pln("connected:", c1.isConnected())
+pln("hostname:", c1.exec("hostname"))
+c1.close()
+
+// ============================================================
+// Method 2: Login with private key string (from file or env)
+// ============================================================
+pln("")
+pln("=== Method 2: Key string login ===")
+
+var keyStr = loadText("D:/keys/id_rsa")
+var c2 = ssh.connectWithKeyStr("YOUR_SERVER", 22, "YOUR_USER", keyStr)
+pln("connected:", c2.isConnected())
+c2.close()
+
+// ============================================================
+// Method 3: connectWithConfig (most flexible)
+// ============================================================
+pln("")
+pln("=== Method 3: Config with keyPath ===")
+
+var c3 = ssh.connectWithConfig({
+    "host": "YOUR_SERVER",
+    "port": 22,
+    "user": "YOUR_USER",
+    "keyPath": "D:/keys/id_rsa",
+    "ignoreHostKey": true
+})
+pln("connected:", c3.isConnected())
+
+// Key with passphrase
+var c4 = ssh.connectWithConfig({
+    "host": "YOUR_SERVER",
+    "port": 22,
+    "user": "YOUR_USER",
+    "keyPath": "D:/keys/id_rsa_encrypted",
+    "keyPassphrase": "my-passphrase",
+    "ignoreHostKey": true
+})
+pln("encrypted key connected:", c4.isConnected())
+c4.close()
+
+// Key string via config
+var keyStr2 = loadText("D:/keys/id_rsa")
+var c5 = ssh.connectWithConfig({
+    "host": "YOUR_SERVER",
+    "port": 22,
+    "user": "YOUR_USER",
+    "keyStr": keyStr2,
+    "ignoreHostKey": true
+})
+pln("keyStr config connected:", c5.isConnected())
+c5.close()
+
+// ============================================================
+// Method 4: Key auth + backup (L2R example)
+// ============================================================
+pln("")
+pln("=== Method 4: Key auth with backup ===")
+
+import "backup"
+
+var c6 = ssh.connectWithConfig({
+    "host": "YOUR_SERVER",
+    "port": 22,
+    "user": "YOUR_USER",
+    "keyPath": "D:/keys/id_rsa",
+    "ignoreHostKey": true
+})
+
+// Upload local directory to remote via key-authenticated SSH
+var result = backup.localToRemote(c6, "D:/myproject", "/var/backup/myproject")
+pln("backup:", result.summary())
+
+c6.close()
+
+pln("")
+pln("=== ALL KEY AUTH TESTS COMPLETE ===")

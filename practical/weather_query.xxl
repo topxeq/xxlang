@@ -1,0 +1,84 @@
+// weather_query.xxl
+// Query current weather for multiple cities via Open-Meteo public API
+// No API key required. Free and open.
+//
+// API: https://open-meteo.com/
+// Data: temperature, humidity, "feels like", wind, weather description
+// Tested: working as of 2026-04
+
+// WMO weather code to human-readable description
+var wmoDesc = {
+    "0": "Clear sky",
+    "1": "Mainly clear",
+    "2": "Partly cloudy",
+    "3": "Overcast",
+    "45": "Fog",
+    "48": "Rime fog",
+    "51": "Light drizzle",
+    "53": "Moderate drizzle",
+    "55": "Dense drizzle",
+    "61": "Slight rain",
+    "63": "Moderate rain",
+    "65": "Heavy rain",
+    "71": "Slight snow",
+    "73": "Moderate snow",
+    "75": "Heavy snow",
+    "80": "Slight showers",
+    "81": "Moderate showers",
+    "82": "Violent showers",
+    "95": "Thunderstorm",
+    "96": "Thunderstorm with hail",
+    "99": "Thunderstorm with heavy hail"
+}
+
+// showWeather fetches and displays weather for a given city.
+// Parameters: name (string), lat (float), lon (float)
+func showWeather(name, lat, lon) {
+    var url = "https://api.open-meteo.com/v1/forecast?" +
+        "latitude=" + toStr(lat) +
+        "&longitude=" + toStr(lon) +
+        "&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m" +
+        "&timezone=auto"
+
+    var d = getWebObject(url)
+
+    if (typeOf(d) != "MAP") {
+        pln(name, ": failed to fetch weather")
+        return
+    }
+
+    var cur = d["current"]
+    var temp = cur["temperature_2m"]
+    var humidity = cur["relative_humidity_2m"]
+    var feels = cur["apparent_temperature"]
+    var windSpeed = cur["wind_speed_10m"]
+    var windDeg = cur["wind_direction_10m"]
+    var code = toStr(int(cur["weather_code"]))
+    var time = cur["time"]
+
+    var desc = wmoDesc[code]
+    if (desc == null) {
+        desc = "Code " + code
+    }
+
+    pln("[" + name + "] " + time)
+    pln("  Weather:  ", desc)
+    pln("  Temp:     ", temp, "C (feels", feels, "C)")
+    pln("  Humidity: ", humidity, "%")
+    pln("  Wind:     ", windSpeed, "km/h, direction", windDeg, "deg")
+    pln("")
+}
+
+// ============================================================
+// Query weather for each city
+// ============================================================
+pln("=== Current Weather (Open-Meteo API) ===")
+pln("")
+
+showWeather("Beijing", 39.9042, 116.4074)
+showWeather("Shanghai", 31.2304, 121.4737)
+showWeather("Tokyo", 35.6762, 139.6503)
+showWeather("London", 51.5074, -0.1278)
+showWeather("New York", 40.7128, -74.006)
+
+pln("=== Done ===")

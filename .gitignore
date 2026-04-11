@@ -40,3 +40,13 @@ docs/AWESOME_GO_SUBMISSION.md
 # Benchmark reports
 benchmarks/*.md
 !benchmarks/README.md
+
+# Release build artifacts
+release-v*/
+
+# Temp files
+temp/
+
+# OS files
+.DS_Store
+Thumbs.db

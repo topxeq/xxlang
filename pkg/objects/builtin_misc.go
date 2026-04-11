@@ -522,7 +522,14 @@ func cleanPath(p string) string {
 	return filepath.Clean(p)
 }
 
-// isAbsPath checks if path is absolute
+// isAbsPath checks if path is absolute (supports both Unix and Windows style)
 func isAbsPath(p string) bool {
-	return filepath.IsAbs(p)
+	if filepath.IsAbs(p) {
+		return true
+	}
+	// On Windows, Unix-style absolute paths (/foo) are not recognized by filepath.IsAbs
+	if len(p) > 0 && p[0] == '/' {
+		return true
+	}
+	return false
 }

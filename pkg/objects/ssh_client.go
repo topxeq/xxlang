@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -465,7 +466,7 @@ func (c *SSHClient) writeFileInternal(remotePath, content string) error {
 	}
 
 	// Create parent directory if needed
-	dir := filepath.Dir(remotePath)
+	dir := path.Dir(remotePath)
 	if dir != "." && dir != "/" && dir != "" {
 		c.sftpMkdir(dir)
 	}
@@ -576,10 +577,11 @@ func (c *SSHClient) initSftp() error {
 		return fmt.Errorf("failed to start SFTP subsystem: %w", err)
 	}
 
-	// Send SFTP INIT packet
-	initPkt := make([]byte, 5)
-	binary.BigEndian.PutUint32(initPkt[0:4], 1) // length
+	// Send SFTP INIT packet: [length=5][SSH_FXP_INIT][version=3]
+	initPkt := make([]byte, 9)
+	binary.BigEndian.PutUint32(initPkt[0:4], 5) // payload length
 	initPkt[4] = byte(sshFxpInit)
+	binary.BigEndian.PutUint32(initPkt[5:9], 3) // SFTP protocol version 3
 	if _, err := channel.Write(initPkt); err != nil {
 		channel.Close()
 		return fmt.Errorf("failed to send SFTP INIT: %w", err)
@@ -640,16 +642,24 @@ func (c *SSHClient) sftpOpenFile(path string, flags uint32) (string, error) {
 	if len(resp) == 0 || resp[0] != byte(sshFxpHandle) {
 		return "", fmt.Errorf("expected SFTP HANDLE response, got type %d", resp[0])
 	}
-	return string(resp[1:5]), nil
+	if len(resp) < 9 {
+		return "", fmt.Errorf("SFTP HANDLE response too short")
+	}
+	handleLen := binary.BigEndian.Uint32(resp[5:9])
+	if int(9+handleLen) > len(resp) {
+		return "", fmt.Errorf("SFTP HANDLE response truncated")
+	}
+	return string(resp[9 : 9+handleLen]), nil
 }
 
 // sftpCloseHandle closes an SFTP file handle.
 func (c *SSHClient) sftpCloseHandle(handle string) error {
 	id := c.sftpNextRequestID()
-	pkt := make([]byte, 1+4+4)
+	pkt := make([]byte, 1+4+4+len(handle))
 	pkt[0] = byte(sshFxpClose)
 	binary.BigEndian.PutUint32(pkt[1:5], id)
-	copy(pkt[5:9], handle)
+	binary.BigEndian.PutUint32(pkt[5:9], uint32(len(handle)))
+	copy(pkt[9:], handle)
 
 	if err := c.sftpSendPacket(pkt); err != nil {
 		return err
@@ -660,13 +670,15 @@ func (c *SSHClient) sftpCloseHandle(handle string) error {
 // sftpWriteChunk writes a chunk of data at the given offset.
 func (c *SSHClient) sftpWriteChunk(handle string, offset uint64, data []byte) error {
 	id := c.sftpNextRequestID()
-	pkt := make([]byte, 1+4+4+8+4+len(data))
+	pkt := make([]byte, 1+4+4+len(handle)+8+4+len(data))
 	pkt[0] = byte(sshFxpWrite)
 	binary.BigEndian.PutUint32(pkt[1:5], id)
-	copy(pkt[5:9], handle)
-	binary.BigEndian.PutUint64(pkt[9:17], offset)
-	binary.BigEndian.PutUint32(pkt[17:21], uint32(len(data)))
-	copy(pkt[21:], data)
+	binary.BigEndian.PutUint32(pkt[5:9], uint32(len(handle)))
+	copy(pkt[9:9+len(handle)], handle)
+	pos := 9 + len(handle)
+	binary.BigEndian.PutUint64(pkt[pos:pos+8], offset)
+	binary.BigEndian.PutUint32(pkt[pos+8:pos+12], uint32(len(data)))
+	copy(pkt[pos+12:], data)
 
 	if err := c.sftpSendPacket(pkt); err != nil {
 		return err
@@ -677,12 +689,14 @@ func (c *SSHClient) sftpWriteChunk(handle string, offset uint64, data []byte) er
 // sftpReadChunk reads a chunk of data at the given offset.
 func (c *SSHClient) sftpReadChunk(handle string, offset uint64, length uint32) ([]byte, error) {
 	id := c.sftpNextRequestID()
-	pkt := make([]byte, 1+4+4+8+4)
+	pkt := make([]byte, 1+4+4+len(handle)+8+4)
 	pkt[0] = byte(sshFxpRead)
 	binary.BigEndian.PutUint32(pkt[1:5], id)
-	copy(pkt[5:9], handle)
-	binary.BigEndian.PutUint64(pkt[9:17], offset)
-	binary.BigEndian.PutUint32(pkt[17:21], length)
+	binary.BigEndian.PutUint32(pkt[5:9], uint32(len(handle)))
+	copy(pkt[9:9+len(handle)], handle)
+	pos := 9 + len(handle)
+	binary.BigEndian.PutUint64(pkt[pos:pos+8], offset)
+	binary.BigEndian.PutUint32(pkt[pos+8:pos+12], length)
 
 	if err := c.sftpSendPacket(pkt); err != nil {
 		return nil, err
@@ -701,8 +715,11 @@ func (c *SSHClient) sftpReadChunk(handle string, offset uint64, length uint32) (
 	if resp[0] != byte(sshFxpData) {
 		return nil, fmt.Errorf("expected SFTP DATA response, got type %d", resp[0])
 	}
-	dataLen := binary.BigEndian.Uint32(resp[1:5])
-	return resp[5 : 5+dataLen], nil
+	dataLen := binary.BigEndian.Uint32(resp[5:9])
+	if int(9+dataLen) > len(resp) {
+		return nil, fmt.Errorf("SFTP DATA response too short")
+	}
+	return resp[9 : 9+dataLen], nil
 }
 
 // sftpMkdir creates a remote directory via SFTP.
@@ -808,16 +825,30 @@ func (c *SSHClient) sftpExpectAttrs(expectedID uint32) (*SftpFileInfo, error) {
 	attrFlags := binary.BigEndian.Uint32(resp[pos : pos+4])
 	pos += 4
 
-	if attrFlags&sftpAttrSize != 0 && pos+8 <= len(resp) {
-		info.Size = int64(binary.BigEndian.Uint64(resp[pos : pos+8]))
+	if attrFlags&sftpAttrSize != 0 {
+		if pos+8 <= len(resp) {
+			info.Size = int64(binary.BigEndian.Uint64(resp[pos : pos+8]))
+		}
 		pos += 8
 	}
 	if attrFlags&sftpAttrUidGid != 0 {
 		pos += 8
 	}
-	if attrFlags&sftpAttrPermissions != 0 && pos+4 <= len(resp) {
-		info.Mode = binary.BigEndian.Uint32(resp[pos : pos+4])
-		info.IsDir = (info.Mode & 0040000) != 0
+	if attrFlags&sftpAttrPermissions != 0 {
+		if pos+4 <= len(resp) {
+			info.Mode = binary.BigEndian.Uint32(resp[pos : pos+4])
+			info.IsDir = (info.Mode & 0040000) != 0
+		}
+		pos += 4
+	}
+	if attrFlags&sftpAttrAcmodtime != 0 {
+		if pos+8 <= len(resp) {
+			pos += 4 // skip atime
+			info.ModTime = int64(binary.BigEndian.Uint32(resp[pos : pos+4]))
+			pos += 4
+		} else {
+			pos += 8
+		}
 	}
 	return info, nil
 }
@@ -886,15 +917,20 @@ func (c *SSHClient) sftpListDir(path string) ([]SftpFileInfo, error) {
 	if len(resp) == 0 || resp[0] != byte(sshFxpHandle) {
 		return nil, fmt.Errorf("expected SFTP HANDLE response for opendir")
 	}
-	handle := string(resp[1:5])
+	if len(resp) < 9 {
+			return nil, fmt.Errorf("SFTP HANDLE response too short for opendir")
+		}
+	handleLen := binary.BigEndian.Uint32(resp[5:9])
+	handle := string(resp[9 : 9+handleLen])
 
 	var result []SftpFileInfo
 	for {
 		id := c.sftpNextRequestID()
-		pkt := make([]byte, 1+4+4)
+		pkt := make([]byte, 1+4+4+len(handle))
 		pkt[0] = byte(sshFxpReaddir)
 		binary.BigEndian.PutUint32(pkt[1:5], id)
-		copy(pkt[5:9], handle)
+		binary.BigEndian.PutUint32(pkt[5:9], uint32(len(handle)))
+		copy(pkt[9:], handle)
 		if err := c.sftpSendPacket(pkt); err != nil {
 			break
 		}
@@ -904,8 +940,8 @@ func (c *SSHClient) sftpListDir(path string) ([]SftpFileInfo, error) {
 			break
 		}
 
-		count := binary.BigEndian.Uint32(resp[1:5])
-		pos := 5
+		count := binary.BigEndian.Uint32(resp[5:9])
+		pos := 9
 		for i := uint32(0); i < count; i++ {
 			if pos+4 > len(resp) {
 				break
@@ -934,6 +970,7 @@ func (c *SSHClient) sftpListDir(path string) ([]SftpFileInfo, error) {
 
 			var size int64
 			var mode uint32
+			var modTime int64
 			isDir := false
 
 			if attrFlags&sftpAttrSize != 0 {
@@ -945,23 +982,32 @@ func (c *SSHClient) sftpListDir(path string) ([]SftpFileInfo, error) {
 			if attrFlags&sftpAttrUidGid != 0 {
 				pos += 8
 			}
-			if attrFlags&sftpAttrPermissions != 0 && pos+4 <= len(resp) {
-				mode = binary.BigEndian.Uint32(resp[pos : pos+4])
-				isDir = (mode & 0040000) != 0
+			if attrFlags&sftpAttrPermissions != 0 {
+				if pos+4 <= len(resp) {
+					mode = binary.BigEndian.Uint32(resp[pos : pos+4])
+					isDir = (mode & 0040000) != 0
+				}
 				pos += 4
 			}
 			if attrFlags&sftpAttrAcmodtime != 0 {
-				pos += 8
+				if pos+8 <= len(resp) {
+					pos += 4
+					modTime = int64(binary.BigEndian.Uint32(resp[pos : pos+4]))
+					pos += 4
+				} else {
+					pos += 8
+				}
 			}
 
 			if name == "." || name == ".." {
 				continue
 			}
 			result = append(result, SftpFileInfo{
-				Name:  name,
-				Size:  size,
-				Mode:  mode,
-				IsDir: isDir,
+				Name:    name,
+				Size:    size,
+				Mode:    mode,
+				ModTime: modTime,
+				IsDir:   isDir,
 			})
 		}
 	}
@@ -987,10 +1033,11 @@ func (c *SSHClient) sftpWalkDir(path string) ([]SftpFileInfo, error) {
 			result = append(result, sub...)
 		} else {
 			result = append(result, SftpFileInfo{
-				Name:  fullPath,
-				Size:  entry.Size,
-				Mode:  entry.Mode,
-				IsDir: false,
+				Name:    fullPath,
+				Size:    entry.Size,
+				Mode:    entry.Mode,
+				ModTime: entry.ModTime,
+				IsDir:   false,
 			})
 		}
 	}
@@ -998,18 +1045,18 @@ func (c *SSHClient) sftpWalkDir(path string) ([]SftpFileInfo, error) {
 }
 
 // sftpMkdirAll creates a directory and all parents via SFTP.
-func (c *SSHClient) sftpMkdirAll(path string) error {
-	info, err := c.sftpStat(path)
+func (c *SSHClient) sftpMkdirAll(dirPath string) error {
+	info, err := c.sftpStat(dirPath)
 	if err == nil && info.IsDir {
 		return nil
 	}
-	parent := filepath.Dir(path)
-	if parent != path && parent != "." && parent != "/" && parent != "" {
+	parent := path.Dir(dirPath)
+	if parent != dirPath && parent != "." && parent != "/" && parent != "" {
 		if err := c.sftpMkdirAll(parent); err != nil {
 			return err
 		}
 	}
-	c.sftpMkdir(path)
+	c.sftpMkdir(dirPath)
 	return nil
 }
 
@@ -1051,7 +1098,7 @@ func (c *SSHClient) Upload(localPath, remotePath string) error {
 	}
 
 	// Create remote directory if needed
-	remoteDir := filepath.Dir(remotePath)
+	remoteDir := path.Dir(remotePath)
 	if remoteDir != "." && remoteDir != "/" && remoteDir != "" {
 		c.sftpMkdir(remoteDir)
 	}
@@ -1211,7 +1258,8 @@ func (c *SSHClient) Stat(remotePath string) (map[string]interface{}, error) {
 		"path":   remotePath,
 		"isDir":  info.IsDir,
 		"isFile": !info.IsDir,
-		"mode":   sftpModeToString(info.Mode, info.IsDir),
+		"mode":    sftpModeToString(info.Mode, info.IsDir),
+	"modTime": info.ModTime,
 	}, nil
 }
 
@@ -1299,7 +1347,8 @@ func (c *SSHClient) ListDir(remotePath string) ([]map[string]interface{}, error)
 			"name":  e.Name,
 			"size":  e.Size,
 			"isDir": e.IsDir,
-			"mode":  sftpModeToString(e.Mode, e.IsDir),
+			"mode":    sftpModeToString(e.Mode, e.IsDir),
+		"modTime": e.ModTime,
 		})
 	}
 	return result, nil
@@ -1324,9 +1373,11 @@ func (c *SSHClient) WalkDir(remotePath string) ([]map[string]interface{}, error)
 	result := make([]map[string]interface{}, 0, len(entries))
 	for _, e := range entries {
 		result = append(result, map[string]interface{}{
-			"path":  e.Name,
-			"size":  e.Size,
-			"isDir": e.IsDir,
+			"path":    e.Name,
+			"size":    e.Size,
+			"isDir":   e.IsDir,
+			"modTime": e.ModTime,
+			"mode":    sftpModeToString(e.Mode, e.IsDir),
 		})
 	}
 	return result, nil
@@ -1505,7 +1556,8 @@ func (v *hostKeyVerifier) callback() ssh.HostKeyCallback {
 		}
 
 		if !ok {
-			return fmt.Errorf("unknown host: %s", hostname)
+			// First connection: accept the key (no record in known_hosts yet)
+			return nil
 		}
 
 		if !bytes.Equal(storedKey.Marshal(), key.Marshal()) {
