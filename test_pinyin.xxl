@@ -1,6 +1,0 @@
-// test_pinyin.xxl - Test toPinYin from locale module
-
-import { toPinYin } from "locale"
-
-pln("Testing toPinYin...")
-pln(toPinYin("你好"))

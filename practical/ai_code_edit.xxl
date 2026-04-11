@@ -1,0 +1,311 @@
+// ai_code_edit.xxl — AI-powered code editing tool
+//
+// Usage:
+//   xxl ai_code_edit.xxl -- --api-key <key> --model <model> --url <base_url> --prompt "instruction" --files <file1> <file2> ...
+//   xxl ai_code_edit.xxl -- --api-key <key> --prompt "add error handling" --files main.go utils.go
+//   xxl ai_code_edit.xxl -- --url http://localhost:11434/v1 --model llama2 --prompt "refactor" --files main.go
+//
+// Options:
+//   --api-key <key>      API key (default: empty, works with Ollama)
+//   --url <base_url>     API base URL (default: https://api.openai.com/v1)
+//   --model <name>       Model name (default: gpt-3.5-turbo)
+//   --prompt <text>      Instruction for the AI (required)
+//   --files <f1> <f2>..  Files to analyze (required, at least 1)
+//   --apply              Apply the plan automatically (default: preview only)
+//   --stream             Stream AI response in real-time
+//   --timeout <seconds>  HTTP timeout in seconds (default: 120)
+//   --help               Show this help message
+
+import "ai"
+import "file"
+import "strings"
+
+// ============================================================
+// Show help
+// ============================================================
+
+func showHelp() {
+    pln("ai_code_edit.xxl - AI-powered code editing tool")
+    pln("")
+    pln("Usage:")
+    pln("  xxl ai_code_edit.xxl -- [options]")
+    pln("")
+    pln("Options:")
+    pln("  --api-key <key>      API key (default: empty for Ollama)")
+    pln("  --url <base_url>     API base URL (default: https://api.openai.com/v1)")
+    pln("  --model <name>       Model name (default: gpt-3.5-turbo)")
+    pln("  --prompt <text>      Instruction for the AI (required)")
+    pln("  --files <f1> <f2>..  Files to analyze (required)")
+    pln("  --apply              Apply the plan automatically")
+    pln("  --stream             Stream AI response in real-time")
+    pln("  --timeout <seconds>  HTTP timeout (default: 120)")
+    pln("  --help               Show this help")
+    pln("")
+    pln("Examples:")
+    pln("  # Use Ollama locally")
+    pln("  xxl ai_code_edit.xxl -- --url http://localhost:11434/v1 --model qwen2.5-coder:7b --prompt \"add logging\" --files main.go")
+    pln("")
+    pln("  # Use OpenAI")
+    pln("  xxl ai_code_edit.xxl -- --api-key sk-xxx --model gpt-4o --prompt \"fix bug\" --files app.go --apply")
+    pln("")
+    pln("  # Use SiliconFlow")
+    pln("  xxl ai_code_edit.xxl -- --url https://api.siliconflow.cn/v1 --api-key sk-xxx --model Qwen/Qwen2.5-Coder-32B-Instruct --prompt \"refactor\" --files src.go --apply")
+}
+
+// ============================================================
+// Parse command-line arguments
+// ============================================================
+
+var apiKey = ""
+var baseUrl = ""
+var modelName = ""
+var prompt = ""
+var files = []
+var doApply = false
+var doStream = false
+var timeout = 120
+
+// argsG layout: [0]=xxl.exe, [1]=script_path, [2]="--", [3..]=our args
+// Build our args array starting from after "--"
+var pargs = []
+var foundSep = false
+for (var argi = 2; argi < len(argsG); argi = argi + 1) {
+    if (!foundSep) {
+        if (argsG[argi] == "--") {
+            foundSep = true
+        }
+        continue
+    }
+    pargs = append(pargs, argsG[argi])
+}
+
+// If no "--" found, try from index 2 anyway
+if (len(pargs) == 0 && len(argsG) > 2) {
+    for (var argi = 2; argi < len(argsG); argi = argi + 1) {
+        pargs = append(pargs, argsG[argi])
+    }
+}
+
+var i = 0
+while (i < len(pargs)) {
+    var a = pargs[i]
+
+    if (a == "--help" || a == "-h") {
+        showHelp()
+        exit(0)
+    }
+
+    if (a == "--api-key") {
+        i = i + 1
+        if (i >= len(pargs)) { pln("Error: --api-key requires a value"); exit(1) }
+        apiKey = pargs[i]
+    } else if (a == "--url") {
+        i = i + 1
+        if (i >= len(pargs)) { pln("Error: --url requires a value"); exit(1) }
+        baseUrl = pargs[i]
+    } else if (a == "--model") {
+        i = i + 1
+        if (i >= len(pargs)) { pln("Error: --model requires a value"); exit(1) }
+        modelName = pargs[i]
+    } else if (a == "--prompt") {
+        i = i + 1
+        if (i >= len(pargs)) { pln("Error: --prompt requires a value"); exit(1) }
+        prompt = pargs[i]
+    } else if (a == "--files") {
+        // Collect all following args until next --option
+        i = i + 1
+        var collecting = true
+        while (collecting) {
+            if (i >= len(pargs)) {
+                collecting = false
+            } else if (strings.hasPrefix(pargs[i], "--")) {
+                collecting = false
+            } else {
+                files = append(files, pargs[i])
+                i = i + 1
+            }
+        }
+        i = i - 1  // compensate for the outer i+1
+    } else if (a == "--apply") {
+        doApply = true
+    } else if (a == "--stream") {
+        doStream = true
+    } else if (a == "--timeout") {
+        i = i + 1
+        if (i >= len(pargs)) { pln("Error: --timeout requires a value"); exit(1) }
+        timeout = toInt(pargs[i])
+    }
+
+    i = i + 1
+}
+
+// Apply defaults
+if (baseUrl == "") {
+    baseUrl = "https://api.openai.com/v1"
+}
+if (modelName == "") {
+    modelName = "gpt-3.5-turbo"
+}
+
+// ============================================================
+// Validate required arguments
+// ============================================================
+
+var hasError = false
+
+if (prompt == "") {
+    pln("Error: --prompt is required")
+    hasError = true
+}
+if (len(files) == 0) {
+    pln("Error: --files is required (at least 1 file)")
+    hasError = true
+}
+
+// Verify all files exist
+var validFiles = []
+for (fi in files) {
+    if (file.exists(fi)) {
+        validFiles = append(validFiles, fi)
+    } else {
+        pln("Warning: file not found, skipping: " + fi)
+    }
+}
+files = validFiles
+
+if (len(files) == 0) {
+    pln("Error: no valid files to process")
+    hasError = true
+}
+
+if (hasError) {
+    pln("")
+    showHelp()
+    exit(1)
+}
+
+// ============================================================
+// Display configuration
+// ============================================================
+
+var keyDisplay = "(none)"
+if (apiKey != "") {
+    keyDisplay = "****" + substr(apiKey, max(0, len(apiKey) - 4))
+}
+
+pln("============================================")
+pln("       AI Code Edit - Configuration")
+pln("============================================")
+pln("  URL:    " + baseUrl)
+pln("  Model:  " + modelName)
+pln("  APIKey: " + keyDisplay)
+pln("  Apply:  " + (doApply ? "YES" : "NO (preview only)"))
+pln("  Stream: " + (doStream ? "YES" : "NO"))
+pln("  Files:  " + join(files, ", "))
+pln("============================================")
+pln("")
+pln("Prompt: " + prompt)
+pln("")
+
+// ============================================================
+// Step 1: Generate code plan
+// ============================================================
+
+pln("--- Generating code plan... ---")
+pln("")
+
+var planResult = ai.codePlan({
+    "baseUrl": baseUrl,
+    "apiKey": apiKey,
+    "model": modelName,
+    "files": files,
+    "prompt": prompt
+})
+
+if (typeOf(planResult) == "ERROR") {
+    pln("ERROR generating plan: " + planResult)
+    exit(1)
+}
+
+// Display the plan
+var steps = planResult["steps"]
+var summary = planResult["summary"]
+
+pln("")
+pln("--- Plan Summary ---")
+if (summary != null) {
+    pln(toStr(summary))
+} else {
+    pln("(no summary)")
+}
+pln("")
+
+if (steps == null || len(steps) == 0) {
+    pln("No changes proposed by AI.")
+    exit(0)
+}
+
+pln("--- Plan Steps (" + toStr(len(steps)) + ") ---")
+for (si in steps) {
+    var step = si
+    var act = toStr(step["action"])
+    var desc = toStr(step["description"])
+    var fp = toStr(step["file"])
+
+    var marker = ""
+    if (act == "create") { marker = "[+CREATE]" }
+    else if (act == "modify") { marker = "[~MODIFY]" }
+    else if (act == "delete") { marker = "[-DELETE]" }
+    else { marker = "[?" + act + "]" }
+
+    pln("  " + marker + " " + fp)
+    pln("    " + desc)
+
+    // Show code preview for create/modify
+    if (act == "modify" || act == "create") {
+        var code = toStr(step["code"])
+        if (code != "" && code != "null") {
+            var lines = split(code, "\n")
+            var showLines = min(8, len(lines))
+            pln("    --- preview (first " + toStr(showLines) + " lines) ---")
+            for (var k = 0; k < showLines; k = k + 1) {
+                pln("    | " + lines[k])
+            }
+            if (len(lines) > 8) {
+                pln("    | ... (" + toStr(len(lines) - 8) + " more lines)")
+            }
+        }
+    }
+    pln("")
+}
+
+// ============================================================
+// Step 2: Apply or skip
+// ============================================================
+
+if (!doApply) {
+    pln("--- Preview mode (no changes made) ---")
+    pln("Re-run with --apply flag to apply these changes.")
+    pln("")
+    pln("Example:")
+    pln("  xxl ai_code_edit.xxl -- --prompt \"" + prompt + "\" --files " + join(files, " ") + " --url " + baseUrl + " --model " + modelName + " --apply")
+    exit(0)
+}
+
+pln("--- Applying plan... ---")
+
+var applyResult = ai.applyPlan(planResult)
+
+pln("")
+pln("--- Results ---")
+pln("Applied: " + toStr(applyResult["applied"]) + " / " + toStr(len(steps)) + " steps")
+
+var applyErrors = applyResult["errors"]
+if (len(applyErrors) > 0) {
+    pln("Errors:")
+    for (e in applyErrors) {
+        pln("  - " + e)
+    }
+} else {
+    pln("All steps applied successfully!")
+}
