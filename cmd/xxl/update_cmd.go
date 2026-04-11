@@ -262,8 +262,8 @@ func getLatestReleaseFromHTML(client *http.Client) (*GitHubRelease, error) {
 		{"linux", "arm64", ".tar.gz"},
 		{"darwin", "amd64", ".tar.gz"},
 		{"darwin", "arm64", ".tar.gz"},
-		{"windows", "amd64", ".zip"},
-		{"windows", "386", ".zip"},
+		{"windows", "amd64", ".tar.gz"},
+		{"windows", "386", ".tar.gz"},
 	}
 
 	for _, p := range platforms {
@@ -291,6 +291,7 @@ func findAssetForPlatform(release *GitHubRelease) (string, string, error) {
 	// Primary pattern: xxlang-{os}-{arch}.{ext}
 	if runtime.GOOS == "windows" {
 		patterns = append(patterns, fmt.Sprintf("xxlang-%s-%s.zip", runtime.GOOS, runtime.GOARCH))
+		patterns = append(patterns, fmt.Sprintf("xxlang-%s-%s.tar.gz", runtime.GOOS, runtime.GOARCH))
 	} else {
 		patterns = append(patterns, fmt.Sprintf("xxlang-%s-%s.tar.gz", runtime.GOOS, runtime.GOARCH))
 	}
@@ -307,8 +308,7 @@ func findAssetForPlatform(release *GitHubRelease) (string, string, error) {
 		assetLower := strings.ToLower(asset.Name)
 		if strings.Contains(assetLower, runtime.GOOS) &&
 			strings.Contains(assetLower, runtime.GOARCH) {
-			if (runtime.GOOS == "windows" && strings.HasSuffix(asset.Name, ".zip")) ||
-				(runtime.GOOS != "windows" && strings.HasSuffix(asset.Name, ".tar.gz")) {
+			if strings.HasSuffix(asset.Name, ".zip") || strings.HasSuffix(asset.Name, ".tar.gz") {
 				return asset.URL, asset.Name, nil
 			}
 		}
