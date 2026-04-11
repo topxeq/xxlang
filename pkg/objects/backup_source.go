@@ -33,6 +33,8 @@ type BackupSource interface {
 	ReadFile(relPath string) ([]byte, error)
 	// WriteFile writes content to file (relative path).
 	WriteFile(relPath string, content []byte) error
+	// WriteFileWithTime writes content and preserves modification time.
+	WriteFileWithTime(relPath string, content []byte, mtime time.Time) error
 	// DeleteFile deletes a file (relative path).
 	DeleteFile(relPath string) error
 	// MkdirAll creates directory with parents (relative path).
@@ -121,6 +123,15 @@ func (s *LocalSource) WriteFile(relPath string, content []byte) error {
 		return err
 	}
 	return os.WriteFile(fullPath, content, 0644)
+}
+
+// WriteFileWithTime writes content and preserves modification time.
+func (s *LocalSource) WriteFileWithTime(relPath string, content []byte, mtime time.Time) error {
+	if err := s.WriteFile(relPath, content); err != nil {
+		return err
+	}
+	fullPath := filepath.Join(s.BasePath, relPath)
+	return os.Chtimes(fullPath, mtime, mtime)
 }
 
 // DeleteFile deletes a file.
@@ -286,6 +297,11 @@ func (s *RemoteSource) WriteFile(relPath string, content []byte) error {
 		s.Client.MkdirAll(dir)
 	}
 	return s.Client.WriteFile(fullPath, string(content))
+}
+
+// WriteFileWithTime writes content to remote file (mtime not preserved for remote).
+func (s *RemoteSource) WriteFileWithTime(relPath string, content []byte, mtime time.Time) error {
+	return s.WriteFile(relPath, content)
 }
 
 // DeleteFile deletes a remote file.

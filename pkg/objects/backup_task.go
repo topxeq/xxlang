@@ -444,8 +444,8 @@ func (t *BackupTask) Run() *BackupResult {
 				continue
 			}
 
-			// Write to target
-			err = t.Target.WriteFile(srcFile.Path, content)
+			// Write to target (preserving source mtime)
+			err = t.Target.WriteFileWithTime(srcFile.Path, content, srcFile.MTime)
 			if err != nil {
 				t.Result.AddError("failed to write target file " + srcFile.Path + ": " + err.Error())
 				t.Progress.IncrementProcessed()
@@ -497,7 +497,12 @@ func (t *BackupTask) needCopyFile(srcFile BackupFileInfo, targetMap map[string]B
 	case "sizeTime":
 		// Compare size first
 		if srcFile.Size != targetFile.Size {
-			return true, "size"
+			// Size mismatch - only re-copy if source is also newer
+			// (handles symlinks where stat size differs from actual content size)
+			if srcFile.MTime.Unix() > targetFile.MTime.Unix() {
+				return true, "size"
+			}
+			return false, ""
 		}
 		// Same size, check modification time
 		if srcFile.MTime.Unix() > targetFile.MTime.Unix() {
