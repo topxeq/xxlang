@@ -3,6 +3,8 @@
 package stdlib
 
 import (
+	"fmt"
+
 	"github.com/topxeq/xxlang/pkg/objects"
 )
 
@@ -373,5 +375,25 @@ func applyBackupOptions(task *objects.BackupTask, m *objects.Map) {
 		task.SetExcludePatterns(patterns)
 	} else if patterns, ok := getStringArray("exclude"); ok {
 		task.SetExcludePatterns(patterns)
+	}
+
+	// Apply verbose mode - print progress to stdout
+	if verbose, ok := getBool("verbose"); ok && verbose {
+		var lastPrinted string
+		task.SetOnProgress(func(p *objects.BackupProgress) {
+			key := p.CurrentAction + ":" + p.CurrentFile
+			if key == lastPrinted {
+				return
+			}
+			lastPrinted = key
+			switch p.CurrentAction {
+			case "copy":
+				fmt.Printf("  [COPY] %s\n", p.CurrentFile)
+			case "skip":
+				fmt.Printf("  [SKIP] %s\n", p.CurrentFile)
+			case "delete":
+				fmt.Printf("  [DEL]  %s\n", p.CurrentFile)
+			}
+		})
 	}
 }
