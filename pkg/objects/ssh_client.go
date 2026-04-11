@@ -243,9 +243,18 @@ func (c *SSHClient) Close() error {
 		return nil
 	}
 
-	// Close SFTP channel if open
+	// Close SFTP channel if open (with timeout to prevent hanging)
 	if c.sftpChannel != nil {
-		c.sftpChannel.Close()
+		done := make(chan struct{})
+		go func() {
+			c.sftpChannel.Close()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			// Channel close timed out, proceed anyway
+		}
 		c.sftpChannel = nil
 	}
 

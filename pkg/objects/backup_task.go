@@ -379,6 +379,10 @@ func (t *BackupTask) Run() *BackupResult {
 	// Ensure target base directory exists
 	t.Target.MkdirAll("")
 
+	// Notify: scanning source
+	t.Progress.SetCurrentFile(t.sourcePath(), "scan")
+	t.notifyProgress(t.Progress)
+
 	// List files from source
 	sourceFiles, err := t.Source.ListFiles()
 	if err != nil {
@@ -400,6 +404,11 @@ func (t *BackupTask) Run() *BackupResult {
 
 	// Initialize progress
 	t.Progress.TotalFiles = len(filesToProcess)
+	t.Progress.SetCurrentFile(fmt.Sprintf("%d files found in source", len(filesToProcess)), "scan")
+	t.notifyProgress(t.Progress)
+
+	// Notify: scanning target
+	t.Progress.SetCurrentFile(t.targetPath(), "scanTarget")
 	t.notifyProgress(t.Progress)
 
 	// Build target file map for quick lookup

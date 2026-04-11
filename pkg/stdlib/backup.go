@@ -387,6 +387,10 @@ func applyBackupOptions(task *objects.BackupTask, m *objects.Map) {
 			}
 			lastPrinted = key
 			switch p.CurrentAction {
+			case "scan":
+				fmt.Printf("  Scanning source: %s ...\n", p.CurrentFile)
+			case "scanTarget":
+				fmt.Printf("  Scanning target: %s ...\n", p.CurrentFile)
 			case "copy":
 				fmt.Printf("  [COPY] %s\n", p.CurrentFile)
 			case "skip":
