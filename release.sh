@@ -62,12 +62,7 @@ build_platform() {
         binary_name="xxl"
     fi
 
-    local archive_name
-    if [ "$os" = "windows" ]; then
-        archive_name="xxlang-${os}-${arch}.zip"
-    else
-        archive_name="xxlang-${os}-${arch}.tar.gz"
-    fi
+    local archive_name="xxlang-${os}-${arch}.tar.gz"
 
     info "Building for $os/$arch..."
 
@@ -92,13 +87,14 @@ build_platform() {
     info "Creating archive: $archive_name"
 
     # Use absolute path for archive
-    local archive_path="$(cd "$output_dir" && pwd)/${archive_name}"
+    local archive_path
+    archive_path="$(cd "$output_dir" && pwd)/${archive_name}"
 
     if [ "$os" = "windows" ]; then
-        # Create zip for Windows (includes both xxl.exe and xxlw.exe)
-        (cd "$build_dir" && zip -q "$archive_path" xxl.exe xxlw.exe)
+        # tar.gz for Windows (includes both xxl.exe and xxlw.exe)
+        (cd "$build_dir" && tar -czf "$archive_path" xxl.exe xxlw.exe)
     else
-        # Create tar.gz for Linux/macOS
+        # tar.gz for Linux/macOS
         (cd "$build_dir" && tar -czf "$archive_path" "$binary_name")
     fi
 
