@@ -1,3 +1,4 @@
+//go:build amd64 && !windows
 // +build amd64,!windows
 
 // pkg/jit/jit_true_recursive_test.go
@@ -33,8 +34,8 @@ func TestIterativeFibJIT(t *testing.T) {
 		Instructions:  []byte{}, // Will be detected as fib pattern
 	}
 
-	compiler := NewTrueRecursiveJITCompiler(config)
-	code, err := compiler.Compile(fn, nil)
+	recComp := NewTrueRecursiveJITCompiler(config)
+	code, err := recComp.Compile(fn, nil)
 	if err != nil {
 		t.Fatalf("Iterative compilation failed: %v", err)
 	}
@@ -140,8 +141,9 @@ func TestTrueRecursiveFibJIT(t *testing.T) {
 	}
 }
 
-// TestIterativeFibPerformance tests performance of SAFE iterative Fibonacci JIT
-func TestIterativeFibPerformance(t *testing.T) {
+// TestIterativeFibPerformanceTrueRec tests performance of SAFE iterative Fibonacci JIT
+// using the TrueRecursiveJITCompiler's iterative mode
+func TestIterativeFibPerformanceTrueRec(t *testing.T) {
 	config := JITConfig{
 		HotThreshold: 1,
 		MaxCodeSize:  16384,
@@ -154,9 +156,8 @@ func TestIterativeFibPerformance(t *testing.T) {
 		Instructions:  []byte{},
 	}
 
-	// Use Compile() which generates SAFE iterative code
-	compiler := NewTrueRecursiveJITCompiler(config)
-	code, err := compiler.Compile(fn, nil)
+	recCompiler := NewTrueRecursiveJITCompiler(config)
+	code, err := recCompiler.Compile(fn, nil)
 	if err != nil {
 		t.Fatalf("Compilation failed: %v", err)
 	}
@@ -274,8 +275,8 @@ func BenchmarkIterativeFib10(b *testing.B) {
 	config := JITConfig{HotThreshold: 1, MaxCodeSize: 16384, Debug: false}
 
 	fn := &compiler.CompiledFunction{NumLocals: 1, NumParameters: 1, Instructions: []byte{}}
-	compiler := NewTrueRecursiveJITCompiler(config)
-	code, _ := compiler.Compile(fn, nil) // Uses safe iterative version
+	recComp := NewTrueRecursiveJITCompiler(config)
+	code, _ := recComp.Compile(fn, nil) // Uses safe iterative version
 
 	jitCompiler := NewJITCompiler(config)
 	defer jitCompiler.Cleanup()
@@ -294,8 +295,8 @@ func BenchmarkIterativeFib20(b *testing.B) {
 	config := JITConfig{HotThreshold: 1, MaxCodeSize: 16384, Debug: false}
 
 	fn := &compiler.CompiledFunction{NumLocals: 1, NumParameters: 1, Instructions: []byte{}}
-	compiler := NewTrueRecursiveJITCompiler(config)
-	code, _ := compiler.Compile(fn, nil)
+	recComp := NewTrueRecursiveJITCompiler(config)
+	code, _ := recComp.Compile(fn, nil)
 
 	jitCompiler := NewJITCompiler(config)
 	defer jitCompiler.Cleanup()
@@ -314,8 +315,8 @@ func BenchmarkIterativeFib30(b *testing.B) {
 	config := JITConfig{HotThreshold: 1, MaxCodeSize: 16384, Debug: false}
 
 	fn := &compiler.CompiledFunction{NumLocals: 1, NumParameters: 1, Instructions: []byte{}}
-	compiler := NewTrueRecursiveJITCompiler(config)
-	code, _ := compiler.Compile(fn, nil)
+	recComp := NewTrueRecursiveJITCompiler(config)
+	code, _ := recComp.Compile(fn, nil)
 
 	jitCompiler := NewJITCompiler(config)
 	defer jitCompiler.Cleanup()
@@ -334,8 +335,8 @@ func BenchmarkIterativeFib35(b *testing.B) {
 	config := JITConfig{HotThreshold: 1, MaxCodeSize: 16384, Debug: false}
 
 	fn := &compiler.CompiledFunction{NumLocals: 1, NumParameters: 1, Instructions: []byte{}}
-	compiler := NewTrueRecursiveJITCompiler(config)
-	code, _ := compiler.Compile(fn, nil)
+	recComp := NewTrueRecursiveJITCompiler(config)
+	code, _ := recComp.Compile(fn, nil)
 
 	jitCompiler := NewJITCompiler(config)
 	defer jitCompiler.Cleanup()
