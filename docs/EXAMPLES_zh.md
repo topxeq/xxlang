@@ -1728,12 +1728,12 @@ pln("总计:", total)
 
 ### 字符级操作
 
-String 是字节导向的，而 Chars 是字符导向的：
+String 和 Chars 都是字符导向的，Chars 提供额外的字符级操作：
 
 ```xxl
-// String 按字节计算
+// String 按字符计算
 var s = "中文测试"
-pln("字符串长度（字节）:", len(s))  // 12 字节
+pln("字符串长度（字符）:", len(s))  // 4 字符
 
 // Chars 按字符计算
 var c = toChars(s)

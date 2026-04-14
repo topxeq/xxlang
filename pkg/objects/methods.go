@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/topxeq/xxlang/pkg/hlbr/dom"
 )
 
 // TypeMethods maps ObjectType -> methodName -> *Builtin
@@ -92,6 +94,9 @@ var TypeMethods = map[ObjectType]map[string]*Builtin{
 	// Backup types
 	BackupTaskType:   backupTaskMethods,
 	BackupResultType: backupResultMethods,
+	// HLBR (headless browser) types
+	HlbrBrowserType: hlbrBrowserMethods,
+	HlbrNodeType:    hlbrNodeMethods,
 }
 
 // GetMethod returns the builtin method for the given object type and method name
@@ -440,7 +445,7 @@ var stringMethods = map[string]*Builtin{
 		if !ok {
 			return newError("receiver for len must be STRING, got %s", args[0].Type())
 		}
-		return NewInt(int64(len(self.Value)))
+		return NewInt(int64(utf8.RuneCountInString(self.Value)))
 	}},
 	"upper": {Fn: func(args ...Object) Object {
 		if len(args) != 1 {
@@ -9619,26 +9624,26 @@ var rodBrowserMethods = map[string]*Builtin{
 		}
 		return self.WaitLoad(args[1:]...)
 	}},
-		"waitStable": {Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for waitStable. got=%d, want=1", len(args))
-			}
-			self, ok := args[0].(*RodBrowser)
-			if !ok {
-				return newError("receiver for waitStable must be ROD_BROWSER, got %s", args[0].Type())
-			}
-			return self.WaitStable(args[1:]...)
-		}},
-		"fullscreen": {Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for fullscreen. got=%d, want=1", len(args))
-			}
-			self, ok := args[0].(*RodBrowser)
-			if !ok {
-				return newError("receiver for fullscreen must be ROD_BROWSER, got %s", args[0].Type())
-			}
-			return self.Fullscreen(args[1:]...)
-		}},
+	"waitStable": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for waitStable. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for waitStable must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.WaitStable(args[1:]...)
+	}},
+	"fullscreen": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for fullscreen. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*RodBrowser)
+		if !ok {
+			return newError("receiver for fullscreen must be ROD_BROWSER, got %s", args[0].Type())
+		}
+		return self.Fullscreen(args[1:]...)
+	}},
 	// JavaScript execution
 	"eval": {Fn: func(args ...Object) Object {
 		if len(args) != 2 {
@@ -10089,321 +10094,862 @@ var rodHTMLElementMethods = map[string]*Builtin{
 	}},
 }
 
-	// ============================================================
-	// BackupTask Methods
-	// ============================================================
+// ============================================================
+// BackupTask Methods
+// ============================================================
 
-	var backupTaskMethods = map[string]*Builtin{
-		"typeOf": {Fn: universalTypeOf},
-		"toStr":  {Fn: universalToStr},
+var backupTaskMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
 
-		// Configuration methods
-		"setSourceLocal": {Fn: func(args ...Object) Object {
-			if len(args) != 2 {
-				return newError("wrong number of arguments for setSourceLocal. got=%d, want=2", len(args))
+	// Configuration methods
+	"setSourceLocal": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for setSourceLocal. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*BackupTask)
+		if !ok {
+			return newError("receiver for setSourceLocal must be BACKUP_TASK, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for setSourceLocal must be STRING, got %s", args[1].Type())
+		}
+		self.SetSourceLocal(path.Value)
+		return NULL
+	}},
+	"setTargetLocal": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for setTargetLocal. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*BackupTask)
+		if !ok {
+			return newError("receiver for setTargetLocal must be BACKUP_TASK, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for setTargetLocal must be STRING, got %s", args[1].Type())
+		}
+		self.SetTargetLocal(path.Value)
+		return NULL
+	}},
+	"setSourceRemote": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for setSourceRemote. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*BackupTask)
+		if !ok {
+			return newError("receiver must be BACKUP_TASK, got %s", args[0].Type())
+		}
+		client, ok := args[1].(*SSHClient)
+		if !ok {
+			return newError("second argument must be SSH_CLIENT, got %s", args[1].Type())
+		}
+		path, ok := args[2].(*String)
+		if !ok {
+			return newError("third argument must be STRING, got %s", args[2].Type())
+		}
+		self.SetSourceRemote(client, path.Value)
+		return NULL
+	}},
+	"setTargetRemote": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for setTargetRemote. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*BackupTask)
+		if !ok {
+			return newError("receiver must be BACKUP_TASK, got %s", args[0].Type())
+		}
+		client, ok := args[1].(*SSHClient)
+		if !ok {
+			return newError("second argument must be SSH_CLIENT, got %s", args[1].Type())
+		}
+		path, ok := args[2].(*String)
+		if !ok {
+			return newError("third argument must be STRING, got %s", args[2].Type())
+		}
+		self.SetTargetRemote(client, path.Value)
+		return NULL
+	}},
+	"setMode": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for setMode. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*BackupTask)
+		if !ok {
+			return newError("receiver for setMode must be BACKUP_TASK, got %s", args[0].Type())
+		}
+		mode, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for setMode must be STRING, got %s", args[1].Type())
+		}
+		self.SetMode(mode.Value)
+		return NULL
+	}},
+	"setCompareStrategy": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for setCompareStrategy. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*BackupTask)
+		if !ok {
+			return newError("receiver for setCompareStrategy must be BACKUP_TASK, got %s", args[0].Type())
+		}
+		strategy, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for setCompareStrategy must be STRING, got %s", args[1].Type())
+		}
+		self.SetCompareStrategy(strategy.Value)
+		return NULL
+	}},
+	"setConflictPolicy": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for setConflictPolicy. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*BackupTask)
+		if !ok {
+			return newError("receiver for setConflictPolicy must be BACKUP_TASK, got %s", args[0].Type())
+		}
+		policy, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for setConflictPolicy must be STRING, got %s", args[1].Type())
+		}
+		self.SetConflictPolicy(policy.Value)
+		return NULL
+	}},
+	"setExclude": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for setExclude. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*BackupTask)
+		if !ok {
+			return newError("receiver for setExclude must be BACKUP_TASK, got %s", args[0].Type())
+		}
+		arr, ok := args[1].(*Array)
+		if !ok {
+			return newError("argument for setExclude must be ARRAY, got %s", args[1].Type())
+		}
+		// Convert array to string slice
+		patterns := make([]string, 0, len(arr.Elements))
+		for _, elem := range arr.Elements {
+			if str, ok := elem.(*String); ok {
+				patterns = append(patterns, str.Value)
 			}
-			self, ok := args[0].(*BackupTask)
-			if !ok {
-				return newError("receiver for setSourceLocal must be BACKUP_TASK, got %s", args[0].Type())
-			}
-			path, ok := args[1].(*String)
-			if !ok {
-				return newError("argument for setSourceLocal must be STRING, got %s", args[1].Type())
-			}
-			self.SetSourceLocal(path.Value)
-			return NULL
-		}},
-		"setTargetLocal": {Fn: func(args ...Object) Object {
-			if len(args) != 2 {
-				return newError("wrong number of arguments for setTargetLocal. got=%d, want=2", len(args))
-			}
-			self, ok := args[0].(*BackupTask)
-			if !ok {
-				return newError("receiver for setTargetLocal must be BACKUP_TASK, got %s", args[0].Type())
-			}
-			path, ok := args[1].(*String)
-			if !ok {
-				return newError("argument for setTargetLocal must be STRING, got %s", args[1].Type())
-			}
-			self.SetTargetLocal(path.Value)
-			return NULL
-		}},
-		"setSourceRemote": {Fn: func(args ...Object) Object {
-			if len(args) != 3 {
-				return newError("wrong number of arguments for setSourceRemote. got=%d, want=3", len(args))
-			}
-			self, ok := args[0].(*BackupTask)
-			if !ok {
-				return newError("receiver must be BACKUP_TASK, got %s", args[0].Type())
-			}
-			client, ok := args[1].(*SSHClient)
-			if !ok {
-				return newError("second argument must be SSH_CLIENT, got %s", args[1].Type())
-			}
-			path, ok := args[2].(*String)
-			if !ok {
-				return newError("third argument must be STRING, got %s", args[2].Type())
-			}
-			self.SetSourceRemote(client, path.Value)
-			return NULL
-		}},
-		"setTargetRemote": {Fn: func(args ...Object) Object {
-			if len(args) != 3 {
-				return newError("wrong number of arguments for setTargetRemote. got=%d, want=3", len(args))
-			}
-			self, ok := args[0].(*BackupTask)
-			if !ok {
-				return newError("receiver must be BACKUP_TASK, got %s", args[0].Type())
-			}
-			client, ok := args[1].(*SSHClient)
-			if !ok {
-				return newError("second argument must be SSH_CLIENT, got %s", args[1].Type())
-			}
-			path, ok := args[2].(*String)
-			if !ok {
-				return newError("third argument must be STRING, got %s", args[2].Type())
-			}
-			self.SetTargetRemote(client, path.Value)
-			return NULL
-		}},
-		"setMode": {Fn: func(args ...Object) Object {
-			if len(args) != 2 {
-				return newError("wrong number of arguments for setMode. got=%d, want=2", len(args))
-			}
-			self, ok := args[0].(*BackupTask)
-			if !ok {
-				return newError("receiver for setMode must be BACKUP_TASK, got %s", args[0].Type())
-			}
-			mode, ok := args[1].(*String)
-			if !ok {
-				return newError("argument for setMode must be STRING, got %s", args[1].Type())
-			}
-			self.SetMode(mode.Value)
-			return NULL
-		}},
-		"setCompareStrategy": {Fn: func(args ...Object) Object {
-			if len(args) != 2 {
-				return newError("wrong number of arguments for setCompareStrategy. got=%d, want=2", len(args))
-			}
-			self, ok := args[0].(*BackupTask)
-			if !ok {
-				return newError("receiver for setCompareStrategy must be BACKUP_TASK, got %s", args[0].Type())
-			}
-			strategy, ok := args[1].(*String)
-			if !ok {
-				return newError("argument for setCompareStrategy must be STRING, got %s", args[1].Type())
-			}
-			self.SetCompareStrategy(strategy.Value)
-			return NULL
-		}},
-		"setConflictPolicy": {Fn: func(args ...Object) Object {
-			if len(args) != 2 {
-				return newError("wrong number of arguments for setConflictPolicy. got=%d, want=2", len(args))
-			}
-			self, ok := args[0].(*BackupTask)
-			if !ok {
-				return newError("receiver for setConflictPolicy must be BACKUP_TASK, got %s", args[0].Type())
-			}
-			policy, ok := args[1].(*String)
-			if !ok {
-				return newError("argument for setConflictPolicy must be STRING, got %s", args[1].Type())
-			}
-			self.SetConflictPolicy(policy.Value)
-			return NULL
-		}},
-		"setExclude": {Fn: func(args ...Object) Object {
-			if len(args) != 2 {
-				return newError("wrong number of arguments for setExclude. got=%d, want=2", len(args))
-			}
-			self, ok := args[0].(*BackupTask)
-			if !ok {
-				return newError("receiver for setExclude must be BACKUP_TASK, got %s", args[0].Type())
-			}
-			arr, ok := args[1].(*Array)
-			if !ok {
-				return newError("argument for setExclude must be ARRAY, got %s", args[1].Type())
-			}
-			// Convert array to string slice
-			patterns := make([]string, 0, len(arr.Elements))
-			for _, elem := range arr.Elements {
-				if str, ok := elem.(*String); ok {
-					patterns = append(patterns, str.Value)
-				}
-			}
-			self.SetExcludePatterns(patterns)
-			return NULL
-		}},
-		"setDryRun": {Fn: func(args ...Object) Object {
-			if len(args) != 2 {
-				return newError("wrong number of arguments for setDryRun. got=%d, want=2", len(args))
-			}
-			self, ok := args[0].(*BackupTask)
-			if !ok {
-				return newError("receiver for setDryRun must be BACKUP_TASK, got %s", args[0].Type())
-			}
-				_ = self // avoid unused variable error
-			// Note: BackupTask currently does not have a dry-run field
-			// This method is a placeholder for future implementation
-			// The argument is accepted but not used yet
-			return NULL
-		}},
-		// Execution methods
-		"execute": {Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for execute. got=%d, want=1", len(args))
-			}
-			self, ok := args[0].(*BackupTask)
-			if !ok {
-				return newError("receiver for execute must be BACKUP_TASK, got %s", args[0].Type())
-			}
-			result := self.Run()
-			return result
-		}},
-		"checkConflicts": {Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for checkConflicts. got=%d, want=1", len(args))
-			}
-			self, ok := args[0].(*BackupTask)
-			if !ok {
-				return newError("receiver for checkConflicts must be BACKUP_TASK, got %s", args[0].Type())
-			}
-			conflicts := self.CheckConflicts()
-			// Convert string slice to array
-			elements := make([]Object, 0, len(conflicts))
-			for _, c := range conflicts {
-				elements = append(elements, NewString(c))
-			}
-			return &Array{Elements: elements}
-		}},
-	}
+		}
+		self.SetExcludePatterns(patterns)
+		return NULL
+	}},
+	"setDryRun": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for setDryRun. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*BackupTask)
+		if !ok {
+			return newError("receiver for setDryRun must be BACKUP_TASK, got %s", args[0].Type())
+		}
+		_ = self // avoid unused variable error
+		// Note: BackupTask currently does not have a dry-run field
+		// This method is a placeholder for future implementation
+		// The argument is accepted but not used yet
+		return NULL
+	}},
+	// Execution methods
+	"execute": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for execute. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BackupTask)
+		if !ok {
+			return newError("receiver for execute must be BACKUP_TASK, got %s", args[0].Type())
+		}
+		result := self.Run()
+		return result
+	}},
+	"checkConflicts": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for checkConflicts. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BackupTask)
+		if !ok {
+			return newError("receiver for checkConflicts must be BACKUP_TASK, got %s", args[0].Type())
+		}
+		conflicts := self.CheckConflicts()
+		// Convert string slice to array
+		elements := make([]Object, 0, len(conflicts))
+		for _, c := range conflicts {
+			elements = append(elements, NewString(c))
+		}
+		return &Array{Elements: elements}
+	}},
+}
 
-	// ============================================================
-	// BackupResult Methods
-	// ============================================================
+// ============================================================
+// BackupResult Methods
+// ============================================================
 
-	var backupResultMethods = map[string]*Builtin{
-		"typeOf": {Fn: universalTypeOf},
-		"toStr":  {Fn: universalToStr},
+var backupResultMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
 
-		// Status methods
-		"isSuccess": {Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for isSuccess. got=%d, want=1", len(args))
-			}
-			self, ok := args[0].(*BackupResult)
-			if !ok {
-				return newError("receiver for isSuccess must be BACKUP_RESULT, got %s", args[0].Type())
-			}
-			return &Bool{Value: self.Success}
-		}},
-		"hasConflicts": {Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for hasConflicts. got=%d, want=1", len(args))
-			}
-			self, ok := args[0].(*BackupResult)
-			if !ok {
-				return newError("receiver for hasConflicts must be BACKUP_RESULT, got %s", args[0].Type())
-			}
-			return &Bool{Value: self.HasConflicts()}
-		}},
-		"hasErrors": {Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for hasErrors. got=%d, want=1", len(args))
-			}
-			self, ok := args[0].(*BackupResult)
-			if !ok {
-				return newError("receiver for hasErrors must be BACKUP_RESULT, got %s", args[0].Type())
-			}
-			return &Bool{Value: self.HasErrors()}
-		}},
-		"summary": {Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for summary. got=%d, want=1", len(args))
-			}
-			self, ok := args[0].(*BackupResult)
-			if !ok {
-				return newError("receiver for summary must be BACKUP_RESULT, got %s", args[0].Type())
-			}
-			return NewString(self.Summary())
-		}},
+	// Status methods
+	"isSuccess": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for isSuccess. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BackupResult)
+		if !ok {
+			return newError("receiver for isSuccess must be BACKUP_RESULT, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.Success}
+	}},
+	"hasConflicts": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for hasConflicts. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BackupResult)
+		if !ok {
+			return newError("receiver for hasConflicts must be BACKUP_RESULT, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.HasConflicts()}
+	}},
+	"hasErrors": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for hasErrors. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BackupResult)
+		if !ok {
+			return newError("receiver for hasErrors must be BACKUP_RESULT, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.HasErrors()}
+	}},
+	"summary": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for summary. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BackupResult)
+		if !ok {
+			return newError("receiver for summary must be BACKUP_RESULT, got %s", args[0].Type())
+		}
+		return NewString(self.Summary())
+	}},
 
-		// Data getter methods
-		"getFilesCopied": {Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for getFilesCopied. got=%d, want=1", len(args))
+	// Data getter methods
+	"getFilesCopied": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getFilesCopied. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BackupResult)
+		if !ok {
+			return newError("receiver for getFilesCopied must be BACKUP_RESULT, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.FilesCopied))
+	}},
+	"getFilesSkipped": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getFilesSkipped. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BackupResult)
+		if !ok {
+			return newError("receiver for getFilesSkipped must be BACKUP_RESULT, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.FilesSkipped))
+	}},
+	"getFilesDeleted": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getFilesDeleted. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BackupResult)
+		if !ok {
+			return newError("receiver for getFilesDeleted must be BACKUP_RESULT, got %s", args[0].Type())
+		}
+		return NewInt(int64(self.FilesDeleted))
+	}},
+	"getBytesTransferred": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getBytesTransferred. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BackupResult)
+		if !ok {
+			return newError("receiver for getBytesTransferred must be BACKUP_RESULT, got %s", args[0].Type())
+		}
+		return NewInt(self.BytesTransferred)
+	}},
+	"getDuration": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getDuration. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BackupResult)
+		if !ok {
+			return newError("receiver for getDuration must be BACKUP_RESULT, got %s", args[0].Type())
+		}
+		return NewFloat(self.Duration)
+	}},
+	"getErrors": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getErrors. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BackupResult)
+		if !ok {
+			return newError("receiver for getErrors must be BACKUP_RESULT, got %s", args[0].Type())
+		}
+		elements := make([]Object, len(self.Errors))
+		for i, e := range self.Errors {
+			elements[i] = NewString(e)
+		}
+		return &Array{Elements: elements}
+	}},
+	"getConflicts": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getConflicts. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*BackupResult)
+		if !ok {
+			return newError("receiver for getConflicts must be BACKUP_RESULT, got %s", args[0].Type())
+		}
+		elements := make([]Object, len(self.Conflicts))
+		for i, c := range self.Conflicts {
+			elements[i] = NewString(c)
+		}
+		return &Array{Elements: elements}
+	}},
+}
+
+// ============================================================
+// HLBR Browser Methods (Lightweight Headless Browser)
+// ============================================================
+
+var hlbrBrowserMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+
+	"navigate": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for navigate. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for navigate must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		url, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for navigate must be STRING, got %s", args[1].Type())
+		}
+		if err := self.browser.Navigate(url.Value); err != nil {
+			return newError("navigate failed: %s", err.Error())
+		}
+		return self
+	}},
+
+	"getTitle": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getTitle. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for getTitle must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		return NewString(self.browser.GetTitle())
+	}},
+
+	"getHTML": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getHTML. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for getHTML must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		return NewString(self.browser.GetHTML())
+	}},
+
+	"getText": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getText. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for getText must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		return NewString(self.browser.GetText())
+	}},
+
+	"getURL": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getURL. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for getURL must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		return NewString(self.browser.GetURL())
+	}},
+
+	"querySelector": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for querySelector. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for querySelector must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		sel, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for querySelector must be STRING, got %s", args[1].Type())
+		}
+		node := self.browser.QuerySelector(sel.Value)
+		if node == nil {
+			return NULL
+		}
+		return NewHlbrNode(node)
+	}},
+
+	"querySelectorAll": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for querySelectorAll. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for querySelectorAll must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		sel, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for querySelectorAll must be STRING, got %s", args[1].Type())
+		}
+		nodes := self.browser.QuerySelectorAll(sel.Value)
+		return hlbrNodesToXxArray(nodes)
+	}},
+
+	"evaluate": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for evaluate. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for evaluate must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		code, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for evaluate must be STRING, got %s", args[1].Type())
+		}
+		result, err := self.browser.Evaluate(code.Value)
+		if err != nil {
+			return newError("evaluate failed: %s", err.Error())
+		}
+		return hlbrGoValueToObject(result)
+	}},
+
+	"screenshotText": {Fn: func(args ...Object) Object {
+		if len(args) < 1 || len(args) > 2 {
+			return newError("wrong number of arguments for screenshotText. got=%d, want=1-2", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for screenshotText must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		width := 80
+		if len(args) == 2 {
+			if w, ok := args[1].(*Int); ok {
+				width = int(w.Value)
+			} else if w, ok := args[1].(*Float); ok {
+				width = int(w.Value)
 			}
-			self, ok := args[0].(*BackupResult)
-			if !ok {
-				return newError("receiver for getFilesCopied must be BACKUP_RESULT, got %s", args[0].Type())
+		}
+		return NewString(self.browser.ScreenshotText(width))
+	}},
+
+	"screenshotTextToFile": {Fn: func(args ...Object) Object {
+		if len(args) < 2 || len(args) > 3 {
+			return newError("wrong number of arguments for screenshotTextToFile. got=%d, want=2-3", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for screenshotTextToFile must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		path, ok := args[1].(*String)
+		if !ok {
+			return newError("path argument for screenshotTextToFile must be STRING, got %s", args[1].Type())
+		}
+		width := 80
+		if len(args) == 3 {
+			if w, ok := args[2].(*Int); ok {
+				width = int(w.Value)
+			} else if w, ok := args[2].(*Float); ok {
+				width = int(w.Value)
 			}
-			return NewInt(int64(self.FilesCopied))
-		}},
-		"getFilesSkipped": {Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for getFilesSkipped. got=%d, want=1", len(args))
+		}
+		if err := self.browser.ScreenshotTextToFile(path.Value, width); err != nil {
+			return newError("screenshotTextToFile failed: %s", err.Error())
+		}
+		return NULL
+	}},
+
+	"setUserAgent": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for setUserAgent. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for setUserAgent must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		ua, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for setUserAgent must be STRING, got %s", args[1].Type())
+		}
+		self.browser.SetUserAgent(ua.Value)
+		return NULL
+	}},
+
+	"setHeader": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for setHeader. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for setHeader must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		key, ok := args[1].(*String)
+		if !ok {
+			return newError("key argument for setHeader must be STRING, got %s", args[1].Type())
+		}
+		val, ok := args[2].(*String)
+		if !ok {
+			return newError("value argument for setHeader must be STRING, got %s", args[2].Type())
+		}
+		self.browser.SetHeader(key.Value, val.Value)
+		return NULL
+	}},
+
+	"getCookies": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getCookies. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for getCookies must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		return hlbrCookiesToXxArray(self.browser.GetCookies())
+	}},
+
+	"history": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for history. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for history must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		urls := self.browser.History()
+		elems := make([]Object, len(urls))
+		for i, u := range urls {
+			elems[i] = NewString(u)
+		}
+		return &Array{Elements: elems}
+	}},
+
+	"back": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for back. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for back must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		if err := self.browser.Back(); err != nil {
+			return newError("back failed: %s", err.Error())
+		}
+		return self
+	}},
+
+	"httpGet": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for httpGet. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for httpGet must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		url, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for httpGet must be STRING, got %s", args[1].Type())
+		}
+		client := self.browser.Client()
+		resp, err := client.Get(url.Value)
+		if err != nil {
+			return newError("httpGet failed: %s", err.Error())
+		}
+		pairs := make(map[HashKey]MapPair)
+		scKey := NewString("statusCode")
+		pairs[scKey.HashKey()] = MapPair{Key: scKey, Value: NewInt(int64(resp.StatusCode))}
+		bodyKey := NewString("body")
+		pairs[bodyKey.HashKey()] = MapPair{Key: bodyKey, Value: NewString(resp.Body)}
+		urlKey := NewString("url")
+		pairs[urlKey.HashKey()] = MapPair{Key: urlKey, Value: NewString(resp.URL)}
+		return &Map{Pairs: pairs}
+	}},
+
+	"httpPost": {Fn: func(args ...Object) Object {
+		if len(args) < 2 || len(args) > 4 {
+			return newError("wrong number of arguments for httpPost. got=%d, want=2-4", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for httpPost must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		url, ok := args[1].(*String)
+		if !ok {
+			return newError("url argument for httpPost must be STRING, got %s", args[1].Type())
+		}
+		contentType := "application/x-www-form-urlencoded"
+		body := ""
+		if len(args) >= 3 {
+			if b, ok := args[2].(*String); ok {
+				body = b.Value
 			}
-			self, ok := args[0].(*BackupResult)
-			if !ok {
-				return newError("receiver for getFilesSkipped must be BACKUP_RESULT, got %s", args[0].Type())
+		}
+		if len(args) >= 4 {
+			if ct, ok := args[3].(*String); ok {
+				contentType = ct.Value
 			}
-			return NewInt(int64(self.FilesSkipped))
-		}},
-		"getFilesDeleted": {Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for getFilesDeleted. got=%d, want=1", len(args))
+		}
+		client := self.browser.Client()
+		resp, err := client.Post(url.Value, contentType, body)
+		if err != nil {
+			return newError("httpPost failed: %s", err.Error())
+		}
+		pairs := make(map[HashKey]MapPair)
+		scKey := NewString("statusCode")
+		pairs[scKey.HashKey()] = MapPair{Key: scKey, Value: NewInt(int64(resp.StatusCode))}
+		bodyKey := NewString("body")
+		pairs[bodyKey.HashKey()] = MapPair{Key: bodyKey, Value: NewString(resp.Body)}
+		return &Map{Pairs: pairs}
+	}},
+
+	"httpPostForm": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for httpPostForm. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for httpPostForm must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		url, ok := args[1].(*String)
+		if !ok {
+			return newError("url argument for httpPostForm must be STRING, got %s", args[1].Type())
+		}
+		dataMap, ok := args[2].(*Map)
+		if !ok {
+			return newError("data argument for httpPostForm must be MAP, got %s", args[2].Type())
+		}
+		data := make(map[string]string)
+		for _, pair := range dataMap.Pairs {
+			key := pair.Key.Inspect()
+			val := ""
+			if s, ok := pair.Value.(*String); ok {
+				val = s.Value
+			} else {
+				val = pair.Value.Inspect()
 			}
-			self, ok := args[0].(*BackupResult)
-			if !ok {
-				return newError("receiver for getFilesDeleted must be BACKUP_RESULT, got %s", args[0].Type())
-			}
-			return NewInt(int64(self.FilesDeleted))
-		}},
-		"getBytesTransferred": {Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for getBytesTransferred. got=%d, want=1", len(args))
-			}
-			self, ok := args[0].(*BackupResult)
-			if !ok {
-				return newError("receiver for getBytesTransferred must be BACKUP_RESULT, got %s", args[0].Type())
-			}
-			return NewInt(self.BytesTransferred)
-		}},
-		"getDuration": {Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for getDuration. got=%d, want=1", len(args))
-			}
-			self, ok := args[0].(*BackupResult)
-			if !ok {
-				return newError("receiver for getDuration must be BACKUP_RESULT, got %s", args[0].Type())
-			}
-			return NewFloat(self.Duration)
-		}},
-		"getErrors": {Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for getErrors. got=%d, want=1", len(args))
-			}
-			self, ok := args[0].(*BackupResult)
-			if !ok {
-				return newError("receiver for getErrors must be BACKUP_RESULT, got %s", args[0].Type())
-			}
-			elements := make([]Object, len(self.Errors))
-			for i, e := range self.Errors {
-				elements[i] = NewString(e)
-			}
-			return &Array{Elements: elements}
-		}},
-		"getConflicts": {Fn: func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments for getConflicts. got=%d, want=1", len(args))
-			}
-			self, ok := args[0].(*BackupResult)
-			if !ok {
-				return newError("receiver for getConflicts must be BACKUP_RESULT, got %s", args[0].Type())
-			}
-			elements := make([]Object, len(self.Conflicts))
-			for i, c := range self.Conflicts {
-				elements[i] = NewString(c)
-			}
-			return &Array{Elements: elements}
-		}},
-	}
+			data[key] = val
+		}
+		client := self.browser.Client()
+		resp, err := client.PostForm(url.Value, data)
+		if err != nil {
+			return newError("httpPostForm failed: %s", err.Error())
+		}
+		pairs := make(map[HashKey]MapPair)
+		scKey := NewString("statusCode")
+		pairs[scKey.HashKey()] = MapPair{Key: scKey, Value: NewInt(int64(resp.StatusCode))}
+		bodyKey := NewString("body")
+		pairs[bodyKey.HashKey()] = MapPair{Key: bodyKey, Value: NewString(resp.Body)}
+		return &Map{Pairs: pairs}
+	}},
+}
+
+// ============================================================
+// HLBR Node Methods (DOM Element)
+// ============================================================
+
+var hlbrNodeMethods = map[string]*Builtin{
+	"typeOf": {Fn: universalTypeOf},
+	"toStr":  {Fn: universalToStr},
+
+	"getText": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getText. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrNode)
+		if !ok {
+			return newError("receiver for getText must be HLBR_NODE, got %s", args[0].Type())
+		}
+		return NewString(self.node.TextContent())
+	}},
+
+	"getHTML": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getHTML. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrNode)
+		if !ok {
+			return newError("receiver for getHTML must be HLBR_NODE, got %s", args[0].Type())
+		}
+		return NewString(self.node.InnerHTML())
+	}},
+
+	"getOuterHTML": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getOuterHTML. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrNode)
+		if !ok {
+			return newError("receiver for getOuterHTML must be HLBR_NODE, got %s", args[0].Type())
+		}
+		return NewString(self.node.OuterHTML())
+	}},
+
+	"getTagName": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getTagName. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrNode)
+		if !ok {
+			return newError("receiver for getTagName must be HLBR_NODE, got %s", args[0].Type())
+		}
+		return NewString(self.node.TagName())
+	}},
+
+	"getAttribute": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for getAttribute. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HlbrNode)
+		if !ok {
+			return newError("receiver for getAttribute must be HLBR_NODE, got %s", args[0].Type())
+		}
+		name, ok := args[1].(*String)
+		if !ok {
+			return newError("name argument for getAttribute must be STRING, got %s", args[1].Type())
+		}
+		val := self.node.GetAttribute(name.Value)
+		return NewString(val)
+	}},
+
+	"setAttribute": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for setAttribute. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*HlbrNode)
+		if !ok {
+			return newError("receiver for setAttribute must be HLBR_NODE, got %s", args[0].Type())
+		}
+		name, ok := args[1].(*String)
+		if !ok {
+			return newError("name argument for setAttribute must be STRING, got %s", args[1].Type())
+		}
+		val, ok := args[2].(*String)
+		if !ok {
+			return newError("value argument for setAttribute must be STRING, got %s", args[2].Type())
+		}
+		self.node.SetAttribute(name.Value, val.Value)
+		return NULL
+	}},
+
+	"hasAttribute": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for hasAttribute. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HlbrNode)
+		if !ok {
+			return newError("receiver for hasAttribute must be HLBR_NODE, got %s", args[0].Type())
+		}
+		name, ok := args[1].(*String)
+		if !ok {
+			return newError("name argument for hasAttribute must be STRING, got %s", args[1].Type())
+		}
+		return &Bool{Value: self.node.HasAttribute(name.Value)}
+	}},
+
+	"getID": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getID. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrNode)
+		if !ok {
+			return newError("receiver for getID must be HLBR_NODE, got %s", args[0].Type())
+		}
+		return NewString(self.node.ID())
+	}},
+
+	"getClassName": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getClassName. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrNode)
+		if !ok {
+			return newError("receiver for getClassName must be HLBR_NODE, got %s", args[0].Type())
+		}
+		return NewString(self.node.ClassName())
+	}},
+
+	"querySelector": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for querySelector. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HlbrNode)
+		if !ok {
+			return newError("receiver for querySelector must be HLBR_NODE, got %s", args[0].Type())
+		}
+		sel, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for querySelector must be STRING, got %s", args[1].Type())
+		}
+		node := dom.QuerySelector(self.node, sel.Value)
+		if node == nil {
+			return NULL
+		}
+		return NewHlbrNode(node)
+	}},
+
+	"querySelectorAll": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for querySelectorAll. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HlbrNode)
+		if !ok {
+			return newError("receiver for querySelectorAll must be HLBR_NODE, got %s", args[0].Type())
+		}
+		sel, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for querySelectorAll must be STRING, got %s", args[1].Type())
+		}
+		nodes := dom.QuerySelectorAll(self.node, sel.Value)
+		return hlbrNodesToXxArray(nodes)
+	}},
+
+	"getChildren": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getChildren. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrNode)
+		if !ok {
+			return newError("receiver for getChildren must be HLBR_NODE, got %s", args[0].Type())
+		}
+		elems := make([]Object, len(self.node.Children))
+		for i, child := range self.node.Children {
+			elems[i] = NewHlbrNode(child)
+		}
+		return &Array{Elements: elems}
+	}},
+
+	"getParent": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getParent. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrNode)
+		if !ok {
+			return newError("receiver for getParent must be HLBR_NODE, got %s", args[0].Type())
+		}
+		if self.node.Parent == nil {
+			return NULL
+		}
+		return NewHlbrNode(self.node.Parent)
+	}},
+}

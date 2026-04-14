@@ -393,7 +393,7 @@ padRight("hello", 3)    // "hello"（已超过宽度）
 ```xxl
 // 字节与字符计数
 var s = "Hello世界🎉"
-pln(len(s))          // 15（字节）
+pln(len(s))          // 8（字符）
 pln(len(toChars(s))) // 8（字符）
 
 // 字符索引
@@ -429,8 +429,8 @@ charLen("Hello世界🎉")   // 8
 charLen("中文测试")      // 4
 charLen("hello")         // 5
 
-// 对比 len() 返回字节数
-pln(len("中文"))    // 6（字节）
+// len() 和 charLen() 对字符串返回相同结果
+pln(len("中文"))    // 2（字符）
 pln(charLen("中文")) // 2（字符）
 ```
 
@@ -596,7 +596,7 @@ pln(b1.toString())  // "hello"
 
 // 包含特殊字符和 Unicode 的字符串
 var b2 = bytes("abc\t中文\n")
-pln(len(b2))  // 11（字节数，非字符数）
+pln(len(b2))  // 11（字节 - 这是 Bytes 对象，不是字符串）
 ```
 
 **从整数值创建（0-255）：**
@@ -647,8 +647,8 @@ var c5 = chars(c1)  // 返回相同的 Chars 对象
 
 **Chars 与 String 的区别：**
 - `chars("中文").len()` 返回 2（字符数）
-- `len("中文")` 返回 6（UTF-8 字节数）
-- 使用 Chars 进行字符级别的操作，如按字符切片
+- `len("中文")` 返回 2（字符数）
+- 使用 Chars 进行额外的字符级操作，如字符切片和迭代
 
 ---
 

@@ -3,6 +3,8 @@
 package stdlib
 
 import (
+	"unicode/utf8"
+
 	"github.com/topxeq/xxlang/pkg/objects"
 )
 
@@ -386,7 +388,7 @@ func init() {
 				case *objects.Array:
 					return Int(int64(len(v.Elements)))
 				case *objects.String:
-					return Int(int64(len(v.Value)))
+					return Int(int64(utf8.RuneCountInString(v.Value)))
 				case *objects.Map:
 					return Int(int64(len(v.Pairs)))
 				default:

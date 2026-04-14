@@ -635,19 +635,20 @@ indexOf("hello", "x")   // -1
 
 ## chars
 
-`chars` 类型提供正确的 Unicode 字符处理，操作基于字符（码点）而非字节。这对于正确处理包含中文、日文、韩文、emoji 等 Unicode 字符的文本至关重要。
+`chars` 类型提供可变的、可迭代的字符级操作。虽然 Xxlang 的字符串已经是面向字符的（基于码点），`chars` 类型提供了额外的能力，如字符迭代、修改和专用的字符级切片 API。这对于处理包含中文、日文、韩文、emoji 等 Unicode 字符的文本非常有用。
 
 ### 为什么需要 chars？
 
-在 Xxlang 中，`string` 类型是面向字节的（类似 Go），这意味着：
-- `len("中文")` 返回 6（字节），而不是 2（字符）
-- `"中文"[0]` 返回字节值，而不是字符
-- `substr` 使用字节索引
+在 Xxlang 中，`string` 类型是面向字符的（基于码点），这意味着：
+- `len("中文")` 返回 2（字符）
+- `"中文"[0]` 返回 "中"（索引 0 处的字符）
+- `substr` 使用字符索引
 
-`chars` 类型提供面向字符的操作：
-- `len(toChars("中文"))` 返回 2（字符）
-- `toChars("中文")[0]` 返回 "中"（完整字符）
-- `subStr` 使用字符索引
+`chars` 类型提供字符串之外的额外字符级操作：
+- 可变的字符访问和修改
+- 基于字符的迭代和转换
+- `subStr` 使用字符索引和专用 API
+- `repeat`、`reverse` 等字符级工具方法
 
 ### toChars(s)
 
@@ -657,7 +658,7 @@ indexOf("hello", "x")   // -1
 var s = "Hello世界🎉"
 var c = toChars(s)
 
-pln(len(s))      // 15（字节）
+pln(len(s))      // 8（字符）
 pln(len(c))      // 8（字符）
 ```
 
@@ -673,7 +674,7 @@ charLen("hello")        // 5
 
 ### chars 索引
 
-通过字符索引（而非字节索引）访问字符：
+通过字符索引访问字符：
 
 ```xxl
 var c = toChars("Hello世界🎉")
@@ -786,13 +787,13 @@ pln(c.repeat(3).toStr())  // "abc世abc世abc世"
 
 ### string 与 chars 对比
 
-| 操作 | `string`（字节） | `chars`（字符） |
+| 操作 | `string`（字符） | `chars`（字符） |
 |-----|-----------------|----------------|
-| `len("中文")` | 6（字节） | N/A |
+| `len("中文")` | 2（字符） | N/A |
 | `len(toChars("中文"))` | N/A | 2（字符） |
-| `"中文"[0]` | 字节值 | N/A |
+| `"中文"[0]` | "中"（字符） | N/A |
 | `toChars("中文")[0]` | N/A | "中"（字符） |
-| `substr(s, 0, 1)` | 字节切片 | N/A |
+| `substr(s, 0, 1)` | 字符切片 | N/A |
 | `c.subStr(0, 1)` | N/A | 字符切片 |
 
 ### 何时使用 chars
@@ -804,9 +805,8 @@ pln(c.repeat(3).toStr())  // "abc世abc世abc世"
 - 处理包含中文、日文、韩文、emoji 等的文本
 
 使用 `string` 当你需要：
-- 使用面向字节的 API
+- 使用低级别字节 API（使用 `byteLen()`、`byteSubstr()`、`byteIndexOf()` 或 `bytes` 模块）
 - 仅处理 ASCII 文本以优化性能
-- 保持与 Go 字符串模型的兼容性
 
 ### 示例：处理多语言文本
 
@@ -815,7 +815,7 @@ var text = "日本語English中文한국어"
 var c = toChars(text)
 
 pln("文本: ", text)
-pln("字节数: ", len(text))       // 20 字节
+pln("字符数: ", len(text))       // 13 字符
 pln("字符数: ", len(c))           // 13 字符
 
 // 遍历每个字符
@@ -855,7 +855,7 @@ stringbuilder.isStringBuilder(42)   // false
 ### StringBuilder 方法
 
 #### write(str)
-追加字符串到构建器。返回写入的字节数。
+追加字符串到构建器。返回写入的字符数。
 
 ```xxl
 var sb = stringbuilder.create()

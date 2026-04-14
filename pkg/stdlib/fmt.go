@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/topxeq/xxlang/pkg/objects"
 )
@@ -166,12 +167,14 @@ func init() {
 				if len(padChar.Value) == 0 {
 					return s
 				}
-				padLen := int(width.Value) - len(s.Value)
+				padLen := int(width.Value) - utf8.RuneCountInString(s.Value)
 				if padLen <= 0 {
 					return s
 				}
-				padding := strings.Repeat(padChar.Value, (padLen+len(padChar.Value)-1)/len(padChar.Value))
-				return String(padding[:padLen] + s.Value)
+				padRunes := []rune(padChar.Value)
+				padding := strings.Repeat(padChar.Value, (padLen+len(padRunes)-1)/len(padRunes))
+				paddingRunes := []rune(padding)
+				return String(string(paddingRunes[:padLen]) + s.Value)
 			}),
 
 			// Format with right padding
@@ -194,12 +197,14 @@ func init() {
 				if len(padChar.Value) == 0 {
 					return s
 				}
-				padLen := int(width.Value) - len(s.Value)
+				padLen := int(width.Value) - utf8.RuneCountInString(s.Value)
 				if padLen <= 0 {
 					return s
 				}
-				padding := strings.Repeat(padChar.Value, (padLen+len(padChar.Value)-1)/len(padChar.Value))
-				return String(s.Value + padding[:padLen])
+				padRunes := []rune(padChar.Value)
+				padding := strings.Repeat(padChar.Value, (padLen+len(padRunes)-1)/len(padRunes))
+				paddingRunes := []rune(padding)
+				return String(s.Value + string(paddingRunes[:padLen]))
 			}),
 
 			// Center string
@@ -222,14 +227,16 @@ func init() {
 				if len(padChar.Value) == 0 {
 					return s
 				}
-				padLen := int(width.Value) - len(s.Value)
+				padLen := int(width.Value) - utf8.RuneCountInString(s.Value)
 				if padLen <= 0 {
 					return s
 				}
 				leftPad := padLen / 2
 				rightPad := padLen - leftPad
-				padding := strings.Repeat(padChar.Value, (int(width.Value)+len(padChar.Value)-1)/len(padChar.Value))
-				return String(padding[:leftPad] + s.Value + padding[:rightPad])
+				padRunes := []rune(padChar.Value)
+				padding := strings.Repeat(padChar.Value, (int(width.Value)+len(padRunes)-1)/len(padRunes))
+				paddingRunes := []rune(padding)
+				return String(string(paddingRunes[:leftPad]) + s.Value + string(paddingRunes[:rightPad]))
 			}),
 
 			// Format table

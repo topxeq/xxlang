@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/topxeq/xxlang/pkg/objects"
 )
@@ -143,7 +144,7 @@ func init() {
 				case *objects.Float:
 					info = append(info, Array(String("value"), String(fmt.Sprintf("%f", v.Value))))
 				case *objects.String:
-					info = append(info, Array(String("length"), Int(int64(len(v.Value)))))
+					info = append(info, Array(String("length"), Int(int64(utf8.RuneCountInString(v.Value)))))
 					info = append(info, Array(String("value"), String(v.Value)))
 				case *objects.Bool:
 					info = append(info, Array(String("value"), String(fmt.Sprintf("%v", v.Value))))
@@ -226,7 +227,7 @@ func init() {
 					}
 				case *objects.String:
 					fmt.Printf("Value: %q\n", v.Value)
-					fmt.Printf("Length: %d\n", len(v.Value))
+					fmt.Printf("Length: %d\n", utf8.RuneCountInString(v.Value))
 				case *objects.Int:
 					fmt.Printf("Value: %d\n", v.Value)
 				case *objects.Float:

@@ -22,7 +22,7 @@ func init() {
 				}
 				switch s := args[0].(type) {
 				case *objects.String:
-					return Int(int64(len(s.Value)))
+					return Int(int64(utf8.RuneCountInString(s.Value)))
 				default:
 					return Error("len() requires a string argument")
 				}
@@ -469,7 +469,7 @@ func init() {
 						padChar = p.Value
 					}
 				}
-				strLen := len(s.Value)
+				strLen := utf8.RuneCountInString(s.Value)
 				if strLen >= int(width.Value) {
 					return args[0]
 				}
@@ -494,7 +494,7 @@ func init() {
 				if !ok {
 					return Error("zfill() requires an integer as second argument")
 				}
-				if len(s.Value) >= int(width.Value) {
+				if utf8.RuneCountInString(s.Value) >= int(width.Value) {
 					return args[0]
 				}
 				sign := ""
@@ -503,7 +503,7 @@ func init() {
 					sign = string(str[0])
 					str = str[1:]
 				}
-				padLen := int(width.Value) - len(s.Value)
+				padLen := int(width.Value) - utf8.RuneCountInString(s.Value)
 				return String(sign + strings.Repeat("0", padLen) + str)
 			}),
 

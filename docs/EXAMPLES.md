@@ -1380,9 +1380,9 @@ pln("Total:", total)
 ### Character-Based Operations
 
 ```xxl
-// String is byte-oriented
+// String is character-oriented
 var s = "中文测试"
-pln("String length (bytes):", len(s))  // 12 bytes
+pln("String length (characters):", len(s))  // 4 characters
 
 // Chars is character-oriented
 var c = toChars(s)

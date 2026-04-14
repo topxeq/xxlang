@@ -554,7 +554,7 @@ pln(b1.toString())  // "hello"
 
 // String with special characters and Unicode
 var b2 = bytes("abc\t中文\n")
-pln(len(b2))  // 11 (bytes, not characters)
+pln(len(b2))  // 11 (bytes - this is a Bytes object, not a string)
 ```
 
 **From Integer Values (0-255):**
@@ -605,8 +605,8 @@ var c5 = chars(c1)  // Returns the same Chars object
 
 **Chars vs String:**
 - `chars("中文").len()` returns 2 (character count)
-- `len("中文")` returns 6 (byte count in UTF-8)
-- Use Chars for character-level operations like slicing by character
+- `len("中文")` returns 2 (character count)
+- Use Chars for additional character-level operations like character slicing and iteration
 
 ---
 
@@ -1025,7 +1025,7 @@ Converts a string to a chars array for character-based operations. Essential for
 ```xxl
 // Byte vs Character counting
 var s = "Hello世界🎉"
-pln(len(s))         // 15 (bytes)
+pln(len(s))         // 8 (characters)
 pln(len(toChars(s))) // 8 (characters)
 
 // Character indexing
@@ -1061,8 +1061,8 @@ charLen("Hello世界🎉")   // 8
 charLen("中文测试")      // 4
 charLen("hello")         // 5
 
-// Compare with len() which returns bytes
-pln(len("中文"))    // 6 (bytes)
+// len() and charLen() both return character count for strings
+pln(len("中文"))    // 2 (characters)
 pln(charLen("中文")) // 2 (characters)
 ```
 

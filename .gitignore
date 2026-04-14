@@ -1,6 +1,7 @@
 # Binaries
 /xxlang
 /xxl
+cmd/xxl/xxl
 *.exe
 *.exe~
 *.dll
@@ -10,6 +11,9 @@
 
 # Test binary
 *.test
+
+# Test artifacts
+pkg/stdlib/test.json
 
 # Output
 *.out

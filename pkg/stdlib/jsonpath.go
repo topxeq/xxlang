@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/topxeq/xxlang/pkg/objects"
 )
@@ -1175,7 +1176,7 @@ func (jp *JSONPath) evalLengthFunction(obj objects.Object, expr string) bool {
 	var length int64
 	switch v := val.(type) {
 	case *objects.String:
-		length = int64(len(v.Value))
+		length = int64(utf8.RuneCountInString(v.Value))
 	case *objects.Array:
 		length = int64(len(v.Elements))
 	case *objects.Map:
@@ -1208,7 +1209,7 @@ func (jp *JSONPath) evalFilterExpr(obj objects.Object, expr string) objects.Obje
 		fieldVal := jp.evalFilterExpr(obj, fieldPath)
 		switch v := fieldVal.(type) {
 		case *objects.String:
-			return objects.NewInt(int64(len(v.Value)))
+			return objects.NewInt(int64(utf8.RuneCountInString(v.Value)))
 		case *objects.Array:
 			return objects.NewInt(int64(len(v.Elements)))
 		case *objects.Map:
@@ -1223,7 +1224,7 @@ func (jp *JSONPath) evalFilterExpr(obj objects.Object, expr string) objects.Obje
 		fieldVal := jp.evalFilterExpr(obj, fieldPath)
 		switch v := fieldVal.(type) {
 		case *objects.String:
-			return objects.NewInt(int64(len(v.Value)))
+			return objects.NewInt(int64(utf8.RuneCountInString(v.Value)))
 		case *objects.Array:
 			return objects.NewInt(int64(len(v.Elements)))
 		case *objects.Map:

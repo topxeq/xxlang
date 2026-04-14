@@ -801,16 +801,16 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 			if !ok {
 				return fmt.Errorf("string index must be integer")
 			}
-			// Support negative indexing for strings too
-			strLen := int64(len(o.Value))
+			runes := []rune(o.Value)
+			runeLen := int64(len(runes))
 			actualIdx := idx.Value
 			if actualIdx < 0 {
-				actualIdx = strLen + actualIdx
+				actualIdx = runeLen + actualIdx
 			}
-			if actualIdx < 0 || actualIdx >= strLen {
-				return fmt.Errorf("string index out of bounds: %d (length: %d)", idx.Value, strLen)
+			if actualIdx < 0 || actualIdx >= runeLen {
+				return fmt.Errorf("string index out of bounds: %d (length: %d)", idx.Value, runeLen)
 			}
-			result = objects.NewString(string(o.Value[actualIdx]))
+			result = objects.NewString(string(runes[actualIdx]))
 		case *objects.Chars:
 			idx, ok := key.(*objects.Int)
 			if !ok {
@@ -932,7 +932,8 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 			}
 
 		case *objects.String:
-			strLen := int64(len(o.Value))
+			runes := []rune(o.Value)
+			runeLen := int64(len(runes))
 			var start, end int64
 
 			// Handle start index
@@ -944,43 +945,41 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 					return fmt.Errorf("slice start must be integer or null")
 				}
 				start = startInt.Value
-				// Support negative indexing
 				if start < 0 {
-					start = strLen + start
+					start = runeLen + start
 				}
 				if start < 0 {
 					start = 0
 				}
-				if start > strLen {
-					start = strLen
+				if start > runeLen {
+					start = runeLen
 				}
 			}
 
 			// Handle end index
 			if _, isNull := endObj.(*objects.Null); isNull {
-				end = strLen
+				end = runeLen
 			} else {
 				endInt, ok := endObj.(*objects.Int)
 				if !ok {
 					return fmt.Errorf("slice end must be integer or null")
 				}
 				end = endInt.Value
-				// Support negative indexing
 				if end < 0 {
-					end = strLen + end
+					end = runeLen + end
 				}
 				if end < 0 {
 					end = 0
 				}
-				if end > strLen {
-					end = strLen
+				if end > runeLen {
+					end = runeLen
 				}
 			}
 
 			if start > end {
 				result = objects.NewString("")
 			} else {
-				result = objects.NewString(o.Value[start:end])
+				result = objects.NewString(string(runes[start:end]))
 			}
 
 		case *objects.Chars:

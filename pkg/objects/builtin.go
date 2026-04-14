@@ -52,7 +52,7 @@ var Builtins = map[string]*Builtin{
 
 			switch arg := args[0].(type) {
 			case *String:
-				return NewInt(int64(len(arg.Value)))
+				return NewInt(int64(utf8.RuneCountInString(arg.Value)))
 			case *Chars:
 				return NewInt(int64(len(arg.Value)))
 			case *Bytes:
@@ -442,7 +442,7 @@ var Builtins = map[string]*Builtin{
 			}
 
 			result := str.Value
-			for int64(len(result)) < width.Value {
+			for int64(utf8.RuneCountInString(result)) < width.Value {
 				result = padChar + result
 			}
 			return NewString(result)
@@ -476,7 +476,7 @@ var Builtins = map[string]*Builtin{
 			}
 
 			result := str.Value
-			for int64(len(result)) < width.Value {
+			for int64(utf8.RuneCountInString(result)) < width.Value {
 				result = result + padChar
 			}
 			return NewString(result)
@@ -1475,15 +1475,18 @@ var Builtins = map[string]*Builtin{
 				}
 			}
 
-			strLen := len(str.Value)
+			strLen := utf8.RuneCountInString(str.Value)
 			targetLen := int(length.Value)
 			if strLen >= targetLen {
 				return str
 			}
 
 			padLen := targetLen - strLen
-			padding := strings.Repeat(padChar, (padLen+len(padChar)-1)/len(padChar))
-			return NewString(padding[:padLen] + str.Value)
+			padRunes := []rune(padChar)
+			padRuneLen := len(padRunes)
+			padding := strings.Repeat(padChar, (padLen+padRuneLen-1)/padRuneLen)
+			paddingRunes := []rune(padding)
+			return NewString(string(paddingRunes[:padLen]) + str.Value)
 		},
 	},
 	"rpad": {
@@ -1513,15 +1516,18 @@ var Builtins = map[string]*Builtin{
 				}
 			}
 
-			strLen := len(str.Value)
+			strLen := utf8.RuneCountInString(str.Value)
 			targetLen := int(length.Value)
 			if strLen >= targetLen {
 				return str
 			}
 
 			padLen := targetLen - strLen
-			padding := strings.Repeat(padChar, (padLen+len(padChar)-1)/len(padChar))
-			return NewString(str.Value + padding[:padLen])
+			padRunes := []rune(padChar)
+			padRuneLen := len(padRunes)
+			padding := strings.Repeat(padChar, (padLen+padRuneLen-1)/padRuneLen)
+			paddingRunes := []rune(padding)
+			return NewString(str.Value + string(paddingRunes[:padLen]))
 		},
 	},
 	"charAt": {
@@ -1540,12 +1546,13 @@ var Builtins = map[string]*Builtin{
 				return newError("second argument to 'charAt' must be INT, got %s", args[1].Type())
 			}
 
+			runes := []rune(str.Value)
 			idx := int(index.Value)
-			if idx < 0 || idx >= len(str.Value) {
+			if idx < 0 || idx >= len(runes) {
 				return NULL
 			}
 
-			return NewString(string(str.Value[idx]))
+			return NewString(string(runes[idx]))
 		},
 	},
 	"trimLeft": {

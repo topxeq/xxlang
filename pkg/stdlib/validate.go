@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/topxeq/xxlang/pkg/objects"
 )
@@ -88,7 +89,7 @@ func init() {
 				if !ok {
 					return Error("lengthRange() requires an integer max")
 				}
-				length := int64(len(s.Value))
+				length := int64(utf8.RuneCountInString(s.Value))
 				return Bool(length >= min.Value && length <= max.Value)
 			}),
 

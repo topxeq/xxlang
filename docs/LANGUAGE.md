@@ -254,15 +254,15 @@ typeOf(pi)  // "BIGFLOAT"
 
 ### Chars Type
 
-The `chars` type provides proper Unicode character handling. Unlike strings which are byte-oriented, chars operations work on characters (code points).
+The `chars` type provides proper Unicode character handling. Strings in Xxlang are character-oriented (rune-based), and chars provides additional character-level operations like slicing and iteration.
 
 ```xxl
-// String is byte-oriented
+// String is character-oriented
 var s = "中文"
-pln(len(s))     // 6 (bytes)
-pln(s[0])       // Byte value (228)
+pln(len(s))     // 2 (characters)
+pln(s[0])       // "中" (character at index 0)
 
-// Chars is character-oriented
+// Chars provides additional character-level operations
 var c = toChars("中文")
 pln(len(c))     // 2 (characters)
 pln(c[0])       // "中" (full character)

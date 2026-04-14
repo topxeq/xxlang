@@ -690,7 +690,7 @@ stringbuilder.isStringBuilder(42)   // false
 ### StringBuilder Methods
 
 #### write(str)
-Appends a string to the builder. Returns the number of bytes written.
+Appends a string to the builder. Returns the number of characters written.
 
 ```xxl
 var sb = stringbuilder.create()
@@ -1024,19 +1024,20 @@ spawn {
 
 ## chars
 
-The `chars` type provides proper Unicode character handling, where operations work on characters (code points) rather than bytes. This is essential for correctly processing text containing non-ASCII characters like Chinese, Japanese, Korean, emoji, and other Unicode characters.
+The `chars` type provides mutable, iterable character-level operations for Unicode text. While Xxlang strings are already character-oriented (rune-based), the `chars` type offers additional capabilities like character iteration, mutation, and character-based slicing with a dedicated API. This is useful for processing text containing non-ASCII characters like Chinese, Japanese, Korean, emoji, and other Unicode characters.
 
 ### Why chars?
 
-In Xxlang, the `string` type is byte-oriented (like Go), which means:
-- `len("中文")` returns 6 (bytes), not 2 (characters)
-- `"中文"[0]` returns a byte value, not a character
-- `substr` uses byte indices
+In Xxlang, the `string` type is character-oriented (rune-based), which means:
+- `len("中文")` returns 2 (characters)
+- `"中文"[0]` returns "中" (the character at index 0)
+- `substr` uses character indices
 
-The `chars` type provides character-oriented operations:
-- `len(toChars("中文"))` returns 2 (characters)
-- `toChars("中文")[0]` returns "中" (full character)
-- `subStr` uses character indices
+The `chars` type provides additional character-level operations beyond what strings offer:
+- Mutable character access and modification
+- Character-based iteration and transformation
+- `subStr` with character indices and a dedicated API
+- `repeat`, `reverse`, and other character-level utilities
 
 ### toChars(s)
 
@@ -1046,7 +1047,7 @@ Converts a string to a chars array for character-based operations.
 var s = "Hello世界🎉"
 var c = toChars(s)
 
-pln(len(s))      // 15 (bytes)
+pln(len(s))      // 8 (characters)
 pln(len(c))      // 8 (characters)
 ```
 
@@ -1062,7 +1063,7 @@ charLen("hello")        // 5
 
 ### Chars Indexing
 
-Access characters by their character index (not byte index):
+Access characters by their character index:
 
 ```xxl
 var c = toChars("Hello世界🎉")
@@ -1175,13 +1176,13 @@ pln(c.repeat(3).toStr())  // "abc世abc世abc世"
 
 ### String vs Chars Comparison
 
-| Operation | `string` (bytes) | `chars` (characters) |
-|----------|------------------|---------------------|
-| `len("中文")` | 6 (bytes) | N/A |
+| Operation | `string` (characters) | `chars` (characters) |
+|----------|----------------------|---------------------|
+| `len("中文")` | 2 (characters) | N/A |
 | `len(toChars("中文"))` | N/A | 2 (characters) |
-| `"中文"[0]` | Byte value | N/A |
+| `"中文"[0]` | "中" (character) | N/A |
 | `toChars("中文")[0]` | N/A | "中" (character) |
-| `substr(s, 0, 1)` | Byte slice | N/A |
+| `substr(s, 0, 1)` | Character slice | N/A |
 | `c.subStr(0, 1)` | N/A | Character slice |
 
 ### When to Use chars
@@ -1193,9 +1194,8 @@ Use `chars` when you need to:
 - Handle text containing Chinese, Japanese, Korean, emoji, etc.
 
 Use `string` when you need to:
-- Work with byte-oriented APIs
+- Work with low-level byte APIs (use `byteLen()`, `byteSubstr()`, `byteIndexOf()` or the `bytes` module)
 - Optimize for ASCII-only text
-- Maintain compatibility with Go's string model
 
 ### Example: Processing Multilingual Text
 
@@ -1204,7 +1204,7 @@ var text = "日本語English中文한국어"
 var c = toChars(text)
 
 pln("Text: ", text)
-pln("Byte count: ", len(text))       // 20 bytes
+pln("Character count: ", len(text))       // 13 characters
 pln("Character count: ", len(c))      // 13 characters
 
 // Iterate over each character

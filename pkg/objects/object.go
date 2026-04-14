@@ -126,12 +126,15 @@ const (
 	// Time type
 	TimeType ObjectType = "TIME"
 	// Rod browser types (for web scraping)
-	RodBrowserType      ObjectType = "ROD_BROWSER"
-	RodHTMLElementType  ObjectType = "ROD_HTML_ELEMENT"
+	RodBrowserType     ObjectType = "ROD_BROWSER"
+	RodHTMLElementType ObjectType = "ROD_HTML_ELEMENT"
 	// Backup types
-	BackupTaskType    ObjectType = "BACKUP_TASK"
-	BackupResultType  ObjectType = "BACKUP_RESULT"
+	BackupTaskType     ObjectType = "BACKUP_TASK"
+	BackupResultType   ObjectType = "BACKUP_RESULT"
 	BackupProgressType ObjectType = "BACKUP_PROGRESS"
+	// HLBR (headless browser) types
+	HlbrBrowserType ObjectType = "HLBR_BROWSER"
+	HlbrNodeType    ObjectType = "HLBR_NODE"
 )
 
 // TypeTag is a fast integer type identifier for hot path checks
@@ -261,6 +264,9 @@ const (
 	TagBackupTask
 	TagBackupResult
 	TagBackupProgress
+	// HLBR (headless browser) tags
+	TagHlbrBrowser
+	TagHlbrNode
 	TagUnknown
 )
 
