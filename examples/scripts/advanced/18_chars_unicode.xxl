@@ -5,11 +5,11 @@
 // String vs Chars
 // ============================================
 
-// String is byte-oriented
+// String is character-oriented (rune-based)
 var s = "中文测试"
-pln("String length (bytes):", len(s))  // 12 bytes (3 bytes per Chinese char)
+pln("String length (characters):", len(s))  // 4 characters
 
-// Chars is character-oriented
+// Chars provides additional character-level operations
 var c = toChars(s)
 pln("Chars length (characters):", len(c))  // 4 characters
 
