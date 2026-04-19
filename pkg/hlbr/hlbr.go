@@ -105,6 +105,31 @@ func (b *Browser) Back() error {
 	return b.browser.Back()
 }
 
+// GetLocalStorage returns the localStorage data
+func (b *Browser) GetLocalStorage() map[string]string {
+	return b.browser.GetLocalStorage()
+}
+
+// GetSessionStorage returns the sessionStorage data
+func (b *Browser) GetSessionStorage() map[string]string {
+	return b.browser.GetSessionStorage()
+}
+
+// SetLocalStorageItem sets a localStorage item
+func (b *Browser) SetLocalStorageItem(key, value string) {
+	b.browser.SetLocalStorageItem(key, value)
+}
+
+// SetSessionStorageItem sets a sessionStorage item
+func (b *Browser) SetSessionStorageItem(key, value string) {
+	b.browser.SetSessionStorageItem(key, value)
+}
+
+// GetConsoleOutput returns the console.log output
+func (b *Browser) GetConsoleOutput() []string {
+	return b.browser.GetConsoleOutput()
+}
+
 func Launch(opts *Options) (*Browser, error) {
 	return New(opts)
 }
