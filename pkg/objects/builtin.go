@@ -2,13 +2,9 @@
 package objects
 
 import (
-	"crypto/hmac"
 	"crypto/md5"
-	"crypto/sha1"
 	"crypto/sha256"
-	"encoding/base32"
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -195,47 +191,7 @@ var Builtins = map[string]*Builtin{
 			return NULL
 		},
 	},
-	"genOtpCode": {
-		Fn: func(args ...Object) Object {
-			if len(args) < 1 {
-				return newError("wrong number of arguments for genOtpCode. got=%d, want>=1", len(args))
-			}
-
-			secret, ok := args[0].(*String)
-			if !ok {
-				return newError("first argument to 'genOtpCode' must be STRING, got %s", args[0].Type())
-			}
-
-			// Decode base32 secret (uppercase, no spaces)
-			encoded := strings.ToUpper(strings.ReplaceAll(secret.Value, " ", ""))
-			decoder := base32.StdEncoding.WithPadding(base32.NoPadding)
-			key, err := decoder.DecodeString(encoded)
-			if err != nil {
-				return &Error{Message: fmt.Sprintf("base32 decode failed: %v", err)}
-			}
-
-			// Calculate time step (30 second intervals)
-			timestamp := time.Now().Unix() / 30
-
-			// Convert timestamp to 8-byte big-endian
-			counter := make([]byte, 8)
-			binary.BigEndian.PutUint64(counter, uint64(timestamp))
-
-			// HMAC-SHA1
-			mac := hmac.New(sha1.New, key)
-			mac.Write(counter)
-			hash := mac.Sum(nil)
-
-			// Dynamic truncation (RFC 4226)
-			offset := hash[len(hash)-1] & 0x0f
-			code := binary.BigEndian.Uint32(hash[offset:offset+4]) & 0x7fffffff
-
-			// Get 6-digit code
-			otp := code % 1000000
-
-			return NewString(fmt.Sprintf("%06d", otp))
-		},
-	},
+		// genOtpCode is defined in builtin_misc.go with full TOTP (RFC 6238) support
 	"typeOf": {
 		Fn: func(args ...Object) Object {
 			if len(args) < 1 {

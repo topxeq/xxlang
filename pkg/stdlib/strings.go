@@ -582,6 +582,103 @@ func init() {
 				str := s.Value
 				return Bool(len(str) >= 3 && str[0] == 0xEF && str[1] == 0xBB && str[2] == 0xBF)
 			}),
+
+			// count counts the number of non-overlapping instances of substr in str.
+			// Usage: count(str, substr) -> int
+			"count": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 2 {
+					return Error("count() takes exactly 2 arguments")
+				}
+				s, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("count() requires a string as first argument")
+				}
+				sub, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("count() requires a string as second argument")
+				}
+				return Int(int64(strings.Count(s.Value, sub.Value)))
+			}),
+
+			// index returns the rune position of the first instance of substr in str.
+			// Usage: index(str, substr) -> int (returns character position, -1 if not found)
+			"index": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 2 {
+					return Error("index() takes at least 2 arguments")
+				}
+				s, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("index() requires a string as first argument")
+				}
+				sub, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("index() requires a string as second argument")
+				}
+				byteIdx := strings.Index(s.Value, sub.Value)
+				if byteIdx < 0 {
+					return Int(-1)
+				}
+				// Convert byte position to rune position
+				charIdx := utf8.RuneCountInString(s.Value[:byteIdx])
+				return Int(int64(charIdx))
+			}),
+
+			// lastIndex returns the rune position of the last instance of substr in str.
+			// Usage: lastIndex(str, substr) -> int (returns character position, -1 if not found)
+			"lastIndex": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 2 {
+					return Error("lastIndex() takes exactly 2 arguments")
+				}
+				s, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("lastIndex() requires a string as first argument")
+				}
+				sub, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("lastIndex() requires a string as second argument")
+				}
+				byteIdx := strings.LastIndex(s.Value, sub.Value)
+				if byteIdx < 0 {
+					return Int(-1)
+				}
+				// Convert byte position to rune position
+				charIdx := utf8.RuneCountInString(s.Value[:byteIdx])
+				return Int(int64(charIdx))
+			}),
+
+			// startsWith is an alias for hasPrefix.
+			// Usage: startsWith(str, prefix) -> bool
+			"startsWith": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 2 {
+					return Error("startsWith() takes at least 2 arguments")
+				}
+				s, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("startsWith() requires a string as first argument")
+				}
+				prefix, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("startsWith() requires a string as second argument")
+				}
+				return Bool(strings.HasPrefix(s.Value, prefix.Value))
+			}),
+
+			// endsWith is an alias for hasSuffix.
+			// Usage: endsWith(str, suffix) -> bool
+			"endsWith": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 2 {
+					return Error("endsWith() takes at least 2 arguments")
+				}
+				s, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("endsWith() requires a string as first argument")
+				}
+				suffix, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("endsWith() requires a string as second argument")
+				}
+				return Bool(strings.HasSuffix(s.Value, suffix.Value))
+			}),
 		},
 	})
 }

@@ -64,14 +64,16 @@ func (e *Environment) Define(name string, val *Value) {
 }
 
 type VM struct {
-	env    *Environment
-	doc    *dom.Document
-	root   *dom.Node
-	output []string
+	env           *Environment
+	doc           *dom.Document
+	root          *dom.Node
+	output        []string
+	LocalStorage  map[string]string
+	SessionStorage map[string]string
 }
 
 func NewVM(doc *dom.Document) *VM {
-	vm := &VM{doc: doc}
+	vm := &VM{doc: doc, LocalStorage: make(map[string]string), SessionStorage: make(map[string]string)}
 	if doc != nil {
 		vm.root = doc.Root
 	}
@@ -301,6 +303,66 @@ func (vm *VM) setupBuiltins() {
 	vm.env.Define("undefined", &Value{Type: "undefined"})
 	vm.env.Define("NaN", &Value{Type: "number", Num: math.NaN()})
 	vm.env.Define("Infinity", &Value{Type: "number", Num: math.Inf(1)})
+
+	// localStorage - simple key-value storage
+	vm.env.Define("localStorage", &Value{Type: "object", Obj: map[string]*Value{
+		"setItem": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) >= 2 {
+				vm.LocalStorage[args[0].Str] = args[1].Str
+			}
+			return &Value{Type: "undefined"}
+		}},
+		"getItem": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) == 0 {
+				return &Value{Type: "null"}
+			}
+			if v, ok := vm.LocalStorage[args[0].Str]; ok {
+				return &Value{Type: "string", Str: v}
+			}
+			return &Value{Type: "null"}
+		}},
+		"removeItem": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) > 0 {
+				delete(vm.LocalStorage, args[0].Str)
+			}
+			return &Value{Type: "undefined"}
+		}},
+		"clear": {Type: "native", Native: func(args []*Value) *Value {
+			vm.LocalStorage = make(map[string]string)
+			return &Value{Type: "undefined"}
+		}},
+		"length": {Type: "number", Num: 0}, // dynamic length not supported in simple impl
+	}})
+
+	// sessionStorage - simple key-value storage (per-session)
+	vm.env.Define("sessionStorage", &Value{Type: "object", Obj: map[string]*Value{
+		"setItem": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) >= 2 {
+				vm.SessionStorage[args[0].Str] = args[1].Str
+			}
+			return &Value{Type: "undefined"}
+		}},
+		"getItem": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) == 0 {
+				return &Value{Type: "null"}
+			}
+			if v, ok := vm.SessionStorage[args[0].Str]; ok {
+				return &Value{Type: "string", Str: v}
+			}
+			return &Value{Type: "null"}
+		}},
+		"removeItem": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) > 0 {
+				delete(vm.SessionStorage, args[0].Str)
+			}
+			return &Value{Type: "undefined"}
+		}},
+		"clear": {Type: "native", Native: func(args []*Value) *Value {
+			vm.SessionStorage = make(map[string]string)
+			return &Value{Type: "undefined"}
+		}},
+		"length": {Type: "number", Num: 0},
+	}})
 }
 
 func (vm *VM) wrapNode(n *dom.Node) *Value {

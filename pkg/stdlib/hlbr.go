@@ -6,6 +6,8 @@
 package stdlib
 
 import (
+	"fmt"
+
 	"github.com/topxeq/xxlang/pkg/hlbr"
 	"github.com/topxeq/xxlang/pkg/hlbr/dom"
 	"github.com/topxeq/xxlang/pkg/hlbr/htmlparser"
@@ -174,6 +176,206 @@ func init() {
 					return Error("quickGetHTML() navigate failed: " + err.Error())
 				}
 				return String(b.GetHTML())
+			}),
+
+			// ========== Storage Functions ==========
+
+			// getLocalStorage returns the localStorage data from a browser.
+			"getLocalStorage": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 1 {
+					return Error("getLocalStorage() requires 1 argument (browser)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("getLocalStorage() argument must be HLBR_BROWSER")
+				}
+				storage := br.GetBrowser().GetLocalStorage()
+				if storage == nil {
+					return &objects.Map{Pairs: make(map[objects.HashKey]objects.MapPair)}
+				}
+				pairs := make(map[objects.HashKey]objects.MapPair)
+				for k, v := range storage {
+					keyObj := objects.NewString(k)
+					pairs[keyObj.HashKey()] = objects.MapPair{Key: keyObj, Value: objects.NewString(v)}
+				}
+				return &objects.Map{Pairs: pairs}
+			}),
+
+			// getSessionStorage returns the sessionStorage data from a browser.
+			"getSessionStorage": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 1 {
+					return Error("getSessionStorage() requires 1 argument (browser)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("getSessionStorage() argument must be HLBR_BROWSER")
+				}
+				storage := br.GetBrowser().GetSessionStorage()
+				if storage == nil {
+					return &objects.Map{Pairs: make(map[objects.HashKey]objects.MapPair)}
+				}
+				pairs := make(map[objects.HashKey]objects.MapPair)
+				for k, v := range storage {
+					keyObj := objects.NewString(k)
+					pairs[keyObj.HashKey()] = objects.MapPair{Key: keyObj, Value: objects.NewString(v)}
+				}
+				return &objects.Map{Pairs: pairs}
+			}),
+
+			// setLocalStorage sets a localStorage item.
+			"setLocalStorage": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 3 {
+					return Error("setLocalStorage() requires 3 arguments (browser, key, value)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("setLocalStorage() first argument must be HLBR_BROWSER")
+				}
+				key, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("setLocalStorage() key must be STRING")
+				}
+				val, ok := args[2].(*objects.String)
+				if !ok {
+					return Error("setLocalStorage() value must be STRING")
+				}
+				br.GetBrowser().SetLocalStorageItem(key.Value, val.Value)
+				return objects.NULL
+			}),
+
+			// setSessionStorage sets a sessionStorage item.
+			"setSessionStorage": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 3 {
+					return Error("setSessionStorage() requires 3 arguments (browser, key, value)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("setSessionStorage() first argument must be HLBR_BROWSER")
+				}
+				key, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("setSessionStorage() key must be STRING")
+				}
+				val, ok := args[2].(*objects.String)
+				if !ok {
+					return Error("setSessionStorage() value must be STRING")
+				}
+				br.GetBrowser().SetSessionStorageItem(key.Value, val.Value)
+				return objects.NULL
+			}),
+
+			// getConsoleOutput returns the console.log output from a browser.
+			"getConsoleOutput": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 1 {
+					return Error("getConsoleOutput() requires 1 argument (browser)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("getConsoleOutput() argument must be HLBR_BROWSER")
+				}
+				output := br.GetBrowser().GetConsoleOutput()
+				if output == nil {
+					return Array()
+				}
+				elems := make([]objects.Object, len(output))
+				for i, s := range output {
+					elems[i] = objects.NewString(s)
+				}
+				return Array(elems...)
+			}),
+
+			// ========== Form Interaction Functions ==========
+
+			// setValue sets a form value via DOM attribute.
+			"setValue": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 3 {
+					return Error("setValue() requires 3 arguments (browser, selector, value)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("setValue() first argument must be HLBR_BROWSER")
+				}
+				sel, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("setValue() selector must be STRING")
+				}
+				val, ok := args[2].(*objects.String)
+				if !ok {
+					return Error("setValue() value must be STRING")
+				}
+				node := br.GetBrowser().QuerySelector(sel.Value)
+				if node == nil {
+					return Error("setValue: element not found for selector '" + sel.Value + "'")
+				}
+				node.SetAttribute("value", val.Value)
+				return br
+			}),
+
+			// setValueByJS sets a form value via JavaScript.
+			"setValueByJS": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 3 {
+					return Error("setValueByJS() requires 3 arguments (browser, selector, value)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("setValueByJS() first argument must be HLBR_BROWSER")
+				}
+				sel, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("setValueByJS() selector must be STRING")
+				}
+				val, ok := args[2].(*objects.String)
+				if !ok {
+					return Error("setValueByJS() value must be STRING")
+				}
+				jsCode := fmt.Sprintf("var el = document.querySelector('%s'); if (el) { el.value = '%s'; }", sel.Value, val.Value)
+				_, err := br.GetBrowser().Evaluate(jsCode)
+				if err != nil {
+					return Error("setValueByJS failed: " + err.Error())
+				}
+				return br
+			}),
+
+			// clickByJS clicks an element via JavaScript.
+			"clickByJS": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 2 {
+					return Error("clickByJS() requires 2 arguments (browser, selector)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("clickByJS() first argument must be HLBR_BROWSER")
+				}
+				sel, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("clickByJS() selector must be STRING")
+				}
+				jsCode := fmt.Sprintf("var el = document.querySelector('%s'); if (el) { el.click(); }", sel.Value)
+				_, err := br.GetBrowser().Evaluate(jsCode)
+				if err != nil {
+					return Error("clickByJS failed: " + err.Error())
+				}
+				return br
+			}),
+
+			// submitForm submits a form via JavaScript.
+			"submitForm": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 2 {
+					return Error("submitForm() requires 2 arguments (browser, selector)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("submitForm() first argument must be HLBR_BROWSER")
+				}
+				sel, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("submitForm() selector must be STRING")
+				}
+				jsCode := fmt.Sprintf("var form = document.querySelector('%s'); if (form && form.submit) { form.submit(); }", sel.Value)
+				_, err := br.GetBrowser().Evaluate(jsCode)
+				if err != nil {
+					return Error("submitForm failed: " + err.Error())
+				}
+				return br
 			}),
 		},
 	})

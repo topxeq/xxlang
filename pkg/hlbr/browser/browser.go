@@ -187,6 +187,44 @@ func (b *Browser) Back() error {
 	return b.Navigate(prevURL)
 }
 
+// GetLocalStorage returns the localStorage data as a map
+func (b *Browser) GetLocalStorage() map[string]string {
+	if b.vm == nil {
+		return nil
+	}
+	return b.vm.LocalStorage
+}
+
+// GetSessionStorage returns the sessionStorage data as a map
+func (b *Browser) GetSessionStorage() map[string]string {
+	if b.vm == nil {
+		return nil
+	}
+	return b.vm.SessionStorage
+}
+
+// SetLocalStorageItem sets a key-value pair in localStorage
+func (b *Browser) SetLocalStorageItem(key, value string) {
+	if b.vm != nil {
+		b.vm.LocalStorage[key] = value
+	}
+}
+
+// SetSessionStorageItem sets a key-value pair in sessionStorage
+func (b *Browser) SetSessionStorageItem(key, value string) {
+	if b.vm != nil {
+		b.vm.SessionStorage[key] = value
+	}
+}
+
+// GetConsoleOutput returns the console.log output
+func (b *Browser) GetConsoleOutput() []string {
+	if b.vm == nil {
+		return nil
+	}
+	return b.vm.Output()
+}
+
 func jsValueToGo(v *jsengine.Value) any {
 	if v == nil {
 		return nil

@@ -3,8 +3,12 @@
 package objects
 
 import (
+	"crypto/hmac"
 	cryptoRand "crypto/rand"
+	"crypto/sha1"
+	"encoding/base32"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"net/url"
@@ -398,7 +402,7 @@ func builtinGenToken(args ...Object) Object {
 	return NewString(base64.URLEncoding.EncodeToString(bytes))
 }
 
-// builtinGenOtpCode - generate simple OTP code
+// builtinGenOtpCode - generate TOTP code using HMAC-SHA1 (RFC 6238)
 // Usage: genOtpCode(secret) -> string
 //
 //	genOtpCode(secret, digits) -> string
@@ -422,23 +426,55 @@ func builtinGenOtpCode(args ...Object) Object {
 	}
 
 	secretStr := strings.ToUpper(strings.TrimSpace(secret.Value))
+	secretStr = strings.ReplaceAll(secretStr, " ", "")
+
 	if secretStr == "" {
 		return newError("secret cannot be empty")
 	}
 
-	for _, c := range secretStr {
-		if !((c >= 'A' && c <= 'Z') || (c >= '2' && c <= '7')) {
-			return newError("invalid character in secret: must be base32 (A-Z, 2-7)")
-		}
+	// Decode base32 secret
+	decoder := base32.StdEncoding.WithPadding(base32.NoPadding)
+	key, err := decoder.DecodeString(secretStr)
+	if err != nil {
+		return newError("base32 decode failed: %v", err)
 	}
 
-	counter := time.Now().Unix() / 30
-	code := generateOTP(secretStr, counter, digits)
-	return NewString(code)
+	// Calculate time step (30 second intervals)
+	timestamp := time.Now().Unix() / 30
+
+	// Convert timestamp to 8-byte big-endian
+	counter := make([]byte, 8)
+	binary.BigEndian.PutUint64(counter, uint64(timestamp))
+
+	// HMAC-SHA1
+	mac := hmac.New(sha1.New, key)
+	mac.Write(counter)
+	hash := mac.Sum(nil)
+
+	// Dynamic truncation (RFC 4226)
+	offset := hash[len(hash)-1] & 0x0f
+	code := binary.BigEndian.Uint32(hash[offset : offset+4]) & 0x7fffffff
+
+	// Get digits-digit code
+	var otp uint32
+	switch digits {
+	case 6:
+		otp = code % 1000000
+	case 7:
+		otp = code % 10000000
+	case 8:
+		otp = code % 100000000
+	default:
+		otp = code % uint32(pow10(digits))
+	}
+
+	return NewString(fmt.Sprintf("%0*d", digits, otp))
 }
 
-// builtinCheckOtpCode - validate OTP code
+// builtinCheckOtpCode - validate TOTP code using HMAC-SHA1 (RFC 6238)
 // Usage: checkOtpCode(secret, code) -> bool
+//
+//	checkOtpCode(secret, code, digits) -> bool
 func builtinCheckOtpCode(args ...Object) Object {
 	if len(args) < 2 || len(args) > 3 {
 		return newError("wrong number of arguments for checkOtpCode. got=%d, want=2 or 3", len(args))
@@ -463,10 +499,19 @@ func builtinCheckOtpCode(args ...Object) Object {
 		digits = int(d.Value)
 	}
 
-	// Check current and adjacent time windows
-	counter := time.Now().Unix() / 30
+	// Decode base32 secret
+	secretStr := strings.ToUpper(strings.TrimSpace(secret.Value))
+	secretStr = strings.ReplaceAll(secretStr, " ", "")
+	decoder := base32.StdEncoding.WithPadding(base32.NoPadding)
+	key, err := decoder.DecodeString(secretStr)
+	if err != nil {
+		return FALSE
+	}
+
+	// Check current and adjacent time windows (+/- 1 window for clock drift)
+	timestamp := time.Now().Unix() / 30
 	for i := int64(-1); i <= 1; i++ {
-		expected := generateOTP(secret.Value, counter+i, digits)
+		expected := generateTOTP(key, timestamp+i, digits)
 		if expected == code.Value {
 			return TRUE
 		}
@@ -475,21 +520,35 @@ func builtinCheckOtpCode(args ...Object) Object {
 	return FALSE
 }
 
-// generateOTP generates a simple OTP code
-func generateOTP(secret string, counter int64, digits int) string {
-	// Simple hash-based OTP generation
-	data := fmt.Sprintf("%s%d", secret, counter)
-	hash := 0
-	for _, c := range data {
-		hash = hash*31 + int(c)
+// generateTOTP generates TOTP code using HMAC-SHA1 (RFC 6238)
+func generateTOTP(key []byte, counter int64, digits int) string {
+	// Convert counter to 8-byte big-endian
+	counterBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(counterBytes, uint64(counter))
+
+	// HMAC-SHA1
+	mac := hmac.New(sha1.New, key)
+	mac.Write(counterBytes)
+	hash := mac.Sum(nil)
+
+	// Dynamic truncation (RFC 4226)
+	offset := hash[len(hash)-1] & 0x0f
+	code := binary.BigEndian.Uint32(hash[offset : offset+4]) & 0x7fffffff
+
+	// Get digits-digit code
+	var otp uint32
+	switch digits {
+	case 6:
+		otp = code % 1000000
+	case 7:
+		otp = code % 10000000
+	case 8:
+		otp = code % 100000000
+	default:
+		otp = code % uint32(pow10(digits))
 	}
 
-	if hash < 0 {
-		hash = -hash
-	}
-
-	format := fmt.Sprintf("%%0%dd", digits)
-	return fmt.Sprintf(format, hash%int(pow10(digits)))
+	return fmt.Sprintf("%0*d", digits, otp)
 }
 
 // pow10 returns 10^n
