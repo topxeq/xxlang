@@ -17,6 +17,7 @@ type Options struct {
 	UserAgent string
 	Proxy     string
 	Timeout   time.Duration
+	Debug     bool
 }
 
 func New(opts *Options) (*Browser, error) {
@@ -27,6 +28,7 @@ func New(opts *Options) (*Browser, error) {
 	browserOpts := &browser.Options{
 		UserAgent: opts.UserAgent,
 		Proxy:     opts.Proxy,
+		Debug:     opts.Debug,
 	}
 	if opts.Timeout > 0 {
 		browserOpts.Timeout = int(opts.Timeout.Seconds())
@@ -35,6 +37,11 @@ func New(opts *Options) (*Browser, error) {
 	return &Browser{
 		browser: browser.New(browserOpts),
 	}, nil
+}
+
+// SetDebug enables or disables debug mode.
+func (b *Browser) SetDebug(debug bool) {
+	b.browser.SetDebug(debug)
 }
 
 func (b *Browser) Navigate(url string) error {

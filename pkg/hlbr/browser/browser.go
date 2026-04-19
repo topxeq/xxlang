@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"fmt"
 	"net/url"
 	"strings"
 
@@ -17,29 +18,51 @@ type Browser struct {
 	vm         *jsengine.VM
 	currentURL string
 	history    []string
+	debug      bool
 }
 
 type Options struct {
 	UserAgent string
 	Proxy     string
 	Timeout   int
+	Debug     bool
 }
 
 func New(opts *Options) *Browser {
+	if opts == nil {
+		opts = &Options{}
+	}
 	httpOpts := &httpclient.Options{
 		UserAgent: opts.UserAgent,
 		Proxy:     opts.Proxy,
 		Timeout:   opts.Timeout,
+		Debug:     opts.Debug,
 	}
 	return &Browser{
 		client:  httpclient.NewClient(httpOpts),
 		history: make([]string, 0),
+		debug:   opts.Debug,
+	}
+}
+
+// SetDebug enables or disables debug mode.
+func (b *Browser) SetDebug(debug bool) {
+	b.debug = debug
+	b.client.SetDebug(debug)
+}
+
+func (b *Browser) debugLog(format string, args ...interface{}) {
+	if b.debug {
+		fmt.Printf("[HLBR DEBUG] "+format+"\n", args...)
 	}
 }
 
 func (b *Browser) Navigate(rawURL string) error {
+	b.debugLog("Navigate started: %s", rawURL)
+
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
+		b.debugLog("URL parse error: %v", err)
 		return err
 	}
 
@@ -47,19 +70,27 @@ func (b *Browser) Navigate(rawURL string) error {
 		parsedURL.Scheme = "http"
 	}
 	fullURL := parsedURL.String()
+	b.debugLog("Full URL: %s", fullURL)
 
+	b.debugLog("Sending HTTP GET request...")
 	resp, err := b.client.Get(fullURL)
 	if err != nil {
+		b.debugLog("HTTP request error: %v", err)
 		return err
 	}
+	b.debugLog("Response received: status=%d, bodyLen=%d", resp.StatusCode, len(resp.Body))
 
 	b.currentURL = resp.URL
 	b.history = append(b.history, resp.URL)
 
+	b.debugLog("Parsing HTML...")
 	b.doc = htmlparser.Parse(resp.Body)
+	b.debugLog("HTML parsed, creating JS VM...")
 	b.vm = jsengine.NewVM(b.doc)
 
+	b.debugLog("Executing scripts...")
 	b.executeScripts()
+	b.debugLog("Navigate completed")
 
 	return nil
 }

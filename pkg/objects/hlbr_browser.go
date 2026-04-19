@@ -70,6 +70,10 @@ func NewHlbrBrowser(args ...Object) Object {
 			if v, ok := hlbrGetIntFromMap(m, "timeout"); ok && v > 0 {
 				opts.Timeout = time.Duration(v) * time.Second
 			}
+			// Support debug option
+			if v, ok := hlbrGetBoolFromMap(m, "debug"); ok {
+				opts.Debug = v
+			}
 		}
 	}
 
@@ -226,4 +230,15 @@ func hlbrGetIntFromMap(m *Map, key string) (int64, bool) {
 		}
 	}
 	return 0, false
+}
+
+// hlbrGetBoolFromMap extracts a bool value from an Xxlang Map by key.
+func hlbrGetBoolFromMap(m *Map, key string) (bool, bool) {
+	keyObj := NewString(key)
+	if pair, exists := m.Pairs[keyObj.HashKey()]; exists {
+		if b, ok := pair.Value.(*Bool); ok {
+			return b.Value, true
+		}
+	}
+	return false, false
 }

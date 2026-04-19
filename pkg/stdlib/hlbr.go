@@ -7,6 +7,8 @@ package stdlib
 
 import (
 	"fmt"
+	"net/http"
+	"time"
 
 	"github.com/topxeq/xxlang/pkg/hlbr"
 	"github.com/topxeq/xxlang/pkg/hlbr/dom"
@@ -15,6 +17,59 @@ import (
 
 	"github.com/topxeq/xxlang/pkg/objects"
 )
+
+// hlbrGoValueToObject converts a Go value from hlbr.Evaluate to an Xxlang Object.
+func hlbrGoValueToObject(v interface{}) objects.Object {
+	if v == nil {
+		return objects.NULL
+	}
+	switch val := v.(type) {
+	case bool:
+		return Bool(val)
+	case float64:
+		if val == float64(int64(val)) {
+			return Int(int64(val))
+		}
+		return Float(val)
+	case string:
+		return String(val)
+	case []interface{}:
+		elems := make([]objects.Object, len(val))
+		for i, item := range val {
+			elems[i] = hlbrGoValueToObject(item)
+		}
+		return Array(elems...)
+	case map[string]interface{}:
+		pairs := make(map[objects.HashKey]objects.MapPair)
+		for k, v := range val {
+			key := String(k)
+			pairs[key.HashKey()] = objects.MapPair{Key: key, Value: hlbrGoValueToObject(v)}
+		}
+		return &objects.Map{Pairs: pairs}
+	default:
+		return String(fmt.Sprintf("%v", v))
+	}
+}
+
+// hlbrCookiesToXxArray converts http.Cookie slice to Xxlang Array.
+func hlbrCookiesToXxArray(cookies []*http.Cookie) objects.Object {
+	elems := make([]objects.Object, len(cookies))
+	for i, c := range cookies {
+		pairs := make(map[objects.HashKey]objects.MapPair)
+		addToCookieMap(pairs, "name", c.Name)
+		addToCookieMap(pairs, "value", c.Value)
+		addToCookieMap(pairs, "domain", c.Domain)
+		addToCookieMap(pairs, "path", c.Path)
+		elems[i] = &objects.Map{Pairs: pairs}
+	}
+	return Array(elems...)
+}
+
+// addToCookieMap adds a key-value pair to a cookie map.
+func addToCookieMap(pairs map[objects.HashKey]objects.MapPair, key, value string) {
+	keyObj := String(key)
+	pairs[keyObj.HashKey()] = objects.MapPair{Key: keyObj, Value: String(value)}
+}
 
 // hlbrGetStringFromMap extracts a string value from an Xxlang Map by key.
 func hlbrGetStringFromMap(m *objects.Map, key string) string {
@@ -122,6 +177,145 @@ func init() {
 			// launch is an alias for open (creates a new HlbrBrowser).
 			"launch": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				return objects.NewHlbrBrowser(args...)
+			}),
+
+			// navigate navigates browser to a URL.
+			// Usage: navigate(browser, url)
+			"navigate": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 2 {
+					return Error("navigate() requires 2 arguments (browser, url)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("navigate() first argument must be HLBR_BROWSER")
+				}
+				url, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("navigate() second argument must be STRING")
+				}
+				if err := br.GetBrowser().Navigate(url.Value); err != nil {
+					return Error("navigate() failed: " + err.Error())
+				}
+				return br
+			}),
+
+			// evaluate executes JavaScript code in browser.
+			// Usage: evaluate(browser, jsCode) -> result
+			"evaluate": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 2 {
+					return Error("evaluate() requires 2 arguments (browser, jsCode)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("evaluate() first argument must be HLBR_BROWSER")
+				}
+				jsCode, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("evaluate() second argument must be STRING")
+				}
+				result, err := br.GetBrowser().Evaluate(jsCode.Value)
+				if err != nil {
+					return Error("evaluate() failed: " + err.Error())
+				}
+				return hlbrGoValueToObject(result)
+			}),
+
+			// getHTML returns the current page HTML.
+			// Usage: getHTML(browser) -> string
+			"getHTML": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 1 {
+					return Error("getHTML() requires 1 argument (browser)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("getHTML() argument must be HLBR_BROWSER")
+				}
+				return String(br.GetBrowser().GetHTML())
+			}),
+
+			// getText returns the current page text content.
+			// Usage: getText(browser) -> string
+			"getText": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 1 {
+					return Error("getText() requires 1 argument (browser)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("getText() argument must be HLBR_BROWSER")
+				}
+				return String(br.GetBrowser().GetText())
+			}),
+
+			// getURL returns the current page URL.
+			// Usage: getURL(browser) -> string
+			"getURL": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 1 {
+					return Error("getURL() requires 1 argument (browser)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("getURL() argument must be HLBR_BROWSER")
+				}
+				return String(br.GetBrowser().GetURL())
+			}),
+
+			// getCookies returns browser cookies.
+			// Usage: getCookies(browser) -> array
+			"getCookies": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 1 {
+					return Error("getCookies() requires 1 argument (browser)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("getCookies() argument must be HLBR_BROWSER")
+				}
+				return hlbrCookiesToXxArray(br.GetBrowser().GetCookies())
+			}),
+
+			// wait waits for specified seconds (simple implementation).
+			// Usage: wait(browser, seconds)
+			"wait": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 2 {
+					return Error("wait() requires 2 arguments (browser, seconds)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("wait() first argument must be HLBR_BROWSER")
+				}
+				secs, ok := args[1].(*objects.Int)
+				if !ok {
+					if f, ok := args[1].(*objects.Float); ok {
+						time.Sleep(time.Duration(f.Value * float64(time.Second)))
+						return br
+					}
+					return Error("wait() second argument must be INT or FLOAT")
+				}
+				time.Sleep(time.Duration(secs.Value) * time.Second)
+				return br
+			}),
+
+			// getSessionStorageItem gets a single sessionStorage item.
+			// Usage: getSessionStorageItem(browser, key) -> string
+			"getSessionStorageItem": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 2 {
+					return Error("getSessionStorageItem() requires 2 arguments (browser, key)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("getSessionStorageItem() first argument must be HLBR_BROWSER")
+				}
+				key, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("getSessionStorageItem() second argument must be STRING")
+				}
+				storage := br.GetBrowser().GetSessionStorage()
+				if storage == nil {
+					return objects.NULL
+				}
+				if val, exists := storage[key.Value]; exists {
+					return String(val)
+				}
+				return objects.NULL
 			}),
 
 			// quickGet is a convenience function that creates a browser,
@@ -375,6 +569,23 @@ func init() {
 				if err != nil {
 					return Error("submitForm failed: " + err.Error())
 				}
+				return br
+			}),
+			// setDebug enables or disables debug mode for a browser.
+			// Usage: setDebug(browser, enabled)
+			"setDebug": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 2 {
+					return Error("setDebug() requires 2 arguments (browser, enabled)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("setDebug() first argument must be HLBR_BROWSER")
+				}
+				enabled, ok := args[1].(*objects.Bool)
+				if !ok {
+					return Error("setDebug() second argument must be BOOL")
+				}
+				br.GetBrowser().SetDebug(enabled.Value)
 				return br
 			}),
 		},

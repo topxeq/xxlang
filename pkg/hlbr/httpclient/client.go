@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 type Client struct {
@@ -15,6 +16,7 @@ type Client struct {
 	proxyURL  string
 	lastURL   string
 	lastResp  *Response
+	debug     bool
 }
 
 type Response struct {
@@ -29,6 +31,7 @@ type Options struct {
 	UserAgent string
 	Proxy     string
 	Timeout   int
+	Debug     bool
 }
 
 func NewClient(opts *Options) *Client {
@@ -45,6 +48,7 @@ func NewClient(opts *Options) *Client {
 		userAgent: ua,
 		proxyURL:  opts.Proxy,
 		headers:   make(map[string]string),
+		debug:     opts.Debug,
 	}
 
 	transport := &http.Transport{}
@@ -55,14 +59,26 @@ func NewClient(opts *Options) *Client {
 		}
 	}
 
+	// Set timeout (default 30 seconds if not specified)
+	timeout := opts.Timeout
+	if timeout <= 0 {
+		timeout = 30
+	}
+
 	c.client = &http.Client{
 		Transport: transport,
+		Timeout:   time.Duration(timeout) * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
 	}
 
 	return c
+}
+
+// SetDebug enables or disables debug mode.
+func (c *Client) SetDebug(debug bool) {
+	c.debug = debug
 }
 
 func (c *Client) Get(url string) (*Response, error) {
