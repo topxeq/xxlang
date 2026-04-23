@@ -74,6 +74,18 @@ func NewHlbrBrowser(args ...Object) Object {
 			if v, ok := hlbrGetBoolFromMap(m, "debug"); ok {
 				opts.Debug = v
 			}
+			// jsDebug option (separate from debug)
+			if v, ok := hlbrGetBoolFromMap(m, "jsDebug"); ok {
+				opts.JsDebug = v
+			}
+			// skipExternalScripts option - skip loading external JS files
+			if v, ok := hlbrGetBoolFromMap(m, "skipExternalScripts"); ok {
+				opts.SkipExternalScripts = v
+			}
+			// skipScripts option - skip all script execution
+			if v, ok := hlbrGetBoolFromMap(m, "skipScripts"); ok {
+				opts.SkipScripts = v
+			}
 		}
 	}
 

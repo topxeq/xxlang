@@ -10762,12 +10762,228 @@ var hlbrBrowserMethods = map[string]*Builtin{
 		pairs[bodyKey.HashKey()] = MapPair{Key: bodyKey, Value: NewString(resp.Body)}
 		return &Map{Pairs: pairs}
 	}},
+
+	// localStorage and sessionStorage methods
+	"getLocalStorage": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getLocalStorage. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for getLocalStorage must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		storage := self.browser.GetLocalStorage()
+		if storage == nil {
+			return &Map{Pairs: make(map[HashKey]MapPair)}
+		}
+		pairs := make(map[HashKey]MapPair)
+		for k, v := range storage {
+			keyObj := NewString(k)
+			pairs[keyObj.HashKey()] = MapPair{Key: keyObj, Value: NewString(v)}
+		}
+		return &Map{Pairs: pairs}
+	}},
+
+	"getSessionStorage": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getSessionStorage. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for getSessionStorage must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		storage := self.browser.GetSessionStorage()
+		if storage == nil {
+			return &Map{Pairs: make(map[HashKey]MapPair)}
+		}
+		pairs := make(map[HashKey]MapPair)
+		for k, v := range storage {
+			keyObj := NewString(k)
+			pairs[keyObj.HashKey()] = MapPair{Key: keyObj, Value: NewString(v)}
+		}
+		return &Map{Pairs: pairs}
+	}},
+
+	"setLocalStorage": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for setLocalStorage. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for setLocalStorage must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		key, ok := args[1].(*String)
+		if !ok {
+			return newError("key argument for setLocalStorage must be STRING, got %s", args[1].Type())
+		}
+		val, ok := args[2].(*String)
+		if !ok {
+			return newError("value argument for setLocalStorage must be STRING, got %s", args[2].Type())
+		}
+		self.browser.SetLocalStorageItem(key.Value, val.Value)
+		return NULL
+	}},
+
+	"setSessionStorage": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for setSessionStorage. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for setSessionStorage must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		key, ok := args[1].(*String)
+		if !ok {
+			return newError("key argument for setSessionStorage must be STRING, got %s", args[1].Type())
+		}
+		val, ok := args[2].(*String)
+		if !ok {
+			return newError("value argument for setSessionStorage must be STRING, got %s", args[2].Type())
+		}
+		self.browser.SetSessionStorageItem(key.Value, val.Value)
+		return NULL
+	}},
+
+	"getConsoleOutput": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getConsoleOutput. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for getConsoleOutput must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		output := self.browser.GetConsoleOutput()
+		if output == nil {
+			return &Array{Elements: []Object{}}
+		}
+		elems := make([]Object, len(output))
+		for i, s := range output {
+			elems[i] = NewString(s)
+		}
+		return &Array{Elements: elems}
+	}},
+
+	"waitStable": {Fn: func(args ...Object) Object {
+		if len(args) < 1 || len(args) > 3 {
+			return newError("wrong number of arguments for waitStable. got=%d, want=1-3", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for waitStable must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		timeoutMs := 30000
+		stableForMs := 100
+		if len(args) >= 2 {
+			if t, ok := args[1].(*Int); ok {
+				timeoutMs = int(t.Value)
+			}
+		}
+		if len(args) >= 3 {
+			if s, ok := args[2].(*Int); ok {
+				stableForMs = int(s.Value)
+			}
+		}
+		err := self.browser.WaitStable(timeoutMs, stableForMs)
+		if err != nil {
+			return newError("waitStable failed: %s", err.Error())
+		}
+		return self
+	}},
+
+	// Form interaction methods (lightweight implementation via DOM attribute)
+	"setValue": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for setValue. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for setValue must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		sel, ok := args[1].(*String)
+		if !ok {
+			return newError("selector argument for setValue must be STRING, got %s", args[1].Type())
+		}
+		val, ok := args[2].(*String)
+		if !ok {
+			return newError("value argument for setValue must be STRING, got %s", args[2].Type())
+		}
+		node := self.browser.QuerySelector(sel.Value)
+		if node == nil {
+			return newError("setValue: element not found for selector '%s'", sel.Value)
+		}
+		node.SetAttribute("value", val.Value)
+		return self
+	}},
+
+	// Form interaction via JavaScript (more complete)
+	"setValueByJS": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for setValueByJS. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for setValueByJS must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		sel, ok := args[1].(*String)
+		if !ok {
+			return newError("selector argument for setValueByJS must be STRING, got %s", args[1].Type())
+		}
+		val, ok := args[2].(*String)
+		if !ok {
+			return newError("value argument for setValueByJS must be STRING, got %s", args[2].Type())
+		}
+		jsCode := fmt.Sprintf("var el = document.querySelector('%s'); if (el) { el.value = '%s'; }", sel.Value, val.Value)
+		_, err := self.browser.Evaluate(jsCode)
+		if err != nil {
+			return newError("setValueByJS failed: %s", err.Error())
+		}
+		return self
+	}},
+
+	"clickByJS": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for clickByJS. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for clickByJS must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		sel, ok := args[1].(*String)
+		if !ok {
+			return newError("selector argument for clickByJS must be STRING, got %s", args[1].Type())
+		}
+		jsCode := fmt.Sprintf("var el = document.querySelector('%s'); if (el) { el.click(); }", sel.Value)
+		_, err := self.browser.Evaluate(jsCode)
+		if err != nil {
+			return newError("clickByJS failed: %s", err.Error())
+		}
+		return self
+	}},
+
+	"submitForm": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for submitForm. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for submitForm must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		sel, ok := args[1].(*String)
+		if !ok {
+			return newError("selector argument for submitForm must be STRING, got %s", args[1].Type())
+		}
+		jsCode := fmt.Sprintf("var form = document.querySelector('%s'); if (form && form.submit) { form.submit(); }", sel.Value)
+		_, err := self.browser.Evaluate(jsCode)
+		if err != nil {
+			return newError("submitForm failed: %s", err.Error())
+		}
+		return self
+	}},
 }
 
 // ============================================================
 // HLBR Node Methods (DOM Element)
 // ============================================================
-
 var hlbrNodeMethods = map[string]*Builtin{
 	"typeOf": {Fn: universalTypeOf},
 	"toStr":  {Fn: universalToStr},

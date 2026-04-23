@@ -588,6 +588,126 @@ func init() {
 				br.GetBrowser().SetDebug(enabled.Value)
 				return br
 			}),
+
+			// setUserAgent sets the User-Agent header for the browser's HTTP client.
+			// Usage: setUserAgent(browser, userAgent)
+			"setUserAgent": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 2 {
+					return Error("setUserAgent() requires 2 arguments (browser, userAgent)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("setUserAgent() first argument must be HLBR_BROWSER")
+				}
+				ua, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("setUserAgent() second argument must be STRING")
+				}
+				br.GetBrowser().Client().SetUserAgent(ua.Value)
+				return br
+			}),
+
+			// setHeader sets a custom HTTP header for the browser's HTTP client.
+			// Usage: setHeader(browser, key, value)
+			"setHeader": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 3 {
+					return Error("setHeader() requires 3 arguments (browser, key, value)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("setHeader() first argument must be HLBR_BROWSER")
+				}
+				key, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("setHeader() second argument must be STRING")
+				}
+				val, ok := args[2].(*objects.String)
+				if !ok {
+					return Error("setHeader() third argument must be STRING")
+				}
+				br.GetBrowser().Client().SetHeader(key.Value, val.Value)
+				return br
+			}),
+
+			// setHeaders sets multiple HTTP headers from a map.
+			// Usage: setHeaders(browser, headersMap)
+			"setHeaders": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 2 {
+					return Error("setHeaders() requires 2 arguments (browser, headers)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("setHeaders() first argument must be HLBR_BROWSER")
+				}
+				headers, ok := args[1].(*objects.Map)
+				if !ok {
+					return Error("setHeaders() second argument must be MAP")
+				}
+				for _, pair := range headers.Pairs {
+					key, ok1 := pair.Key.(*objects.String)
+					val, ok2 := pair.Value.(*objects.String)
+					if ok1 && ok2 {
+						br.GetBrowser().Client().SetHeader(key.Value, val.Value)
+					}
+				}
+				return br
+			}),
+
+			// getTitle returns the page title.
+			// Usage: getTitle(browser) -> string
+			"getTitle": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 1 {
+					return Error("getTitle() requires 1 argument (browser)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("getTitle() argument must be HLBR_BROWSER")
+				}
+				return String(br.GetBrowser().GetTitle())
+			}),
+
+			// find queries the browser's document with a CSS selector.
+			// Usage: find(browser, selector) -> HlbrNode or NULL
+			"find": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 2 {
+					return Error("find() requires 2 arguments (browser, selector)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("find() first argument must be HLBR_BROWSER")
+				}
+				sel, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("find() second argument must be STRING")
+				}
+				result := br.GetBrowser().QuerySelector(sel.Value)
+				if result == nil {
+					return objects.NULL
+				}
+				return objects.NewHlbrNode(result)
+			}),
+
+			// findAll queries all matching elements in the browser's document.
+			// Usage: findAll(browser, selector) -> array of HlbrNode
+			"findAll": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 2 {
+					return Error("findAll() requires 2 arguments (browser, selector)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("findAll() first argument must be HLBR_BROWSER")
+				}
+				sel, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("findAll() second argument must be STRING")
+				}
+				nodes := br.GetBrowser().QuerySelectorAll(sel.Value)
+				elems := make([]objects.Object, len(nodes))
+				for i, n := range nodes {
+					elems[i] = objects.NewHlbrNode(n)
+				}
+				return Array(elems...)
+			}),
 		},
 	})
 }
