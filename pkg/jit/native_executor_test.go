@@ -139,7 +139,7 @@ func TestAnalyzeNativeSupport(t *testing.T) {
 			name: "with builtin",
 			bytecode: []byte{
 				byte(compiler.OpRegLoadConst), 0, 0, 0,
-				byte(compiler.OpRegBuiltin), 1, 1,
+				byte(compiler.OpRegBuiltin), 0, 1, 1, // builtin_idx=1 (2 bytes), num_args=1
 				byte(compiler.OpRegMove), 255, 0,
 			},
 			expected: SupportWithBuiltins,

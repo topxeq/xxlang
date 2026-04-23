@@ -1,3 +1,4 @@
+//go:build amd64 && !windows
 // +build amd64,!windows
 
 // pkg/jit/native_codegen.go
@@ -45,9 +46,9 @@ type NativeCodeGenerator struct {
 // NewNativeCodeGenerator creates a new native code generator
 func NewNativeCodeGenerator() *NativeCodeGenerator {
 	return &NativeCodeGenerator{
-		code:     make([]byte, 0, 4096),
-		labels:   make(map[string]int),
-		fixups:   make([]fixup, 0),
+		code:      make([]byte, 0, 4096),
+		labels:    make(map[string]int),
+		fixups:    make([]fixup, 0),
 		constants: nil,
 	}
 }
@@ -127,9 +128,11 @@ func (cg *NativeCodeGenerator) Generate(fn *compiler.CompiledFunction, constants
 // Note: callee-saved registers are already saved by the bridge function (callNative)
 // So we only need to set up the stack frame
 // Stack layout:
-//   [rbp] = old rbp
-//   [rbp-8..rbp-48] = spilled registers space
-//   [rbp-48..rbp-48-numLocals*8] = local variables
+//
+//	[rbp] = old rbp
+//	[rbp-8..rbp-48] = spilled registers space
+//	[rbp-48..rbp-48-numLocals*8] = local variables
+//
 // Parameters are passed in: RAX (arg0), RBX (arg1), RCX (arg2), RDX (arg3), R8-R9 (arg4-5)
 // The bytecode compiler will emit OpRegStoreLocal to copy parameters to Locals
 func (cg *NativeCodeGenerator) emitPrologue(numLocals int) {
@@ -180,7 +183,7 @@ func (cg *NativeCodeGenerator) compileInstruction(op compiler.Opcode, code []byt
 	switch op {
 	case compiler.OpRegLoadConst:
 		dst := int(code[*ip+1])
-		constIdx := int(code[*ip+2]) | int(code[*ip+3])<<8 // little-endian
+		constIdx := int(code[*ip+2])<<8 | int(code[*ip+3]) // big-endian
 		cg.compileLoadConst(dst, constIdx)
 		*ip += 4
 
@@ -521,11 +524,12 @@ func (cg *NativeCodeGenerator) loadRegToRax(r int) {
 		// Spilled to stack (reg 12+)
 		// Stack layout after prologue:
 		// [rbp] = old rbp
-		// [rbp-8] = rbx, [rbp-16] = r12, [rbp-24] = r13, [rbp-32] = r14, [rbp-40] = r15
-		// [rbp-48...] = spilled registers
+		// [rbp-8] to [rbp-256] = spilled registers (regs 12-43)
+		// [rbp-256-...] = local variables
+		// Note: displacement is signed, so we emit -offset as uint32
 		offset := 48 + (r-12)*8
-		cg.emitBytes([]byte{0x48, 0x8B, 0x85}) // mov rax, [rbp - offset]
-		cg.emitUint32(uint32(offset))
+		cg.emitBytes([]byte{0x48, 0x8B, 0x85}) // mov rax, [rbp + disp32]
+		cg.emitUint32(uint32(-offset))
 	}
 }
 
@@ -563,9 +567,10 @@ func (cg *NativeCodeGenerator) storeRaxToReg(r int) {
 		}
 	} else {
 		// Spilled to stack (reg 12+)
+		// Note: displacement is signed, so we emit -offset as uint32
 		offset := 48 + (r-12)*8
-		cg.emitBytes([]byte{0x48, 0x89, 0x85}) // mov [rbp - offset], rax
-		cg.emitUint32(uint32(offset))
+		cg.emitBytes([]byte{0x48, 0x89, 0x85}) // mov [rbp + disp32], rax
+		cg.emitUint32(uint32(-offset))
 	}
 }
 
@@ -640,8 +645,9 @@ func (cg *NativeCodeGenerator) compileLoadLocal(dst, localIdx int) {
 	offset := 256 + (localIdx+1)*8
 
 	// mov rax, [rbp - offset]
-	cg.emitBytes([]byte{0x48, 0x8B, 0x85}) // mov rax, [rbp - disp32]
-	cg.emitUint32(uint32(offset))
+	// Note: displacement is signed, so we emit -offset as uint32 (two's complement)
+	cg.emitBytes([]byte{0x48, 0x8B, 0x85}) // mov rax, [rbp + disp32]
+	cg.emitUint32(uint32(-offset))
 
 	// Store to destination register
 	cg.storeRaxToReg(dst)
@@ -656,8 +662,9 @@ func (cg *NativeCodeGenerator) compileStoreLocal(src, localIdx int) {
 	offset := 256 + (localIdx+1)*8
 
 	// mov [rbp - offset], rax
-	cg.emitBytes([]byte{0x48, 0x89, 0x85}) // mov [rbp - disp32], rax
-	cg.emitUint32(uint32(offset))
+	// Note: displacement is signed, so we emit -offset as uint32 (two's complement)
+	cg.emitBytes([]byte{0x48, 0x89, 0x85}) // mov [rbp + disp32], rax
+	cg.emitUint32(uint32(-offset))
 }
 
 // compileTailCall handles tail calls
@@ -1221,9 +1228,10 @@ func (cg *NativeCodeGenerator) compileAdd(dst, left, right int) {
 	} else {
 		// Add from stack (VM regs 12+)
 		// Stack layout: [rbp - 48 - (right-12)*8]
+		// Note: displacement is signed, so we emit -offset as uint32 (two's complement)
 		offset := 48 + (right-12)*8
-		cg.emitBytes([]byte{0x48, 0x03, 0x85}) // add rax, [rbp - offset]
-		cg.emitUint32(uint32(offset))
+		cg.emitBytes([]byte{0x48, 0x03, 0x85}) // add rax, [rbp + disp32]
+		cg.emitUint32(uint32(-offset))
 	}
 
 	// Store result
@@ -1267,9 +1275,10 @@ func (cg *NativeCodeGenerator) compileSub(dst, left, right int) {
 		}
 	} else {
 		// VM regs 12+ on stack
+		// Note: displacement is signed, so we emit -offset as uint32 (two's complement)
 		offset := 48 + (right-12)*8
-		cg.emitBytes([]byte{0x48, 0x2B, 0x85}) // sub rax, [rbp - offset]
-		cg.emitUint32(uint32(offset))
+		cg.emitBytes([]byte{0x48, 0x2B, 0x85}) // sub rax, [rbp + disp32]
+		cg.emitUint32(uint32(-offset))
 	}
 
 	cg.storeRaxToReg(dst)
@@ -1300,21 +1309,27 @@ func (cg *NativeCodeGenerator) compileMul(dst, left, right int) {
 	} else if right < 12 {
 		// VM regs 8-11 are in R12-R15
 		// IMUL r64, r/m64: REX.W 0F AF /r
+		// NOTE: IMUL has reversed operand encoding compared to ADD/SUB!
+		// IMUL format: r (dest in reg field), r/m (source in r/m field)
+		// For imul rax, r12: RAX is dest (not extended), R12 is source (extended in r/m)
+		// REX = 0x49 (W=1, B=1, R=0) - only B bit for source register extension
 		switch right {
 		case 8:
-			cg.emitBytes([]byte{0x4C, 0x0F, 0xAF, 0xC4}) // imul rax, r12
+			cg.emitBytes([]byte{0x49, 0x0F, 0xAF, 0xC4}) // imul rax, r12
 		case 9:
-			cg.emitBytes([]byte{0x4C, 0x0F, 0xAF, 0xC5}) // imul rax, r13
+			cg.emitBytes([]byte{0x49, 0x0F, 0xAF, 0xC5}) // imul rax, r13
 		case 10:
-			cg.emitBytes([]byte{0x4C, 0x0F, 0xAF, 0xC6}) // imul rax, r14
+			cg.emitBytes([]byte{0x49, 0x0F, 0xAF, 0xC6}) // imul rax, r14
 		case 11:
-			cg.emitBytes([]byte{0x4C, 0x0F, 0xAF, 0xC7}) // imul rax, r15
+			cg.emitBytes([]byte{0x49, 0x0F, 0xAF, 0xC7}) // imul rax, r15
 		}
 	} else {
 		// VM regs 12+ on stack
+		// Stack layout: [rbp - 48 - (right-12)*8]
+		// Note: displacement is signed, so we emit -offset as uint32 (two's complement)
 		offset := 48 + (right-12)*8
-		cg.emitBytes([]byte{0x48, 0x0F, 0xAF, 0x85}) // imul rax, [rbp - offset]
-		cg.emitUint32(uint32(offset))
+		cg.emitBytes([]byte{0x48, 0x0F, 0xAF, 0x85}) // imul rax, [rbp + disp32]
+		cg.emitUint32(uint32(-offset))
 	}
 
 	cg.storeRaxToReg(dst)
@@ -1334,21 +1349,26 @@ func (cg *NativeCodeGenerator) compileDiv(dst, left, right int) {
 			cg.emitBytes([]byte{0x48, 0x89, 0xC1}) // mov rcx, rax
 		}
 	} else if right < 12 {
+		// VM regs 8-11 are in R12-R15
+		// MOV r/m, r: dest in r/m field, source in reg field
+		// For mov rcx, r12: RCX is r/m=2 (no B), R12 is reg=4 with R
+		// REX = 0x4C (W=1, R=1, B=0)
 		switch right {
 		case 8:
-			cg.emitBytes([]byte{0x49, 0x89, 0xE1}) // mov rcx, r12
+			cg.emitBytes([]byte{0x4C, 0x89, 0xE2}) // mov rcx, r12: REX=4C, modrm=E2
 		case 9:
-			cg.emitBytes([]byte{0x49, 0x89, 0xE9}) // mov rcx, r13
+			cg.emitBytes([]byte{0x4C, 0x89, 0xEA}) // mov rcx, r13: REX=4C, modrm=EA
 		case 10:
-			cg.emitBytes([]byte{0x49, 0x89, 0xF1}) // mov rcx, r14
+			cg.emitBytes([]byte{0x4C, 0x89, 0xF2}) // mov rcx, r14: REX=4C, modrm=F2
 		case 11:
-			cg.emitBytes([]byte{0x49, 0x89, 0xF9}) // mov rcx, r15
+			cg.emitBytes([]byte{0x4C, 0x89, 0xFA}) // mov rcx, r15: REX=4C, modrm=FA
 		}
 	} else {
 		// Load from stack to rcx
+		// Note: displacement is signed, so we emit -offset as uint32 (two's complement)
 		offset := 48 + (right-12)*8
-		cg.emitBytes([]byte{0x48, 0x8B, 0x8D}) // mov rcx, [rbp - offset]
-		cg.emitUint32(uint32(offset))
+		cg.emitBytes([]byte{0x48, 0x8B, 0x8D}) // mov rcx, [rbp + disp32]
+		cg.emitUint32(uint32(-offset))
 	}
 
 	// Test if divisor is zero
@@ -1362,8 +1382,8 @@ func (cg *NativeCodeGenerator) compileDiv(dst, left, right int) {
 	cg.loadRegToRax(left)
 	cg.emitBytes([]byte{0x48, 0x99}) // cqo: sign-extend rax to rdx:rax
 
-	// idiv rcx
-	cg.emitBytes([]byte{0x48, 0xF7, 0xF9}) // idiv rcx
+	// idiv rcx (ModRM=FA: mod=11, reg=7 for idiv, r/m=2 for RCX)
+	cg.emitBytes([]byte{0x48, 0xF7, 0xFA})
 
 	// Store result and jump over zero case
 	cg.storeRaxToReg(dst)
@@ -1406,21 +1426,26 @@ func (cg *NativeCodeGenerator) compileMod(dst, left, right int) {
 			cg.emitBytes([]byte{0x48, 0x89, 0xC1}) // mov rcx, rax
 		}
 	} else if right < 12 {
+		// VM regs 8-11 are in R12-R15
+		// MOV r/m, r: dest in r/m field, source in reg field
+		// For mov rcx, r12: RCX is r/m=2 (no B), R12 is reg=4 with R
+		// REX = 0x4C (W=1, R=1, B=0)
 		switch right {
 		case 8:
-			cg.emitBytes([]byte{0x49, 0x89, 0xE1}) // mov rcx, r12
+			cg.emitBytes([]byte{0x4C, 0x89, 0xE2}) // mov rcx, r12: REX=4C, modrm=E2
 		case 9:
-			cg.emitBytes([]byte{0x49, 0x89, 0xE9}) // mov rcx, r13
+			cg.emitBytes([]byte{0x4C, 0x89, 0xEA}) // mov rcx, r13: REX=4C, modrm=EA
 		case 10:
-			cg.emitBytes([]byte{0x49, 0x89, 0xF1}) // mov rcx, r14
+			cg.emitBytes([]byte{0x4C, 0x89, 0xF2}) // mov rcx, r14: REX=4C, modrm=F2
 		case 11:
-			cg.emitBytes([]byte{0x49, 0x89, 0xF9}) // mov rcx, r15
+			cg.emitBytes([]byte{0x4C, 0x89, 0xFA}) // mov rcx, r15: REX=4C, modrm=FA
 		}
 	} else {
 		// Load from stack to rcx
+		// Note: displacement is signed, so we emit -offset as uint32 (two's complement)
 		offset := 48 + (right-12)*8
-		cg.emitBytes([]byte{0x48, 0x8B, 0x8D}) // mov rcx, [rbp - offset]
-		cg.emitUint32(uint32(offset))
+		cg.emitBytes([]byte{0x48, 0x8B, 0x8D}) // mov rcx, [rbp + disp32]
+		cg.emitUint32(uint32(-offset))
 	}
 
 	// Test if divisor is zero
@@ -1434,8 +1459,8 @@ func (cg *NativeCodeGenerator) compileMod(dst, left, right int) {
 	cg.loadRegToRax(left)
 	cg.emitBytes([]byte{0x48, 0x99}) // cqo
 
-	// idiv rcx
-	cg.emitBytes([]byte{0x48, 0xF7, 0xF9}) // idiv rcx
+	// idiv rcx (ModRM=FA: mod=11, reg=7 for idiv, r/m=2 for RCX)
+	cg.emitBytes([]byte{0x48, 0xF7, 0xFA})
 
 	// Result is in rdx (remainder)
 	cg.emitBytes([]byte{0x48, 0x89, 0xD0}) // mov rax, rdx
@@ -1558,9 +1583,10 @@ func (cg *NativeCodeGenerator) compareRaxWithReg(r int) {
 		}
 	} else {
 		// Spilled to stack
+		// Note: displacement is signed, so we emit -offset as uint32 (two's complement)
 		offset := 48 + (r-12)*8
-		cg.emitBytes([]byte{0x48, 0x3B, 0x85}) // cmp rax, [rbp - offset]
-		cg.emitUint32(uint32(offset))
+		cg.emitBytes([]byte{0x48, 0x3B, 0x85}) // cmp rax, [rbp + disp32]
+		cg.emitUint32(uint32(-offset))
 	}
 }
 
@@ -1574,7 +1600,7 @@ func (cg *NativeCodeGenerator) compileJump(target int) {
 func (cg *NativeCodeGenerator) compileJumpIfTrue(cond, target int) {
 	cg.loadRegToRax(cond)
 	cg.emitBytes([]byte{0x48, 0x85, 0xC0}) // test rax, rax
-	cg.emitBytes([]byte{0x0F, 0x85})        // jnz rel32
+	cg.emitBytes([]byte{0x0F, 0x85})       // jnz rel32
 	label := fmt.Sprintf("L%d", target)
 	cg.fixups = append(cg.fixups, fixup{offset: len(cg.code), label: label, size: 4})
 	cg.emitUint32(0)
@@ -1583,7 +1609,7 @@ func (cg *NativeCodeGenerator) compileJumpIfTrue(cond, target int) {
 func (cg *NativeCodeGenerator) compileJumpIfFalse(cond, target int) {
 	cg.loadRegToRax(cond)
 	cg.emitBytes([]byte{0x48, 0x85, 0xC0}) // test rax, rax
-	cg.emitBytes([]byte{0x0F, 0x84})        // jz rel32
+	cg.emitBytes([]byte{0x0F, 0x84})       // jz rel32
 	label := fmt.Sprintf("L%d", target)
 	cg.fixups = append(cg.fixups, fixup{offset: len(cg.code), label: label, size: 4})
 	cg.emitUint32(0)
@@ -1614,10 +1640,23 @@ func (cg *NativeCodeGenerator) compileInc(reg int) {
 		case 7:
 			cg.emitBytes([]byte{0x49, 0xFF, 0xC3}) // inc r11
 		}
+	} else if reg < 12 {
+		// VM regs 8-11 are in R12-R15 (callee-saved)
+		switch reg {
+		case 8:
+			cg.emitBytes([]byte{0x49, 0xFF, 0xC4}) // inc r12
+		case 9:
+			cg.emitBytes([]byte{0x49, 0xFF, 0xC5}) // inc r13
+		case 10:
+			cg.emitBytes([]byte{0x49, 0xFF, 0xC6}) // inc r14
+		case 11:
+			cg.emitBytes([]byte{0x49, 0xFF, 0xC7}) // inc r15
+		}
 	} else {
-		offset := (reg - 8 + 1) * 8
-		cg.emitBytes([]byte{0x48, 0xFF, 0x45}) // inc qword [rbp - offset]
-		cg.emitByte(byte(offset))
+		// Spilled to stack (reg 12+)
+		offset := 48 + (reg-12)*8
+		cg.emitBytes([]byte{0x48, 0xFF, 0x85}) // inc qword [rbp + disp32]
+		cg.emitUint32(uint32(-offset))
 	}
 }
 
@@ -1641,10 +1680,23 @@ func (cg *NativeCodeGenerator) compileDec(reg int) {
 		case 7:
 			cg.emitBytes([]byte{0x49, 0xFF, 0xCB}) // dec r11
 		}
+	} else if reg < 12 {
+		// VM regs 8-11 are in R12-R15 (callee-saved)
+		switch reg {
+		case 8:
+			cg.emitBytes([]byte{0x49, 0xFF, 0xCC}) // dec r12
+		case 9:
+			cg.emitBytes([]byte{0x49, 0xFF, 0xCD}) // dec r13
+		case 10:
+			cg.emitBytes([]byte{0x49, 0xFF, 0xCE}) // dec r14
+		case 11:
+			cg.emitBytes([]byte{0x49, 0xFF, 0xCF}) // dec r15
+		}
 	} else {
-		offset := (reg - 8 + 1) * 8
-		cg.emitBytes([]byte{0x48, 0xFF, 0x4D}) // dec qword [rbp - offset]
-		cg.emitByte(byte(offset))
+		// Spilled to stack (reg 12+)
+		offset := 48 + (reg-12)*8
+		cg.emitBytes([]byte{0x48, 0xFF, 0x8D}) // dec qword [rbp + disp32]
+		cg.emitUint32(uint32(-offset))
 	}
 }
 
