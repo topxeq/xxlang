@@ -75,3 +75,71 @@ func Parse(html string) *dom.Document {
 
 	return doc
 }
+
+// ParseFragment parses an HTML fragment and returns the child nodes.
+// This is used for implementing innerHTML setter.
+func ParseFragment(html string) []*dom.Node {
+	lexer := NewLexer(html)
+
+	// Use a dummy root to parse fragment
+	dummyRoot := &dom.Node{Type: dom.ElementNode, Data: "div"}
+	var stack []*dom.Node
+	stack = append(stack, dummyRoot)
+
+	for {
+		token := lexer.NextToken()
+		if token.Type == TextToken && token.Data == "" {
+			break
+		}
+
+		current := stack[len(stack)-1]
+
+		switch token.Type {
+		case TextToken:
+			current.AppendChild(&dom.Node{
+				Type: dom.TextNode,
+				Data: token.Data,
+			})
+
+		case StartTagToken:
+			node := &dom.Node{
+				Type: dom.ElementNode,
+				Data: token.Data,
+			}
+			for _, attr := range token.Attr {
+				node.SetAttribute(attr.Key, attr.Value)
+			}
+			current.AppendChild(node)
+
+			if !token.SelfClosed {
+				stack = append(stack, node)
+			}
+
+			if token.Data == "style" || token.Data == "script" {
+				rawText := lexer.ReadRawText(token.Data)
+				if rawText != "" {
+					node.AppendChild(&dom.Node{
+						Type: dom.TextNode,
+						Data: rawText,
+					})
+				}
+				if len(stack) > 1 {
+					stack = stack[:len(stack)-1]
+				}
+			}
+
+		case EndTagToken:
+			for i := len(stack) - 1; i > 0; i-- {
+				if stack[i].Data == token.Data {
+					stack = stack[:i]
+					break
+				}
+			}
+
+		case CommentToken, DoctypeToken:
+			// skip
+		}
+	}
+
+	return dummyRoot.Children
+}

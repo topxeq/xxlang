@@ -6,7 +6,9 @@ const (
 	TokEOF TokenType = iota
 	TokIdent
 	TokNumber
+	TokBigInt  // BigInt literal
 	TokString
+	TokTemplate // Template literal with backticks
 	TokPlus
 	TokMinus
 	TokStar
@@ -42,6 +44,10 @@ const (
 	TokInc
 	TokDec
 	TokKeyword
+	TokArrow   // => for arrow functions
+	TokSpread  // ... for spread operator
+	TokOptChain // ?. for optional chaining
+	TokNullish // ?? for nullish coalescing
 )
 
 type Token struct {
@@ -50,33 +56,45 @@ type Token struct {
 }
 
 var keywords = map[string]TokenType{
-	"var":       TokKeyword,
-	"let":       TokKeyword,
-	"const":     TokKeyword,
-	"if":        TokKeyword,
-	"else":      TokKeyword,
-	"for":       TokKeyword,
-	"while":     TokKeyword,
-	"do":        TokKeyword,
-	"break":     TokKeyword,
-	"continue":  TokKeyword,
-	"return":    TokKeyword,
-	"function":  TokKeyword,
-	"true":      TokKeyword,
-	"false":     TokKeyword,
-	"null":      TokKeyword,
-	"undefined": TokKeyword,
-	"new":       TokKeyword,
-	"typeof":    TokKeyword,
-	"delete":    TokKeyword,
-	"in":        TokKeyword,
-	"switch":    TokKeyword,
-	"case":      TokKeyword,
-	"default":   TokKeyword,
-	"try":       TokKeyword,
-	"catch":     TokKeyword,
-	"finally":   TokKeyword,
-	"throw":     TokKeyword,
+	"var":        TokKeyword,
+	"let":        TokKeyword,
+	"const":      TokKeyword,
+	"if":         TokKeyword,
+	"else":       TokKeyword,
+	"for":        TokKeyword,
+	"while":      TokKeyword,
+	"do":         TokKeyword,
+	"break":      TokKeyword,
+	"continue":   TokKeyword,
+	"return":     TokKeyword,
+	"function":   TokKeyword,
+	"true":       TokKeyword,
+	"false":      TokKeyword,
+	"null":       TokKeyword,
+	"undefined":  TokKeyword,
+	"new":        TokKeyword,
+	"typeof":     TokKeyword,
+	"delete":     TokKeyword,
+	"in":         TokKeyword,
+	"instanceof": TokKeyword,
+	"switch":     TokKeyword,
+	"case":       TokKeyword,
+	"default":    TokKeyword,
+	"try":        TokKeyword,
+	"catch":      TokKeyword,
+	"finally":    TokKeyword,
+	"throw":      TokKeyword,
+	"class":      TokKeyword,
+	"extends":    TokKeyword,
+	"super":      TokKeyword,
+	"static":     TokKeyword,
+	"get":        TokKeyword,
+	"set":        TokKeyword,
+	"this":       TokKeyword,
+	"async":      TokKeyword,
+	"await":      TokKeyword,
+	"of":         TokKeyword,
+	"yield":      TokKeyword,
 }
 
 type Lexer struct {
@@ -105,6 +123,13 @@ func (l *Lexer) peekChar() byte {
 		return 0
 	}
 	return l.input[l.pos]
+}
+
+func (l *Lexer) peekPeekChar() byte {
+	if l.pos+1 >= len(l.input) {
+		return 0
+	}
+	return l.input[l.pos+1]
 }
 
 func (l *Lexer) NextToken() Token {
@@ -167,6 +192,9 @@ func (l *Lexer) NextToken() Token {
 			} else {
 				tok = Token{TokEqEq, "=="}
 			}
+		} else if l.peekChar() == '>' {
+			l.readChar()
+			tok = Token{TokArrow, "=>"}
 		} else {
 			tok = Token{TokEq, "="}
 		}
@@ -223,17 +251,42 @@ func (l *Lexer) NextToken() Token {
 	case ',':
 		tok = Token{TokComma, ","}
 	case '.':
-		tok = Token{TokDot, "."}
+		// Check for spread operator ...
+		if l.peekChar() == '.' && l.peekPeekChar() == '.' {
+			l.readChar()
+			l.readChar()
+			tok = Token{TokSpread, "..."}
+		} else {
+			tok = Token{TokDot, "."}
+		}
 	case '?':
-		tok = Token{TokQuestion, "?"}
+		// Check for optional chaining ?. or nullish coalescing ??
+		if l.peekChar() == '.' {
+			l.readChar()
+			tok = Token{TokOptChain, "?."}
+		} else if l.peekChar() == '?' {
+			l.readChar()
+			tok = Token{TokNullish, "??"}
+		} else {
+			tok = Token{TokQuestion, "?"}
+		}
 	case ':':
 		tok = Token{TokColon, ":"}
 	case '"', '\'':
 		tok = Token{TokString, l.readString(l.ch)}
 		return tok
+	case '`':
+		tok = Token{TokTemplate, l.readTemplate()}
+		return tok
 	default:
 		if isDigit(l.ch) {
-			tok = Token{TokNumber, l.readNumber()}
+			num := l.readNumber()
+			// Check if it's a BigInt (ends with 'n')
+			if len(num) > 0 && num[len(num)-1] == 'n' {
+				tok = Token{TokBigInt, num[:len(num)-1]}
+			} else {
+				tok = Token{TokNumber, num}
+			}
 			return tok
 		}
 		if isIdentStart(l.ch) {
@@ -290,10 +343,31 @@ func (l *Lexer) readString(quote byte) string {
 	return result
 }
 
+// readTemplate reads a template literal: `Hello ${name}!`
+// Returns the raw template string with ${...} placeholders preserved
+func (l *Lexer) readTemplate() string {
+	l.readChar() // skip backtick
+	start := l.pos - 1
+	for l.ch != '`' && l.ch != 0 {
+		if l.ch == '\\' {
+			l.readChar()
+		}
+		l.readChar()
+	}
+	result := l.input[start : l.pos-1]
+	l.readChar() // skip closing backtick
+	return result
+}
+
 func (l *Lexer) readNumber() string {
 	start := l.pos - 1
 	for isDigit(l.ch) || l.ch == '.' {
 		l.readChar()
+	}
+	// Check for BigInt suffix 'n'
+	if l.ch == 'n' {
+		l.readChar()
+		return l.input[start : l.pos-1]
 	}
 	return l.input[start : l.pos-1]
 }

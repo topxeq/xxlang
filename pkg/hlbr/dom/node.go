@@ -100,6 +100,59 @@ func (n *Node) TextContent() string {
 	return sb.String()
 }
 
+// VisibleText returns text content excluding style and script tags.
+// This mimics browser behavior where CSS and JS content is not visible.
+func (n *Node) VisibleText() string {
+	return n.visibleText(false, false)
+}
+
+// visibleText recursively builds visible text, skipping style/script tags.
+// isBlock indicates if we're at a block-level element (should add newlines).
+func (n *Node) visibleText(inHiddenTag bool, isBlock bool) string {
+	if n.Type == TextNode {
+		if inHiddenTag {
+			return ""
+		}
+		return n.Data
+	}
+
+	// Check if this is a tag whose content should be hidden
+	tagName := strings.ToLower(n.Data)
+	isHidden := inHiddenTag || tagName == "style" || tagName == "script" || tagName == "noscript" || tagName == "head" || tagName == "title"
+
+	// Block-level elements that should have spacing
+	blockElements := map[string]bool{
+		"p": true, "div": true, "h1": true, "h2": true, "h3": true,
+		"h4": true, "h5": true, "h6": true, "br": true, "li": true,
+		"tr": true, "td": true, "th": true, "section": true, "article": true,
+		"header": true, "footer": true, "main": true, "nav": true,
+	}
+
+	var sb strings.Builder
+	for i, child := range n.Children {
+		childText := child.visibleText(isHidden, blockElements[tagName])
+		sb.WriteString(childText)
+		// Add newline after block elements
+		if !isHidden && blockElements[child.Data] && i < len(n.Children)-1 {
+			// Only add newline if not already ending with newline
+			text := sb.String()
+			if len(text) > 0 && text[len(text)-1] != '\n' {
+				sb.WriteString("\n")
+			}
+		}
+	}
+
+	// Add newline at end of block element
+	result := sb.String()
+	if !isHidden && blockElements[tagName] && len(result) > 0 {
+		if result[len(result)-1] != '\n' {
+			result += "\n"
+		}
+	}
+
+	return result
+}
+
 func (n *Node) InnerHTML() string {
 	var sb strings.Builder
 	for _, child := range n.Children {
