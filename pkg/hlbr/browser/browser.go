@@ -256,6 +256,24 @@ func (b *Browser) GetConsoleOutput() []string {
 	return b.vm.Output()
 }
 
+// SetJsDebug enables or disables JS debug mode (compatibility stub).
+func (b *Browser) SetJsDebug(jsDebug bool) {
+	// No dedicated JS debug toggle in this minimal browser; stub for compatibility
+	b.debugLog("SetJsDebug called (stub): %v", jsDebug)
+}
+
+// WaitStable waits for the page to become stable (compatibility stub).
+func (b *Browser) WaitStable(timeoutMs, stableForMs int) error {
+	b.debugLog("WaitStable called (stub): timeoutMs=%d, stableForMs=%d", timeoutMs, stableForMs)
+	return nil
+}
+
+// WaitStableDefault waits for the page to become stable with default timeouts (compatibility stub).
+func (b *Browser) WaitStableDefault() error {
+	b.debugLog("WaitStableDefault called (stub)")
+	return nil
+}
+
 func jsValueToGo(v *jsengine.Value) any {
 	if v == nil {
 		return nil

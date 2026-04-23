@@ -14,10 +14,13 @@ type Browser struct {
 }
 
 type Options struct {
-	UserAgent string
-	Proxy     string
-	Timeout   time.Duration
-	Debug     bool
+	UserAgent           string
+	Proxy               string
+	Timeout             time.Duration
+	Debug               bool
+	JsDebug             bool // Separate JS debug output
+	SkipExternalScripts bool // Skip loading external scripts
+	SkipScripts         bool // Skip all script execution
 }
 
 func New(opts *Options) (*Browser, error) {
@@ -42,6 +45,11 @@ func New(opts *Options) (*Browser, error) {
 // SetDebug enables or disables debug mode.
 func (b *Browser) SetDebug(debug bool) {
 	b.browser.SetDebug(debug)
+}
+
+// SetJsDebug enables or disables JS debug mode (shows JS code being executed).
+func (b *Browser) SetJsDebug(jsDebug bool) {
+	b.browser.SetJsDebug(jsDebug)
 }
 
 func (b *Browser) Navigate(url string) error {
@@ -135,6 +143,21 @@ func (b *Browser) SetSessionStorageItem(key, value string) {
 // GetConsoleOutput returns the console.log output
 func (b *Browser) GetConsoleOutput() []string {
 	return b.browser.GetConsoleOutput()
+}
+
+// WaitStable waits for the page to become stable (no pending timers or JavaScript execution).
+func (b *Browser) WaitStable(timeoutMs, stableForMs int) error {
+	return b.browser.WaitStable(timeoutMs, stableForMs)
+}
+
+// WaitStableDefault waits for the page to become stable with default timeouts.
+func (b *Browser) WaitStableDefault() error {
+	return b.browser.WaitStableDefault()
+}
+
+// VM returns the JavaScript VM
+func (b *Browser) VM() interface{} {
+	return b.browser.VM()
 }
 
 func Launch(opts *Options) (*Browser, error) {
