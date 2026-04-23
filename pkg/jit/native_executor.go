@@ -802,6 +802,20 @@ func SetCurrentRegisters(regs []vm.Value) {
 	globalJITContext.registers = regs
 }
 
+// BuiltinNameRegistry maps builtin indices between bytecode and current runtime.
+type BuiltinNameRegistry struct{}
+
+// GetBuiltinIndexForBytecode returns the current runtime index for a bytecode builtin index.
+func (r *BuiltinNameRegistry) GetBuiltinIndexForBytecode(bytecodeIdx int) int {
+	// Stub: identity mapping for now
+	return bytecodeIdx
+}
+
+// GetBuiltinNameRegistry returns the global builtin name registry.
+func GetBuiltinNameRegistry() *BuiltinNameRegistry {
+	return &BuiltinNameRegistry{}
+}
+
 // CallBuiltinFromNative is called from native code to execute a builtin function
 // This is exported for use by the JIT callback mechanism
 // Uses BuiltinNameRegistry to handle index alignment issues from builtin reordering
