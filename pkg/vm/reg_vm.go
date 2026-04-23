@@ -4012,7 +4012,12 @@ func (vm *RegVM) handleRegTailCallMethod(frame *RegFrame, code []byte) error {
 			vm.inlineCache.Set(typeTag, nil, nameHash, CacheResultPrimitiveMethod, method, -1, nil)
 		}
 	} else {
-		return fmt.Errorf("cannot call method '%s' on type %s", name.Value, obj.Type())
+		// Handle other types with method lookup (HlbrBrowser, HlbrNode, etc.)
+		var methodFound bool
+		method, methodFound = objects.GetMethod(obj.Type(), name.Value)
+		if !methodFound {
+			return fmt.Errorf("cannot call method '%s' on type %s", name.Value, obj.Type())
+		}
 	}
 
 	// Handle the method call with TCO

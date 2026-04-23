@@ -15,6 +15,9 @@ var httpClient = &http.Client{
 	Timeout: 30 * time.Second,
 }
 
+// defaultUserAgent is the default User-Agent string used for HTTP requests.
+var defaultUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
 // httpResponse creates a standard HTTP response map
 func httpResponse(body string, statusCode int, statusText string) *objects.OrderedMap {
 	result := objects.NewOrderedMap()
@@ -48,15 +51,35 @@ func init() {
 		Name: "net",
 		Exports: map[string]objects.Object{
 			// HTTP GET - returns {body, statusCode, statusText}
+			// get(url) or get(url, headers) where headers is a map
 			"get": BuiltinFunc(func(args ...objects.Object) objects.Object {
-				if len(args) != 1 {
-					return Error("get() takes exactly 1 argument")
+				if len(args) < 1 || len(args) > 2 {
+					return Error("get() takes 1 or 2 arguments (url, [headers])")
 				}
 				url, ok := args[0].(*objects.String)
 				if !ok {
 					return Error("get() requires a string URL")
 				}
-				resp, err := httpClient.Get(url.Value)
+				req, err := http.NewRequest("GET", url.Value, nil)
+				if err != nil {
+					return Error(err.Error())
+				}
+				// Set default User-Agent
+				req.Header.Set("User-Agent", defaultUserAgent)
+				// Add custom headers if provided
+				if len(args) > 1 {
+					headers, ok := args[1].(*objects.Map)
+					if ok {
+						for _, pair := range headers.Pairs {
+							key, ok1 := pair.Key.(*objects.String)
+							val, ok2 := pair.Value.(*objects.String)
+							if ok1 && ok2 {
+								req.Header.Set(key.Value, val.Value)
+							}
+						}
+					}
+				}
+				resp, err := httpClient.Do(req)
 				if err != nil {
 					return Error(err.Error())
 				}
@@ -69,6 +92,7 @@ func init() {
 			}),
 
 			// HTTP POST - returns {body, statusCode, statusText}
+			// post(url, body, [contentType], [headers])
 			"post": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				if len(args) < 2 {
 					return Error("post() takes at least 2 arguments")
@@ -77,7 +101,7 @@ func init() {
 				if !ok {
 					return Error("post() requires a string URL")
 				}
-				body, ok := args[1].(*objects.String)
+				postBody, ok := args[1].(*objects.String)
 				if !ok {
 					return Error("post() requires a string body")
 				}
@@ -88,7 +112,26 @@ func init() {
 						contentType = ct.Value
 					}
 				}
-				resp, err := httpClient.Post(url.Value, contentType, strings.NewReader(body.Value))
+				req, err := http.NewRequest("POST", url.Value, strings.NewReader(postBody.Value))
+				if err != nil {
+					return Error(err.Error())
+				}
+				req.Header.Set("Content-Type", contentType)
+				req.Header.Set("User-Agent", defaultUserAgent)
+				// Add custom headers if provided
+				if len(args) > 3 {
+					headers, ok := args[3].(*objects.Map)
+					if ok {
+						for _, pair := range headers.Pairs {
+							key, ok1 := pair.Key.(*objects.String)
+							val, ok2 := pair.Value.(*objects.String)
+							if ok1 && ok2 {
+								req.Header.Set(key.Value, val.Value)
+							}
+						}
+					}
+				}
+				resp, err := httpClient.Do(req)
 				if err != nil {
 					return Error(err.Error())
 				}
@@ -124,6 +167,8 @@ func init() {
 				if err != nil {
 					return Error(err.Error())
 				}
+				// Set default User-Agent
+				req.Header.Set("User-Agent", defaultUserAgent)
 				// Add headers if provided
 				if len(args) > 3 {
 					headers, ok := args[3].(*objects.Map)
@@ -158,7 +203,12 @@ func init() {
 				if !ok {
 					return Error("head() requires a string URL")
 				}
-				resp, err := httpClient.Head(url.Value)
+				req, err := http.NewRequest("HEAD", url.Value, nil)
+				if err != nil {
+					return Error(err.Error())
+				}
+				req.Header.Set("User-Agent", defaultUserAgent)
+				resp, err := httpClient.Do(req)
 				if err != nil {
 					return Error(err.Error())
 				}
@@ -178,7 +228,12 @@ func init() {
 				if !ok {
 					return Error("download() requires a string URL")
 				}
-				resp, err := httpClient.Get(url.Value)
+				req, err := http.NewRequest("GET", url.Value, nil)
+				if err != nil {
+					return Error(err.Error())
+				}
+				req.Header.Set("User-Agent", defaultUserAgent)
+				resp, err := httpClient.Do(req)
 				if err != nil {
 					return Error(err.Error())
 				}
@@ -204,6 +259,24 @@ func init() {
 				}
 				httpClient.Timeout = time.Duration(timeout.Value) * time.Second
 				return Null()
+			}),
+
+			// setUserAgent sets the default User-Agent string for HTTP requests
+			"setUserAgent": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) != 1 {
+					return Error("setUserAgent() takes exactly 1 argument")
+				}
+				ua, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("setUserAgent() requires a string")
+				}
+				defaultUserAgent = ua.Value
+				return Null()
+			}),
+
+			// getUserAgent returns the current default User-Agent string
+			"getUserAgent": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				return String(defaultUserAgent)
 			}),
 
 			// Status code helpers
@@ -265,6 +338,7 @@ func init() {
 					return Error(err.Error())
 				}
 				req.Header.Set("Accept", "application/json")
+				req.Header.Set("User-Agent", defaultUserAgent)
 				resp, err := httpClient.Do(req)
 				if err != nil {
 					return Error(err.Error())
@@ -292,7 +366,14 @@ func init() {
 				if !ok {
 					return Error("postJson() requires a string JSON body")
 				}
-				resp, err := httpClient.Post(url.Value, "application/json", strings.NewReader(jsonBody.Value))
+				req, err := http.NewRequest("POST", url.Value, strings.NewReader(jsonBody.Value))
+				if err != nil {
+					return Error(err.Error())
+				}
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("Accept", "application/json")
+				req.Header.Set("User-Agent", defaultUserAgent)
+				resp, err := httpClient.Do(req)
 				if err != nil {
 					return Error(err.Error())
 				}

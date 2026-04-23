@@ -26,6 +26,10 @@ type RegCompiler struct {
 	maxReg      int
 	freeRegs    []int // List of freed registers available for reuse
 
+	// Method object register stack for nested method calls
+	// Each nested method call uses a different register to avoid corrupting parent calls
+	methodObjRegStack []int
+
 	// Source mapping
 	sourceMap  *SourceMap
 	sourceFile string
@@ -2140,7 +2144,7 @@ func (c *RegCompiler) compileCallExpression(n *parser.CallExpression) (int, erro
 		}
 	}
 
-	// Check if this is a method call (obj.method())
+// Check if this is a method call (obj.method())
 	if dot, ok := n.Function.(*parser.DotExpression); ok {
 		// Compile the object
 		objReg, err := c.Compile(dot.Object)
@@ -2148,14 +2152,24 @@ func (c *RegCompiler) compileCallExpression(n *parser.CallExpression) (int, erro
 			return 0, err
 		}
 
-		// IMPORTANT: Save objReg to a dedicated safe register (R254) that won't be
-		// reused by temp register allocation. This is critical because compiling
-		// arguments may allocate many temp registers, and we need to ensure objReg
-		// is not overwritten.
-		const safeObjReg = 254 // Use R254 as safe register for method receiver
+		// Use a stack of safe registers for nested method calls
+		// R250-R259 are reserved for method receiver objects (10 levels of nesting)
+		const methodRegBase = 250
+		const maxMethodNesting = 10
+
+		// Get the current nesting depth
+		nestingDepth := len(c.methodObjRegStack)
+		if nestingDepth >= maxMethodNesting {
+			return 0, fmt.Errorf("method call nesting too deep (max %d)", maxMethodNesting)
+		}
+
+		// Allocate a safe register for this method call
+		safeObjReg := methodRegBase + nestingDepth
+		c.methodObjRegStack = append(c.methodObjRegStack, safeObjReg)
+
 		c.emitRegMove(safeObjReg, objReg)
 		// Free the original objReg if it was a temp register
-		if objReg >= FirstLocalRegister && objReg < NumRegisters-1 {
+		if objReg >= FirstLocalRegister && objReg < NumRegisters-10 {
 			c.freeTempReg(objReg)
 		}
 
@@ -2164,6 +2178,8 @@ func (c *RegCompiler) compileCallExpression(n *parser.CallExpression) (int, erro
 		for i, arg := range n.Arguments {
 			argReg, err := c.Compile(arg)
 			if err != nil {
+				// Pop from stack on error
+				c.methodObjRegStack = c.methodObjRegStack[:len(c.methodObjRegStack)-1]
 				return 0, err
 			}
 			// If the result is in ReturnRegister, move it to a temp register
@@ -2196,9 +2212,11 @@ func (c *RegCompiler) compileCallExpression(n *parser.CallExpression) (int, erro
 		// Emit method call with the safe register
 		c.emitRegCallMethod(safeObjReg, nameIdx, len(n.Arguments))
 
+		// Pop from the method register stack after the call
+		c.methodObjRegStack = c.methodObjRegStack[:len(c.methodObjRegStack)-1]
+
 		return ReturnRegister, nil
 	}
-
 	// Regular function call
 	// Compile function
 	funcReg, err := c.Compile(n.Function)
