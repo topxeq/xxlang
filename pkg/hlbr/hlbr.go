@@ -29,10 +29,11 @@ func New(opts *Options) (*Browser, error) {
 	}
 
 	browserOpts := &browser.Options{
-		UserAgent: opts.UserAgent,
-		Proxy:     opts.Proxy,
-		Debug:     opts.Debug,
-		NoScripts: opts.SkipScripts,
+		UserAgent:           opts.UserAgent,
+		Proxy:               opts.Proxy,
+		Debug:               opts.Debug,
+		NoScripts:           opts.SkipScripts,
+		SkipExternalScripts: opts.SkipExternalScripts,
 	}
 	if opts.Timeout > 0 {
 		browserOpts.Timeout = int(opts.Timeout.Seconds())
@@ -172,6 +173,12 @@ func (b *Browser) Abort() {
 // IsAborted returns true if the abort flag has been set.
 func (b *Browser) IsAborted() bool {
 	return b.browser.IsAborted()
+}
+
+// AnalyzeVueTemplates analyzes JavaScript source code to find Vue.js templates
+// and extract form fields. This is useful for SPA pages that render forms dynamically.
+func (b *Browser) AnalyzeVueTemplates() []browser.FormField {
+	return b.browser.AnalyzeVueTemplates()
 }
 
 // VM returns the JavaScript VM

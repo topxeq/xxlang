@@ -3,6 +3,7 @@ package browser
 import (
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/topxeq/xxlang/pkg/hlbr/dom"
@@ -13,21 +14,23 @@ import (
 )
 
 type Browser struct {
-	client     *httpclient.Client
-	doc        *dom.Document
-	vm         *jsengine.VM
-	currentURL string
-	history    []string
-	debug      bool
-	noScripts  bool // if true, skip script execution during navigate
+	client              *httpclient.Client
+	doc                 *dom.Document
+	vm                  *jsengine.VM
+	currentURL          string
+	history             []string
+	debug               bool
+	noScripts           bool // if true, skip script execution during navigate
+	skipExternalScripts bool // if true, skip loading external scripts
 }
 
 type Options struct {
-	UserAgent string
-	Proxy     string
-	Timeout   int
-	Debug     bool
-	NoScripts bool // if true, skip script execution during navigate
+	UserAgent           string
+	Proxy               string
+	Timeout             int
+	Debug               bool
+	NoScripts           bool // if true, skip script execution during navigate
+	SkipExternalScripts bool // if true, skip loading external scripts
 }
 
 func New(opts *Options) *Browser {
@@ -41,10 +44,11 @@ func New(opts *Options) *Browser {
 		Debug:     opts.Debug,
 	}
 	return &Browser{
-		client:    httpclient.NewClient(httpOpts),
-		history:   make([]string, 0),
-		debug:     opts.Debug,
-		noScripts: opts.NoScripts,
+		client:              httpclient.NewClient(httpOpts),
+		history:             make([]string, 0),
+		debug:               opts.Debug,
+		noScripts:           opts.NoScripts,
+		skipExternalScripts: opts.SkipExternalScripts,
 	}
 }
 
@@ -127,7 +131,11 @@ func (b *Browser) executeScripts() {
 	for _, script := range scripts {
 		src := script.GetAttribute("src")
 		if src != "" {
-			b.loadExternalScript(src)
+			if !b.skipExternalScripts {
+				b.loadExternalScript(src)
+			} else {
+				b.debugLog("Skipping external script: %s", src)
+			}
 			continue
 		}
 
@@ -322,6 +330,137 @@ func (b *Browser) IsAborted() bool {
 		return b.vm.IsAborted()
 	}
 	return false
+}
+
+// FormField represents a form field found in the page.
+type FormField struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Placeholder string `json:"placeholder"`
+	Label       string `json:"label"`
+	ID          string `json:"id"`
+	Required    bool   `json:"required"`
+}
+
+// AnalyzeVueTemplates analyzes JavaScript source code to find Vue.js templates
+// and extract form fields. This is useful for SPA pages that render forms dynamically.
+func (b *Browser) AnalyzeVueTemplates() []FormField {
+	var fields []FormField
+
+	// Collect all JavaScript sources
+	var jsSources []string
+
+	// Add inline scripts
+	if b.doc != nil {
+		scripts := dom.GetElementsByTagName(b.doc.Root, "script")
+		for _, script := range scripts {
+			src := script.GetAttribute("src")
+			if src == "" {
+				code := script.TextContent()
+				if code != "" {
+					jsSources = append(jsSources, code)
+				}
+			} else {
+				// Download external script
+				if !strings.HasPrefix(src, "http") {
+					baseURL, _ := url.Parse(b.currentURL)
+					if strings.HasPrefix(src, "/") {
+						src = baseURL.Scheme + "://" + baseURL.Host + src
+					} else {
+						src = baseURL.Scheme + "://" + baseURL.Host + "/" + src
+					}
+				}
+				resp, err := b.client.Get(src)
+				if err == nil && len(resp.Body) <= 2_000_000 { // Limit to 2MB
+					jsSources = append(jsSources, resp.Body)
+				}
+			}
+		}
+	}
+
+	// Analyze each JavaScript source for Vue templates
+	for _, js := range jsSources {
+		fields = append(fields, b.extractFormFieldsFromJS(js)...)
+	}
+
+	return fields
+}
+
+// extractFormFieldsFromJS extracts form fields from JavaScript source code.
+func (b *Browser) extractFormFieldsFromJS(js string) []FormField {
+	var fields []FormField
+
+	// Look for el-form-item patterns
+	// Pattern: <el-form-item prop="fieldName">
+	formItemPattern := `el-form-item[^>]*prop=["']([^"']+)["']`
+	formItemRegex := regexp.MustCompile(formItemPattern)
+	matches := formItemRegex.FindAllStringSubmatch(js, -1)
+
+	for _, match := range matches {
+		if len(match) > 1 {
+			field := FormField{
+				Name: match[1],
+				Type: "text",
+			}
+
+			// Try to find the associated el-input
+			inputPattern := `v-model=["']ruleForm\.` + regexp.QuoteMeta(match[1]) + `["'][^>]*>`
+			inputRegex := regexp.MustCompile(inputPattern)
+			inputMatch := inputRegex.FindString(js)
+
+			if inputMatch != "" {
+				// Extract type
+				typePattern := `type=["']([^"']+)["']`
+				typeRegex := regexp.MustCompile(typePattern)
+				typeMatch := typeRegex.FindStringSubmatch(inputMatch)
+				if len(typeMatch) > 1 {
+					field.Type = typeMatch[1]
+				}
+
+				// Extract placeholder
+				placeholderPattern := `:placeholder=["']\$t\(['"]([^'"]+)['"]\)["']|placeholder=["']([^"']+)["']`
+				placeholderRegex := regexp.MustCompile(placeholderPattern)
+				placeholderMatch := placeholderRegex.FindStringSubmatch(inputMatch)
+				if len(placeholderMatch) > 1 {
+					if placeholderMatch[1] != "" {
+						field.Placeholder = placeholderMatch[1]
+					} else if placeholderMatch[2] != "" {
+						field.Placeholder = placeholderMatch[2]
+					}
+				}
+			}
+
+			fields = append(fields, field)
+		}
+	}
+
+	// Also look for v-model patterns directly
+	vModelPattern := `v-model=["']([^"']+)["']`
+	vModelRegex := regexp.MustCompile(vModelPattern)
+	vModelMatches := vModelRegex.FindAllStringSubmatch(js, -1)
+
+	existingFields := make(map[string]bool)
+	for _, f := range fields {
+		existingFields[f.Name] = true
+	}
+
+	for _, match := range vModelMatches {
+		if len(match) > 1 {
+			fieldName := match[1]
+			// Skip if already found or if it's a complex expression
+			if existingFields[fieldName] || strings.Contains(fieldName, ".") {
+				continue
+			}
+			// This is a simple v-model, might be a form field
+			fields = append(fields, FormField{
+				Name: fieldName,
+				Type: "text",
+			})
+			existingFields[fieldName] = true
+		}
+	}
+
+	return fields
 }
 
 func jsValueToGo(v *jsengine.Value) any {

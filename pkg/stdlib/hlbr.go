@@ -708,6 +708,44 @@ func init() {
 				}
 				return Array(elems...)
 			}),
+
+			// analyzeVueTemplates analyzes JavaScript source code to find Vue.js templates
+			// and extract form fields. This is useful for SPA pages that render forms dynamically.
+			// Usage: analyzeVueTemplates(browser) -> array of maps with name, type, placeholder, etc.
+			"analyzeVueTemplates": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 1 {
+					return Error("analyzeVueTemplates() requires 1 argument (browser)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("analyzeVueTemplates() argument must be HLBR_BROWSER")
+				}
+				fields := br.GetBrowser().AnalyzeVueTemplates()
+				elems := make([]objects.Object, len(fields))
+				for i, f := range fields {
+					pairs := make(map[objects.HashKey]objects.MapPair)
+					addToMap(pairs, "name", f.Name)
+					addToMap(pairs, "type", f.Type)
+					addToMap(pairs, "placeholder", f.Placeholder)
+					addToMap(pairs, "label", f.Label)
+					addToMap(pairs, "id", f.ID)
+					addToMapBool(pairs, "required", f.Required)
+					elems[i] = &objects.Map{Pairs: pairs}
+				}
+				return Array(elems...)
+			}),
 		},
 	})
+}
+
+// addToMap adds a string key-value pair to a map.
+func addToMap(pairs map[objects.HashKey]objects.MapPair, key, value string) {
+	keyObj := objects.NewString(key)
+	pairs[keyObj.HashKey()] = objects.MapPair{Key: keyObj, Value: objects.NewString(value)}
+}
+
+// addToMapBool adds a bool key-value pair to a map.
+func addToMapBool(pairs map[objects.HashKey]objects.MapPair, key string, value bool) {
+	keyObj := objects.NewString(key)
+	pairs[keyObj.HashKey()] = objects.MapPair{Key: keyObj, Value: &objects.Bool{Value: value}}
 }

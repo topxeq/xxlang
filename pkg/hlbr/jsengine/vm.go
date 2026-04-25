@@ -589,8 +589,65 @@ func (vm *VM) setupBuiltins() {
 				return &Value{Type: "object", Arr: []*Value{}}
 			}
 			src := args[0]
+			// Direct array
 			if src.Type == "object" && src.Arr != nil {
+				// Apply map function if provided
+				if len(args) > 1 && args[1].Type == "native" {
+					result := make([]*Value, len(src.Arr))
+					for i, v := range src.Arr {
+						result[i] = args[1].Native([]*Value{v, {Type: "number", Num: float64(i)}})
+					}
+					return &Value{Type: "object", Arr: result}
+				}
 				return src
+			}
+			// String
+			if src.Type == "string" {
+				arr := make([]*Value, 0, len(src.Str))
+				for _, ch := range src.Str {
+					arr = append(arr, &Value{Type: "string", Str: string(ch)})
+				}
+				return &Value{Type: "object", Arr: arr}
+			}
+			// Check for iterator protocol
+			if src.Type == "object" && src.Obj != nil {
+				iteratorSymbol := vm.env.Get("_symbolIterator")
+				if iterMethod, ok := src.Obj[valueToString(iteratorSymbol)]; ok && iterMethod.Type == "native" {
+					iterator := iterMethod.Native(nil)
+					if iterator.Type == "object" && iterator.Obj != nil {
+						if nextFn, ok := iterator.Obj["next"]; ok && nextFn.Type == "native" {
+							arr := make([]*Value, 0)
+							for {
+								result := nextFn.Native(nil)
+								if result.Type == "object" && result.Obj != nil {
+									if done, ok := result.Obj["done"]; ok && done.Bool {
+										break
+									}
+									value := result.Obj["value"]
+									if value == nil {
+										value = &Value{Type: "undefined"}
+									}
+									arr = append(arr, value)
+								} else {
+									break
+								}
+							}
+							// Apply map function if provided
+							if len(args) > 1 && args[1].Type == "native" {
+								for i, v := range arr {
+									arr[i] = args[1].Native([]*Value{v, {Type: "number", Num: float64(i)}})
+								}
+							}
+							return &Value{Type: "object", Arr: arr}
+						}
+					}
+				}
+				// Object values
+				arr := make([]*Value, 0, len(src.Obj))
+				for _, v := range src.Obj {
+					arr = append(arr, v)
+				}
+				return &Value{Type: "object", Arr: arr}
 			}
 			return &Value{Type: "object", Arr: []*Value{}}
 		}},
@@ -1476,6 +1533,44 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 		return &Value{Type: "undefined"}, false, nil
 	case *ForOfStmt:
 		obj := vm.evalExpr(s.Object)
+		// Check if object has Symbol.iterator
+		if obj.Type == "object" && obj.Obj != nil {
+			iteratorSymbol := vm.env.Get("_symbolIterator")
+			if iterMethod, ok := obj.Obj[valueToString(iteratorSymbol)]; ok && iterMethod.Type == "native" {
+				// Use iterator protocol
+				iterator := iterMethod.Native(nil)
+				if iterator.Type == "object" && iterator.Obj != nil {
+					if nextFn, ok := iterator.Obj["next"]; ok && nextFn.Type == "native" {
+						for {
+							vm.checkSteps()
+							result := nextFn.Native(nil)
+							if result.Type == "object" && result.Obj != nil {
+								if done, ok := result.Obj["done"]; ok && done.Bool {
+									break
+								}
+								value := result.Obj["value"]
+								if value == nil {
+									value = &Value{Type: "undefined"}
+								}
+								childEnv := NewEnvironment(vm.env)
+								childEnv.Define(s.VarName, value)
+								oldEnv := vm.env
+								vm.env = childEnv
+								ret, brk, retVal := vm.execBlock(s.Body)
+								vm.env = oldEnv
+								if brk {
+									return ret, true, retVal
+								}
+							} else {
+								break
+							}
+						}
+						return &Value{Type: "undefined"}, false, nil
+					}
+				}
+			}
+		}
+		// Fallback to array iteration
 		if obj.Type == "object" && obj.Arr != nil {
 			for _, val := range obj.Arr {
 				vm.checkSteps() // Check for infinite loop in for-of-statement
@@ -1494,6 +1589,20 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 				vm.checkSteps() // Check for infinite loop in for-of-statement
 				childEnv := NewEnvironment(vm.env)
 				childEnv.Define(s.VarName, val)
+				oldEnv := vm.env
+				vm.env = childEnv
+				ret, brk, retVal := vm.execBlock(s.Body)
+				vm.env = oldEnv
+				if brk {
+					return ret, true, retVal
+				}
+			}
+		} else if obj.Type == "string" {
+			// String iteration
+			for _, ch := range obj.Str {
+				vm.checkSteps()
+				childEnv := NewEnvironment(vm.env)
+				childEnv.Define(s.VarName, &Value{Type: "string", Str: string(ch)})
 				oldEnv := vm.env
 				vm.env = childEnv
 				ret, brk, retVal := vm.execBlock(s.Body)
@@ -3562,11 +3671,14 @@ func (vm *VM) setupMapSet() {
 		}}
 		return ws
 	}})
-// setupSymbol adds Symbol constructor to the VM
 }
+
+// setupSymbol adds Symbol constructor to the VM
 func (vm *VM) setupSymbol() {
 	symbolCounter := 0
-	vm.env.Define("Symbol", &Value{Type: "native", Native: func(args []*Value) *Value {
+	symbolCache := make(map[string]*Value)
+
+	symbolConstructor := &Value{Type: "native", Native: func(args []*Value) *Value {
 		symbolCounter++
 		desc := ""
 		if len(args) > 0 {
@@ -3577,7 +3689,64 @@ func (vm *VM) setupSymbol() {
 			Str:  desc,
 			Num:  float64(symbolCounter),
 		}
-	}})
+	}}
+
+	// Create well-known symbols
+	symbolCounter++
+	iteratorSymbol := &Value{Type: "symbol", Str: "Symbol.iterator", Num: float64(symbolCounter)}
+	symbolCache["iterator"] = iteratorSymbol
+
+	symbolCounter++
+	toPrimitiveSymbol := &Value{Type: "symbol", Str: "Symbol.toPrimitive", Num: float64(symbolCounter)}
+	symbolCache["toPrimitive"] = toPrimitiveSymbol
+
+	symbolCounter++
+	toStringTagSymbol := &Value{Type: "symbol", Str: "Symbol.toStringTag", Num: float64(symbolCounter)}
+	symbolCache["toStringTag"] = toStringTagSymbol
+
+	symbolCounter++
+	speciesSymbol := &Value{Type: "symbol", Str: "Symbol.species", Num: float64(symbolCounter)}
+	symbolCache["species"] = speciesSymbol
+
+	symbolCounter++
+	hasInstanceSymbol := &Value{Type: "symbol", Str: "Symbol.hasInstance", Num: float64(symbolCounter)}
+	symbolCache["hasInstance"] = hasInstanceSymbol
+
+	// Add well-known symbols as properties of Symbol constructor
+	symbolConstructor.Obj = map[string]*Value{
+		"iterator":     iteratorSymbol,
+		"toPrimitive":  toPrimitiveSymbol,
+		"toStringTag":  toStringTagSymbol,
+		"species":      speciesSymbol,
+		"hasInstance":   hasInstanceSymbol,
+		"for": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) > 0 {
+				key := valueToString(args[0])
+				if s, ok := symbolCache[key]; ok {
+					return s
+				}
+				symbolCounter++
+				s := &Value{Type: "symbol", Str: key, Num: float64(symbolCounter)}
+				symbolCache[key] = s
+				return s
+			}
+			return &Value{Type: "undefined"}
+		}},
+		"keyFor": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) > 0 && args[0].Type == "symbol" {
+				for k, s := range symbolCache {
+					if s.Num == args[0].Num {
+						return &Value{Type: "string", Str: k}
+					}
+				}
+			}
+			return &Value{Type: "undefined"}
+		}},
+	}
+
+	vm.env.Define("Symbol", symbolConstructor)
+	// Store iterator symbol for internal use
+	vm.env.Define("_symbolIterator", iteratorSymbol)
 }
 
 // setupReflect adds Reflect API to the VM
