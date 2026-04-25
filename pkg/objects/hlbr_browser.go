@@ -78,6 +78,14 @@ func NewHlbrBrowser(args ...Object) Object {
 			if v, ok := hlbrGetBoolFromMap(m, "jsDebug"); ok {
 				opts.JsDebug = v
 			}
+			// noScripts option - skip script execution during navigate
+			if v, ok := hlbrGetBoolFromMap(m, "noScripts"); ok {
+				opts.SkipScripts = v
+			}
+			// skipScripts option (alias for noScripts)
+			if v, ok := hlbrGetBoolFromMap(m, "skipScripts"); ok {
+				opts.SkipScripts = v
+			}
 			// skipExternalScripts option - skip loading external JS files
 			if v, ok := hlbrGetBoolFromMap(m, "skipExternalScripts"); ok {
 				opts.SkipExternalScripts = v
@@ -92,6 +100,11 @@ func NewHlbrBrowser(args ...Object) Object {
 	b, err := hlbr.New(opts)
 	if err != nil {
 		return newError("hlbr new failed: %s", err.Error())
+	}
+
+	// Set JS debug mode if specified
+	if opts != nil && opts.JsDebug {
+		b.SetJsDebug(true)
 	}
 
 	return &HlbrBrowser{browser: b}

@@ -32,14 +32,22 @@ func New(opts *Options) (*Browser, error) {
 		UserAgent: opts.UserAgent,
 		Proxy:     opts.Proxy,
 		Debug:     opts.Debug,
+		NoScripts: opts.SkipScripts,
 	}
 	if opts.Timeout > 0 {
 		browserOpts.Timeout = int(opts.Timeout.Seconds())
 	}
 
-	return &Browser{
+	b := &Browser{
 		browser: browser.New(browserOpts),
-	}, nil
+	}
+
+	// Set JS debug mode if specified
+	if opts.JsDebug {
+		b.browser.SetJsDebug(true)
+	}
+
+	return b, nil
 }
 
 // SetDebug enables or disables debug mode.
@@ -153,6 +161,17 @@ func (b *Browser) WaitStable(timeoutMs, stableForMs int) error {
 // WaitStableDefault waits for the page to become stable with default timeouts.
 func (b *Browser) WaitStableDefault() error {
 	return b.browser.WaitStableDefault()
+}
+
+// Abort cancels any running JavaScript execution.
+// This can be called from another goroutine to stop a long-running script.
+func (b *Browser) Abort() {
+	b.browser.Abort()
+}
+
+// IsAborted returns true if the abort flag has been set.
+func (b *Browser) IsAborted() bool {
+	return b.browser.IsAborted()
 }
 
 // VM returns the JavaScript VM

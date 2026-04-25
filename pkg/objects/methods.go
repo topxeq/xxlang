@@ -10979,6 +10979,31 @@ var hlbrBrowserMethods = map[string]*Builtin{
 		}
 		return self
 	}},
+
+	// Abort method to cancel running JavaScript execution
+	"abort": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for abort. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for abort must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		self.browser.Abort()
+		return NULL
+	}},
+
+	// isAborted returns true if the abort flag has been set
+	"isAborted": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for isAborted. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for isAborted must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		return &Bool{Value: self.browser.IsAborted()}
+	}},
 }
 
 // ============================================================

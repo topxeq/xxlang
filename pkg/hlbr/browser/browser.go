@@ -19,6 +19,7 @@ type Browser struct {
 	currentURL string
 	history    []string
 	debug      bool
+	noScripts  bool // if true, skip script execution during navigate
 }
 
 type Options struct {
@@ -26,6 +27,7 @@ type Options struct {
 	Proxy     string
 	Timeout   int
 	Debug     bool
+	NoScripts bool // if true, skip script execution during navigate
 }
 
 func New(opts *Options) *Browser {
@@ -39,9 +41,10 @@ func New(opts *Options) *Browser {
 		Debug:     opts.Debug,
 	}
 	return &Browser{
-		client:  httpclient.NewClient(httpOpts),
-		history: make([]string, 0),
-		debug:   opts.Debug,
+		client:    httpclient.NewClient(httpOpts),
+		history:   make([]string, 0),
+		debug:     opts.Debug,
+		noScripts: opts.NoScripts,
 	}
 }
 
@@ -59,6 +62,18 @@ func (b *Browser) debugLog(format string, args ...interface{}) {
 
 func (b *Browser) Navigate(rawURL string) error {
 	b.debugLog("Navigate started: %s", rawURL)
+
+	// Handle about:blank - create empty document without HTTP request
+	if rawURL == "about:blank" || rawURL == "" {
+		b.currentURL = "about:blank"
+		b.doc = htmlparser.Parse("<html><head></head><body></body></html>")
+		b.vm = jsengine.NewVM(b.doc)
+		b.vm.SetTimeoutMs(30_000) // 30 seconds default (reduced from 120s)
+		b.vm.SetMaxCallDepth(200) // 200 levels of recursion max
+		b.vm.SetMaxAllocs(100_000) // 100K object allocations max
+		b.debugLog("Navigate completed (about:blank)")
+		return nil
+	}
 
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
@@ -87,9 +102,17 @@ func (b *Browser) Navigate(rawURL string) error {
 	b.doc = htmlparser.Parse(resp.Body)
 	b.debugLog("HTML parsed, creating JS VM...")
 	b.vm = jsengine.NewVM(b.doc)
+	b.vm.SetTimeoutMs(60_000)  // 60 seconds for heavy pages (reduced from 180s)
+	b.vm.SetMaxSteps(100_000_000) // 100M steps for heavy pages (reduced from 500M)
+	b.vm.SetMaxCallDepth(200)  // 200 levels of recursion max
+	b.vm.SetMaxAllocs(500_000) // 500K object allocations max
 
-	b.debugLog("Executing scripts...")
-	b.executeScripts()
+	if !b.noScripts {
+		b.debugLog("Executing scripts...")
+		b.executeScripts()
+	} else {
+		b.debugLog("Skipping scripts (noScripts=true)")
+	}
 	b.debugLog("Navigate completed")
 
 	return nil
@@ -127,10 +150,19 @@ func (b *Browser) loadExternalScript(src string) {
 
 	resp, err := b.client.Get(src)
 	if err != nil {
+		b.debugLog("Failed to load external script: %v", err)
+		return
+	}
+
+	// Limit external script size to 1MB to prevent memory exhaustion
+	if len(resp.Body) > 1_000_000 {
+		b.debugLog("External script too large (%d bytes), skipping", len(resp.Body))
 		return
 	}
 
 	if b.vm != nil {
+		// Reset steps before executing external script to prevent cumulative timeout
+		b.vm.ResetSteps()
 		b.vm.Run(resp.Body)
 	}
 }
@@ -256,10 +288,12 @@ func (b *Browser) GetConsoleOutput() []string {
 	return b.vm.Output()
 }
 
-// SetJsDebug enables or disables JS debug mode (compatibility stub).
+// SetJsDebug enables or disables JS debug mode.
 func (b *Browser) SetJsDebug(jsDebug bool) {
-	// No dedicated JS debug toggle in this minimal browser; stub for compatibility
-	b.debugLog("SetJsDebug called (stub): %v", jsDebug)
+	b.debugLog("SetJsDebug called: %v", jsDebug)
+	if b.vm != nil {
+		b.vm.SetDebug(jsDebug)
+	}
 }
 
 // WaitStable waits for the page to become stable (compatibility stub).
@@ -272,6 +306,22 @@ func (b *Browser) WaitStable(timeoutMs, stableForMs int) error {
 func (b *Browser) WaitStableDefault() error {
 	b.debugLog("WaitStableDefault called (stub)")
 	return nil
+}
+
+// Abort cancels any running JavaScript execution.
+// This can be called from another goroutine to stop a long-running script.
+func (b *Browser) Abort() {
+	if b.vm != nil {
+		b.vm.Abort()
+	}
+}
+
+// IsAborted returns true if the abort flag has been set.
+func (b *Browser) IsAborted() bool {
+	if b.vm != nil {
+		return b.vm.IsAborted()
+	}
+	return false
 }
 
 func jsValueToGo(v *jsengine.Value) any {

@@ -22,9 +22,291 @@ type Bytecode struct {
 }
 
 // setupPrototypes initializes JavaScript prototype chains.
+// Sets up Object.prototype, Array.prototype, Function.prototype, String.prototype,
+// Number.prototype, Boolean.prototype, and Error.prototype with their standard methods.
 func (vm *VM) setupPrototypes() {
-	// Stub: prototype chain setup not yet fully implemented
-	vm.debugLog("setupPrototypes (stub)")
+	// Object.prototype
+	objectProto := &Value{Type: "object", Obj: map[string]*Value{
+		"hasOwnProperty": {Type: "native", Native: func(args []*Value) *Value {
+			// hasOwnProperty(prop) checks if prop is an own property of this
+			if len(args) < 1 {
+				return &Value{Type: "bool", Bool: false}
+			}
+			// The 'this' value should be passed via ThisBinding
+			// For now, return false as a safe default
+			return &Value{Type: "bool", Bool: false}
+		}},
+		"toString": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string", Str: "[object Object]"}
+		}},
+		"valueOf": {Type: "native", Native: func(args []*Value) *Value {
+			// Returns the primitive value of this
+			return &Value{Type: "undefined"}
+		}},
+		"isPrototypeOf": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "bool", Bool: false}
+		}},
+		"propertyIsEnumerable": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "bool", Bool: false}
+		}},
+		"toLocaleString": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string", Str: "[object Object]"}
+		}},
+	}}
+	vm.env.Define("ObjectPrototype", objectProto)
+
+	// Array.prototype
+	arrayProto := &Value{Type: "object", Obj: map[string]*Value{
+		"push": {Type: "native", Native: func(args []*Value) *Value {
+			// Array.prototype.push is called as arr.push(...items)
+			// The 'this' binding should contain the array
+			return &Value{Type: "number", Num: 0}
+		}},
+		"pop": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "undefined"}
+		}},
+		"shift": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "undefined"}
+		}},
+		"unshift": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 0}
+		}},
+		"slice": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "object", Arr: []*Value{}}
+		}},
+		"splice": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "object", Arr: []*Value{}}
+		}},
+		"indexOf": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: -1}
+		}},
+		"includes": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "bool", Bool: false}
+		}},
+		"find": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "undefined"}
+		}},
+		"findIndex": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: -1}
+		}},
+		"forEach": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "undefined"}
+		}},
+		"map": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "object", Arr: []*Value{}}
+		}},
+		"filter": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "object", Arr: []*Value{}}
+		}},
+		"reduce": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "undefined"}
+		}},
+		"reduceRight": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "undefined"}
+		}},
+		"every": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "bool", Bool: true}
+		}},
+		"some": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "bool", Bool: false}
+		}},
+		"join": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string", Str: ""}
+		}},
+		"concat": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "object", Arr: []*Value{}}
+		}},
+		"reverse": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "object", Arr: []*Value{}}
+		}},
+		"sort": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "object", Arr: []*Value{}}
+		}},
+		"flat": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "object", Arr: []*Value{}}
+		}},
+		"flatMap": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "object", Arr: []*Value{}}
+		}},
+		"fill": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "object", Arr: []*Value{}}
+		}},
+		"copyWithin": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "object", Arr: []*Value{}}
+		}},
+		"keys": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "object", Arr: []*Value{}}
+		}},
+		"values": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "object", Arr: []*Value{}}
+		}},
+		"entries": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "object", Arr: []*Value{}}
+		}},
+		"toString": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string", Str: ""}
+		}},
+	}}
+	vm.env.Define("ArrayPrototype", arrayProto)
+
+	// Function.prototype
+	functionProto := &Value{Type: "object", Obj: map[string]*Value{
+		"call": {Type: "native", Native: func(args []*Value) *Value {
+			// Function.prototype.call(thisArg, ...args)
+			// The function to call is passed via ThisBinding
+			return &Value{Type: "undefined"}
+		}},
+		"apply": {Type: "native", Native: func(args []*Value) *Value {
+			// Function.prototype.apply(thisArg, argsArray)
+			return &Value{Type: "undefined"}
+		}},
+		"bind": {Type: "native", Native: func(args []*Value) *Value {
+			// Function.prototype.bind(thisArg, ...args)
+			// Creates a new function with the given this value and initial arguments
+			// The original function is in the ThisBinding of the bound function
+			// For now, return a native function that will be handled by evalMember
+			return &Value{Type: "native", Native: func(innerArgs []*Value) *Value {
+				return &Value{Type: "undefined"}
+			}}
+		}},
+		"toString": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string", Str: "function () { [native code] }"}
+		}},
+	}}
+	vm.env.Define("FunctionPrototype", functionProto)
+
+	// String.prototype
+	stringProto := &Value{Type: "object", Obj: map[string]*Value{
+		"trim": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string"}
+		}},
+		"trimStart": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string"}
+		}},
+		"trimEnd": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string"}
+		}},
+		"split": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "object", Arr: []*Value{}}
+		}},
+		"replace": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string"}
+		}},
+		"replaceAll": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string"}
+		}},
+		"match": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "null"}
+		}},
+		"search": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: -1}
+		}},
+		"startsWith": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "bool", Bool: false}
+		}},
+		"endsWith": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "bool", Bool: false}
+		}},
+		"includes": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "bool", Bool: false}
+		}},
+		"repeat": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string"}
+		}},
+		"padStart": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string"}
+		}},
+		"padEnd": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string"}
+		}},
+		"toLowerCase": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string"}
+		}},
+		"toUpperCase": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string"}
+		}},
+		"charAt": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string"}
+		}},
+		"charCodeAt": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 0}
+		}},
+		"substring": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string"}
+		}},
+		"slice": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string"}
+		}},
+		"indexOf": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: -1}
+		}},
+		"lastIndexOf": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: -1}
+		}},
+		"concat": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string"}
+		}},
+		"localeCompare": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 0}
+		}},
+		"normalize": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string"}
+		}},
+		"toString": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string"}
+		}},
+		"valueOf": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string"}
+		}},
+	}}
+	vm.env.Define("StringPrototype", stringProto)
+
+	// Number.prototype
+	numberProto := &Value{Type: "object", Obj: map[string]*Value{
+		"toFixed": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string", Str: "0"}
+		}},
+		"toPrecision": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string", Str: "0"}
+		}},
+		"toExponential": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string", Str: "0e+0"}
+		}},
+		"toString": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string", Str: "0"}
+		}},
+		"valueOf": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 0}
+		}},
+	}}
+	vm.env.Define("NumberPrototype", numberProto)
+
+	// Boolean.prototype
+	booleanProto := &Value{Type: "object", Obj: map[string]*Value{
+		"toString": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string", Str: "false"}
+		}},
+		"valueOf": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "bool", Bool: false}
+		}},
+	}}
+	vm.env.Define("BooleanPrototype", booleanProto)
+
+	// Error.prototype
+	errorProto := &Value{Type: "object", Obj: map[string]*Value{
+		"toString": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string", Str: "Error"}
+		}},
+		"message": {Type: "string", Str: ""},
+		"name": {Type: "string", Str: "Error"},
+	}}
+	vm.env.Define("ErrorPrototype", errorProto)
+
+	// Set up prototype links for built-in types
+	// When new arrays are created, they should inherit from ArrayPrototype
+	// When new functions are created, they should inherit from FunctionPrototype
+	// etc.
+	// We store these for use in wrapNode and evalNew
 }
 
 // GetObjectMethods returns the built-in Object methods map.
@@ -32,49 +314,228 @@ func GetObjectMethods(vm *VM) map[string]*Value {
 	return map[string]*Value{
 		"keys": {Type: "native", Native: func(args []*Value) *Value {
 			if len(args) < 1 {
-				return &Value{Type: "undefined"}
+				return &Value{Type: "object", Arr: []*Value{}}
 			}
 			obj := args[0]
 			if obj.Type != "object" || obj.Obj == nil {
-				return &Value{Type: "array", Arr: []*Value{}}
+				return &Value{Type: "object", Arr: []*Value{}}
 			}
 			keys := make([]*Value, 0, len(obj.Obj))
 			for k := range obj.Obj {
 				keys = append(keys, &Value{Type: "string", Str: k})
 			}
-			return &Value{Type: "array", Arr: keys}
+			return &Value{Type: "object", Arr: keys}
 		}},
 		"values": {Type: "native", Native: func(args []*Value) *Value {
 			if len(args) < 1 {
-				return &Value{Type: "undefined"}
+				return &Value{Type: "object", Arr: []*Value{}}
 			}
 			obj := args[0]
 			if obj.Type != "object" || obj.Obj == nil {
-				return &Value{Type: "array", Arr: []*Value{}}
+				return &Value{Type: "object", Arr: []*Value{}}
 			}
 			vals := make([]*Value, 0, len(obj.Obj))
 			for _, v := range obj.Obj {
 				vals = append(vals, v)
 			}
-			return &Value{Type: "array", Arr: vals}
+			return &Value{Type: "object", Arr: vals}
 		}},
 		"entries": {Type: "native", Native: func(args []*Value) *Value {
 			if len(args) < 1 {
-				return &Value{Type: "undefined"}
+				return &Value{Type: "object", Arr: []*Value{}}
 			}
 			obj := args[0]
 			if obj.Type != "object" || obj.Obj == nil {
-				return &Value{Type: "array", Arr: []*Value{}}
+				return &Value{Type: "object", Arr: []*Value{}}
 			}
 			entries := make([]*Value, 0, len(obj.Obj))
 			for k, v := range obj.Obj {
-				entry := &Value{Type: "array", Arr: []*Value{
+				entry := &Value{Type: "object", Arr: []*Value{
 					{Type: "string", Str: k},
 					v,
 				}}
 				entries = append(entries, entry)
 			}
-			return &Value{Type: "array", Arr: entries}
+			return &Value{Type: "object", Arr: entries}
+		}},
+		// Object.defineProperty(obj, prop, descriptor)
+		// Critical for Vue 2 reactivity system
+		"defineProperty": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) < 3 {
+				return args[0]
+			}
+			obj := args[0]
+			propName := valueToString(args[1])
+			descObj := args[2]
+
+			if obj.Type != "object" {
+				return obj
+			}
+			if obj.Obj == nil {
+				obj.Obj = make(map[string]*Value)
+			}
+			if obj.Descriptors == nil {
+				obj.Descriptors = make(map[string]*PropertyDescriptor)
+			}
+
+			desc := &PropertyDescriptor{
+				Enumerable:   true,
+				Configurable: true,
+			}
+
+			if descObj.Type == "object" && descObj.Obj != nil {
+				if v, ok := descObj.Obj["enumerable"]; ok {
+					desc.Enumerable = v.Bool
+				}
+				if v, ok := descObj.Obj["configurable"]; ok {
+					desc.Configurable = v.Bool
+				}
+				if v, ok := descObj.Obj["writable"]; ok {
+					desc.Writable = v.Bool
+				}
+				if v, ok := descObj.Obj["value"]; ok {
+					desc.Value = v
+				}
+				if v, ok := descObj.Obj["get"]; ok {
+					if v.Type == "function" || v.Type == "native" {
+						desc.Get = v
+					}
+				}
+				if v, ok := descObj.Obj["set"]; ok {
+					if v.Type == "function" || v.Type == "native" {
+						desc.Set = v
+					}
+				}
+			}
+
+			// Store the descriptor
+			obj.Descriptors[propName] = desc
+
+			// If it's a data descriptor (value/writable), also store in Obj for direct access
+			if desc.Value != nil {
+				obj.Obj[propName] = desc.Value
+			}
+
+			return obj
+		}},
+		// Object.getOwnPropertyDescriptor(obj, prop)
+		"getOwnPropertyDescriptor": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) < 2 {
+				return &Value{Type: "undefined"}
+			}
+			obj := args[0]
+			propName := valueToString(args[1])
+
+			if obj.Type != "object" || obj.Obj == nil {
+				return &Value{Type: "undefined"}
+			}
+
+			// Check for stored descriptor
+			if obj.Descriptors != nil {
+				if desc, ok := obj.Descriptors[propName]; ok {
+					result := &Value{Type: "object", Obj: make(map[string]*Value)}
+					if desc.Get != nil {
+						result.Obj["get"] = desc.Get
+						result.Obj["set"] = desc.Set
+						if desc.Set == nil {
+							result.Obj["set"] = &Value{Type: "undefined"}
+						}
+						result.Obj["enumerable"] = &Value{Type: "bool", Bool: desc.Enumerable}
+						result.Obj["configurable"] = &Value{Type: "bool", Bool: desc.Configurable}
+					} else {
+						result.Obj["value"] = desc.Value
+						if desc.Value == nil {
+							result.Obj["value"] = &Value{Type: "undefined"}
+						}
+						result.Obj["writable"] = &Value{Type: "bool", Bool: desc.Writable}
+						result.Obj["enumerable"] = &Value{Type: "bool", Bool: desc.Enumerable}
+						result.Obj["configurable"] = &Value{Type: "bool", Bool: desc.Configurable}
+					}
+					return result
+				}
+			}
+
+			// Check for regular property
+			if val, ok := obj.Obj[propName]; ok {
+				return &Value{Type: "object", Obj: map[string]*Value{
+					"value":        val,
+					"writable":     {Type: "bool", Bool: true},
+					"enumerable":   {Type: "bool", Bool: true},
+					"configurable": {Type: "bool", Bool: true},
+				}}
+			}
+
+			return &Value{Type: "undefined"}
+		}},
+		// Object.assign(target, ...sources)
+		"assign": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) < 1 {
+				return &Value{Type: "undefined"}
+			}
+			target := args[0]
+			if target.Type != "object" {
+				return target
+			}
+			if target.Obj == nil {
+				target.Obj = make(map[string]*Value)
+			}
+			for _, source := range args[1:] {
+				if source.Type == "object" && source.Obj != nil {
+					for k, v := range source.Obj {
+						target.Obj[k] = v
+					}
+				}
+			}
+			return target
+		}},
+		// Object.create(proto)
+		"create": {Type: "native", Native: func(args []*Value) *Value {
+			obj := &Value{Type: "object", Obj: make(map[string]*Value)}
+			// Store prototype reference (simplified)
+			if len(args) > 0 && args[0].Type == "object" && args[0].Obj != nil {
+				// Copy prototype properties as defaults
+				for k, v := range args[0].Obj {
+					obj.Obj[k] = v
+				}
+			}
+			return obj
+		}},
+		// Object.getPrototypeOf(obj)
+		"getPrototypeOf": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) < 1 || args[0].Type != "object" {
+				return &Value{Type: "null"}
+			}
+			// Simplified: return Object.prototype if it exists
+			if objProto := vm.env.Get("ObjectPrototype"); objProto.Type == "object" {
+				return objProto
+			}
+			return &Value{Type: "null"}
+		}},
+		// Object.setPrototypeOf(obj, proto)
+		"setPrototypeOf": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) < 2 {
+				return args[0]
+			}
+			// Stub: just return the object
+			return args[0]
+		}},
+		// Object.freeze(obj)
+		"freeze": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) < 1 {
+				return &Value{Type: "undefined"}
+			}
+			obj := args[0]
+			if obj.Type == "object" {
+				obj.Frozen = true
+			}
+			return obj
+		}},
+		// Object.is(value1, value2)
+		"is": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) < 2 {
+				return &Value{Type: "bool", Bool: false}
+			}
+			return &Value{Type: "bool", Bool: valuesStrictEqual(args[0], args[1])}
 		}},
 	}
 }

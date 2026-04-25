@@ -32,6 +32,13 @@ type Value struct {
 	IsAsync     bool // true for async functions
 	// BuiltInConstructor is the name of the built-in constructor (e.g., "Array", "Object")
 	BuiltInConstructor string
+	// NodeRef holds a reference to a dom.Node for wrapped DOM nodes.
+	NodeRef *dom.Node
+	// Proto is the prototype link for prototype chain lookup.
+	// When a property is not found on this value, the VM walks up the Proto chain.
+	Proto *Value
+	// Frozen indicates if the object is frozen (Object.freeze)
+	Frozen bool
 }
 
 // Proxy represents a JavaScript Proxy object
@@ -121,6 +128,19 @@ type VM struct {
 	currentClass *Class
 	// Timer support for setTimeout/setInterval
 	pendingTimers []timerTask
+	// Execution limit to prevent infinite loops
+	stepCount    int64         // current step count, incremented on each eval/exec
+	maxSteps     int64         // maximum steps before timeout error (0 = unlimited)
+	timeoutAt    int64         // Unix nano timestamp for wall-clock timeout (0 = none)
+	maxTimeoutMs int64         // default timeout in milliseconds (0 = none)
+	// Recursion depth limit to prevent stack overflow
+	callDepth    int           // current function call depth
+	maxCallDepth int           // maximum function call depth (0 = unlimited)
+	// Memory allocation tracking to prevent memory exhaustion
+	allocCount   int64         // number of objects/arrays allocated
+	maxAllocs    int64         // maximum allocations before error (0 = unlimited)
+	// Abort flag for external cancellation
+	abortFlag    bool          // set to true to abort execution
 }
 
 // timerTask represents a scheduled timer callback
@@ -138,19 +158,23 @@ func NewVM(doc *dom.Document) *VM {
 		LocalStorage:   make(map[string]string),
 		SessionStorage: make(map[string]string),
 		pendingTimers:  make([]timerTask, 0),
+		maxSteps:       10_000_000, // default: 10M steps
+		maxTimeoutMs:   30_000,     // default: 30 seconds wall-clock timeout
+		maxCallDepth:   500,        // default: 500 levels of recursion
+		maxAllocs:      1_000_000,  // default: 1M object allocations
 	}
 	if doc != nil {
 		vm.root = doc.Root
 	}
 	vm.env = NewEnvironment(nil)
+	vm.setupPrototypes() // Call setupPrototypes first to define prototype objects
 	vm.setupBuiltins()
 	vm.setupPromise()
 	vm.setupTimers()
 	vm.setupProxy()
-		vm.setupMapSet()
-		vm.setupSymbol()
-		vm.setupReflect()
-		vm.setupPrototypes()
+	vm.setupMapSet()
+	vm.setupSymbol()
+	vm.setupReflect()
 	return vm
 }
 
@@ -163,6 +187,101 @@ func (vm *VM) debugLog(format string, args ...interface{}) {
 	if vm.debug {
 		fmt.Printf("[HLBR JS DEBUG] "+format+"\n", args...)
 	}
+}
+
+// SetMaxSteps sets the maximum number of execution steps before timeout.
+// Set to 0 for unlimited (not recommended).
+func (vm *VM) SetMaxSteps(max int64) {
+	vm.maxSteps = max
+}
+
+// SetTimeoutMs sets the wall-clock timeout in milliseconds.
+// Set to 0 for no timeout.
+func (vm *VM) SetTimeoutMs(ms int64) {
+	vm.maxTimeoutMs = ms
+}
+
+// SetMaxCallDepth sets the maximum recursion depth.
+// Set to 0 for unlimited (not recommended, risk of stack overflow).
+func (vm *VM) SetMaxCallDepth(depth int) {
+	vm.maxCallDepth = depth
+}
+
+// SetMaxAllocs sets the maximum number of object allocations.
+// Set to 0 for unlimited (not recommended, risk of memory exhaustion).
+func (vm *VM) SetMaxAllocs(max int64) {
+	vm.maxAllocs = max
+}
+
+// Abort sets the abort flag to stop execution from outside.
+// This can be called from another goroutine to cancel a running script.
+func (vm *VM) Abort() {
+	vm.abortFlag = true
+}
+
+// IsAborted returns true if the abort flag has been set.
+func (vm *VM) IsAborted() bool {
+	return vm.abortFlag
+}
+
+// trackAlloc increments the allocation counter and checks the limit.
+// Call this when creating new objects, arrays, or other heap-allocated values.
+func (vm *VM) trackAlloc() {
+	vm.allocCount++
+	if vm.maxAllocs > 0 && vm.allocCount > vm.maxAllocs {
+		ThrowJS(NewError("RangeError", fmt.Sprintf("Memory limit: exceeded %d allocations", vm.maxAllocs)))
+	}
+}
+
+// enterCall increments the call depth and checks the limit.
+// Call this when entering a function call.
+func (vm *VM) enterCall() {
+	vm.callDepth++
+	if vm.maxCallDepth > 0 && vm.callDepth > vm.maxCallDepth {
+		ThrowJS(NewError("RangeError", fmt.Sprintf("Recursion limit: exceeded %d call depth", vm.maxCallDepth)))
+	}
+}
+
+// exitCall decrements the call depth.
+// Call this when exiting a function call.
+func (vm *VM) exitCall() {
+	if vm.callDepth > 0 {
+		vm.callDepth--
+	}
+}
+
+// checkSteps increments the step counter and checks for timeout conditions.
+// It panics with a JS exception if the step limit or wall-clock timeout is exceeded.
+// This is called from execStmt, execBlock, and evalExpr to prevent infinite loops.
+func (vm *VM) checkSteps() {
+	vm.stepCount++
+	// Check abort flag
+	if vm.abortFlag {
+		ThrowJS(NewError("AbortError", "Execution aborted by external request"))
+	}
+	// Check step limit
+	if vm.maxSteps > 0 && vm.stepCount > vm.maxSteps {
+		ThrowJS(NewError("RangeError", fmt.Sprintf("Execution timeout: exceeded %d steps", vm.maxSteps)))
+	}
+	// Check wall-clock timeout (only every 1000 steps to reduce overhead)
+	if vm.maxTimeoutMs > 0 && vm.stepCount%1000 == 0 {
+		if vm.timeoutAt == 0 {
+			vm.timeoutAt = time.Now().UnixNano() + vm.maxTimeoutMs*1e6
+		}
+		if time.Now().UnixNano() > vm.timeoutAt {
+			ThrowJS(NewError("RangeError", fmt.Sprintf("Execution timeout: exceeded %dms wall-clock time", vm.maxTimeoutMs)))
+		}
+	}
+}
+
+// ResetSteps resets the step counter and timeout deadline.
+// Call this before executing a new script.
+func (vm *VM) ResetSteps() {
+	vm.stepCount = 0
+	vm.timeoutAt = 0
+	vm.callDepth = 0
+	vm.allocCount = 0
+	vm.abortFlag = false
 }
 
 func (vm *VM) setupBuiltins() {
@@ -238,32 +357,92 @@ func (vm *VM) setupBuiltins() {
 		}},
 		"body": vm.wrapNode(bodyNode),
 		"head": vm.wrapNode(headNode),
+		"documentElement": vm.wrapNode(vm.root),
+		"createElement": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) == 0 {
+				return &Value{Type: "null"}
+			}
+			tag := args[0].Str
+			newNode := &dom.Node{Type: dom.ElementNode, Data: strings.ToLower(tag)}
+			return vm.wrapNode(newNode)
+		}},
+		"createTextNode": {Type: "native", Native: func(args []*Value) *Value {
+			text := ""
+			if len(args) > 0 {
+				text = args[0].Str
+			}
+			newNode := &dom.Node{Type: dom.TextNode, Data: text}
+			return vm.wrapNode(newNode)
+		}},
+		"createDocumentFragment": {Type: "native", Native: func(args []*Value) *Value {
+			newNode := &dom.Node{Type: dom.DocumentNode, Data: "#document-fragment"}
+			return vm.wrapNode(newNode)
+		}},
+		"createComment": {Type: "native", Native: func(args []*Value) *Value {
+			text := ""
+			if len(args) > 0 {
+				text = args[0].Str
+			}
+			newNode := &dom.Node{Type: dom.CommentNode, Data: text}
+			return vm.wrapNode(newNode)
+		}},
+		"addEventListener": {Type: "native", Native: func(args []*Value) *Value {
+			// Stub: event listener registration (events not yet dispatched)
+			return &Value{Type: "undefined"}
+		}},
+		"removeEventListener": {Type: "native", Native: func(args []*Value) *Value {
+			// Stub: event listener removal
+			return &Value{Type: "undefined"}
+		}},
+		"cookie": {Type: "string", Str: ""},
+		"readyState": {Type: "string", Str: "complete"},
+		"implementation": {Type: "object", Obj: map[string]*Value{
+			"createHTMLDocument": {Type: "native", Native: func(args []*Value) *Value {
+				return &Value{Type: "object", Obj: map[string]*Value{}}
+			}},
+		}},
 	}})
 
-	// Create window object - the global object in browsers
-	vm.env.Define("window", &Value{Type: "object", Obj: map[string]*Value{
-		"document": {Type: "native", Native: func(args []*Value) *Value {
-			return vm.env.Get("document")
-		}},
-		"console": {Type: "native", Native: func(args []*Value) *Value {
-			return vm.env.Get("console")
-		}},
-		"Math": {Type: "native", Native: func(args []*Value) *Value {
-			return vm.env.Get("Math")
-		}},
-		"localStorage": {Type: "native", Native: func(args []*Value) *Value {
-			return vm.env.Get("localStorage")
-		}},
-		"sessionStorage": {Type: "native", Native: func(args []*Value) *Value {
-			return vm.env.Get("sessionStorage")
-		}},
+	// Create window object first (as a shell) - the global object in browsers
+	windowObj := &Value{Type: "object", Obj: map[string]*Value{
 		"location": {Type: "object", Obj: map[string]*Value{
 			"href": {Type: "string", Str: ""},
+			"protocol": {Type: "string", Str: "http:"},
+			"host": {Type: "string", Str: ""},
+			"hostname": {Type: "string", Str: ""},
+			"pathname": {Type: "string", Str: "/"},
+			"search": {Type: "string", Str: ""},
+			"hash": {Type: "string", Str: ""},
 		}},
 		"navigator": {Type: "object", Obj: map[string]*Value{
 			"userAgent": {Type: "string", Str: "Xxlang-HLBR/1.0"},
+			"language": {Type: "string", Str: "en-US"},
+			"platform": {Type: "string", Str: "Xxlang"},
+			"cookieEnabled": {Type: "bool", Bool: true},
 		}},
-	}})
+		"innerWidth":  {Type: "number", Num: 1024},
+		"innerHeight": {Type: "number", Num: 768},
+		"outerWidth":  {Type: "number", Num: 1024},
+		"outerHeight": {Type: "number", Num: 768},
+		"screenX":     {Type: "number", Num: 0},
+		"screenY":     {Type: "number", Num: 0},
+		"pageXOffset": {Type: "number", Num: 0},
+		"pageYOffset": {Type: "number", Num: 0},
+		"scrollX":     {Type: "number", Num: 0},
+		"scrollY":     {Type: "number", Num: 0},
+		"devicePixelRatio": {Type: "number", Num: 1},
+		"name":        {Type: "string", Str: ""},
+		"origin":      {Type: "string", Str: ""},
+		"parent":      &Value{Type: "undefined"}, // will be set to self below
+		"top":         &Value{Type: "undefined"}, // will be set to self below
+		"frames":      &Value{Type: "undefined"}, // will be set to self below
+		"self":        &Value{Type: "undefined"}, // will be set to self below
+		"opener":      &Value{Type: "null"},
+	}}
+	vm.env.Define("window", windowObj)
+	// Also define 'this' and 'self' to point to window (for browser compatibility in global scope)
+	vm.env.Define("this", windowObj)
+	vm.env.Define("self", windowObj)
 
 	vm.env.Define("Math", &Value{Type: "object", Obj: map[string]*Value{
 		"PI": {Type: "number", Num: math.Pi},
@@ -332,13 +511,13 @@ func (vm *VM) setupBuiltins() {
 			if len(args) == 0 {
 				return &Value{Type: "string"}
 			}
-			return &Value{Type: "string", Str: valueToString(args[0])}
+			return &Value{Type: "string", Str: jsonStringify(args[0])}
 		}},
 		"parse": {Type: "native", Native: func(args []*Value) *Value {
 			if len(args) == 0 {
 				return &Value{Type: "undefined"}
 			}
-			return &Value{Type: "object", Str: args[0].Str}
+			return jsonParse(args[0].Str)
 		}},
 	}})
 
@@ -397,9 +576,103 @@ func (vm *VM) setupBuiltins() {
 	arrayConstructor := &Value{Type: "native", BuiltInConstructor: "Array", Native: func(args []*Value) *Value {
 		return &Value{Type: "object", Arr: args}
 	}}
+	// Add static methods to the Array constructor
+	arrayConstructor.Obj = map[string]*Value{
+		"isArray": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) < 1 {
+				return &Value{Type: "bool", Bool: false}
+			}
+			return &Value{Type: "bool", Bool: args[0].Type == "object" && args[0].Arr != nil}
+		}},
+		"from": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) < 1 {
+				return &Value{Type: "object", Arr: []*Value{}}
+			}
+			src := args[0]
+			if src.Type == "object" && src.Arr != nil {
+				return src
+			}
+			return &Value{Type: "object", Arr: []*Value{}}
+		}},
+		"of": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "object", Arr: args}
+		}},
+	}
 	vm.env.Define("Array", arrayConstructor)
 
 	vm.env.Define("Object", &Value{Type: "object", Obj: GetObjectMethods(vm)})
+
+	// Set Object.prototype to the ObjectPrototype
+	objectProto := vm.env.Get("ObjectPrototype")
+	if objectProto.Type == "object" {
+		objectVal := vm.env.Get("Object")
+		if objectVal.Type == "object" && objectVal.Obj != nil {
+			objectVal.Obj["prototype"] = objectProto
+		}
+	}
+
+	// Define Function constructor with prototype
+	functionProto := vm.env.Get("FunctionPrototype")
+	fmt.Printf("[DEBUG] FunctionPrototype type: %s\n", functionProto.Type)
+	functionConstructor := &Value{Type: "native", Native: func(args []*Value) *Value {
+		// Function constructor - create a new function
+		return &Value{Type: "function", Func: &Function{Params: []string{}, Body: []Statement{}, Env: vm.env}}
+	}}
+	if functionProto.Type == "object" {
+		functionConstructor.Obj = map[string]*Value{
+			"prototype": functionProto,
+		}
+		fmt.Printf("[DEBUG] Set Function.Obj with prototype, Obj keys: %v\n", functionConstructor.Obj)
+	}
+	vm.env.Define("Function", functionConstructor)
+
+	// Set Array.prototype to the ArrayPrototype
+	arrayProto := vm.env.Get("ArrayPrototype")
+	if arrayProto.Type == "object" {
+		arrayObj := vm.env.Get("Array")
+		if arrayObj.Type == "object" && arrayObj.Obj != nil {
+			arrayObj.Obj["prototype"] = arrayProto
+		}
+	}
+
+	// Set Function.prototype to the FunctionPrototype
+	// Already handled above when defining Function constructor
+
+	// Set String.prototype to the StringPrototype
+	stringProto := vm.env.Get("StringPrototype")
+	if stringProto.Type == "object" {
+		stringConstructor := vm.env.Get("String")
+		if stringConstructor.Type == "native" {
+			if stringConstructor.Obj == nil {
+				stringConstructor.Obj = make(map[string]*Value)
+			}
+			stringConstructor.Obj["prototype"] = stringProto
+		}
+	}
+
+	// Set Number.prototype to the NumberPrototype
+	numberProto := vm.env.Get("NumberPrototype")
+	if numberProto.Type == "object" {
+		numberConstructor := vm.env.Get("Number")
+		if numberConstructor.Type == "native" {
+			if numberConstructor.Obj == nil {
+				numberConstructor.Obj = make(map[string]*Value)
+			}
+			numberConstructor.Obj["prototype"] = numberProto
+		}
+	}
+
+	// Set Boolean.prototype to the BooleanPrototype
+	booleanProto := vm.env.Get("BooleanPrototype")
+	if booleanProto.Type == "object" {
+		booleanConstructor := vm.env.Get("Boolean")
+		if booleanConstructor.Type == "native" {
+			if booleanConstructor.Obj == nil {
+				booleanConstructor.Obj = make(map[string]*Value)
+			}
+			booleanConstructor.Obj["prototype"] = booleanProto
+		}
+	}
 
 	// RegExp constructor
 	vm.env.Define("RegExp", &Value{Type: "native", Native: func(args []*Value) *Value {
@@ -524,6 +797,52 @@ func (vm *VM) setupBuiltins() {
 		}},
 		"length": {Type: "number", Num: 0},
 	}})
+
+	// Wire up direct references from window to builtins (not native functions)
+	// This must happen after all builtins are defined so we can reference them directly
+	if windowObj.Obj != nil {
+		windowObj.Obj["document"] = vm.env.Get("document")
+		windowObj.Obj["console"] = vm.env.Get("console")
+		windowObj.Obj["Math"] = vm.env.Get("Math")
+		windowObj.Obj["localStorage"] = vm.env.Get("localStorage")
+		windowObj.Obj["sessionStorage"] = vm.env.Get("sessionStorage")
+		windowObj.Obj["JSON"] = vm.env.Get("JSON")
+		windowObj.Obj["Array"] = vm.env.Get("Array")
+		windowObj.Obj["Object"] = vm.env.Get("Object")
+		windowObj.Obj["String"] = vm.env.Get("String")
+		windowObj.Obj["Number"] = vm.env.Get("Number")
+		windowObj.Obj["Boolean"] = vm.env.Get("Boolean")
+		windowObj.Obj["RegExp"] = vm.env.Get("RegExp")
+		windowObj.Obj["Error"] = vm.env.Get("Error")
+		windowObj.Obj["TypeError"] = vm.env.Get("TypeError")
+		windowObj.Obj["ReferenceError"] = vm.env.Get("ReferenceError")
+		windowObj.Obj["SyntaxError"] = vm.env.Get("SyntaxError")
+		windowObj.Obj["RangeError"] = vm.env.Get("RangeError")
+		windowObj.Obj["Promise"] = vm.env.Get("Promise")
+		windowObj.Obj["Map"] = vm.env.Get("Map")
+		windowObj.Obj["Set"] = vm.env.Get("Set")
+		windowObj.Obj["WeakMap"] = vm.env.Get("WeakMap")
+		windowObj.Obj["WeakSet"] = vm.env.Get("WeakSet")
+		windowObj.Obj["Symbol"] = vm.env.Get("Symbol")
+		windowObj.Obj["Reflect"] = vm.env.Get("Reflect")
+		windowObj.Obj["Proxy"] = vm.env.Get("Proxy")
+		windowObj.Obj["parseInt"] = vm.env.Get("parseInt")
+		windowObj.Obj["parseFloat"] = vm.env.Get("parseFloat")
+		windowObj.Obj["isNaN"] = vm.env.Get("isNaN")
+		windowObj.Obj["isFinite"] = vm.env.Get("isFinite")
+		windowObj.Obj["undefined"] = vm.env.Get("undefined")
+		windowObj.Obj["NaN"] = vm.env.Get("NaN")
+		windowObj.Obj["Infinity"] = vm.env.Get("Infinity")
+		windowObj.Obj["setTimeout"] = vm.env.Get("setTimeout")
+		windowObj.Obj["setInterval"] = vm.env.Get("setInterval")
+		windowObj.Obj["clearTimeout"] = vm.env.Get("clearTimeout")
+		windowObj.Obj["clearInterval"] = vm.env.Get("clearInterval")
+		windowObj.Obj["self"] = windowObj
+		windowObj.Obj["parent"] = windowObj
+		windowObj.Obj["top"] = windowObj
+		windowObj.Obj["frames"] = windowObj
+		windowObj.Obj["window"] = windowObj
+	}
 }
 
 func (vm *VM) wrapNode(n *dom.Node) *Value {
@@ -570,6 +889,7 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 		"nodeValue":   {Type: "string", Str: n.GetAttribute("value")},
 		"outerHTML":   {Type: "string", Str: n.OuterHTML()},
 		"innerText":   {Type: "string", Str: n.TextContent()},
+		"nodeType":    {Type: "number", Num: float64(n.Type)},
 		"getAttribute": {Type: "native", Native: func(args []*Value) *Value {
 			if len(args) == 0 {
 				return &Value{Type: "null"}
@@ -581,6 +901,18 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 				n.SetAttribute(args[0].Str, args[1].Str)
 			}
 			return &Value{Type: "undefined"}
+		}},
+		"removeAttribute": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) > 0 {
+				n.RemoveAttribute(args[0].Str)
+			}
+			return &Value{Type: "undefined"}
+		}},
+		"hasAttribute": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) == 0 {
+				return &Value{Type: "bool", Bool: false}
+			}
+			return &Value{Type: "bool", Bool: n.HasAttribute(args[0].Str)}
 		}},
 		"querySelector": {Type: "native", Native: func(args []*Value) *Value {
 			if len(args) == 0 {
@@ -612,6 +944,200 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 		"parentNode": {Type: "native", Native: func(args []*Value) *Value {
 			return vm.wrapNodeShallow(n.Parent)
 		}},
+		"parentElement": {Type: "native", Native: func(args []*Value) *Value {
+			if n.Parent != nil && n.Parent.Type == dom.ElementNode {
+				return vm.wrapNodeShallow(n.Parent)
+			}
+			return &Value{Type: "null"}
+		}},
+		"nextSibling": {Type: "native", Native: func(args []*Value) *Value {
+			return vm.wrapNode(n.NextSibling)
+		}},
+		"previousSibling": {Type: "native", Native: func(args []*Value) *Value {
+			return vm.wrapNode(n.PrevSibling)
+		}},
+		"nextElementSibling": {Type: "native", Native: func(args []*Value) *Value {
+			sibling := n.NextSibling
+			for sibling != nil && sibling.Type != dom.ElementNode {
+				sibling = sibling.NextSibling
+			}
+			return vm.wrapNode(sibling)
+		}},
+		"previousElementSibling": {Type: "native", Native: func(args []*Value) *Value {
+			sibling := n.PrevSibling
+			for sibling != nil && sibling.Type != dom.ElementNode {
+				sibling = sibling.PrevSibling
+			}
+			return vm.wrapNode(sibling)
+		}},
+		// DOM mutation methods
+		"appendChild": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) == 0 {
+				return &Value{Type: "undefined"}
+			}
+			child := args[0]
+			// Extract the dom.Node from the wrapped value
+			if childNode := vm.unwrapNode(child); childNode != nil {
+				n.AppendChild(childNode)
+				return child
+			}
+			return &Value{Type: "undefined"}
+		}},
+		"removeChild": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) == 0 {
+				return &Value{Type: "undefined"}
+			}
+			child := args[0]
+			if childNode := vm.unwrapNode(child); childNode != nil {
+				for i, c := range n.Children {
+					if c == childNode {
+						n.Children = append(n.Children[:i], n.Children[i+1:]...)
+						break
+					}
+				}
+				return child
+			}
+			return &Value{Type: "undefined"}
+		}},
+		"insertBefore": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) < 2 {
+				return args[0]
+			}
+			newNode := args[0]
+			refNode := args[1]
+			newDomNode := vm.unwrapNode(newNode)
+			refDomNode := vm.unwrapNode(refNode)
+			if newDomNode != nil {
+				for i, c := range n.Children {
+					if c == refDomNode {
+						newDomNode.Parent = n
+						n.Children = append(n.Children[:i], append([]*dom.Node{newDomNode}, n.Children[i:]...)...)
+						break
+					}
+				}
+				return newNode
+			}
+			return &Value{Type: "undefined"}
+		}},
+		"replaceChild": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) < 2 {
+				return &Value{Type: "undefined"}
+			}
+			newNode := args[0]
+			oldNode := args[1]
+			newDomNode := vm.unwrapNode(newNode)
+			oldDomNode := vm.unwrapNode(oldNode)
+			if newDomNode != nil && oldDomNode != nil {
+				for i, c := range n.Children {
+					if c == oldDomNode {
+						newDomNode.Parent = n
+						n.Children[i] = newDomNode
+						break
+					}
+				}
+				return oldNode
+			}
+			return &Value{Type: "undefined"}
+		}},
+		"cloneNode": {Type: "native", Native: func(args []*Value) *Value {
+			deep := false
+			if len(args) > 0 {
+				deep = args[0].Bool
+			}
+			clone := vm.cloneNode(n, deep)
+			return vm.wrapNode(clone)
+		}},
+		"contains": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) == 0 {
+				return &Value{Type: "bool", Bool: false}
+			}
+			other := vm.unwrapNode(args[0])
+			return &Value{Type: "bool", Bool: vm.nodeContains(n, other)}
+		}},
+		"addEventListener": {Type: "native", Native: func(args []*Value) *Value {
+			// Stub: event listener registration
+			return &Value{Type: "undefined"}
+		}},
+		"removeEventListener": {Type: "native", Native: func(args []*Value) *Value {
+			// Stub: event listener removal
+			return &Value{Type: "undefined"}
+		}},
+		"dispatchEvent": {Type: "native", Native: func(args []*Value) *Value {
+			// Stub: event dispatch
+			return &Value{Type: "bool", Bool: true}
+		}},
+		"focus": {Type: "native", Native: func(args []*Value) *Value {
+			// Stub: focus
+			return &Value{Type: "undefined"}
+		}},
+		"blur": {Type: "native", Native: func(args []*Value) *Value {
+			// Stub: blur
+			return &Value{Type: "undefined"}
+		}},
+		"click": {Type: "native", Native: func(args []*Value) *Value {
+			// Stub: click
+			return &Value{Type: "undefined"}
+		}},
+		"scrollIntoView": {Type: "native", Native: func(args []*Value) *Value {
+			// Stub: scrollIntoView
+			return &Value{Type: "undefined"}
+		}},
+		"getBoundingClientRect": {Type: "native", Native: func(args []*Value) *Value {
+			// Stub: returns a DOMRect-like object
+			return &Value{Type: "object", Obj: map[string]*Value{
+				"x":      {Type: "number", Num: 0},
+				"y":      {Type: "number", Num: 0},
+				"width":  {Type: "number", Num: 0},
+				"height": {Type: "number", Num: 0},
+				"top":    {Type: "number", Num: 0},
+				"right":  {Type: "number", Num: 0},
+				"bottom": {Type: "number", Num: 0},
+				"left":   {Type: "number", Num: 0},
+			}}
+		}},
+		"getClientRects": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "object", Arr: []*Value{}}
+		}},
+		"closest": {Type: "native", Native: func(args []*Value) *Value {
+			// Stub: closest selector
+			return &Value{Type: "null"}
+		}},
+		"matches": {Type: "native", Native: func(args []*Value) *Value {
+			// Stub: matches selector
+			return &Value{Type: "bool", Bool: false}
+		}},
+		"classList": {Type: "object", Obj: map[string]*Value{
+			"add": {Type: "native", Native: func(args []*Value) *Value {
+				// Stub: add class
+				return &Value{Type: "undefined"}
+			}},
+			"remove": {Type: "native", Native: func(args []*Value) *Value {
+				// Stub: remove class
+				return &Value{Type: "undefined"}
+			}},
+			"toggle": {Type: "native", Native: func(args []*Value) *Value {
+				// Stub: toggle class
+				return &Value{Type: "bool", Bool: false}
+			}},
+			"contains": {Type: "native", Native: func(args []*Value) *Value {
+				// Stub: contains class
+				return &Value{Type: "bool", Bool: false}
+			}},
+		}},
+		"style": {Type: "object", Obj: make(map[string]*Value)},
+		"dataset": {Type: "object", Obj: make(map[string]*Value)},
+		"checked": {Type: "bool", Bool: false},
+		"disabled": {Type: "bool", Bool: false},
+		"selected": {Type: "bool", Bool: false},
+		"value": {Type: "string", Str: n.GetAttribute("value")},
+		"type": {Type: "string", Str: n.GetAttribute("type")},
+		"name": {Type: "string", Str: n.GetAttribute("name")},
+		"placeholder": {Type: "string", Str: n.GetAttribute("placeholder")},
+		"src": {Type: "string", Str: n.GetAttribute("src")},
+		"href": {Type: "string", Str: n.GetAttribute("href")},
+		"action": {Type: "string", Str: n.GetAttribute("action")},
+		"method": {Type: "string", Str: n.GetAttribute("method")},
+		"tabIndex": {Type: "number", Num: 0},
 	}}
 
 	// Add descriptors for innerHTML and textContent with getters/setters
@@ -619,6 +1145,8 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 		"innerHTML":   {Get: innerHTMLGetter, Set: innerHTMLSetter, Enumerable: true, Configurable: true},
 		"textContent": {Get: textContentGetter, Set: textContentSetter, Enumerable: true, Configurable: true},
 	}
+	// Store the dom.Node reference for unwrapNode (used by DOM mutation methods)
+	obj.NodeRef = n
 
 	return obj
 }
@@ -720,8 +1248,28 @@ func (vm *VM) wrapNodeShallow(n *dom.Node) *Value {
 		"innerHTML":   {Get: innerHTMLGetter, Set: innerHTMLSetter, Enumerable: true, Configurable: true},
 		"textContent": {Get: textContentGetter, Set: textContentSetter, Enumerable: true, Configurable: true},
 	}
+	// Store the dom.Node reference for unwrapNode (used by DOM mutation methods)
+	obj.NodeRef = n
 
 	return obj
+}
+
+// newArray creates a new array Value with the ArrayPrototype link.
+func (vm *VM) newArray(elements []*Value) *Value {
+	arr := &Value{Type: "object", Arr: elements}
+	if proto := vm.env.Get("ArrayPrototype"); proto.Type == "object" {
+		arr.Proto = proto
+	}
+	return arr
+}
+
+// newFunction creates a new function Value with the FunctionPrototype link.
+func (vm *VM) newFunction(fn *Function) *Value {
+	val := &Value{Type: "function", Func: fn}
+	if proto := vm.env.Get("FunctionPrototype"); proto.Type == "object" {
+		val.Proto = proto
+	}
+	return val
 }
 
 // wrapNodeListShallow wraps a list of nodes without deep recursion.
@@ -755,6 +1303,57 @@ func lastChild(n *dom.Node) *dom.Node {
 	return nil
 }
 
+// unwrapNode extracts a dom.Node from a JS wrapped node value.
+// Returns nil if the value is not a wrapped DOM node.
+func (vm *VM) unwrapNode(v *Value) *dom.Node {
+	if v == nil || v.Type != "object" {
+		return nil
+	}
+	return v.NodeRef
+}
+
+// nodePtrValue stores a dom.Node pointer as a JS value for internal use.
+type nodePtrValue struct {
+	Node *dom.Node
+}
+
+// cloneNode creates a deep or shallow copy of a DOM node.
+func (vm *VM) cloneNode(n *dom.Node, deep bool) *dom.Node {
+	if n == nil {
+		return nil
+	}
+	clone := &dom.Node{
+		Type: n.Type,
+		Data: n.Data,
+		Attr: make([]dom.Attribute, len(n.Attr)),
+	}
+	copy(clone.Attr, n.Attr)
+	if deep {
+		for _, child := range n.Children {
+			childClone := vm.cloneNode(child, true)
+			childClone.Parent = clone
+			clone.Children = append(clone.Children, childClone)
+		}
+	}
+	return clone
+}
+
+// nodeContains checks if parent contains child in the DOM tree.
+func (vm *VM) nodeContains(parent, child *dom.Node) bool {
+	if child == nil || parent == nil {
+		return false
+	}
+	if child == parent {
+		return true
+	}
+	for _, c := range parent.Children {
+		if vm.nodeContains(c, child) {
+			return true
+		}
+	}
+	return false
+}
+
 func (vm *VM) Run(code string) (*Value, error) {
 	vm.debugLog("=== Running JS code ===")
 	if vm.debug {
@@ -766,6 +1365,8 @@ func (vm *VM) Run(code string) (*Value, error) {
 		vm.debugLog("Code: %s", preview)
 	}
 
+	vm.ResetSteps() // reset step counter for each Run call
+
 	parser := NewParser(code)
 	prog := parser.Parse()
 
@@ -775,12 +1376,31 @@ func (vm *VM) Run(code string) (*Value, error) {
 	var returnVal *Value
 	var returning bool
 
-	for i, stmt := range prog.Statements {
-		if returning {
-			break
+	// Wrap execution in a recovery function to catch step timeout panics
+	var execErr error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				switch v := r.(type) {
+				case *JSException:
+					execErr = fmt.Errorf("JS error: %s", valueToString(v.Value))
+				default:
+					execErr = fmt.Errorf("execution error: %v", r)
+				}
+			}
+		}()
+
+		for i, stmt := range prog.Statements {
+			if returning {
+				break
+			}
+			vm.debugLog("Executing statement %d: %T", i+1, stmt)
+			result, returning, returnVal = vm.execStmt(stmt)
 		}
-		vm.debugLog("Executing statement %d: %T", i+1, stmt)
-		result, returning, returnVal = vm.execStmt(stmt)
+	}()
+
+	if execErr != nil {
+		return &Value{Type: "undefined"}, execErr
 	}
 
 	if returning && returnVal != nil {
@@ -792,6 +1412,7 @@ func (vm *VM) Run(code string) (*Value, error) {
 }
 
 func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
+	vm.checkSteps()
 	switch s := stmt.(type) {
 	case *ExpressionStmt:
 		v := vm.evalExpr(s.Expr)
@@ -820,6 +1441,7 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 			vm.execStmt(s.Init)
 		}
 		for {
+			vm.checkSteps() // Check for infinite loop in for-statement
 			if s.Cond != nil {
 				cond := vm.evalExpr(s.Cond)
 				if !isTruthy(cond) {
@@ -839,6 +1461,7 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 		obj := vm.evalExpr(s.Object)
 		if obj.Type == "object" && obj.Obj != nil {
 			for key := range obj.Obj {
+				vm.checkSteps() // Check for infinite loop in for-in-statement
 				childEnv := NewEnvironment(vm.env)
 				childEnv.Define(s.VarName, &Value{Type: "string", Str: key})
 				oldEnv := vm.env
@@ -855,6 +1478,7 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 		obj := vm.evalExpr(s.Object)
 		if obj.Type == "object" && obj.Arr != nil {
 			for _, val := range obj.Arr {
+				vm.checkSteps() // Check for infinite loop in for-of-statement
 				childEnv := NewEnvironment(vm.env)
 				childEnv.Define(s.VarName, val)
 				oldEnv := vm.env
@@ -867,6 +1491,7 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 			}
 		} else if obj.Type == "object" && obj.Obj != nil {
 			for _, val := range obj.Obj {
+				vm.checkSteps() // Check for infinite loop in for-of-statement
 				childEnv := NewEnvironment(vm.env)
 				childEnv.Define(s.VarName, val)
 				oldEnv := vm.env
@@ -881,6 +1506,7 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 		return &Value{Type: "undefined"}, false, nil
 	case *WhileStmt:
 		for {
+			vm.checkSteps() // Check for infinite loop in while-statement
 			cond := vm.evalExpr(s.Cond)
 			if !isTruthy(cond) {
 				break
@@ -1091,6 +1717,7 @@ func (vm *VM) execBlock(stmts []Statement) (*Value, bool, *Value) {
 
 	var result *Value = &Value{Type: "undefined"}
 	for _, stmt := range stmts {
+		vm.checkSteps()
 		ret, brk, retVal := vm.execStmt(stmt)
 		result = ret
 		if brk {
@@ -1104,6 +1731,7 @@ func (vm *VM) execBlock(stmts []Statement) (*Value, bool, *Value) {
 }
 
 func (vm *VM) evalExpr(expr Expression) *Value {
+	vm.checkSteps()
 	switch e := expr.(type) {
 	case *NumberLit:
 		return &Value{Type: "number", Num: e.Value}
@@ -1134,6 +1762,7 @@ func (vm *VM) evalExpr(expr Expression) *Value {
 	case *MemberExpr:
 		return vm.evalMember(e)
 	case *ArrayLit:
+		vm.trackAlloc() // Track array allocation
 		var arr []*Value
 		for _, el := range e.Elements {
 			if spread, ok := el.(*SpreadExpr); ok {
@@ -1148,6 +1777,7 @@ func (vm *VM) evalExpr(expr Expression) *Value {
 		}
 		return &Value{Type: "object", Arr: arr}
 	case *ObjectLit:
+		vm.trackAlloc() // Track object allocation
 		obj := make(map[string]*Value)
 		for _, prop := range e.Properties {
 			if prop.Spread {
@@ -1182,6 +1812,10 @@ func (vm *VM) evalExpr(expr Expression) *Value {
 		return vm.evalExpr(e.False)
 	case *TypeOfExpr:
 		v := vm.evalExpr(e.Expr)
+		// In JavaScript, typeof for functions should return "function"
+		if v.Type == "native" || v.Type == "function" {
+			return &Value{Type: "string", Str: "function"}
+		}
 		return &Value{Type: "string", Str: v.Type}
 	case *AwaitExpr:
 		// await extracts the value from a Promise
@@ -1363,6 +1997,10 @@ func (vm *VM) evalUnary(e *UnaryExpr) *Value {
 }
 
 func (vm *VM) evalAssign(e *AssignExpr) *Value {
+	// Handle nil right side (e.g., from incomplete expressions)
+	if e.Right == nil {
+		return &Value{Type: "undefined"}
+	}
 	val := vm.evalExpr(e.Right)
 
 	switch left := e.Left.(type) {
@@ -1392,6 +2030,12 @@ func (vm *VM) evalAssign(e *AssignExpr) *Value {
 		}
 
 		if obj.Type == "object" && obj.Obj != nil {
+			// Check if object is frozen
+			if obj.Frozen {
+				// In strict mode, this would throw an error
+				// For now, just return the value without modifying
+				return val
+			}
 			prop := ""
 			if left.Computed {
 				prop = valueToString(vm.evalExpr(left.Property))
@@ -1411,6 +2055,8 @@ func (vm *VM) evalAssign(e *AssignExpr) *Value {
 
 	return val
 }
+
+// evalMember evaluates a member expression (property access).
 
 func (vm *VM) evalCall(e *CallExpr) *Value {
 	var thisBinding *Value = nil
@@ -1570,6 +2216,10 @@ func (vm *VM) evalCall(e *CallExpr) *Value {
 		oldEnv := vm.env
 		vm.env = childEnv
 
+		// Track recursion depth
+		vm.enterCall()
+		defer vm.exitCall()
+
 		// Handle async function - return a Promise
 		if callee.IsAsync {
 			p := &Promise{
@@ -1631,6 +2281,19 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 	// Handle Proxy get trap
 	if obj.Type == "proxy" && obj.Proxy != nil {
 		return vm.evalProxyGet(obj.Proxy, e)
+	}
+
+	// Handle native functions with Obj field (e.g., Array.isArray, Promise.resolve)
+	// These are constructors/static methods attached to native functions
+	if obj.Type == "native" && obj.Obj != nil {
+		vm.debugLog("evalMember: native function with Obj field, Obj keys: %d", len(obj.Obj))
+		if ident, ok := e.Property.(*Ident); ok {
+			vm.debugLog("evalMember: looking for property '%s' in native Obj", ident.Name)
+			if v, ok := obj.Obj[ident.Name]; ok {
+				vm.debugLog("evalMember: found property '%s' in native Obj", ident.Name)
+				return v
+			}
+		}
 	}
 
 	// Handle Map and Set types - they store methods in Obj field
@@ -1775,6 +2438,52 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 		}
 	}
 
+	// Handle number methods (e.g., Math.PI.toFixed(2))
+	if obj.Type == "number" {
+		if ident, ok := e.Property.(*Ident); ok {
+			num := obj.Num
+			switch ident.Name {
+			case "toFixed":
+				return &Value{Type: "native", Native: func(args []*Value) *Value {
+					precision := 0
+					if len(args) > 0 {
+						precision = int(args[0].Num)
+					}
+					return &Value{Type: "string", Str: strconv.FormatFloat(num, 'f', precision, 64)}
+				}}
+			case "toPrecision":
+				return &Value{Type: "native", Native: func(args []*Value) *Value {
+					precision := 0
+					if len(args) > 0 {
+						precision = int(args[0].Num)
+					}
+					return &Value{Type: "string", Str: strconv.FormatFloat(num, 'g', precision, 64)}
+				}}
+			case "toExponential":
+				return &Value{Type: "native", Native: func(args []*Value) *Value {
+					precision := -1
+					if len(args) > 0 {
+						precision = int(args[0].Num)
+					}
+					return &Value{Type: "string", Str: strconv.FormatFloat(num, 'e', precision, 64)}
+				}}
+			case "toString":
+				return &Value{Type: "native", Native: func(args []*Value) *Value {
+					radix := 10
+					if len(args) > 0 {
+						radix = int(args[0].Num)
+					}
+					if radix == 10 {
+						return &Value{Type: "string", Str: strconv.FormatFloat(num, 'f', -1, 64)}
+					}
+					return &Value{Type: "string", Str: strconv.FormatInt(int64(num), radix)}
+				}}
+			case "valueOf":
+				return &Value{Type: "number", Num: num}
+			}
+		}
+	}
+
 	// Handle Promise methods
 	if obj.Type == "promise" && obj.Promise != nil {
 		if ident, ok := e.Property.(*Ident); ok {
@@ -1818,17 +2527,17 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 		}
 	}
 
-	// Handle Function.prototype.call
-	if obj.Type == "function" && obj.Func != nil {
+	// Handle Function.prototype.call and bind
+	if (obj.Type == "function" && obj.Func != nil) || (obj.Type == "native" && obj.Native != nil) {
 		if ident, ok := e.Property.(*Ident); ok {
 			if ident.Name == "call" {
 				// Return a native function that calls the original function with given this
 				fn := obj.Func
+				nativeFn := obj.Native
 				originalThis := obj.ThisBinding
 				return &Value{
 					Type: "native",
 					Native: func(args []*Value) *Value {
-						childEnv := NewEnvironment(fn.Env)
 						// First arg is this, rest are function args
 						var boundThis *Value = originalThis
 						var fnArgs []*Value
@@ -1836,36 +2545,140 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 							boundThis = args[0]
 							fnArgs = args[1:]
 						}
-						if boundThis != nil {
-							childEnv.Define("this", boundThis)
+						// If it's a native function, call it with the args
+						if nativeFn != nil {
+							return nativeFn(fnArgs)
 						}
-						for i, param := range fn.Params {
-							if i < len(fnArgs) {
-								childEnv.Define(param, fnArgs[i])
-							} else {
-								childEnv.Define(param, &Value{Type: "undefined"})
+						// If it's a user-defined function, execute it
+						if fn != nil {
+							childEnv := NewEnvironment(fn.Env)
+							if boundThis != nil {
+								childEnv.Define("this", boundThis)
 							}
-						}
-						oldEnv := vm.env
-						vm.env = childEnv
-						var result *Value = &Value{Type: "undefined"}
-						for _, stmt := range fn.Body {
-							ret, returning, retVal := vm.execStmt(stmt)
-							result = ret
-							if returning {
-								vm.env = oldEnv
-								if retVal != nil {
-									return retVal
+							for i, param := range fn.Params {
+								if i < len(fnArgs) {
+									childEnv.Define(param, fnArgs[i])
+								} else {
+									childEnv.Define(param, &Value{Type: "undefined"})
 								}
-								return result
 							}
+							oldEnv := vm.env
+							vm.env = childEnv
+							var result *Value = &Value{Type: "undefined"}
+							for _, stmt := range fn.Body {
+								ret, returning, retVal := vm.execStmt(stmt)
+								result = ret
+								if returning {
+									vm.env = oldEnv
+									if retVal != nil {
+										return retVal
+									}
+									return result
+								}
+							}
+							vm.env = oldEnv
+							return result
 						}
-						vm.env = oldEnv
-						return result
+						return &Value{Type: "undefined"}
+					},
+				}
+			}
+			// Handle Function.prototype.bind
+			if ident.Name == "bind" {
+				// Return a native function that creates a bound function
+				fn := obj.Func
+				originalThis := obj.ThisBinding
+				return &Value{
+					Type: "native",
+					Native: func(args []*Value) *Value {
+						// First arg is the this value to bind
+						var boundThis *Value = originalThis
+						var boundArgs []*Value
+						if len(args) > 0 {
+							boundThis = args[0]
+							boundArgs = args[1:]
+						}
+						// Return a new function with the bound this and partial arguments
+						return &Value{
+							Type: "function",
+							Func: fn,
+							ThisBinding: boundThis,
+							Native: func(innerArgs []*Value) *Value {
+								// Combine bound args with call args
+								allArgs := make([]*Value, 0, len(boundArgs)+len(innerArgs))
+								allArgs = append(allArgs, boundArgs...)
+								allArgs = append(allArgs, innerArgs...)
+								// Call the original function
+								childEnv := NewEnvironment(fn.Env)
+								if boundThis != nil {
+									childEnv.Define("this", boundThis)
+								}
+								for i, param := range fn.Params {
+									if i < len(allArgs) {
+										childEnv.Define(param, allArgs[i])
+									} else {
+										childEnv.Define(param, &Value{Type: "undefined"})
+									}
+								}
+								oldEnv := vm.env
+								vm.env = childEnv
+								var result *Value = &Value{Type: "undefined"}
+								for _, stmt := range fn.Body {
+									ret, returning, retVal := vm.execStmt(stmt)
+									result = ret
+									if returning {
+										vm.env = oldEnv
+										if retVal != nil {
+											return retVal
+										}
+										return result
+									}
+								}
+								vm.env = oldEnv
+								return result
+							},
+						}
 					},
 				}
 			}
 		}
+	}
+
+	// Walk prototype chain if property not found on this object
+	if obj.Type == "object" && obj.Proto != nil {
+		return vm.lookupInPrototype(obj.Proto, e)
+	}
+
+	return &Value{Type: "undefined"}
+}
+
+// lookupInPrototype walks the prototype chain to find a property.
+// Returns undefined if not found in any prototype.
+func (vm *VM) lookupInPrototype(proto *Value, e *MemberExpr) *Value {
+	if proto == nil || proto.Type != "object" {
+		return &Value{Type: "undefined"}
+	}
+
+	if ident, ok := e.Property.(*Ident); ok {
+		if proto.Obj != nil {
+			if v, ok := proto.Obj[ident.Name]; ok {
+				// If the value is a function, bind this to the original object
+				if v.Type == "function" || v.Type == "native" {
+					return &Value{
+						Type:        v.Type,
+						Native:      v.Native,
+						Func:        v.Func,
+						ThisBinding: proto,
+					}
+				}
+				return v
+			}
+		}
+	}
+
+	// Walk up the prototype chain
+	if proto.Proto != nil {
+		return vm.lookupInPrototype(proto.Proto, e)
 	}
 
 	return &Value{Type: "undefined"}
@@ -2069,6 +2882,12 @@ func valuesEqual(a, b *Value) bool {
 	if a.Type == "bool" && b.Type == "bool" {
 		return a.Bool == b.Bool
 	}
+	// For objects, compare by reference (pointer equality)
+	if a.Type == "object" && b.Type == "object" {
+		// Check if they are the same object (same pointer)
+		// This is a simple reference comparison
+		return a == b
+	}
 	return false
 }
 
@@ -2121,6 +2940,249 @@ func valueToString(v *Value) string {
 		return "[native function]"
 	}
 	return ""
+}
+
+// jsonStringify converts a JS Value to a JSON string.
+// Unlike valueToString, this produces valid JSON with quoted keys and proper escaping.
+func jsonStringify(v *Value) string {
+	switch v.Type {
+	case "undefined", "null", "function", "native":
+		return "null"
+	case "bool":
+		if v.Bool {
+			return "true"
+		}
+		return "false"
+	case "number":
+		if math.IsNaN(v.Num) || math.IsInf(v.Num, 0) {
+			return "null"
+		}
+		s := strconv.FormatFloat(v.Num, 'f', -1, 64)
+		// Ensure valid JSON number format
+		if strings.Contains(s, ".") {
+			return strings.TrimRight(strings.TrimRight(s, "0"), ".")
+		}
+		return s
+	case "string":
+		return jsonStringEscape(v.Str)
+	case "object":
+		if v.Arr != nil {
+			parts := make([]string, len(v.Arr))
+			for i, a := range v.Arr {
+				parts[i] = jsonStringify(a)
+			}
+			return "[" + strings.Join(parts, ",") + "]"
+		}
+		if v.Obj != nil {
+			parts := make([]string, 0, len(v.Obj))
+			for k, val := range v.Obj {
+				// Skip function values in JSON serialization
+				if val.Type == "function" || val.Type == "native" {
+					continue
+				}
+				parts = append(parts, jsonStringEscape(k)+":"+jsonStringify(val))
+			}
+			return "{" + strings.Join(parts, ",") + "}"
+		}
+		return "{}"
+	}
+	return "null"
+}
+
+// jsonStringEscape escapes a string for use in JSON.
+func jsonStringEscape(s string) string {
+	var sb strings.Builder
+	sb.WriteByte('"')
+	for _, r := range s {
+		switch r {
+		case '"':
+			sb.WriteString("\\\"")
+		case '\\':
+			sb.WriteString("\\\\")
+		case '\n':
+			sb.WriteString("\\n")
+		case '\r':
+			sb.WriteString("\\r")
+		case '\t':
+			sb.WriteString("\\t")
+		case '\b':
+			sb.WriteString("\\b")
+		case '\f':
+			sb.WriteString("\\f")
+		default:
+			if r < 0x20 {
+				sb.WriteString(fmt.Sprintf("\\u%04x", r))
+			} else {
+				sb.WriteRune(r)
+			}
+		}
+	}
+	sb.WriteByte('"')
+	return sb.String()
+}
+
+// jsonParse parses a JSON string into a JS Value.
+func jsonParse(s string) *Value {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return &Value{Type: "undefined"}
+	}
+	return jsonParseValue(s)
+}
+
+// jsonParseValue parses a JSON value from a string.
+func jsonParseValue(s string) *Value {
+	s = strings.TrimSpace(s)
+	if len(s) == 0 {
+		return &Value{Type: "undefined"}
+	}
+	switch s[0] {
+	case '"':
+		str, _ := jsonUnescapeString(s)
+		return &Value{Type: "string", Str: str}
+	case '{':
+		return jsonParseObject(s)
+	case '[':
+		return jsonParseArray(s)
+	case 't':
+		return &Value{Type: "bool", Bool: true}
+	case 'f':
+		return &Value{Type: "bool", Bool: false}
+	case 'n':
+		return &Value{Type: "null"}
+	default:
+		// Try number
+		if s[0] == '-' || (s[0] >= '0' && s[0] <= '9') {
+			n, err := strconv.ParseFloat(s, 64)
+			if err == nil {
+				return &Value{Type: "number", Num: n}
+			}
+		}
+		return &Value{Type: "undefined"}
+	}
+}
+
+// jsonParseObject parses a JSON object string.
+func jsonParseObject(s string) *Value {
+	s = strings.TrimSpace(s)
+	if len(s) < 2 || s[0] != '{' {
+		return &Value{Type: "object", Obj: make(map[string]*Value)}
+	}
+	obj := make(map[string]*Value)
+	s = s[1 : len(s)-1] // Remove { and }
+	s = strings.TrimSpace(s)
+	if len(s) == 0 {
+		return &Value{Type: "object", Obj: obj}
+	}
+	// Simple parsing: split by commas at the top level
+	pairs := jsonSplitTopLevel(s, ',')
+	for _, pair := range pairs {
+		pair = strings.TrimSpace(pair)
+		colonIdx := strings.Index(pair, ":")
+		if colonIdx < 0 {
+			continue
+		}
+		key := strings.TrimSpace(pair[:colonIdx])
+		val := strings.TrimSpace(pair[colonIdx+1:])
+		// Remove quotes from key
+		if len(key) >= 2 && key[0] == '"' && key[len(key)-1] == '"' {
+			key = key[1 : len(key)-1]
+		}
+		obj[key] = jsonParseValue(val)
+	}
+	return &Value{Type: "object", Obj: obj}
+}
+
+// jsonParseArray parses a JSON array string.
+func jsonParseArray(s string) *Value {
+	s = strings.TrimSpace(s)
+	if len(s) < 2 || s[0] != '[' {
+		return &Value{Type: "object", Arr: []*Value{}}
+	}
+	inner := s[1 : len(s)-1] // Remove [ and ]
+	inner = strings.TrimSpace(inner)
+	if len(inner) == 0 {
+		return &Value{Type: "object", Arr: []*Value{}}
+	}
+	parts := jsonSplitTopLevel(inner, ',')
+	arr := make([]*Value, len(parts))
+	for i, part := range parts {
+		arr[i] = jsonParseValue(strings.TrimSpace(part))
+	}
+	return &Value{Type: "object", Arr: arr}
+}
+
+// jsonSplitTopLevel splits a string by a delimiter, respecting nested braces and brackets.
+func jsonSplitTopLevel(s string, delim byte) []string {
+	var parts []string
+	depth := 0
+	inString := false
+	start := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '"' && (i == 0 || s[i-1] != '\\') {
+			inString = !inString
+		}
+		if inString {
+			continue
+		}
+		if c == '{' || c == '[' {
+			depth++
+		} else if c == '}' || c == ']' {
+			depth--
+		} else if c == delim && depth == 0 {
+			parts = append(parts, s[start:i])
+			start = i + 1
+		}
+	}
+	parts = append(parts, s[start:])
+	return parts
+}
+
+// jsonUnescapeString unescapes a JSON string.
+func jsonUnescapeString(s string) (string, error) {
+	if len(s) < 2 || s[0] != '"' || s[len(s)-1] != '"' {
+		return s, nil
+	}
+	s = s[1 : len(s)-1]
+	var sb strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) {
+			i++
+			switch s[i] {
+			case '"':
+				sb.WriteByte('"')
+			case '\\':
+				sb.WriteByte('\\')
+			case '/':
+				sb.WriteByte('/')
+			case 'n':
+				sb.WriteByte('\n')
+			case 'r':
+				sb.WriteByte('\r')
+			case 't':
+				sb.WriteByte('\t')
+			case 'b':
+				sb.WriteByte('\b')
+			case 'f':
+				sb.WriteByte('\f')
+			case 'u':
+				if i+4 < len(s) {
+					hex := s[i+1 : i+5]
+					n, err := strconv.ParseInt(hex, 16, 32)
+					if err == nil {
+						sb.WriteRune(rune(n))
+					}
+					i += 4
+				}
+			default:
+				sb.WriteByte(s[i])
+			}
+		} else {
+			sb.WriteByte(s[i])
+		}
+	}
+	return sb.String(), nil
 }
 
 func (vm *VM) Output() []string {

@@ -560,12 +560,17 @@ func (p *Parser) parseExpression() Expression {
 
 func (p *Parser) parseAssignExpr() Expression {
 	left := p.parseTernaryExpr()
+	if left == nil {
+		return nil
+	}
 
 	if p.cur.Type == TokEq || p.cur.Type == TokPlusEq || p.cur.Type == TokMinusEq ||
 		p.cur.Type == TokStarEq || p.cur.Type == TokSlashEq {
 		op := p.cur.Literal
 		p.nextToken()
 		right := p.parseAssignExpr()
+		// Even if right is nil, we should return the assignment expression
+		// The right side might be nil if we're at the end of an expression (e.g., before a closing paren)
 		return &AssignExpr{Left: left, Op: op, Right: right}
 	}
 
@@ -853,11 +858,14 @@ func (p *Parser) parsePrimaryExpr() Expression {
 func (p *Parser) parseParenExprOrArrowFunc() Expression {
 	p.nextToken() // skip (
 
+	// Save state for backtracking
+	savedPos := p.lexer.pos
+	savedCur := p.cur
+	savedPeek := p.peek
+
 	// Check if this could be arrow function parameters
 	var params []string
 	isArrowFunc := false
-	savedCur := p.cur
-	savedPeek := p.peek
 
 	if p.cur.Type == TokRParen {
 		// () => ...  empty params
@@ -893,10 +901,17 @@ func (p *Parser) parseParenExprOrArrowFunc() Expression {
 	}
 
 	// Not an arrow function - backtrack and parse as grouped expression
+	p.lexer.pos = savedPos
 	p.cur = savedCur
 	p.peek = savedPeek
 	expr := p.parseExpression()
-	p.nextToken() // skip )
+	// Skip to the closing paren
+	for p.cur.Type != TokRParen && p.cur.Type != TokEOF {
+		p.nextToken()
+	}
+	if p.cur.Type == TokRParen {
+		p.nextToken() // skip )
+	}
 	return expr
 }
 
