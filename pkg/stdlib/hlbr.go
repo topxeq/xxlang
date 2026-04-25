@@ -734,6 +734,32 @@ func init() {
 				}
 				return Array(elems...)
 			}),
+
+			// rsaEncrypt encrypts plaintext using RSA with hex-encoded modulus and exponent.
+			// This is useful for web applications that use RSA encryption for login passwords.
+			// Usage: rsaEncrypt(plaintext, hexModulus, hexExponent) -> hex-encoded ciphertext
+			"rsaEncrypt": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 3 {
+					return Error("rsaEncrypt() requires 3 arguments (plaintext, hexModulus, hexExponent)")
+				}
+				plaintext, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("rsaEncrypt() first argument must be STRING (plaintext)")
+				}
+				hexModulus, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("rsaEncrypt() second argument must be STRING (hex modulus)")
+				}
+				hexExponent, ok := args[2].(*objects.String)
+				if !ok {
+					return Error("rsaEncrypt() third argument must be STRING (hex exponent)")
+				}
+				ciphertext, err := hlbr.RSAEncryptHex(plaintext.Value, hexModulus.Value, hexExponent.Value)
+				if err != nil {
+					return Error("rsaEncrypt() failed: " + err.Error())
+				}
+				return String(ciphertext)
+			}),
 		},
 	})
 }
