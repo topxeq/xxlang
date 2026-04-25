@@ -67,8 +67,9 @@ func NewRegVM(bytecode *compiler.Bytecode) *RegVM {
 
 	mainFn := &compiler.CompiledFunction{
 		Instructions:  bytecode.Instructions,
-		NumLocals:     0,
+		NumLocals:     bytecode.MainNumLocals,
 		NumParameters: 0,
+		NumRegs:       bytecode.MainNumRegs,
 	}
 	mainFrame := NewRegFrame(mainFn)
 	mainFrame.Constants = constants
@@ -101,8 +102,9 @@ func NewRegVMWithGlobals(bytecode *compiler.Bytecode, globals []Value) *RegVM {
 
 	mainFn := &compiler.CompiledFunction{
 		Instructions:  bytecode.Instructions,
-		NumLocals:     0,
+		NumLocals:     bytecode.MainNumLocals,
 		NumParameters: 0,
+		NumRegs:       bytecode.MainNumRegs,
 	}
 	mainFrame := NewRegFrame(mainFn)
 	mainFrame.Constants = constants
@@ -139,8 +141,9 @@ func NewRegVMWithSymbolTable(bytecode *compiler.Bytecode, symbolTable *compiler.
 
 	mainFn := &compiler.CompiledFunction{
 		Instructions:  bytecode.Instructions,
-		NumLocals:     0,
+		NumLocals:     bytecode.MainNumLocals,
 		NumParameters: 0,
+		NumRegs:       bytecode.MainNumRegs,
 	}
 	mainFrame := NewRegFrame(mainFn)
 	mainFrame.Constants = constants
@@ -4288,8 +4291,9 @@ func (vm *RegVM) Eval(code string) (objects.Object, error) {
 	// Create main function from new bytecode
 	mainFn := &compiler.CompiledFunction{
 		Instructions:  bytecode.Instructions,
-		NumLocals:     0,
+		NumLocals:     bytecode.MainNumLocals,
 		NumParameters: 0,
+		NumRegs:       bytecode.MainNumRegs,
 	}
 
 	// Create new frame with current globals

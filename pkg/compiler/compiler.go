@@ -137,6 +137,8 @@ type Bytecode struct {
 	Constants         []objects.Object
 	SourceMap         *SourceMap                  // Maps instruction positions to source locations
 	InlineableGlobals map[int]*InlineableFuncInfo // Global index -> inlineable function info
+	MainNumLocals     int                         // Number of local slots needed for the main program (including spill slots)
+	MainNumRegs       int                         // Maximum register used in the main program
 }
 
 // CompiledFunction represents a compiled function

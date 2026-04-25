@@ -26,6 +26,10 @@ type RegCompiler struct {
 	maxReg      int
 	freeRegs    []int // List of freed registers available for reuse
 
+	// Spill slot allocation (for preserving values when registers are exhausted)
+	nextSpillSlot int
+	freeSpillSlots []int
+
 	// Method object register stack for nested method calls
 	// Each nested method call uses a different register to avoid corrupting parent calls
 	methodObjRegStack []int
@@ -49,6 +53,8 @@ type regScopeState struct {
 	nextTempReg  int
 	maxReg       int
 	freeRegs     []int
+	nextSpillSlot int
+	freeSpillSlots []int
 }
 
 type regLoopContext struct {
@@ -78,6 +84,8 @@ func (c *RegCompiler) enterScope() {
 		nextTempReg:  c.nextTempReg,
 		maxReg:       c.maxReg,
 		freeRegs:     c.freeRegs,
+		nextSpillSlot: c.nextSpillSlot,
+		freeSpillSlots: c.freeSpillSlots,
 	})
 
 	// Start with fresh instructions for the new scope
@@ -87,6 +95,8 @@ func (c *RegCompiler) enterScope() {
 	c.nextTempReg = FirstLocalRegister
 	c.maxReg = FirstLocalRegister
 	c.freeRegs = []int{}
+	c.nextSpillSlot = 0
+	c.freeSpillSlots = []int{}
 
 	c.symbolTable = NewEnclosedSymbolTable(c.symbolTable)
 }
@@ -96,6 +106,14 @@ func (c *RegCompiler) leaveScope() *CompiledFunction {
 	// Capture the function's instructions
 	fnInstructions := c.instructions
 	numLocals := c.symbolTable.NumDefinitions
+
+	// Spill slots may use local indices beyond NumDefinitions,
+	// so we must ensure NumLocals is large enough to cover them.
+	// Without this, frame.Locals would be too small and cause out-of-bounds panics.
+	if c.nextSpillSlot > numLocals {
+		numLocals = c.nextSpillSlot
+	}
+
 	freeVars := make([]Symbol, len(c.symbolTable.FreeSymbols))
 	copy(freeVars, c.symbolTable.FreeSymbols)
 
@@ -110,11 +128,15 @@ func (c *RegCompiler) leaveScope() *CompiledFunction {
 		c.nextTempReg = outer.nextTempReg
 		c.maxReg = outer.maxReg
 		c.freeRegs = outer.freeRegs
+		c.nextSpillSlot = outer.nextSpillSlot
+		c.freeSpillSlots = outer.freeSpillSlots
 	} else {
 		c.instructions = []byte{}
 		c.nextTempReg = FirstLocalRegister
 		c.maxReg = FirstLocalRegister
 		c.freeRegs = []int{}
+		c.nextSpillSlot = 0
+		c.freeSpillSlots = []int{}
 	}
 
 	c.symbolTable = c.symbolTable.Outer
@@ -2106,9 +2128,10 @@ func (c *RegCompiler) compileCallExpression(n *parser.CallExpression) (int, erro
 		symbol, ok := c.symbolTable.Resolve(ident.Value)
 		if ok && symbol.Scope == BuiltinScope {
 			// This is a builtin - use OpRegBuiltin directly
-			// First, compile all arguments to temporary registers
-			// This prevents nested calls from overwriting argument registers
-			argRegs := make([]int, len(n.Arguments))
+			// Compile arguments and spill each to a local slot immediately
+			// to prevent register reuse overwriting previous argument values
+			// (critical when register pressure is high in large if/else chains)
+			spillSlots := make([]int, len(n.Arguments))
 			for i, arg := range n.Arguments {
 				argReg, err := c.Compile(arg)
 				if err != nil {
@@ -2121,21 +2144,25 @@ func (c *RegCompiler) compileCallExpression(n *parser.CallExpression) (int, erro
 					c.emitRegMove(tempReg, argReg)
 					argReg = tempReg
 				}
-				argRegs[i] = argReg
-			}
-
-			// Now move all arguments to their final positions (R0-R7)
-			for i, argReg := range argRegs {
-				if argReg != i {
-					c.emitRegMove(i, argReg)
+				// Spill argument to a local variable slot to preserve it
+				// across subsequent argument compilations
+				spillSlot := c.allocSpillSlot()
+				c.emitRegStoreLocal(argReg, spillSlot)
+				spillSlots[i] = spillSlot
+				// Free the temp register so it can be reused for next arg
+				if argReg >= FirstLocalRegister {
+					c.freeTempReg(argReg)
 				}
 			}
 
-			// Free temporary registers (in reverse order for proper stack-like freeing)
-			for i := len(argRegs) - 1; i >= 0; i-- {
-				if argRegs[i] >= FirstLocalRegister {
-					c.freeTempReg(argRegs[i])
-				}
+			// Load all arguments from spill slots into R0-R7
+			for i, slot := range spillSlots {
+				c.emitRegLoadLocal(i, slot)
+			}
+
+			// Free spill slots
+			for i := len(spillSlots) - 1; i >= 0; i-- {
+				c.freeSpillSlot(spillSlots[i])
 			}
 
 			// Emit builtin call
@@ -2173,37 +2200,34 @@ func (c *RegCompiler) compileCallExpression(n *parser.CallExpression) (int, erro
 			c.freeTempReg(objReg)
 		}
 
-		// First, compile all arguments to temporary registers
-		argRegs := make([]int, len(n.Arguments))
+		// Compile arguments, spilling each to a local slot immediately
+		// to prevent register reuse overwriting previous argument values
+		spillSlots := make([]int, len(n.Arguments))
 		for i, arg := range n.Arguments {
 			argReg, err := c.Compile(arg)
 			if err != nil {
-				// Pop from stack on error
 				c.methodObjRegStack = c.methodObjRegStack[:len(c.methodObjRegStack)-1]
 				return 0, err
 			}
-			// If the result is in ReturnRegister, move it to a temp register
 			if argReg == ReturnRegister {
 				tempReg := c.allocTempReg()
 				c.emitRegMove(tempReg, argReg)
 				argReg = tempReg
 			}
-			argRegs[i] = argReg
-		}
-
-		// Now move all arguments to their final positions (R0, R1, R2, ...)
-		// Note: We don't limit to R0-R7, we use as many registers as needed
-		for i, argReg := range argRegs {
-			if argReg != i {
-				c.emitRegMove(i, argReg)
+			spillSlot := c.allocSpillSlot()
+			c.emitRegStoreLocal(argReg, spillSlot)
+			spillSlots[i] = spillSlot
+			if argReg >= FirstLocalRegister {
+				c.freeTempReg(argReg)
 			}
 		}
 
-		// Free temporary registers
-		for i := len(argRegs) - 1; i >= 0; i-- {
-			if argRegs[i] >= FirstLocalRegister {
-				c.freeTempReg(argRegs[i])
-			}
+		for i, slot := range spillSlots {
+			c.emitRegLoadLocal(i, slot)
+		}
+
+		for i := len(spillSlots) - 1; i >= 0; i-- {
+			c.freeSpillSlot(spillSlots[i])
 		}
 
 		// Get method name constant
@@ -2218,47 +2242,43 @@ func (c *RegCompiler) compileCallExpression(n *parser.CallExpression) (int, erro
 		return ReturnRegister, nil
 	}
 	// Regular function call
-	// Compile function
 	funcReg, err := c.Compile(n.Function)
 	if err != nil {
 		return 0, err
 	}
 
-	// First, compile all arguments to temporary registers
-	argRegs := make([]int, len(n.Arguments))
+	// Compile arguments, spilling each to a local slot immediately
+	// to prevent register reuse overwriting previous argument values
+	spillSlots := make([]int, len(n.Arguments))
 	for i, arg := range n.Arguments {
 		argReg, err := c.Compile(arg)
 		if err != nil {
 			return 0, err
 		}
-		// If the result is in ReturnRegister, move it to a temp register
 		if argReg == ReturnRegister {
 			tempReg := c.allocTempReg()
 			c.emitRegMove(tempReg, argReg)
 			argReg = tempReg
 		}
-		argRegs[i] = argReg
-	}
-
-	// Now move all arguments to their final positions (R0-R7)
-	for i, argReg := range argRegs {
-		if argReg != i {
-			c.emitRegMove(i, argReg)
+		spillSlot := c.allocSpillSlot()
+		c.emitRegStoreLocal(argReg, spillSlot)
+		spillSlots[i] = spillSlot
+		if argReg >= FirstLocalRegister {
+			c.freeTempReg(argReg)
 		}
 	}
 
-	// Free temporary registers
-	for i := len(argRegs) - 1; i >= 0; i-- {
-		if argRegs[i] >= FirstLocalRegister {
-			c.freeTempReg(argRegs[i])
-		}
+	for i, slot := range spillSlots {
+		c.emitRegLoadLocal(i, slot)
 	}
 
-	// Emit call
+	for i := len(spillSlots) - 1; i >= 0; i-- {
+		c.freeSpillSlot(spillSlots[i])
+	}
+
 	c.emitRegCall(funcReg, len(n.Arguments))
 	c.freeTempReg(funcReg)
 
-	// Result is in ReturnRegister
 	return ReturnRegister, nil
 }
 
@@ -3082,6 +3102,26 @@ func (c *RegCompiler) freeTempReg(reg int) {
 	}
 }
 
+func (c *RegCompiler) allocSpillSlot() int {
+	if len(c.freeSpillSlots) > 0 {
+		slot := c.freeSpillSlots[len(c.freeSpillSlots)-1]
+		c.freeSpillSlots = c.freeSpillSlots[:len(c.freeSpillSlots)-1]
+		return slot
+	}
+	slot := c.nextSpillSlot
+	c.nextSpillSlot++
+	return slot
+}
+
+func (c *RegCompiler) freeSpillSlot(slot int) {
+	for _, s := range c.freeSpillSlots {
+		if s == slot {
+			return
+		}
+	}
+	c.freeSpillSlots = append(c.freeSpillSlots, slot)
+}
+
 // Emit helpers
 
 func (c *RegCompiler) emitRegAdd(dst, src1, src2 int) {
@@ -3418,10 +3458,16 @@ func (c *RegCompiler) emitRegLoopMulCheck(iReg, nReg int, jumpOutOffset int) {
 
 // Bytecode returns the compiled bytecode
 func (c *RegCompiler) Bytecode() *Bytecode {
+	numLocals := c.symbolTable.NumDefinitions
+	if c.nextSpillSlot > numLocals {
+		numLocals = c.nextSpillSlot
+	}
 	return &Bytecode{
-		Instructions: c.instructions,
-		Constants:    c.constants,
-		SourceMap:    c.sourceMap,
+		Instructions:  c.instructions,
+		Constants:     c.constants,
+		SourceMap:     c.sourceMap,
+		MainNumLocals: numLocals,
+		MainNumRegs:   c.maxReg + 1,
 	}
 }
 
