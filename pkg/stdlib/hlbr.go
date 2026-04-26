@@ -294,6 +294,54 @@ func init() {
 				return br
 			}),
 
+			// waitStable waits for the page to become stable by draining pending timers.
+			// Usage: waitStable(browser) or waitStable(browser, timeoutMs, stableForMs)
+			"waitStable": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 1 {
+					return Error("waitStable() requires at least 1 argument (browser)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("waitStable() first argument must be HLBR_BROWSER")
+				}
+				timeoutMs := 5000
+				stableForMs := 100
+				if len(args) >= 2 {
+					if t, ok := args[1].(*objects.Int); ok {
+						timeoutMs = int(t.Value)
+					} else if t, ok := args[1].(*objects.Float); ok {
+						timeoutMs = int(t.Value)
+					}
+				}
+				if len(args) >= 3 {
+					if s, ok := args[2].(*objects.Int); ok {
+						stableForMs = int(s.Value)
+					} else if s, ok := args[2].(*objects.Float); ok {
+						stableForMs = int(s.Value)
+					}
+				}
+				if err := br.GetBrowser().WaitStable(timeoutMs, stableForMs); err != nil {
+					return Error("waitStable() failed: " + err.Error())
+				}
+				return br
+			}),
+
+			// waitStableDefault waits for page stability with default timeouts.
+			// Usage: waitStableDefault(browser)
+			"waitStableDefault": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 1 {
+					return Error("waitStableDefault() requires 1 argument (browser)")
+				}
+				br, ok := args[0].(*objects.HlbrBrowser)
+				if !ok {
+					return Error("waitStableDefault() argument must be HLBR_BROWSER")
+				}
+				if err := br.GetBrowser().WaitStableDefault(); err != nil {
+					return Error("waitStableDefault() failed: " + err.Error())
+				}
+				return br
+			}),
+
 			// getSessionStorageItem gets a single sessionStorage item.
 			// Usage: getSessionStorageItem(browser, key) -> string
 			"getSessionStorageItem": BuiltinFunc(func(args ...objects.Object) objects.Object {

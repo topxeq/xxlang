@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/topxeq/xxlang/pkg/hlbr/dom"
 	"github.com/topxeq/xxlang/pkg/hlbr/htmlparser"
@@ -304,16 +305,60 @@ func (b *Browser) SetJsDebug(jsDebug bool) {
 	}
 }
 
-// WaitStable waits for the page to become stable (compatibility stub).
+// WaitStable waits for the page to become stable by draining pending JavaScript
+// timers (setTimeout/setInterval) and allowing Vue/SPA rendering to complete.
+// timeoutMs is the maximum time to wait, stableForMs is how long the page must
+// remain stable (no new timers) before returning.
 func (b *Browser) WaitStable(timeoutMs, stableForMs int) error {
-	b.debugLog("WaitStable called (stub): timeoutMs=%d, stableForMs=%d", timeoutMs, stableForMs)
+	b.debugLog("WaitStable called: timeoutMs=%d, stableForMs=%d", timeoutMs, stableForMs)
+	if b.vm == nil {
+		return nil
+	}
+
+	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
+	stableDeadline := time.Time{}
+	maxRounds := 50 // Safety limit to prevent infinite loops
+
+	for round := 0; round < maxRounds; round++ {
+		if time.Now().After(deadline) {
+			b.debugLog("WaitStable: timeout reached after %d rounds", round)
+			break
+		}
+
+		// Brief sleep to allow timers to become due
+		time.Sleep(10 * time.Millisecond)
+
+		// Process all pending timers synchronously
+		hadTimers := b.vm.HasPendingTimers()
+		if hadTimers {
+			b.debugLog("WaitStable: processing pending timers (round %d)", round)
+			b.vm.RunTimers()
+		}
+
+		// Check if new timers were created (e.g., by Vue's nextTick)
+		if b.vm.HasPendingTimers() {
+			// More timers were scheduled, keep processing
+			stableDeadline = time.Time{}
+			continue
+		}
+
+		// No pending timers - check if we've been stable for long enough
+		if stableDeadline.IsZero() {
+			stableDeadline = time.Now().Add(time.Duration(stableForMs) * time.Millisecond)
+		}
+
+		if time.Now().After(stableDeadline) {
+			b.debugLog("WaitStable: page stable after %d rounds", round)
+			break
+		}
+	}
+
 	return nil
 }
 
-// WaitStableDefault waits for the page to become stable with default timeouts (compatibility stub).
+// WaitStableDefault waits for the page to become stable with default timeouts.
 func (b *Browser) WaitStableDefault() error {
-	b.debugLog("WaitStableDefault called (stub)")
-	return nil
+	return b.WaitStable(5000, 100)
 }
 
 // Abort cancels any running JavaScript execution.

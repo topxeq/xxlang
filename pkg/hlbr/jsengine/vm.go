@@ -39,6 +39,12 @@ type Value struct {
 	Proto *Value
 	// Frozen indicates if the object is frozen (Object.freeze)
 	Frozen bool
+	// PrototypeObj is the function's prototype property (for constructor functions).
+	// When `new Fn()` is called, the new object's Proto is set to Fn.PrototypeObj.
+	PrototypeObj *Value
+	// _isThisArg is an internal marker: when true, this Value was prepended
+	// as the 'this' argument in a native method call by evalCall.
+	_isThisArg bool
 }
 
 // Proxy represents a JavaScript Proxy object
@@ -670,7 +676,6 @@ func (vm *VM) setupBuiltins() {
 
 	// Define Function constructor with prototype
 	functionProto := vm.env.Get("FunctionPrototype")
-	fmt.Printf("[DEBUG] FunctionPrototype type: %s\n", functionProto.Type)
 	functionConstructor := &Value{Type: "native", Native: func(args []*Value) *Value {
 		// Function constructor - create a new function
 		return &Value{Type: "function", Func: &Function{Params: []string{}, Body: []Statement{}, Env: vm.env}}
@@ -679,7 +684,6 @@ func (vm *VM) setupBuiltins() {
 		functionConstructor.Obj = map[string]*Value{
 			"prototype": functionProto,
 		}
-		fmt.Printf("[DEBUG] Set Function.Obj with prototype, Obj keys: %v\n", functionConstructor.Obj)
 	}
 	vm.env.Define("Function", functionConstructor)
 
@@ -1516,9 +1520,23 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 		return &Value{Type: "undefined"}, false, nil
 	case *ForInStmt:
 		obj := vm.evalExpr(s.Object)
-		if obj.Type == "object" && obj.Obj != nil {
-			for key := range obj.Obj {
-				vm.checkSteps() // Check for infinite loop in for-in-statement
+		if obj.Type == "object" {
+			// Collect all enumerable keys from Obj and Descriptors
+			keys := make(map[string]bool)
+			if obj.Obj != nil {
+				for key := range obj.Obj {
+					keys[key] = true
+				}
+			}
+			if obj.Descriptors != nil {
+				for key, desc := range obj.Descriptors {
+					if desc.Enumerable {
+						keys[key] = true
+					}
+				}
+			}
+			for key := range keys {
+				vm.checkSteps()
 				childEnv := NewEnvironment(vm.env)
 				childEnv.Define(s.VarName, &Value{Type: "string", Str: key})
 				oldEnv := vm.env
@@ -1742,6 +1760,14 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 		if s.IsAsync {
 			val.IsAsync = true
 		}
+		// Create prototype object for the constructor function
+		protoObj := &Value{Type: "object", Obj: make(map[string]*Value)}
+		if objProto := vm.env.Get("ObjectPrototype"); objProto.Type == "object" {
+			protoObj.Proto = objProto
+		}
+		// Store constructor reference on prototype
+		protoObj.Obj["constructor"] = val
+		val.PrototypeObj = protoObj
 		vm.env.Define(s.Name, val)
 		return &Value{Type: "undefined"}, false, nil
 		case *GeneratorDecl:
@@ -1884,7 +1910,12 @@ func (vm *VM) evalExpr(expr Expression) *Value {
 				arr = append(arr, vm.evalExpr(el))
 			}
 		}
-		return &Value{Type: "object", Arr: arr}
+		result := &Value{Type: "object", Arr: arr}
+		// Set prototype link for array methods
+		if proto := vm.env.Get("ArrayPrototype"); proto.Type == "object" {
+			result.Proto = proto
+		}
+		return result
 	case *ObjectLit:
 		vm.trackAlloc() // Track object allocation
 		obj := make(map[string]*Value)
@@ -1906,13 +1937,33 @@ func (vm *VM) evalExpr(expr Expression) *Value {
 				obj[prop.Key] = vm.evalExpr(prop.Value)
 			}
 		}
-		return &Value{Type: "object", Obj: obj}
+		result := &Value{Type: "object", Obj: obj}
+		// Set prototype link to Object.prototype
+		if proto := vm.env.Get("ObjectPrototype"); proto.Type == "object" {
+			result.Proto = proto
+		}
+		return result
 	case *FunctionExpr:
 		fn := &Function{Params: e.Params, DefaultVals: e.DefaultVals, RestParam: e.RestParam, Body: e.Body, Env: vm.env}
-		return &Value{Type: "function", Func: fn}
+		result := &Value{Type: "function", Func: fn}
+		if proto := vm.env.Get("FunctionPrototype"); proto.Type == "object" {
+			result.Proto = proto
+		}
+		// Create prototype object for the constructor function
+		protoObj := &Value{Type: "object", Obj: make(map[string]*Value)}
+		if objProto := vm.env.Get("ObjectPrototype"); objProto.Type == "object" {
+			protoObj.Proto = objProto
+		}
+		protoObj.Obj["constructor"] = result
+		result.PrototypeObj = protoObj
+		return result
 	case *ArrowFunctionExpr:
 		fn := &Function{Params: e.Params, RestParam: e.RestParam, Body: e.Body, Env: vm.env}
-		return &Value{Type: "function", Func: fn}
+		result := &Value{Type: "function", Func: fn}
+		if proto := vm.env.Get("FunctionPrototype"); proto.Type == "object" {
+			result.Proto = proto
+		}
+		return result
 	case *TernaryExpr:
 		cond := vm.evalExpr(e.Cond)
 		if isTruthy(cond) {
@@ -1921,9 +1972,23 @@ func (vm *VM) evalExpr(expr Expression) *Value {
 		return vm.evalExpr(e.False)
 	case *TypeOfExpr:
 		v := vm.evalExpr(e.Expr)
-		// In JavaScript, typeof for functions should return "function"
+		// In JavaScript, typeof null should return "object"
+		if v.Type == "null" {
+			return &Value{Type: "string", Str: "object"}
+		}
 		if v.Type == "native" || v.Type == "function" {
 			return &Value{Type: "string", Str: "function"}
+		}
+		// Map internal types to JS typeof strings
+		switch v.Type {
+		case "arrayMethod", "stringMethod":
+			return &Value{Type: "string", Str: "function"}
+		case "bigint":
+			return &Value{Type: "string", Str: "bigint"}
+		case "regexp":
+			return &Value{Type: "string", Str: "object"}
+		case "promise", "proxy", "map", "set", "weakmap", "weakset", "iterator", "generator":
+			return &Value{Type: "string", Str: "object"}
 		}
 		return &Value{Type: "string", Str: v.Type}
 	case *AwaitExpr:
@@ -2119,7 +2184,11 @@ func (vm *VM) evalAssign(e *AssignExpr) *Value {
 			vm.env.Set(left.Name, val)
 		case "+=":
 			cur := vm.env.Get(left.Name)
-			vm.env.Set(left.Name, &Value{Type: "number", Num: cur.Num + val.Num})
+			if cur.Type == "string" || val.Type == "string" {
+				vm.env.Set(left.Name, &Value{Type: "string", Str: valueToString(cur) + valueToString(val)})
+			} else {
+				vm.env.Set(left.Name, &Value{Type: "number", Num: cur.Num + val.Num})
+			}
 		case "-=":
 			cur := vm.env.Get(left.Name)
 			vm.env.Set(left.Name, &Value{Type: "number", Num: cur.Num - val.Num})
@@ -2183,18 +2252,74 @@ func (vm *VM) evalCall(e *CallExpr) *Value {
 	}
 
 	// Handle native functions (including array methods)
+	// Convention: only prepend 'this' if the callee has a ThisBinding set by
+	// evalMember (via prototype chain lookup). Do NOT prepend this for regular
+	// native function calls where thisBinding comes from the call expression,
+	// as that would break built-in functions like setTimeout.
 	if callee.Type == "native" && callee.Native != nil {
-		return callee.Native(args)
+		nativeArgs := args
+		if callee.ThisBinding != nil {
+			thisVal := &Value{
+				Type:        callee.ThisBinding.Type,
+				Num:         callee.ThisBinding.Num,
+				Str:         callee.ThisBinding.Str,
+				Bool:        callee.ThisBinding.Bool,
+				Obj:         callee.ThisBinding.Obj,
+				Arr:         callee.ThisBinding.Arr,
+				Func:        callee.ThisBinding.Func,
+				Class:       callee.ThisBinding.Class,
+				Promise:     callee.ThisBinding.Promise,
+				Proxy:       callee.ThisBinding.Proxy,
+				MapData:     callee.ThisBinding.MapData,
+				SetData:     callee.ThisBinding.SetData,
+				Native:      callee.ThisBinding.Native,
+				ThisBinding: callee.ThisBinding.ThisBinding,
+				Descriptors: callee.ThisBinding.Descriptors,
+				IsAsync:     callee.ThisBinding.IsAsync,
+				BuiltInConstructor: callee.ThisBinding.BuiltInConstructor,
+				NodeRef:     callee.ThisBinding.NodeRef,
+				Proto:       callee.ThisBinding.Proto,
+				Frozen:      callee.ThisBinding.Frozen,
+				_isThisArg:  true,
+			}
+			nativeArgs = make([]*Value, 0, len(args)+1)
+			nativeArgs = append(nativeArgs, thisVal)
+			nativeArgs = append(nativeArgs, args...)
+		}
+		return callee.Native(nativeArgs)
 	}
 
 	// Handle array methods (type set in evalMember)
 	if callee.Type == "arrayMethod" && callee.Native != nil {
-		return callee.Native(args)
+		nativeArgs := args
+		if callee.ThisBinding != nil {
+			thisVal := &Value{
+				Type:        callee.ThisBinding.Type,
+				Arr:         callee.ThisBinding.Arr,
+				Obj:         callee.ThisBinding.Obj,
+				_isThisArg:  true,
+			}
+			nativeArgs = make([]*Value, 0, len(args)+1)
+			nativeArgs = append(nativeArgs, thisVal)
+			nativeArgs = append(nativeArgs, args...)
+		}
+		return callee.Native(nativeArgs)
 	}
 
 	// Handle string methods (type set in evalMember)
 	if callee.Type == "stringMethod" && callee.Native != nil {
-		return callee.Native(args)
+		nativeArgs := args
+		if callee.ThisBinding != nil {
+			thisVal := &Value{
+				Type:       callee.ThisBinding.Type,
+				Str:        callee.ThisBinding.Str,
+				_isThisArg: true,
+			}
+			nativeArgs = make([]*Value, 0, len(args)+1)
+			nativeArgs = append(nativeArgs, thisVal)
+			nativeArgs = append(nativeArgs, args...)
+		}
+		return callee.Native(nativeArgs)
 	}
 
 	// Handle generator function call - return a new iterator object
@@ -2636,9 +2761,23 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 		}
 	}
 
-	// Handle Function.prototype.call and bind
+	// Handle Function.prototype.call, apply, and bind
 	if (obj.Type == "function" && obj.Func != nil) || (obj.Type == "native" && obj.Native != nil) {
 		if ident, ok := e.Property.(*Ident); ok {
+			// Handle fn.prototype - return the constructor's prototype object
+			if ident.Name == "prototype" {
+				if obj.PrototypeObj != nil {
+					return obj.PrototypeObj
+				}
+				// Create a default prototype object if not set
+				protoObj := &Value{Type: "object", Obj: make(map[string]*Value)}
+				if objProto := vm.env.Get("ObjectPrototype"); objProto.Type == "object" {
+					protoObj.Proto = objProto
+				}
+				protoObj.Obj["constructor"] = obj
+				obj.PrototypeObj = protoObj
+				return protoObj
+			}
 			if ident.Name == "call" {
 				// Return a native function that calls the original function with given this
 				fn := obj.Func
@@ -2647,46 +2786,103 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 				return &Value{
 					Type: "native",
 					Native: func(args []*Value) *Value {
-						// First arg is this, rest are function args
+						// Skip 'this' arg if prepended by evalCall
+						offset := 0
+						if len(args) > 0 && args[0]._isThisArg {
+							offset = 1
+						}
+						if len(args) <= offset {
+							return &Value{Type: "undefined"}
+						}
 						var boundThis *Value = originalThis
 						var fnArgs []*Value
-						if len(args) > 0 {
-							boundThis = args[0]
-							fnArgs = args[1:]
-						}
-						// If it's a native function, call it with the args
+						boundThis = args[offset]
+						fnArgs = args[offset+1:]
+						// If it's a native function, prepend the 'this' and call
 						if nativeFn != nil {
-							return nativeFn(fnArgs)
+							nativeCallArgs := make([]*Value, 0, len(fnArgs)+1)
+							if boundThis != nil {
+								thisVal := &Value{
+									Type:        boundThis.Type,
+									Num:         boundThis.Num,
+									Str:         boundThis.Str,
+									Bool:        boundThis.Bool,
+									Obj:         boundThis.Obj,
+									Arr:         boundThis.Arr,
+									Func:        boundThis.Func,
+									Class:       boundThis.Class,
+									Promise:     boundThis.Promise,
+									Proxy:       boundThis.Proxy,
+									MapData:     boundThis.MapData,
+									SetData:     boundThis.SetData,
+									Native:      boundThis.Native,
+									ThisBinding: boundThis.ThisBinding,
+									Descriptors: boundThis.Descriptors,
+									IsAsync:     boundThis.IsAsync,
+									BuiltInConstructor: boundThis.BuiltInConstructor,
+									NodeRef:     boundThis.NodeRef,
+									Proto:       boundThis.Proto,
+									Frozen:      boundThis.Frozen,
+									_isThisArg:  true,
+								}
+								nativeCallArgs = append(nativeCallArgs, thisVal)
+							}
+							nativeCallArgs = append(nativeCallArgs, fnArgs...)
+							return nativeFn(nativeCallArgs)
 						}
 						// If it's a user-defined function, execute it
 						if fn != nil {
-							childEnv := NewEnvironment(fn.Env)
+							return vm.callFunctionWithThis(fn, boundThis, fnArgs)
+						}
+						return &Value{Type: "undefined"}
+					},
+				}
+			}
+			if ident.Name == "apply" {
+				fn := obj.Func
+				nativeFn := obj.Native
+				originalThis := obj.ThisBinding
+				return &Value{
+					Type: "native",
+					Native: func(args []*Value) *Value {
+						// Skip 'this' arg if prepended by evalCall
+						offset := 0
+						if len(args) > 0 && args[0]._isThisArg {
+							offset = 1
+						}
+						var boundThis *Value = originalThis
+						var fnArgs []*Value
+						if len(args) > offset {
+							boundThis = args[offset]
+						}
+						if len(args) > offset+1 {
+							// Second arg is an array of arguments
+							arrVal := args[offset+1]
+							if arrVal.Type == "object" && arrVal.Arr != nil {
+								fnArgs = arrVal.Arr
+							}
+						}
+						if nativeFn != nil {
+							nativeCallArgs := make([]*Value, 0, len(fnArgs)+1)
 							if boundThis != nil {
-								childEnv.Define("this", boundThis)
-							}
-							for i, param := range fn.Params {
-								if i < len(fnArgs) {
-									childEnv.Define(param, fnArgs[i])
-								} else {
-									childEnv.Define(param, &Value{Type: "undefined"})
+								thisVal := &Value{
+									Type:        boundThis.Type,
+									Obj:         boundThis.Obj,
+									Arr:         boundThis.Arr,
+									Str:         boundThis.Str,
+									Num:         boundThis.Num,
+									Bool:        boundThis.Bool,
+									Descriptors: boundThis.Descriptors,
+									Proto:       boundThis.Proto,
+									_isThisArg:  true,
 								}
+								nativeCallArgs = append(nativeCallArgs, thisVal)
 							}
-							oldEnv := vm.env
-							vm.env = childEnv
-							var result *Value = &Value{Type: "undefined"}
-							for _, stmt := range fn.Body {
-								ret, returning, retVal := vm.execStmt(stmt)
-								result = ret
-								if returning {
-									vm.env = oldEnv
-									if retVal != nil {
-										return retVal
-									}
-									return result
-								}
-							}
-							vm.env = oldEnv
-							return result
+							nativeCallArgs = append(nativeCallArgs, fnArgs...)
+							return nativeFn(nativeCallArgs)
+						}
+						if fn != nil {
+							return vm.callFunctionWithThis(fn, boundThis, fnArgs)
 						}
 						return &Value{Type: "undefined"}
 					},
@@ -2755,7 +2951,7 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 
 	// Walk prototype chain if property not found on this object
 	if obj.Type == "object" && obj.Proto != nil {
-		return vm.lookupInPrototype(obj.Proto, e)
+		return vm.lookupInPrototypeWithOriginal(obj.Proto, e, obj)
 	}
 
 	return &Value{Type: "undefined"}
@@ -2763,7 +2959,14 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 
 // lookupInPrototype walks the prototype chain to find a property.
 // Returns undefined if not found in any prototype.
+// The originalObj parameter is used to set ThisBinding on found methods,
+// so that when obj.hasOwnProperty() is called, 'this' refers to obj, not the prototype.
 func (vm *VM) lookupInPrototype(proto *Value, e *MemberExpr) *Value {
+	return vm.lookupInPrototypeWithOriginal(proto, e, nil)
+}
+
+// lookupInPrototypeWithOriginal walks the prototype chain with an explicit original object.
+func (vm *VM) lookupInPrototypeWithOriginal(proto *Value, e *MemberExpr, originalObj *Value) *Value {
 	if proto == nil || proto.Type != "object" {
 		return &Value{Type: "undefined"}
 	}
@@ -2772,12 +2975,17 @@ func (vm *VM) lookupInPrototype(proto *Value, e *MemberExpr) *Value {
 		if proto.Obj != nil {
 			if v, ok := proto.Obj[ident.Name]; ok {
 				// If the value is a function, bind this to the original object
+				// (not the prototype) so method calls work correctly
+				thisVal := originalObj
+				if thisVal == nil {
+					thisVal = proto
+				}
 				if v.Type == "function" || v.Type == "native" {
 					return &Value{
 						Type:        v.Type,
 						Native:      v.Native,
 						Func:        v.Func,
-						ThisBinding: proto,
+						ThisBinding: thisVal,
 					}
 				}
 				return v
@@ -2787,7 +2995,7 @@ func (vm *VM) lookupInPrototype(proto *Value, e *MemberExpr) *Value {
 
 	// Walk up the prototype chain
 	if proto.Proto != nil {
-		return vm.lookupInPrototype(proto.Proto, e)
+		return vm.lookupInPrototypeWithOriginal(proto.Proto, e, originalObj)
 	}
 
 	return &Value{Type: "undefined"}
@@ -2846,6 +3054,11 @@ func (vm *VM) evalNew(e *NewExpr) *Value {
 		}
 
 		obj := &Value{Type: "object", Obj: make(map[string]*Value)}
+		// Link the object to the constructor's prototype chain
+		// In JS: obj.__proto__ = Constructor.prototype
+		if callee.PrototypeObj != nil {
+			obj.Proto = callee.PrototypeObj
+		}
 		childEnv.Define("this", obj)
 
 		oldEnv := vm.env
@@ -3319,38 +3532,59 @@ func (vm *VM) callFunction(fn *Value, args []*Value) *Value {
 	}
 
 	if fn.Type == "function" && fn.Func != nil {
-		f := fn.Func
-		childEnv := NewEnvironment(f.Env)
-
-		for i, param := range f.Params {
-			if i < len(args) {
-				childEnv.Define(param, args[i])
-			} else {
-				childEnv.Define(param, &Value{Type: "undefined"})
-			}
-		}
-
-		oldEnv := vm.env
-		vm.env = childEnv
-
-		var result *Value = &Value{Type: "undefined"}
-		for _, stmt := range f.Body {
-			ret, returning, retVal := vm.execStmt(stmt)
-			result = ret
-			if returning {
-				vm.env = oldEnv
-				if retVal != nil {
-					return retVal
-				}
-				return result
-			}
-		}
-
-		vm.env = oldEnv
-		return result
+		return vm.callFunctionWithThis(fn.Func, fn.ThisBinding, args)
 	}
 
 	return &Value{Type: "undefined"}
+}
+
+// callFunctionWithThis calls a user-defined function with an explicit this binding.
+func (vm *VM) callFunctionWithThis(f *Function, thisVal *Value, args []*Value) *Value {
+	childEnv := NewEnvironment(f.Env)
+
+	if thisVal != nil {
+		childEnv.Define("this", thisVal)
+	}
+
+	for i, param := range f.Params {
+		if i < len(args) {
+			childEnv.Define(param, args[i])
+		} else if f.DefaultVals != nil && f.DefaultVals[param] != nil {
+			childEnv.Define(param, vm.evalExpr(f.DefaultVals[param]))
+		} else {
+			childEnv.Define(param, &Value{Type: "undefined"})
+		}
+	}
+
+	if f.RestParam != "" {
+		restArgs := make([]*Value, 0)
+		if len(args) > len(f.Params) {
+			restArgs = args[len(f.Params):]
+		}
+		childEnv.Define(f.RestParam, &Value{Type: "object", Arr: restArgs})
+	}
+
+	oldEnv := vm.env
+	vm.env = childEnv
+
+	vm.enterCall()
+	defer vm.exitCall()
+
+	var result *Value = &Value{Type: "undefined"}
+	for _, stmt := range f.Body {
+		ret, returning, retVal := vm.execStmt(stmt)
+		result = ret
+		if returning {
+			vm.env = oldEnv
+			if retVal != nil {
+				return retVal
+			}
+			return result
+		}
+	}
+
+	vm.env = oldEnv
+	return result
 }
 
 // setupPromise adds Promise constructor and methods to the VM

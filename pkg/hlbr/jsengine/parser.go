@@ -249,14 +249,39 @@ func (p *Parser) parseIfStmt() *IfStmt {
 	p.nextToken()
 	cond := p.parseExpression()
 	p.nextToken()
-	body := p.parseBlockStmt()
 
-	stmt := &IfStmt{Cond: cond, Body: body.Statements}
+	var bodyStmts []Statement
+	if p.cur.Type == TokLBrace {
+		body := p.parseBlockStmt()
+		bodyStmts = body.Statements
+	} else {
+		// Single-statement if body (no braces)
+		stmt := p.parseStatement()
+		if stmt != nil {
+			bodyStmts = []Statement{stmt}
+		}
+	}
+
+	stmt := &IfStmt{Cond: cond, Body: bodyStmts}
 
 	if p.cur.Type == TokKeyword && p.cur.Literal == "else" {
 		p.nextToken()
-		elseBody := p.parseBlockStmt()
-		stmt.Else = elseBody.Statements
+		var elseStmts []Statement
+		if p.cur.Type == TokLBrace {
+			elseBody := p.parseBlockStmt()
+			elseStmts = elseBody.Statements
+		} else if p.cur.Type == TokKeyword && p.cur.Literal == "if" {
+			// else if
+			elseIf := p.parseIfStmt()
+			elseStmts = []Statement{elseIf}
+		} else {
+			// Single-statement else body
+			elseStmt := p.parseStatement()
+			if elseStmt != nil {
+				elseStmts = []Statement{elseStmt}
+			}
+		}
+		stmt.Else = elseStmts
 	}
 
 	return stmt
@@ -295,9 +320,9 @@ func (p *Parser) parseForStmt() *ForStmt {
 		p.nextToken()
 	}
 
-	body := p.parseBlockStmt()
+	body := p.parseBody()
 
-	return &ForStmt{Init: init, Cond: cond, Post: post, Body: body.Statements}
+	return &ForStmt{Init: init, Cond: cond, Post: post, Body: body}
 }
 
 // parseForStmtOrForIn determines if this is a regular for loop or for-in loop
@@ -369,9 +394,9 @@ func (p *Parser) parseForInStmt() *ForInStmt {
 		p.nextToken()
 	}
 
-	body := p.parseBlockStmt()
+	body := p.parseBody()
 
-	return &ForInStmt{VarName: varName, Object: obj, Body: body.Statements}
+	return &ForInStmt{VarName: varName, Object: obj, Body: body}
 }
 
 // parseForOfStmt parses a for-of loop: for (var x of iterable)
@@ -402,9 +427,9 @@ func (p *Parser) parseForOfStmt() *ForOfStmt {
 		p.nextToken()
 	}
 
-	body := p.parseBlockStmt()
+	body := p.parseBody()
 
-	return &ForOfStmt{VarName: varName, Object: obj, Body: body.Statements}
+	return &ForOfStmt{VarName: varName, Object: obj, Body: body}
 }
 
 func (p *Parser) parseWhileStmt() *WhileStmt {
@@ -412,8 +437,8 @@ func (p *Parser) parseWhileStmt() *WhileStmt {
 	p.nextToken()
 	cond := p.parseExpression()
 	p.nextToken()
-	body := p.parseBlockStmt()
-	return &WhileStmt{Cond: cond, Body: body.Statements}
+	body := p.parseBody()
+	return &WhileStmt{Cond: cond, Body: body}
 }
 
 func (p *Parser) parseReturnStmt() *ReturnStmt {
@@ -533,6 +558,19 @@ func (p *Parser) parseAsyncFunctionDecl() *FunctionDecl {
 	fd := p.parseFunctionDecl()
 	fd.IsAsync = true
 	return fd
+}
+
+// parseBody parses a statement body, handling both braced blocks and
+// single-statement bodies (no braces).
+func (p *Parser) parseBody() []Statement {
+	if p.cur.Type == TokLBrace {
+		return p.parseBlockStmt().Statements
+	}
+	stmt := p.parseStatement()
+	if stmt != nil {
+		return []Statement{stmt}
+	}
+	return nil
 }
 
 func (p *Parser) parseBlockStmt() *BlockStmt {

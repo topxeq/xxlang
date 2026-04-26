@@ -1,7 +1,9 @@
 package jsengine
 
 import (
+	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -21,32 +23,117 @@ type Bytecode struct {
 	Instructions []byte
 }
 
-// setupPrototypes initializes JavaScript prototype chains.
+// getNativeThis extracts the 'this' object from native method call arguments.
+// Convention: when evalCall invokes a native method with a ThisBinding,
+// it prepends the 'this' object as args[0] with _isThisArg=true.
+func getNativeThis(args []*Value) *Value {
+	if len(args) > 0 && args[0]._isThisArg {
+		return args[0]
+	}
+	return nil
+}
+
+// nativeThisOffset returns 1 if args[0] is a prepended 'this' argument,
+// 0 otherwise. Used by Object static methods to skip the 'this' arg.
+func nativeThisOffset(args []*Value) int {
+	if len(args) > 0 && args[0]._isThisArg {
+		return 1
+	}
+	return 0
+}
+
 // Sets up Object.prototype, Array.prototype, Function.prototype, String.prototype,
 // Number.prototype, Boolean.prototype, and Error.prototype with their standard methods.
 func (vm *VM) setupPrototypes() {
 	// Object.prototype
 	objectProto := &Value{Type: "object", Obj: map[string]*Value{
 		"hasOwnProperty": {Type: "native", Native: func(args []*Value) *Value {
-			// hasOwnProperty(prop) checks if prop is an own property of this
-			if len(args) < 1 {
+			// Convention: args[0] is 'this' (passed by evalCall), args[1] is the property name
+			thisObj := getNativeThis(args)
+			propIdx := 0
+			if thisObj != nil {
+				propIdx = 1
+			}
+			if len(args) <= propIdx {
 				return &Value{Type: "bool", Bool: false}
 			}
-			// The 'this' value should be passed via ThisBinding
-			// For now, return false as a safe default
+			propName := valueToString(args[propIdx])
+			if thisObj == nil || thisObj.Type != "object" {
+				return &Value{Type: "bool", Bool: false}
+			}
+			// Check own Obj properties
+			if thisObj.Obj != nil {
+				if _, ok := thisObj.Obj[propName]; ok {
+					return &Value{Type: "bool", Bool: true}
+				}
+			}
+			// Check own Descriptors (Object.defineProperty sets these)
+			if thisObj.Descriptors != nil {
+				if _, ok := thisObj.Descriptors[propName]; ok {
+					return &Value{Type: "bool", Bool: true}
+				}
+			}
+			// Check Arr length for arrays
+			if thisObj.Arr != nil && propName == "length" {
+				return &Value{Type: "bool", Bool: true}
+			}
 			return &Value{Type: "bool", Bool: false}
 		}},
 		"toString": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil {
+				switch thisObj.Type {
+				case "string":
+					return &Value{Type: "string", Str: thisObj.Str}
+				case "number":
+					return &Value{Type: "string", Str: strconv.FormatFloat(thisObj.Num, 'f', -1, 64)}
+				case "bool":
+					return &Value{Type: "string", Str: fmt.Sprintf("%t", thisObj.Bool)}
+				case "object":
+					if thisObj.Arr != nil {
+						return &Value{Type: "string", Str: "[object Array]"}
+					}
+					if thisObj.Obj != nil {
+						return &Value{Type: "string", Str: "[object Object]"}
+					}
+					return &Value{Type: "string", Str: "[object Object]"}
+				}
+			}
 			return &Value{Type: "string", Str: "[object Object]"}
 		}},
 		"valueOf": {Type: "native", Native: func(args []*Value) *Value {
-			// Returns the primitive value of this
+			thisObj := getNativeThis(args)
+			if thisObj != nil {
+				return thisObj
+			}
 			return &Value{Type: "undefined"}
 		}},
 		"isPrototypeOf": {Type: "native", Native: func(args []*Value) *Value {
 			return &Value{Type: "bool", Bool: false}
 		}},
 		"propertyIsEnumerable": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			propIdx := 0
+			if thisObj != nil {
+				propIdx = 1
+			}
+			if len(args) <= propIdx {
+				return &Value{Type: "bool", Bool: false}
+			}
+			propName := valueToString(args[propIdx])
+			if thisObj == nil || thisObj.Type != "object" {
+				return &Value{Type: "bool", Bool: false}
+			}
+			if thisObj.Descriptors != nil {
+				if desc, ok := thisObj.Descriptors[propName]; ok {
+					return &Value{Type: "bool", Bool: desc.Enumerable}
+				}
+			}
+			if thisObj.Obj != nil {
+				if _, ok := thisObj.Obj[propName]; ok {
+					return &Value{Type: "bool", Bool: true}
+				}
+			}
 			return &Value{Type: "bool", Bool: false}
 		}},
 		"toLocaleString": {Type: "native", Native: func(args []*Value) *Value {
@@ -313,60 +400,125 @@ func (vm *VM) setupPrototypes() {
 func GetObjectMethods(vm *VM) map[string]*Value {
 	return map[string]*Value{
 		"keys": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) < 1 {
+			thisObj := getNativeThis(args)
+			offset := 0
+			if thisObj != nil {
+				offset = 1
+			}
+			if len(args) <= offset {
 				return &Value{Type: "object", Arr: []*Value{}}
 			}
-			obj := args[0]
+			obj := args[offset]
 			if obj.Type != "object" || obj.Obj == nil {
 				return &Value{Type: "object", Arr: []*Value{}}
 			}
+			seen := make(map[string]bool)
 			keys := make([]*Value, 0, len(obj.Obj))
 			for k := range obj.Obj {
-				keys = append(keys, &Value{Type: "string", Str: k})
+				if !seen[k] {
+					keys = append(keys, &Value{Type: "string", Str: k})
+					seen[k] = true
+				}
+			}
+			// Also include keys from descriptors (Object.defineProperty)
+			if obj.Descriptors != nil {
+				for k := range obj.Descriptors {
+					if !seen[k] {
+						keys = append(keys, &Value{Type: "string", Str: k})
+						seen[k] = true
+					}
+				}
 			}
 			return &Value{Type: "object", Arr: keys}
 		}},
 		"values": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) < 1 {
+			thisObj := getNativeThis(args)
+			offset := 0
+			if thisObj != nil {
+				offset = 1
+			}
+			if len(args) <= offset {
 				return &Value{Type: "object", Arr: []*Value{}}
 			}
-			obj := args[0]
+			obj := args[offset]
 			if obj.Type != "object" || obj.Obj == nil {
 				return &Value{Type: "object", Arr: []*Value{}}
 			}
 			vals := make([]*Value, 0, len(obj.Obj))
-			for _, v := range obj.Obj {
-				vals = append(vals, v)
+			seen := make(map[string]bool)
+			for k, v := range obj.Obj {
+				if !seen[k] {
+					vals = append(vals, v)
+					seen[k] = true
+				}
+			}
+			if obj.Descriptors != nil {
+				for k, desc := range obj.Descriptors {
+					if !seen[k] && desc.Value != nil {
+						vals = append(vals, desc.Value)
+						seen[k] = true
+					}
+				}
 			}
 			return &Value{Type: "object", Arr: vals}
 		}},
 		"entries": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) < 1 {
+			thisObj := getNativeThis(args)
+			offset := 0
+			if thisObj != nil {
+				offset = 1
+			}
+			if len(args) <= offset {
 				return &Value{Type: "object", Arr: []*Value{}}
 			}
-			obj := args[0]
+			obj := args[offset]
 			if obj.Type != "object" || obj.Obj == nil {
 				return &Value{Type: "object", Arr: []*Value{}}
 			}
+			seen := make(map[string]bool)
 			entries := make([]*Value, 0, len(obj.Obj))
 			for k, v := range obj.Obj {
-				entry := &Value{Type: "object", Arr: []*Value{
-					{Type: "string", Str: k},
-					v,
-				}}
-				entries = append(entries, entry)
+				if !seen[k] {
+					entry := &Value{Type: "object", Arr: []*Value{
+						{Type: "string", Str: k},
+						v,
+					}}
+					entries = append(entries, entry)
+					seen[k] = true
+				}
+			}
+			if obj.Descriptors != nil {
+				for k, desc := range obj.Descriptors {
+					if !seen[k] && desc.Value != nil {
+						entry := &Value{Type: "object", Arr: []*Value{
+							{Type: "string", Str: k},
+							desc.Value,
+						}}
+						entries = append(entries, entry)
+						seen[k] = true
+					}
+				}
 			}
 			return &Value{Type: "object", Arr: entries}
 		}},
 		// Object.defineProperty(obj, prop, descriptor)
 		// Critical for Vue 2 reactivity system
 		"defineProperty": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) < 3 {
-				return args[0]
+			thisObj := getNativeThis(args)
+			offset := 0
+			if thisObj != nil {
+				offset = 1
 			}
-			obj := args[0]
-			propName := valueToString(args[1])
-			descObj := args[2]
+			if len(args) < offset+3 {
+				if offset == 0 && len(args) >= 3 {
+					offset = 0
+				} else {
+					return args[offset]
+				}
+			}
+			obj := args[offset]
+			propName := valueToString(args[offset+1])
+			descObj := args[offset+2]
 
 			if obj.Type != "object" {
 				return obj
@@ -411,20 +563,27 @@ func GetObjectMethods(vm *VM) map[string]*Value {
 			// Store the descriptor
 			obj.Descriptors[propName] = desc
 
-			// If it's a data descriptor (value/writable), also store in Obj for direct access
-			if desc.Value != nil {
-				obj.Obj[propName] = desc.Value
+			// If it's a data descriptor (value/writable, no get/set), also store in Obj for direct access
+			if desc.Get == nil && desc.Set == nil {
+				if desc.Value != nil {
+					obj.Obj[propName] = desc.Value
+				}
+			} else {
+				// Accessor descriptor: remove from Obj if it was there
+				// (getter/setter should only be accessed via descriptor)
+				delete(obj.Obj, propName)
 			}
 
 			return obj
 		}},
 		// Object.getOwnPropertyDescriptor(obj, prop)
 		"getOwnPropertyDescriptor": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) < 2 {
+			offset := nativeThisOffset(args)
+			if len(args) < offset+2 {
 				return &Value{Type: "undefined"}
 			}
-			obj := args[0]
-			propName := valueToString(args[1])
+			obj := args[offset]
+			propName := valueToString(args[offset+1])
 
 			if obj.Type != "object" || obj.Obj == nil {
 				return &Value{Type: "undefined"}
@@ -469,20 +628,34 @@ func GetObjectMethods(vm *VM) map[string]*Value {
 		}},
 		// Object.assign(target, ...sources)
 		"assign": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) < 1 {
+			offset := nativeThisOffset(args)
+			if len(args) < offset+1 {
 				return &Value{Type: "undefined"}
 			}
-			target := args[0]
+			target := args[offset]
 			if target.Type != "object" {
 				return target
 			}
 			if target.Obj == nil {
 				target.Obj = make(map[string]*Value)
 			}
-			for _, source := range args[1:] {
+			for _, source := range args[offset+1:] {
 				if source.Type == "object" && source.Obj != nil {
 					for k, v := range source.Obj {
 						target.Obj[k] = v
+					}
+					// Also copy descriptor properties
+					if source.Descriptors != nil {
+						if target.Descriptors == nil {
+							target.Descriptors = make(map[string]*PropertyDescriptor)
+						}
+						for k, desc := range source.Descriptors {
+							if desc.Value != nil {
+								target.Obj[k] = desc.Value
+							}
+							descCopy := *desc
+							target.Descriptors[k] = &descCopy
+						}
 					}
 				}
 			}
@@ -490,22 +663,24 @@ func GetObjectMethods(vm *VM) map[string]*Value {
 		}},
 		// Object.create(proto)
 		"create": {Type: "native", Native: func(args []*Value) *Value {
+			offset := nativeThisOffset(args)
 			obj := &Value{Type: "object", Obj: make(map[string]*Value)}
-			// Store prototype reference (simplified)
-			if len(args) > 0 && args[0].Type == "object" && args[0].Obj != nil {
-				// Copy prototype properties as defaults
-				for k, v := range args[0].Obj {
-					obj.Obj[k] = v
-				}
+			// Set prototype reference via Proto field
+			if len(args) > offset && args[offset].Type == "object" {
+				obj.Proto = args[offset]
 			}
 			return obj
 		}},
 		// Object.getPrototypeOf(obj)
 		"getPrototypeOf": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) < 1 || args[0].Type != "object" {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset || args[offset].Type != "object" {
 				return &Value{Type: "null"}
 			}
-			// Simplified: return Object.prototype if it exists
+			obj := args[offset]
+			if obj.Proto != nil {
+				return obj.Proto
+			}
 			if objProto := vm.env.Get("ObjectPrototype"); objProto.Type == "object" {
 				return objProto
 			}
@@ -513,18 +688,23 @@ func GetObjectMethods(vm *VM) map[string]*Value {
 		}},
 		// Object.setPrototypeOf(obj, proto)
 		"setPrototypeOf": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) < 2 {
-				return args[0]
+			offset := nativeThisOffset(args)
+			if len(args) <= offset+1 {
+				return args[offset]
 			}
-			// Stub: just return the object
-			return args[0]
+			obj := args[offset]
+			if obj.Type == "object" {
+				obj.Proto = args[offset+1]
+			}
+			return obj
 		}},
 		// Object.freeze(obj)
 		"freeze": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) < 1 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "undefined"}
 			}
-			obj := args[0]
+			obj := args[offset]
 			if obj.Type == "object" {
 				obj.Frozen = true
 			}
@@ -532,10 +712,11 @@ func GetObjectMethods(vm *VM) map[string]*Value {
 		}},
 		// Object.is(value1, value2)
 		"is": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) < 2 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset+1 {
 				return &Value{Type: "bool", Bool: false}
 			}
-			return &Value{Type: "bool", Bool: valuesStrictEqual(args[0], args[1])}
+			return &Value{Type: "bool", Bool: valuesStrictEqual(args[offset], args[offset+1])}
 		}},
 	}
 }
