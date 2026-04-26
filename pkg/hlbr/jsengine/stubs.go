@@ -142,96 +142,370 @@ func (vm *VM) setupPrototypes() {
 	}}
 	vm.env.Define("ObjectPrototype", objectProto)
 
-	// Array.prototype
+	// Array.prototype - delegate to callArrayMethod which has real implementations
 	arrayProto := &Value{Type: "object", Obj: map[string]*Value{
 		"push": {Type: "native", Native: func(args []*Value) *Value {
-			// Array.prototype.push is called as arr.push(...items)
-			// The 'this' binding should contain the array
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				return callArrayMethod("push", thisObj, args[1:], vm)
+			}
 			return &Value{Type: "number", Num: 0}
 		}},
 		"pop": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				return callArrayMethod("pop", thisObj, args[1:], vm)
+			}
 			return &Value{Type: "undefined"}
 		}},
 		"shift": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				return callArrayMethod("shift", thisObj, args[1:], vm)
+			}
 			return &Value{Type: "undefined"}
 		}},
 		"unshift": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				return callArrayMethod("unshift", thisObj, args[1:], vm)
+			}
 			return &Value{Type: "number", Num: 0}
 		}},
 		"slice": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				return callArrayMethod("slice", thisObj, args[1:], vm)
+			}
 			return &Value{Type: "object", Arr: []*Value{}}
 		}},
 		"splice": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				return callArrayMethod("splice", thisObj, args[1:], vm)
+			}
 			return &Value{Type: "object", Arr: []*Value{}}
 		}},
 		"indexOf": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				return callArrayMethod("indexOf", thisObj, args[1:], vm)
+			}
 			return &Value{Type: "number", Num: -1}
 		}},
 		"includes": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				return callArrayMethod("includes", thisObj, args[1:], vm)
+			}
 			return &Value{Type: "bool", Bool: false}
 		}},
 		"find": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				return callArrayMethod("find", thisObj, args[1:], vm)
+			}
 			return &Value{Type: "undefined"}
 		}},
 		"findIndex": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				return callArrayMethod("findIndex", thisObj, args[1:], vm)
+			}
 			return &Value{Type: "number", Num: -1}
 		}},
 		"forEach": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				return callArrayMethod("forEach", thisObj, args[1:], vm)
+			}
 			return &Value{Type: "undefined"}
 		}},
 		"map": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				return callArrayMethod("map", thisObj, args[1:], vm)
+			}
 			return &Value{Type: "object", Arr: []*Value{}}
 		}},
 		"filter": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				return callArrayMethod("filter", thisObj, args[1:], vm)
+			}
 			return &Value{Type: "object", Arr: []*Value{}}
 		}},
 		"reduce": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				// Simple reduce implementation
+				arr := thisObj.Arr
+				if len(arr) == 0 {
+					return &Value{Type: "undefined"}
+				}
+				if len(args) < 2 || args[1].Type != "function" {
+					return arr[0]
+				}
+				fn := args[1].Func
+				acc := arr[0]
+				start := 1
+				if len(args) >= 3 {
+					acc = args[2]
+					start = 0
+				}
+				for i := start; i < len(arr); i++ {
+					acc = vm.callFunction(&Value{Type: "function", Func: fn}, []*Value{acc, arr[i], &Value{Type: "number", Num: float64(i)}, thisObj})
+				}
+				return acc
+			}
 			return &Value{Type: "undefined"}
 		}},
 		"reduceRight": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				arr := thisObj.Arr
+				if len(arr) == 0 {
+					return &Value{Type: "undefined"}
+				}
+				if len(args) < 2 || args[1].Type != "function" {
+					return arr[len(arr)-1]
+				}
+				fn := args[1].Func
+				acc := arr[len(arr)-1]
+				start := len(arr) - 2
+				if len(args) >= 3 {
+					acc = args[2]
+					start = len(arr) - 1
+				}
+				for i := start; i >= 0; i-- {
+					acc = vm.callFunction(&Value{Type: "function", Func: fn}, []*Value{acc, arr[i], &Value{Type: "number", Num: float64(i)}, thisObj})
+				}
+				return acc
+			}
 			return &Value{Type: "undefined"}
 		}},
 		"every": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				return callArrayMethod("every", thisObj, args[1:], vm)
+			}
 			return &Value{Type: "bool", Bool: true}
 		}},
 		"some": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				return callArrayMethod("some", thisObj, args[1:], vm)
+			}
 			return &Value{Type: "bool", Bool: false}
 		}},
 		"join": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				return callArrayMethod("join", thisObj, args[1:], vm)
+			}
 			return &Value{Type: "string", Str: ""}
 		}},
 		"concat": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				return callArrayMethod("concat", thisObj, args[1:], vm)
+			}
 			return &Value{Type: "object", Arr: []*Value{}}
 		}},
 		"reverse": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				return callArrayMethod("reverse", thisObj, args[1:], vm)
+			}
 			return &Value{Type: "object", Arr: []*Value{}}
 		}},
 		"sort": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				return callArrayMethod("sort", thisObj, args[1:], vm)
+			}
 			return &Value{Type: "object", Arr: []*Value{}}
 		}},
 		"flat": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				depth := 1
+				if len(args) > 1 && args[1].Type == "number" {
+					depth = int(args[1].Num)
+				}
+				var flatten func([]*Value, int) []*Value
+				flatten = func(arr []*Value, d int) []*Value {
+					result := make([]*Value, 0)
+					for _, v := range arr {
+						if v.Type == "object" && v.Arr != nil && d > 0 {
+							result = append(result, flatten(v.Arr, d-1)...)
+						} else {
+							result = append(result, v)
+						}
+					}
+					return result
+				}
+				return &Value{Type: "object", Arr: flatten(thisObj.Arr, depth)}
+			}
 			return &Value{Type: "object", Arr: []*Value{}}
 		}},
 		"flatMap": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				mapped := callArrayMethod("map", thisObj, args[1:], vm)
+				if mapped.Type == "object" && mapped.Arr != nil {
+					return &Value{Type: "object", Arr: mapped.Arr}
+				}
+			}
 			return &Value{Type: "object", Arr: []*Value{}}
 		}},
 		"fill": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				arr := thisObj.Arr
+				if len(args) < 2 {
+					return thisObj
+				}
+				val := args[1]
+				start, end := 0, len(arr)
+				if len(args) >= 3 && args[2].Type == "number" {
+					start = int(args[2].Num)
+					if start < 0 {
+						start = len(arr) + start
+					}
+					if start < 0 {
+						start = 0
+					}
+				}
+				if len(args) >= 4 && args[3].Type == "number" {
+					end = int(args[3].Num)
+					if end < 0 {
+						end = len(arr) + end
+					}
+					if end > len(arr) {
+						end = len(arr)
+					}
+				}
+				if start > len(arr) {
+					start = len(arr)
+				}
+				if end > len(arr) {
+					end = len(arr)
+				}
+				for i := start; i < end; i++ {
+					arr[i] = val
+				}
+				return thisObj
+			}
 			return &Value{Type: "object", Arr: []*Value{}}
 		}},
 		"copyWithin": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				arr := thisObj.Arr
+				if len(args) < 2 {
+					return thisObj
+				}
+				target := 0
+				if args[1].Type == "number" {
+					target = int(args[1].Num)
+					if target < 0 {
+						target = len(arr) + target
+					}
+					if target < 0 {
+						target = 0
+					}
+				}
+				start := 0
+				if len(args) >= 3 && args[2].Type == "number" {
+					start = int(args[2].Num)
+					if start < 0 {
+						start = len(arr) + start
+					}
+					if start < 0 {
+						start = 0
+					}
+				}
+				end := len(arr)
+				if len(args) >= 4 && args[3].Type == "number" {
+					end = int(args[3].Num)
+					if end < 0 {
+						end = len(arr) + end
+					}
+					if end > len(arr) {
+						end = len(arr)
+					}
+				}
+				if target >= len(arr) || start >= end {
+					return thisObj
+				}
+				if end > len(arr) {
+					end = len(arr)
+				}
+				// Copy to temporary slice to handle overlapping
+				toCopy := make([]*Value, end-start)
+				copy(toCopy, arr[start:end])
+				for i, v := range toCopy {
+					idx := target + i
+					if idx < len(arr) {
+						arr[idx] = v
+					}
+				}
+				return thisObj
+			}
 			return &Value{Type: "object", Arr: []*Value{}}
 		}},
 		"keys": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				arr := thisObj.Arr
+				keys := make([]*Value, len(arr))
+				for i := range arr {
+					keys[i] = &Value{Type: "number", Num: float64(i)}
+				}
+				return &Value{Type: "object", Arr: keys}
+			}
 			return &Value{Type: "object", Arr: []*Value{}}
 		}},
 		"values": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				return &Value{Type: "object", Arr: append([]*Value{}, thisObj.Arr...)}
+			}
 			return &Value{Type: "object", Arr: []*Value{}}
 		}},
 		"entries": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				arr := thisObj.Arr
+				entries := make([]*Value, len(arr))
+				for i, v := range arr {
+					entries[i] = &Value{Type: "object", Arr: []*Value{
+						{Type: "number", Num: float64(i)},
+						v,
+					}}
+				}
+				return &Value{Type: "object", Arr: entries}
+			}
 			return &Value{Type: "object", Arr: []*Value{}}
 		}},
 		"toString": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				parts := make([]string, len(thisObj.Arr))
+				for i, v := range thisObj.Arr {
+					parts[i] = valueToString(v)
+				}
+				return &Value{Type: "string", Str: strings.Join(parts, ",")}
+			}
 			return &Value{Type: "string", Str: ""}
+		}},
+		"length": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				return &Value{Type: "number", Num: float64(len(thisObj.Arr))}
+			}
+			return &Value{Type: "number", Num: 0}
 		}},
 	}}
 	vm.env.Define("ArrayPrototype", arrayProto)
@@ -240,19 +514,90 @@ func (vm *VM) setupPrototypes() {
 	functionProto := &Value{Type: "object", Obj: map[string]*Value{
 		"call": {Type: "native", Native: func(args []*Value) *Value {
 			// Function.prototype.call(thisArg, ...args)
-			// The function to call is passed via ThisBinding
+			// args[0] is the function (via ThisBinding), args[1] is thisArg, args[2+] are arguments
+			thisObj := getNativeThis(args)
+			if thisObj == nil {
+				return &Value{Type: "undefined"}
+			}
+			var callArgs []*Value
+			var thisArg *Value
+			if len(args) > 1 {
+				thisArg = args[1]
+				if len(args) > 2 {
+					callArgs = args[2:]
+				}
+			}
+			if thisArg == nil {
+				thisArg = &Value{Type: "undefined"}
+			}
+			// Prepend thisArg to args with marker
+			thisArg._isThisArg = true
+			callArgs = append([]*Value{thisArg}, callArgs...)
+			if thisObj.Type == "function" && thisObj.Func != nil {
+				return vm.callFunction(thisObj, callArgs)
+			} else if thisObj.Type == "native" && thisObj.Native != nil {
+				return thisObj.Native(callArgs)
+			}
 			return &Value{Type: "undefined"}
 		}},
 		"apply": {Type: "native", Native: func(args []*Value) *Value {
 			// Function.prototype.apply(thisArg, argsArray)
+			thisObj := getNativeThis(args)
+			if thisObj == nil {
+				return &Value{Type: "undefined"}
+			}
+			var callArgs []*Value
+			var thisArg *Value
+			if len(args) > 1 {
+				thisArg = args[1]
+			}
+			if len(args) > 2 && args[2].Type == "object" && args[2].Arr != nil {
+				callArgs = args[2].Arr
+			}
+			if thisArg == nil {
+				thisArg = &Value{Type: "undefined"}
+			}
+			thisArg._isThisArg = true
+			callArgs = append([]*Value{thisArg}, callArgs...)
+			if thisObj.Type == "function" && thisObj.Func != nil {
+				return vm.callFunction(thisObj, callArgs)
+			} else if thisObj.Type == "native" && thisObj.Native != nil {
+				return thisObj.Native(callArgs)
+			}
 			return &Value{Type: "undefined"}
 		}},
 		"bind": {Type: "native", Native: func(args []*Value) *Value {
 			// Function.prototype.bind(thisArg, ...args)
-			// Creates a new function with the given this value and initial arguments
-			// The original function is in the ThisBinding of the bound function
-			// For now, return a native function that will be handled by evalMember
+			thisObj := getNativeThis(args)
+			if thisObj == nil {
+				return &Value{Type: "undefined"}
+			}
+			var boundThis *Value
+			var boundArgs []*Value
+			if len(args) > 1 {
+				boundThis = args[1]
+				if len(args) > 2 {
+					boundArgs = args[2:]
+				}
+			}
+			if boundThis == nil {
+				boundThis = &Value{Type: "undefined"}
+			}
+			// Return a new native function that calls the original with bound this and args
 			return &Value{Type: "native", Native: func(innerArgs []*Value) *Value {
+				// Combine bound args with new args
+				combinedArgs := append([]*Value{}, boundArgs...)
+				combinedArgs = append(combinedArgs, innerArgs...)
+				// Prepend bound this
+				boundThisCopy := &Value{}
+				*boundThisCopy = *boundThis
+				boundThisCopy._isThisArg = true
+				combinedArgs = append([]*Value{boundThisCopy}, combinedArgs...)
+				if thisObj.Type == "function" && thisObj.Func != nil {
+					return vm.callFunction(thisObj, combinedArgs)
+				} else if thisObj.Type == "native" && thisObj.Native != nil {
+					return thisObj.Native(combinedArgs)
+				}
 				return &Value{Type: "undefined"}
 			}}
 		}},
@@ -975,7 +1320,7 @@ func callStringMethod(name string, str string, args []*Value, vm *VM) *Value {
 		for i, p := range parts {
 			arr[i] = &Value{Type: "string", Str: p}
 		}
-		return &Value{Type: "array", Arr: arr}
+		return &Value{Type: "object", Arr: arr}
 	case "replace":
 		if len(args) < 2 {
 			return &Value{Type: "string", Str: str}
@@ -1058,7 +1403,7 @@ func callArrayMethod(name string, obj *Value, args []*Value, vm *VM) *Value {
 		if start > end {
 			start = end
 		}
-		return &Value{Type: "array", Arr: append([]*Value{}, arr[start:end]...)}
+		return &Value{Type: "object", Arr: append([]*Value{}, arr[start:end]...)}
 	case "splice":
 		start, deleteCount := 0, 0
 		if len(args) >= 1 && args[0].Type == "number" {
@@ -1092,7 +1437,7 @@ func callArrayMethod(name string, obj *Value, args []*Value, vm *VM) *Value {
 		}
 		newArr = append(newArr, arr[start+deleteCount:]...)
 		obj.Arr = newArr
-		return &Value{Type: "array", Arr: deleted}
+		return &Value{Type: "object", Arr: deleted}
 	case "concat":
 		result := append([]*Value{}, arr...)
 		for _, arg := range args {
@@ -1102,7 +1447,7 @@ func callArrayMethod(name string, obj *Value, args []*Value, vm *VM) *Value {
 				result = append(result, arg)
 			}
 		}
-		return &Value{Type: "array", Arr: result}
+		return &Value{Type: "object", Arr: result}
 	case "join":
 		sep := ","
 		if len(args) >= 1 {
@@ -1144,17 +1489,17 @@ func callArrayMethod(name string, obj *Value, args []*Value, vm *VM) *Value {
 		return &Value{Type: "undefined"}
 	case "map":
 		if len(args) < 1 || args[0].Type != "function" {
-			return &Value{Type: "array", Arr: []*Value{}}
+			return &Value{Type: "object", Arr: []*Value{}}
 		}
 		fn := args[0].Func
 		result := make([]*Value, len(arr))
 		for i, v := range arr {
 			result[i] = vm.callFunction(&Value{Type: "function", Func: fn}, []*Value{v, &Value{Type: "number", Num: float64(i)}, obj})
 		}
-		return &Value{Type: "array", Arr: result}
+		return &Value{Type: "object", Arr: result}
 	case "filter":
 		if len(args) < 1 || args[0].Type != "function" {
-			return &Value{Type: "array", Arr: append([]*Value{}, arr...)}
+			return &Value{Type: "object", Arr: append([]*Value{}, arr...)}
 		}
 		fn := args[0].Func
 		result := make([]*Value, 0)
@@ -1164,7 +1509,7 @@ func callArrayMethod(name string, obj *Value, args []*Value, vm *VM) *Value {
 				result = append(result, v)
 			}
 		}
-		return &Value{Type: "array", Arr: result}
+		return &Value{Type: "object", Arr: result}
 	case "find":
 		if len(args) < 1 || args[0].Type != "function" {
 			return &Value{Type: "undefined"}
@@ -1224,6 +1569,48 @@ func callArrayMethod(name string, obj *Value, args []*Value, vm *VM) *Value {
 			return valueToString(arr[i]) < valueToString(arr[j])
 		})
 		return obj
+	case "reduce":
+		if len(args) < 1 || args[0].Type != "function" {
+			if len(arr) == 0 {
+				return &Value{Type: "undefined"}
+			}
+			return arr[0]
+		}
+		fn := args[0].Func
+		if len(arr) == 0 {
+			return &Value{Type: "undefined"}
+		}
+		acc := arr[0]
+		start := 1
+		if len(args) >= 2 {
+			acc = args[1]
+			start = 0
+		}
+		for i := start; i < len(arr); i++ {
+			acc = vm.callFunction(&Value{Type: "function", Func: fn}, []*Value{acc, arr[i], &Value{Type: "number", Num: float64(i)}, obj})
+		}
+		return acc
+	case "reduceRight":
+		if len(args) < 1 || args[0].Type != "function" {
+			if len(arr) == 0 {
+				return &Value{Type: "undefined"}
+			}
+			return arr[len(arr)-1]
+		}
+		fn := args[0].Func
+		if len(arr) == 0 {
+			return &Value{Type: "undefined"}
+		}
+		acc := arr[len(arr)-1]
+		start := len(arr) - 2
+		if len(args) >= 2 {
+			acc = args[1]
+			start = len(arr) - 1
+		}
+		for i := start; i >= 0; i-- {
+			acc = vm.callFunction(&Value{Type: "function", Func: fn}, []*Value{acc, arr[i], &Value{Type: "number", Num: float64(i)}, obj})
+		}
+		return acc
 	case "length":
 		return &Value{Type: "number", Num: float64(len(arr))}
 	default:

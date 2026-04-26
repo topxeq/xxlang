@@ -372,6 +372,15 @@ func (vm *VM) setupBuiltins() {
 			newNode := &dom.Node{Type: dom.ElementNode, Data: strings.ToLower(tag)}
 			return vm.wrapNode(newNode)
 		}},
+		"createElementNS": {Type: "native", Native: func(args []*Value) *Value {
+			if len(args) < 2 {
+				return &Value{Type: "null"}
+			}
+			// namespaceURI := args[0].Str // e.g. "http://www.w3.org/1999/xhtml"
+			tag := args[1].Str
+			newNode := &dom.Node{Type: dom.ElementNode, Data: strings.ToLower(tag)}
+			return vm.wrapNode(newNode)
+		}},
 		"createTextNode": {Type: "native", Native: func(args []*Value) *Value {
 			text := ""
 			if len(args) > 0 {
@@ -444,6 +453,19 @@ func (vm *VM) setupBuiltins() {
 		"frames":      &Value{Type: "undefined"}, // will be set to self below
 		"self":        &Value{Type: "undefined"}, // will be set to self below
 		"opener":      &Value{Type: "null"},
+		"getComputedStyle": {Type: "native", Native: func(args []*Value) *Value {
+			// Stub: returns a CSSStyleDeclaration-like object
+			return &Value{Type: "object", Obj: map[string]*Value{
+				"getPropertyValue": {Type: "native", Native: func(innerArgs []*Value) *Value {
+					return &Value{Type: "string", Str: ""}
+				}},
+				"display":    {Type: "string", Str: ""},
+				"visibility": {Type: "string", Str: ""},
+				"position":   {Type: "string", Str: ""},
+				"width":      {Type: "string", Str: ""},
+				"height":     {Type: "string", Str: ""},
+			}}
+		}},
 	}}
 	vm.env.Define("window", windowObj)
 	// Also define 'this' and 'self' to point to window (for browser compatibility in global scope)
@@ -799,6 +821,17 @@ func (vm *VM) setupBuiltins() {
 	vm.env.Define("NaN", &Value{Type: "number", Num: math.NaN()})
 	vm.env.Define("Infinity", &Value{Type: "number", Num: math.Inf(1)})
 
+	// performance.now() - returns high-resolution timestamp
+	// Used by Vue.js for timing measurements
+	vm.env.Define("performance", &Value{Type: "object", Obj: map[string]*Value{
+		"now": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: float64(time.Now().UnixNano()) / 1e6}
+		}},
+		"timing": {Type: "object", Obj: map[string]*Value{
+			"navigationStart": {Type: "number", Num: float64(time.Now().UnixNano()) / 1e6},
+		}},
+	}})
+
 	// localStorage - simple key-value storage
 	vm.env.Define("localStorage", &Value{Type: "object", Obj: map[string]*Value{
 		"setItem": {Type: "native", Native: func(args []*Value) *Value {
@@ -898,6 +931,7 @@ func (vm *VM) setupBuiltins() {
 		windowObj.Obj["setInterval"] = vm.env.Get("setInterval")
 		windowObj.Obj["clearTimeout"] = vm.env.Get("clearTimeout")
 		windowObj.Obj["clearInterval"] = vm.env.Get("clearInterval")
+		windowObj.Obj["performance"] = vm.env.Get("performance")
 		windowObj.Obj["self"] = windowObj
 		windowObj.Obj["parent"] = windowObj
 		windowObj.Obj["top"] = windowObj
@@ -4172,13 +4206,14 @@ func (vm *VM) setupTimers() {
 
 	// setTimeout(callback, delay, ...args)
 	setTimeout := &Value{Type: "native", Native: func(args []*Value) *Value {
-		if len(args) < 2 {
+		offset := nativeThisOffset(args)
+		if len(args) < offset+2 {
 			return &Value{Type: "number", Num: 0}
 		}
-		callback := args[0]
+		callback := args[offset]
 		delay := int64(0)
-		if args[1].Type == "number" {
-			delay = int64(args[1].Num)
+		if args[offset+1].Type == "number" {
+			delay = int64(args[offset+1].Num)
 		}
 		timerID++
 		task := timerTask{
@@ -4194,13 +4229,14 @@ func (vm *VM) setupTimers() {
 
 	// setInterval(callback, delay, ...args)
 	setInterval := &Value{Type: "native", Native: func(args []*Value) *Value {
-		if len(args) < 2 {
+		offset := nativeThisOffset(args)
+		if len(args) < offset+2 {
 			return &Value{Type: "number", Num: 0}
 		}
-		callback := args[0]
+		callback := args[offset]
 		delay := int64(0)
-		if args[1].Type == "number" {
-			delay = int64(args[1].Num)
+		if args[offset+1].Type == "number" {
+			delay = int64(args[offset+1].Num)
 		}
 		timerID++
 		task := timerTask{
@@ -4216,8 +4252,9 @@ func (vm *VM) setupTimers() {
 
 	// clearTimeout(id)
 	clearTimeout := &Value{Type: "native", Native: func(args []*Value) *Value {
-		if len(args) > 0 && args[0].Type == "number" {
-			id := int(args[0].Num)
+		offset := nativeThisOffset(args)
+		if len(args) > offset && args[offset].Type == "number" {
+			id := int(args[offset].Num)
 			for i, t := range vm.pendingTimers {
 				if t.id == id && !t.interval {
 					vm.pendingTimers = append(vm.pendingTimers[:i], vm.pendingTimers[i+1:]...)
@@ -4230,10 +4267,48 @@ func (vm *VM) setupTimers() {
 
 	// clearInterval(id)
 	clearInterval := &Value{Type: "native", Native: func(args []*Value) *Value {
-		if len(args) > 0 && args[0].Type == "number" {
-			id := int(args[0].Num)
+		offset := nativeThisOffset(args)
+		if len(args) > offset && args[offset].Type == "number" {
+			id := int(args[offset].Num)
 			for i, t := range vm.pendingTimers {
 				if t.id == id && t.interval {
+					vm.pendingTimers = append(vm.pendingTimers[:i], vm.pendingTimers[i+1:]...)
+					break
+				}
+			}
+		}
+		return &Value{Type: "undefined"}
+	}}
+
+	// requestAnimationFrame(callback) - schedules a callback for next animation frame
+	// Used by Vue.js for batching DOM updates
+	requestAnimationFrame := &Value{Type: "native", Native: func(args []*Value) *Value {
+		offset := nativeThisOffset(args)
+		if len(args) > offset {
+			callback := args[offset]
+			if callback.Type == "function" || callback.Type == "native" {
+				timerID++
+				task := timerTask{
+					id:        timerID,
+					callback:  callback,
+					delay:     16 * 1e6, // 16ms in ns (approx 60fps)
+					interval:  false,
+				}
+				task.executeAt = time.Now().UnixNano() + task.delay
+				vm.pendingTimers = append(vm.pendingTimers, task)
+				return &Value{Type: "number", Num: float64(timerID)}
+			}
+		}
+		return &Value{Type: "number", Num: 0}
+	}}
+
+	// cancelAnimationFrame(id)
+	cancelAnimationFrame := &Value{Type: "native", Native: func(args []*Value) *Value {
+		offset := nativeThisOffset(args)
+		if len(args) > offset && args[offset].Type == "number" {
+			id := int(args[offset].Num)
+			for i, t := range vm.pendingTimers {
+				if t.id == id {
 					vm.pendingTimers = append(vm.pendingTimers[:i], vm.pendingTimers[i+1:]...)
 					break
 				}
@@ -4247,6 +4322,8 @@ func (vm *VM) setupTimers() {
 	vm.env.Define("setInterval", setInterval)
 	vm.env.Define("clearTimeout", clearTimeout)
 	vm.env.Define("clearInterval", clearInterval)
+	vm.env.Define("requestAnimationFrame", requestAnimationFrame)
+	vm.env.Define("cancelAnimationFrame", cancelAnimationFrame)
 
 	// Also add to window object if it exists
 	if window := vm.env.Get("window"); window.Type == "object" && window.Obj != nil {
@@ -4254,6 +4331,8 @@ func (vm *VM) setupTimers() {
 		window.Obj["setInterval"] = setInterval
 		window.Obj["clearTimeout"] = clearTimeout
 		window.Obj["clearInterval"] = clearInterval
+		window.Obj["requestAnimationFrame"] = requestAnimationFrame
+		window.Obj["cancelAnimationFrame"] = cancelAnimationFrame
 	}
 }
 
@@ -4263,7 +4342,16 @@ func (vm *VM) RunTimers() int {
 	now := time.Now().UnixNano()
 	var remaining []timerTask
 
-	for _, task := range vm.pendingTimers {
+	// Iterate over a copy so callbacks can safely add new timers
+	tasks := make([]timerTask, len(vm.pendingTimers))
+	copy(tasks, vm.pendingTimers)
+	// Track original timer IDs to detect new timers added during execution
+	originalIDs := make(map[int]bool)
+	for _, t := range tasks {
+		originalIDs[t.id] = true
+	}
+
+	for _, task := range tasks {
 		if task.executeAt <= now {
 			// Execute the callback
 			if task.callback != nil {
@@ -4274,7 +4362,6 @@ func (vm *VM) RunTimers() int {
 				}
 			}
 			// Check if this timer was cleared during callback execution
-			// by checking if it still exists in pendingTimers
 			stillExists := false
 			for _, t := range vm.pendingTimers {
 				if t.id == task.id {
@@ -4289,6 +4376,12 @@ func (vm *VM) RunTimers() int {
 			}
 		} else {
 			remaining = append(remaining, task)
+		}
+	}
+	// Append any new timers that were added during callback execution
+	for _, t := range vm.pendingTimers {
+		if !originalIDs[t.id] {
+			remaining = append(remaining, t)
 		}
 	}
 	vm.pendingTimers = remaining
