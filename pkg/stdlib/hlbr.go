@@ -738,6 +738,8 @@ func init() {
 			// rsaEncrypt encrypts plaintext using RSA with hex-encoded modulus and exponent.
 			// This is useful for web applications that use RSA encryption for login passwords.
 			// Usage: rsaEncrypt(plaintext, hexModulus, hexExponent) -> hex-encoded ciphertext
+			// rsaEncrypt encrypts plaintext using RSA PKCS1v15 with hex-encoded modulus and exponent.
+			// Usage: rsaEncrypt(plaintext, hexModulus, hexExponent) -> hex-encoded ciphertext
 			"rsaEncrypt": BuiltinFunc(func(args ...objects.Object) objects.Object {
 				if len(args) < 3 {
 					return Error("rsaEncrypt() requires 3 arguments (plaintext, hexModulus, hexExponent)")
@@ -757,6 +759,33 @@ func init() {
 				ciphertext, err := hlbr.RSAEncryptHex(plaintext.Value, hexModulus.Value, hexExponent.Value)
 				if err != nil {
 					return Error("rsaEncrypt() failed: " + err.Error())
+				}
+				return String(ciphertext)
+			}),
+
+			// rsaEncryptRaw encrypts plaintext using raw RSA (no padding, reversed byte order)
+			// with hex-encoded modulus and exponent. This matches the behavior of common
+			// JavaScript RSA libraries (e.g. JSEncrypt) that use NoPadding with reversed bytes.
+			// Usage: rsaEncryptRaw(plaintext, hexModulus, hexExponent) -> hex-encoded ciphertext
+			"rsaEncryptRaw": BuiltinFunc(func(args ...objects.Object) objects.Object {
+				if len(args) < 3 {
+					return Error("rsaEncryptRaw() requires 3 arguments (plaintext, hexModulus, hexExponent)")
+				}
+				plaintext, ok := args[0].(*objects.String)
+				if !ok {
+					return Error("rsaEncryptRaw() first argument must be STRING (plaintext)")
+				}
+				hexModulus, ok := args[1].(*objects.String)
+				if !ok {
+					return Error("rsaEncryptRaw() second argument must be STRING (hex modulus)")
+				}
+				hexExponent, ok := args[2].(*objects.String)
+				if !ok {
+					return Error("rsaEncryptRaw() third argument must be STRING (hex exponent)")
+				}
+				ciphertext, err := hlbr.RSAEncryptHexRaw(plaintext.Value, hexModulus.Value, hexExponent.Value)
+				if err != nil {
+					return Error("rsaEncryptRaw() failed: " + err.Error())
 				}
 				return String(ciphertext)
 			}),
