@@ -149,7 +149,10 @@ func (b *Browser) executeScripts() {
 		if !vueMountPatched {
 			result, _ := b.vm.Run("typeof Vue !== 'undefined' && typeof Vue.compile === 'function'")
 			if result != nil && result.Bool {
-				b.vm.Run(`(function(){function simpleCompile(tpl){if(!tpl)return '_c("div")';var m;m=tpl.match(/^<([A-Z][a-zA-Z0-9]*)\s*\/?\s*>$/);if(m)return '_c("'+m[1]+'")';m=tpl.match(/^<([a-z][a-z0-9]*)\s*\/\s*>$/);if(m)return '_c("'+m[1]+'")';var closeTag=tpl.match(/<\/([a-z][a-z0-9]*)>$/);if(closeTag){var openTag=tpl.match(/^<([a-z][a-z0-9]*)>/);if(openTag&&openTag[1]===closeTag[1]){var tag=openTag[1];var inner=tpl.substring(openTag[0].length,tpl.length-closeTag[0].length);var children=[];if(inner){var textParts=inner.split(/({{[^}]+}})/);for(var i=0;i<textParts.length;i++){var part=textParts[i];if(!part)continue;var exprMatch=part.match(/^{{(.+)}}$/);if(exprMatch){children.push('_v(_s('+exprMatch[1].trim()+'))')}else{children.push('_v("'+part.replace(/"/g,'\\"')+'")')}}}return '_c("'+tag+'",'+(children.length>0?'['+children.join(',')+']':'')+')'}}return '_c("div",_v('+JSON.stringify(tpl)+'))'}Vue.compile=function(template){template=template.trim();var staticRenderFns=[];var code=simpleCompile(template);var render=new Function('with(this){return '+code+'}');return{render:render,staticRenderFns:staticRenderFns}};function fixDataProxy(vm){if(!vm._data||!vm.$options)return;var keys=Object.keys(vm._data);for(var i=0;i<keys.length;i++){var key=keys[i];if(key.charCodeAt(0)!==36&&key.charCodeAt(0)!==95&&!vm.hasOwnProperty(key)){(function(k){Object.defineProperty(vm,k,{get:function(){return this._data[k]},set:function(v){this._data[k]=v},enumerable:true,configurable:true})})(key)}}}var origInit=Vue.prototype._init;Vue.prototype._init=function(options){origInit.call(this,options);fixDataProxy(this)};var cs=Vue.prototype.$mount;Vue.prototype.$mount=function(el,hydrating){var vm=this,n=vm.$options;fixDataProxy(vm);if(!n.render){var r=n.template;if(r){if(typeof r==="string"){if(r.charAt(0)==="#"){var t=document.querySelector(r);if(t){r=t.innerHTML}}if(r){try{var compiled=Vue.compile(r);n.render=compiled.render;n.staticRenderFns=compiled.staticRenderFns}catch(e){}}}}else if(r&&r.nodeType){r=r.innerHTML}}return cs.call(this,el,hydrating)}})()`)
+				// Ensure VueRouter is installed: the library's auto-install
+				// (window.Vue && window.Vue.use(VueRouter)) may fail if
+				// window.Vue wasn't set when the VueRouter script executed.
+				b.vm.Run(`(function(){function simpleCompile(tpl){if(!tpl)return '_c("div")';var m;m=tpl.match(/^<([A-Z][a-zA-Z0-9]*)\s*\/?\s*>$/);if(m)return '_c("'+m[1]+'")';m=tpl.match(/^<([a-z][a-z0-9]*)\s*\/\s*>$/);if(m)return '_c("'+m[1]+'")';var closeTag=tpl.match(/<\/([a-z][a-z0-9]*)>$/);if(closeTag){var openTag=tpl.match(/^<([a-z][a-z0-9]*)>/);if(openTag&&openTag[1]===closeTag[1]){var tag=openTag[1];var inner=tpl.substring(openTag[0].length,tpl.length-closeTag[0].length);var children=[];if(inner){var textParts=inner.split(/({{[^}]+}})/);for(var i=0;i<textParts.length;i++){var part=textParts[i];if(!part)continue;var exprMatch=part.match(/^{{(.+)}}$/);if(exprMatch){children.push('_v(_s('+exprMatch[1].trim()+'))')}else{children.push('_v("'+part.replace(/"/g,'\\"')+'")')}}}return '_c("'+tag+'",'+(children.length>0?'['+children.join(',')+']':'')+')'}}return '_c("div",_v('+JSON.stringify(tpl)+'))'}Vue.compile=function(template){template=template.trim();var staticRenderFns=[];var code=simpleCompile(template);var render=new Function('with(this){return '+code+'}');return{render:render,staticRenderFns:staticRenderFns}};if(typeof VueRouter!=="undefined"&&typeof VueRouter.install==="function"){try{VueRouter.install(Vue)}catch(e){}}if(typeof Vuex!=="undefined"&&typeof Vuex.install==="function"){try{Vuex.install(Vue)}catch(e){}}function fixDataProxy(vm){if(!vm._data||!vm.$options)return;var keys=Object.keys(vm._data);for(var i=0;i<keys.length;i++){var key=keys[i];if(key.charCodeAt(0)!==36&&key.charCodeAt(0)!==95&&!vm.hasOwnProperty(key)){(function(k){Object.defineProperty(vm,k,{get:function(){return this._data[k]},set:function(v){this._data[k]=v},enumerable:true,configurable:true})})(key)}}}function applyPluginInits(vm){if(vm.$options&&vm.$options.router&&typeof vm.$options.router.init==="function"){vm._routerRoot=vm;vm._router=vm.$options.router;vm._router.init(vm);vm._route=vm._router.history.current;vm.$router=vm._router;vm.$route=vm._route}else if(vm.$parent&&vm.$parent._routerRoot){vm._routerRoot=vm.$parent._routerRoot;vm.$router=vm._routerRoot._router;vm.$route=vm._routerRoot._route}else{vm._routerRoot=vm}if(vm.$options&&vm.$options.store){vm.$store=vm.$options.store}else if(vm.$parent&&vm.$parent.$store){vm.$store=vm.$parent.$store}}var origInit=Vue.prototype._init;Vue.prototype._init=function(options){if(options){if(options.router||options.store){if(!options.beforeCreate){options.beforeCreate=[]}else if(typeof options.beforeCreate==="function"){options.beforeCreate=[options.beforeCreate]}options.beforeCreate.push(function(){applyPluginInits(this)})}}origInit.call(this,options);fixDataProxy(this)};var cs=Vue.prototype.$mount;Vue.prototype.$mount=function(el,hydrating){var vm=this,n=vm.$options;fixDataProxy(vm);if(!n.render){var r=n.template;if(r){if(typeof r==="string"){if(r.charAt(0)==="#"){var t=document.querySelector(r);if(t){r=t.innerHTML}}if(r){try{var compiled=Vue.compile(r);n.render=compiled.render;n.staticRenderFns=compiled.staticRenderFns}catch(e){}}}}else if(r&&r.nodeType){r=r.innerHTML}}return cs.call(this,el,hydrating)}})()`)
 				vueMountPatched = true
 				b.debugLog("Vue $mount polyfill applied")
 			}
@@ -173,8 +176,8 @@ func (b *Browser) loadExternalScript(src string) {
 		return
 	}
 
-	// Limit external script size to 1MB to prevent memory exhaustion
-	if len(resp.Body) > 1_000_000 {
+	// Limit external script size to 2MB to prevent memory exhaustion
+	if len(resp.Body) > 2_000_000 {
 		b.debugLog("External script too large (%d bytes), skipping", len(resp.Body))
 		return
 	}
@@ -182,7 +185,12 @@ func (b *Browser) loadExternalScript(src string) {
 	if b.vm != nil {
 		// Reset steps before executing external script to prevent cumulative timeout
 		b.vm.ResetSteps()
-		b.vm.Run(resp.Body)
+		_, err := b.vm.Run(resp.Body)
+		if err != nil {
+			b.debugLog("Error executing external script %s: %v", src, err)
+		} else {
+			b.debugLog("External script executed: %s (size=%d)", src, len(resp.Body))
+		}
 	}
 }
 

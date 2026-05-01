@@ -613,41 +613,47 @@ func (vm *VM) setupBuiltins() {
 		"PI": {Type: "number", Num: math.Pi},
 		"E":  {Type: "number", Num: math.E},
 		"sqrt": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "number"}
 			}
-			return &Value{Type: "number", Num: math.Sqrt(args[0].Num)}
+			return &Value{Type: "number", Num: math.Sqrt(args[offset].Num)}
 		}},
 		"abs": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "number"}
 			}
-			return &Value{Type: "number", Num: math.Abs(args[0].Num)}
+			return &Value{Type: "number", Num: math.Abs(args[offset].Num)}
 		}},
 		"floor": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "number"}
 			}
-			return &Value{Type: "number", Num: math.Floor(args[0].Num)}
+			return &Value{Type: "number", Num: math.Floor(args[offset].Num)}
 		}},
 		"ceil": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "number"}
 			}
-			return &Value{Type: "number", Num: math.Ceil(args[0].Num)}
+			return &Value{Type: "number", Num: math.Ceil(args[offset].Num)}
 		}},
 		"round": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "number"}
 			}
-			return &Value{Type: "number", Num: math.Round(args[0].Num)}
+			return &Value{Type: "number", Num: math.Round(args[offset].Num)}
 		}},
 		"max": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "number", Num: math.Inf(-1)}
 			}
-			m := args[0].Num
-			for _, a := range args[1:] {
+			m := args[offset].Num
+			for _, a := range args[offset+1:] {
 				if a.Num > m {
 					m = a.Num
 				}
@@ -655,11 +661,12 @@ func (vm *VM) setupBuiltins() {
 			return &Value{Type: "number", Num: m}
 		}},
 		"min": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "number", Num: math.Inf(1)}
 			}
-			m := args[0].Num
-			for _, a := range args[1:] {
+			m := args[offset].Num
+			for _, a := range args[offset+1:] {
 				if a.Num < m {
 					m = a.Num
 				}
@@ -673,16 +680,18 @@ func (vm *VM) setupBuiltins() {
 
 	vm.env.Define("JSON", &Value{Type: "object", Obj: map[string]*Value{
 		"stringify": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "string"}
 			}
-			return &Value{Type: "string", Str: jsonStringify(args[0])}
+			return &Value{Type: "string", Str: jsonStringify(args[offset])}
 		}},
 		"parse": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "undefined"}
 			}
-			return jsonParse(args[0].Str)
+			return jsonParse(args[offset].Str)
 		}},
 	}})
 
