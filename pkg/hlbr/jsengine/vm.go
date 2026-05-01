@@ -90,6 +90,7 @@ type Environment struct {
 	outer     *Environment
 	globalObj *Value // global object (window) for property-as-variable lookup
 	withObj   *Value // with-statement object: property lookups check this first
+	vm        *VM    // reference to VM for calling getters/setters in with-objects
 }
 
 func NewEnvironment(outer *Environment) *Environment {
@@ -100,9 +101,8 @@ func NewEnvironment(outer *Environment) *Environment {
 }
 
 func (e *Environment) Get(name string) *Value {
-	// In a with-statement scope, check the with object's properties first
-	if e.withObj != nil {
-		v := lookupWithObject(e.withObj, name)
+	if e.withObj != nil && e.vm != nil {
+		v := e.vm.lookupWithObject(e.withObj, name)
 		if v != nil && v.Type != "undefined" {
 			return v
 		}
@@ -123,10 +123,20 @@ func (e *Environment) Get(name string) *Value {
 }
 
 // lookupWithObject looks up a property on a with-object, walking the prototype chain.
-func lookupWithObject(obj *Value, name string) *Value {
+func (vm *VM) lookupWithObject(obj *Value, name string) *Value {
 	visited := 0
 	current := obj
 	for current != nil && visited < 20 {
+		if current.Descriptors != nil {
+			if desc, ok := current.Descriptors[name]; ok {
+				if desc.Get != nil {
+					return vm.callGetter(desc.Get, current)
+				}
+				if desc.Value != nil {
+					return desc.Value
+				}
+			}
+		}
 		if current.Obj != nil {
 			if v, ok := current.Obj[name]; ok {
 				return v
@@ -145,10 +155,21 @@ func lookupWithObject(obj *Value, name string) *Value {
 
 // setOnWithObj tries to set a property on the with-object or its prototype chain.
 // Returns true if the property was found and set.
-func setOnWithObj(obj *Value, name string, val *Value) bool {
+func (vm *VM) setOnWithObj(obj *Value, name string, val *Value) bool {
 	visited := 0
 	current := obj
 	for current != nil && visited < 20 {
+		if current.Descriptors != nil {
+			if desc, ok := current.Descriptors[name]; ok {
+				if desc.Set != nil {
+					vm.callSetter(desc.Set, current, val)
+					return true
+				}
+				if desc.Get != nil {
+					return true
+				}
+			}
+		}
 		if current.Obj != nil {
 			if _, ok := current.Obj[name]; ok {
 				current.Obj[name] = val
@@ -166,8 +187,8 @@ func setOnWithObj(obj *Value, name string, val *Value) bool {
 }
 
 func (e *Environment) Set(name string, val *Value) {
-	if e.withObj != nil {
-		if setOnWithObj(e.withObj, name, val) {
+	if e.withObj != nil && e.vm != nil {
+		if e.vm.setOnWithObj(e.withObj, name, val) {
 			return
 		}
 	}
@@ -1140,8 +1161,6 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 		"className":   {Type: "string", Str: n.ClassName()},
 		"nodeName":    {Type: "string", Str: n.Data},
 		"nodeValue":   {Type: "string", Str: n.GetAttribute("value")},
-		"outerHTML":   {Type: "string", Str: n.OuterHTML()},
-		"innerText":   {Type: "string", Str: n.TextContent()},
 		"nodeType":    {Type: "number", Num: float64(n.Type)},
 		"getAttribute": {Type: "native", Native: func(args []*Value) *Value {
 			offset := nativeThisOffset(args)
@@ -1194,6 +1213,9 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 		"children": {Type: "object", Arr: []*Value{}, Obj: map[string]*Value{
 			"length": {Type: "number", Num: 0},
 		}},
+		"childNodes": {Type: "object", Arr: []*Value{}, Obj: map[string]*Value{
+			"length": {Type: "number", Num: 0},
+		}},
 		"firstChild": {Type: "null"},
 		"lastChild": {Type: "null"},
 		"parentNode": {Type: "null"},
@@ -1234,14 +1256,23 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 		}},
 		"insertBefore": {Type: "native", Native: func(args []*Value) *Value {
 			offset := nativeThisOffset(args)
-			if len(args) <= offset+1 {
+			if len(args) <= offset {
 				return &Value{Type: "undefined"}
 			}
 			newNode := args[offset]
-			refNode := args[offset+1]
 			newDomNode := vm.unwrapNode(newNode)
+			if newDomNode == nil {
+				return &Value{Type: "undefined"}
+			}
+			// If no refNode or refNode is null, append at end (like appendChild)
+			if len(args) <= offset+1 || args[offset+1].Type == "null" || args[offset+1].Type == "undefined" {
+				newDomNode.Parent = n
+				n.Children = append(n.Children, newDomNode)
+				return newNode
+			}
+			refNode := args[offset+1]
 			refDomNode := vm.unwrapNode(refNode)
-			if newDomNode != nil {
+			if refDomNode != nil {
 				for i, c := range n.Children {
 					if c == refDomNode {
 						newDomNode.Parent = n
@@ -1249,9 +1280,8 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 						break
 					}
 				}
-				return newNode
 			}
-			return &Value{Type: "undefined"}
+			return newNode
 		}},
 		"replaceChild": {Type: "native", Native: func(args []*Value) *Value {
 			offset := nativeThisOffset(args)
@@ -1381,6 +1411,9 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 	obj.Descriptors = map[string]*PropertyDescriptor{
 		"innerHTML":   {Get: innerHTMLGetter, Set: innerHTMLSetter, Enumerable: true, Configurable: true},
 		"textContent": {Get: textContentGetter, Set: textContentSetter, Enumerable: true, Configurable: true},
+		"outerHTML": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string", Str: n.OuterHTML()}
+		}}, Enumerable: true, Configurable: true},
 		"id": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
 			return &Value{Type: "string", Str: n.GetAttribute("id")}
 		}}, Set: &Value{Type: "native", Native: func(args []*Value) *Value {
@@ -1433,6 +1466,9 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 			}}
 		}}, Enumerable: true, Configurable: true},
 		"children": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return vm.wrapNodeList(n.Children)
+		}}, Enumerable: true, Configurable: true},
+		"childNodes": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
 			return vm.wrapNodeList(n.Children)
 		}}, Enumerable: true, Configurable: true},
 		"firstChild": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
@@ -1532,8 +1568,6 @@ func (vm *VM) wrapNodeShallow(n *dom.Node) *Value {
 		"className":   {Type: "string", Str: n.ClassName()},
 		"nodeName":    {Type: "string", Str: n.Data},
 		"nodeValue":   {Type: "string", Str: n.GetAttribute("value")},
-		"outerHTML":   {Type: "string", Str: n.OuterHTML()},
-		"innerText":   {Type: "string", Str: n.TextContent()},
 		"getAttribute": {Type: "native", Native: func(args []*Value) *Value {
 			offset := nativeThisOffset(args)
 			if len(args) <= offset {
@@ -1697,6 +1731,9 @@ func (vm *VM) wrapNodeShallow(n *dom.Node) *Value {
 		"children": {Type: "object", Arr: []*Value{}, Obj: map[string]*Value{
 			"length": {Type: "number", Num: 0},
 		}},
+		"childNodes": {Type: "object", Arr: []*Value{}, Obj: map[string]*Value{
+			"length": {Type: "number", Num: 0},
+		}},
 		"firstChild": {Type: "null"},
 		"lastChild": {Type: "null"},
 		"parentNode": {Type: "null"},
@@ -1709,6 +1746,9 @@ func (vm *VM) wrapNodeShallow(n *dom.Node) *Value {
 	obj.Descriptors = map[string]*PropertyDescriptor{
 		"innerHTML":   {Get: innerHTMLGetter, Set: innerHTMLSetter, Enumerable: true, Configurable: true},
 		"textContent": {Get: textContentGetter, Set: textContentSetter, Enumerable: true, Configurable: true},
+		"outerHTML": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string", Str: n.OuterHTML()}
+		}}, Enumerable: true, Configurable: true},
 		"id": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
 			return &Value{Type: "string", Str: n.GetAttribute("id")}
 		}}, Set: &Value{Type: "native", Native: func(args []*Value) *Value {
@@ -1761,6 +1801,9 @@ func (vm *VM) wrapNodeShallow(n *dom.Node) *Value {
 			}}
 		}}, Enumerable: true, Configurable: true},
 		"children": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return vm.wrapNodeListShallow(n.Children)
+		}}, Enumerable: true, Configurable: true},
+		"childNodes": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
 			return vm.wrapNodeListShallow(n.Children)
 		}}, Enumerable: true, Configurable: true},
 		"firstChild": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
@@ -2319,6 +2362,7 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 		}
 		withEnv := NewEnvironment(vm.env)
 		withEnv.withObj = obj
+		withEnv.vm = vm
 		oldEnv := vm.env
 		vm.env = withEnv
 		for _, stmt := range s.Body {

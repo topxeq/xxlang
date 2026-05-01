@@ -986,14 +986,11 @@ func GetObjectMethods(vm *VM) map[string]*Value {
 			// Store the descriptor
 			obj.Descriptors[propName] = desc
 
-			// If it's a data descriptor (value/writable, no get/set), also store in Obj for direct access
 			if desc.Get == nil && desc.Set == nil {
 				if desc.Value != nil {
 					obj.Obj[propName] = desc.Value
 				}
 			} else {
-				// Accessor descriptor: remove from Obj if it was there
-				// (getter/setter should only be accessed via descriptor)
 				delete(obj.Obj, propName)
 			}
 
@@ -1562,9 +1559,50 @@ func callStringMethod(name string, str string, args []*Value, vm *VM) *Value {
 		}
 		return &Value{Type: "string", Str: str[start:end]}
 	case "split":
+		if len(args) >= 1 && args[0].Type == "regexp" && args[0].Obj != nil {
+			if source, ok := args[0].Obj["source"]; ok {
+				re, err := regexp.Compile(source.Str)
+				if err == nil {
+					var result []*Value
+					lastIdx := 0
+					matches := re.FindAllStringSubmatchIndex(str, -1)
+					for _, match := range matches {
+						if match[0] > lastIdx {
+							result = append(result, &Value{Type: "string", Str: str[lastIdx:match[0]]})
+						} else if match[0] == lastIdx && lastIdx == 0 {
+							// First match at start
+						} else if match[0] == lastIdx {
+							result = append(result, &Value{Type: "string", Str: ""})
+						}
+						// Add capturing groups
+						for i := 2; i < len(match); i += 2 {
+							if match[i] >= 0 {
+								result = append(result, &Value{Type: "string", Str: str[match[i]:match[i+1]]})
+							}
+						}
+						// Add the full match if no capturing groups
+						if len(match) <= 2 {
+							result = append(result, &Value{Type: "string", Str: str[match[0]:match[1]]})
+						}
+						lastIdx = match[1]
+					}
+					if lastIdx <= len(str) {
+						result = append(result, &Value{Type: "string", Str: str[lastIdx:]})
+					}
+					return &Value{Type: "object", Arr: result}
+				}
+			}
+		}
 		sep := ""
 		if len(args) >= 1 {
 			sep = valueToString(args[0])
+		}
+		if sep == "" {
+			arr := make([]*Value, len(str))
+			for i, ch := range str {
+				arr[i] = &Value{Type: "string", Str: string(ch)}
+			}
+			return &Value{Type: "object", Arr: arr}
 		}
 		parts := strings.Split(str, sep)
 		arr := make([]*Value, len(parts))
@@ -1580,10 +1618,31 @@ func callStringMethod(name string, str string, args []*Value, vm *VM) *Value {
 			if source, ok := args[0].Obj["source"]; ok {
 				re, err := regexp.Compile(source.Str)
 				if err == nil {
+					if args[1].Type == "function" || args[1].Type == "native" {
+						result := re.ReplaceAllStringFunc(str, func(match string) string {
+							cbArgs := []*Value{
+								{Type: "string", Str: match},
+							}
+							retVal := vm.callFunction(args[1], cbArgs)
+							return valueToString(retVal)
+						})
+						return &Value{Type: "string", Str: result}
+					}
 					replacement := valueToString(args[1])
 					return &Value{Type: "string", Str: re.ReplaceAllString(str, replacement)}
 				}
 			}
+		}
+		if args[1].Type == "function" || args[1].Type == "native" {
+			searchStr := valueToString(args[0])
+			idx := strings.Index(str, searchStr)
+			if idx >= 0 {
+				match := str[idx : idx+len(searchStr)]
+				cbArgs := []*Value{{Type: "string", Str: match}}
+				retVal := vm.callFunction(args[1], cbArgs)
+				return &Value{Type: "string", Str: str[:idx] + valueToString(retVal) + str[idx+len(searchStr):]}
+			}
+			return &Value{Type: "string", Str: str}
 		}
 		return &Value{Type: "string", Str: strings.Replace(str, valueToString(args[0]), valueToString(args[1]), 1)}
 	case "concat":

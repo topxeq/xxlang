@@ -197,7 +197,7 @@ func writeNodeHTML(sb *strings.Builder, n *Node) {
 		"param": true, "source": true, "track": true, "wbr": true,
 	}
 
-	if voidElements[n.Data] || len(n.Children) == 0 {
+	if voidElements[n.Data] {
 		sb.WriteString(">")
 		return
 	}

@@ -50,6 +50,7 @@ release-v*/
 
 # Temp files
 temp/
+.worktrees/
 
 # OS files
 .DS_Store
