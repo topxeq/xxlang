@@ -3,6 +3,7 @@ package jsengine
 import (
 	"fmt"
 	"math"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -85,8 +86,10 @@ type Class struct {
 }
 
 type Environment struct {
-	store map[string]*Value
-	outer *Environment
+	store     map[string]*Value
+	outer     *Environment
+	globalObj *Value // global object (window) for property-as-variable lookup
+	withObj   *Value // with-statement object: property lookups check this first
 }
 
 func NewEnvironment(outer *Environment) *Environment {
@@ -97,16 +100,77 @@ func NewEnvironment(outer *Environment) *Environment {
 }
 
 func (e *Environment) Get(name string) *Value {
+	// In a with-statement scope, check the with object's properties first
+	if e.withObj != nil {
+		v := lookupWithObject(e.withObj, name)
+		if v != nil && v.Type != "undefined" {
+			return v
+		}
+	}
 	if v, ok := e.store[name]; ok {
 		return v
 	}
 	if e.outer != nil {
 		return e.outer.Get(name)
 	}
+	// At global scope: also check the global object (window) properties
+	if e.globalObj != nil && e.globalObj.Obj != nil {
+		if v, ok := e.globalObj.Obj[name]; ok {
+			return v
+		}
+	}
 	return &Value{Type: "undefined"}
 }
 
+// lookupWithObject looks up a property on a with-object, walking the prototype chain.
+func lookupWithObject(obj *Value, name string) *Value {
+	visited := 0
+	current := obj
+	for current != nil && visited < 20 {
+		if current.Obj != nil {
+			if v, ok := current.Obj[name]; ok {
+				return v
+			}
+		}
+		// Walk the prototype chain via Proto field
+		if current.Proto != nil {
+			current = current.Proto
+			visited++
+			continue
+		}
+		break
+	}
+	return nil
+}
+
+// setOnWithObj tries to set a property on the with-object or its prototype chain.
+// Returns true if the property was found and set.
+func setOnWithObj(obj *Value, name string, val *Value) bool {
+	visited := 0
+	current := obj
+	for current != nil && visited < 20 {
+		if current.Obj != nil {
+			if _, ok := current.Obj[name]; ok {
+				current.Obj[name] = val
+				return true
+			}
+		}
+		if current.Proto != nil {
+			current = current.Proto
+			visited++
+			continue
+		}
+		break
+	}
+		return false
+}
+
 func (e *Environment) Set(name string, val *Value) {
+	if e.withObj != nil {
+		if setOnWithObj(e.withObj, name, val) {
+			return
+		}
+	}
 	if _, ok := e.store[name]; ok {
 		e.store[name] = val
 		return
@@ -142,6 +206,7 @@ type VM struct {
 	// Recursion depth limit to prevent stack overflow
 	callDepth    int           // current function call depth
 	maxCallDepth int           // maximum function call depth (0 = unlimited)
+	callStack    []string      // function call stack for debugging
 	// Memory allocation tracking to prevent memory exhaustion
 	allocCount   int64         // number of objects/arrays allocated
 	maxAllocs    int64         // maximum allocations before error (0 = unlimited)
@@ -213,6 +278,21 @@ func (vm *VM) SetMaxCallDepth(depth int) {
 	vm.maxCallDepth = depth
 }
 
+// SetStepCount sets the current step count (for resetting between evaluations).
+func (vm *VM) SetStepCount(count int64) {
+	vm.stepCount = count
+}
+
+// GetStepCount returns the current step count.
+func (vm *VM) GetStepCount() int64 {
+	return vm.stepCount
+}
+
+// GetMaxSteps returns the maximum step limit.
+func (vm *VM) GetMaxSteps() int64 {
+	return vm.maxSteps
+}
+
 // SetMaxAllocs sets the maximum number of object allocations.
 // Set to 0 for unlimited (not recommended, risk of memory exhaustion).
 func (vm *VM) SetMaxAllocs(max int64) {
@@ -240,19 +320,32 @@ func (vm *VM) trackAlloc() {
 }
 
 // enterCall increments the call depth and checks the limit.
-// Call this when entering a function call.
 func (vm *VM) enterCall() {
 	vm.callDepth++
 	if vm.maxCallDepth > 0 && vm.callDepth > vm.maxCallDepth {
-		ThrowJS(NewError("RangeError", fmt.Sprintf("Recursion limit: exceeded %d call depth", vm.maxCallDepth)))
+		// Build stack trace from callStack
+		msg := fmt.Sprintf("Recursion limit: exceeded %d call depth", vm.maxCallDepth)
+		if len(vm.callStack) > 0 {
+			last := vm.callStack
+			if len(last) > 10 {
+				last = last[len(last)-10:]
+			}
+			msg += "\nCall stack (last 10):\n"
+			for _, s := range last {
+				msg += "  " + s + "\n"
+			}
+		}
+		ThrowJS(NewError("RangeError", msg))
 	}
 }
 
 // exitCall decrements the call depth.
-// Call this when exiting a function call.
 func (vm *VM) exitCall() {
 	if vm.callDepth > 0 {
 		vm.callDepth--
+	}
+	if len(vm.callStack) > 0 {
+		vm.callStack = vm.callStack[:len(vm.callStack)-1]
 	}
 }
 
@@ -313,13 +406,16 @@ func (vm *VM) setupBuiltins() {
 	}
 
 	// Create document object
+	// Document native functions use nativeThisOffset to skip the prepended 'this'
+	// argument that evalCall adds when calling methods via member expression (e.g. document.getElementById).
 	vm.env.Define("document", &Value{Type: "object", Obj: map[string]*Value{
 		"title": {Type: "string", Str: title},
 		"querySelector": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 || vm.root == nil {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset || vm.root == nil {
 				return &Value{Type: "null"}
 			}
-			sel := args[0].Str
+			sel := args[offset].Str
 			node := dom.QuerySelector(vm.root, sel)
 			if node == nil {
 				return &Value{Type: "null"}
@@ -327,10 +423,11 @@ func (vm *VM) setupBuiltins() {
 			return vm.wrapNode(node)
 		}},
 		"querySelectorAll": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 || vm.root == nil {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset || vm.root == nil {
 				return &Value{Type: "object", Arr: []*Value{}}
 			}
-			sel := args[0].Str
+			sel := args[offset].Str
 			nodes := dom.QuerySelectorAll(vm.root, sel)
 			arr := make([]*Value, len(nodes))
 			for i, n := range nodes {
@@ -339,21 +436,36 @@ func (vm *VM) setupBuiltins() {
 			return &Value{Type: "object", Arr: arr}
 		}},
 		"getElementById": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 || vm.root == nil {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset || vm.root == nil {
 				return &Value{Type: "null"}
 			}
-			id := args[0].Str
+			id := args[offset].Str
 			node := dom.GetElementByID(vm.root, id)
 			if node == nil {
 				return &Value{Type: "null"}
 			}
 			return vm.wrapNode(node)
 		}},
-		"getElementsByTagName": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 || vm.root == nil {
+		"getElementsByClassName": {Type: "native", Native: func(args []*Value) *Value {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset || vm.root == nil {
 				return &Value{Type: "object", Arr: []*Value{}}
 			}
-			tag := args[0].Str
+			className := args[offset].Str
+			nodes := dom.GetElementsByClassName(vm.root, className)
+			arr := make([]*Value, len(nodes))
+			for i, n := range nodes {
+				arr[i] = vm.wrapNode(n)
+			}
+			return &Value{Type: "object", Arr: arr}
+		}},
+		"getElementsByTagName": {Type: "native", Native: func(args []*Value) *Value {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset || vm.root == nil {
+				return &Value{Type: "object", Arr: []*Value{}}
+			}
+			tag := args[offset].Str
 			nodes := dom.GetElementsByTagName(vm.root, tag)
 			arr := make([]*Value, len(nodes))
 			for i, n := range nodes {
@@ -365,26 +477,28 @@ func (vm *VM) setupBuiltins() {
 		"head": vm.wrapNode(headNode),
 		"documentElement": vm.wrapNode(vm.root),
 		"createElement": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "null"}
 			}
-			tag := args[0].Str
+			tag := args[offset].Str
 			newNode := &dom.Node{Type: dom.ElementNode, Data: strings.ToLower(tag)}
 			return vm.wrapNode(newNode)
 		}},
 		"createElementNS": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) < 2 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset+1 {
 				return &Value{Type: "null"}
 			}
-			// namespaceURI := args[0].Str // e.g. "http://www.w3.org/1999/xhtml"
-			tag := args[1].Str
+			tag := args[offset+1].Str
 			newNode := &dom.Node{Type: dom.ElementNode, Data: strings.ToLower(tag)}
 			return vm.wrapNode(newNode)
 		}},
 		"createTextNode": {Type: "native", Native: func(args []*Value) *Value {
+			offset := nativeThisOffset(args)
 			text := ""
-			if len(args) > 0 {
-				text = args[0].Str
+			if len(args) > offset {
+				text = args[offset].Str
 			}
 			newNode := &dom.Node{Type: dom.TextNode, Data: text}
 			return vm.wrapNode(newNode)
@@ -394,9 +508,10 @@ func (vm *VM) setupBuiltins() {
 			return vm.wrapNode(newNode)
 		}},
 		"createComment": {Type: "native", Native: func(args []*Value) *Value {
+			offset := nativeThisOffset(args)
 			text := ""
-			if len(args) > 0 {
-				text = args[0].Str
+			if len(args) > offset {
+				text = args[offset].Str
 			}
 			newNode := &dom.Node{Type: dom.CommentNode, Data: text}
 			return vm.wrapNode(newNode)
@@ -468,7 +583,8 @@ func (vm *VM) setupBuiltins() {
 		}},
 	}}
 	vm.env.Define("window", windowObj)
-	// Also define 'this' and 'self' to point to window (for browser compatibility in global scope)
+	// Set the global object so that window properties are accessible as global variables
+	vm.env.globalObj = windowObj
 	vm.env.Define("this", windowObj)
 	vm.env.Define("self", windowObj)
 
@@ -602,15 +718,18 @@ func (vm *VM) setupBuiltins() {
 	}})
 
 	arrayConstructor := &Value{Type: "native", BuiltInConstructor: "Array", Native: func(args []*Value) *Value {
-		return &Value{Type: "object", Arr: args}
+		arr := vm.newArray(args)
+		arr.BuiltInConstructor = "Array"
+		return arr
 	}}
 	// Add static methods to the Array constructor
 	arrayConstructor.Obj = map[string]*Value{
 		"isArray": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) < 1 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "bool", Bool: false}
 			}
-			return &Value{Type: "bool", Bool: args[0].Type == "object" && args[0].Arr != nil}
+			return &Value{Type: "bool", Bool: args[offset].Type == "object" && args[offset].Arr != nil}
 		}},
 		"from": {Type: "native", Native: func(args []*Value) *Value {
 			if len(args) < 1 {
@@ -685,26 +804,54 @@ func (vm *VM) setupBuiltins() {
 	}
 	vm.env.Define("Array", arrayConstructor)
 
-	vm.env.Define("Object", &Value{Type: "object", Obj: GetObjectMethods(vm)})
+	vm.env.Define("Object", &Value{Type: "native", BuiltInConstructor: "Object", Obj: GetObjectMethods(vm)})
 
 	// Set Object.prototype to the ObjectPrototype
 	objectProto := vm.env.Get("ObjectPrototype")
 	if objectProto.Type == "object" {
 		objectVal := vm.env.Get("Object")
-		if objectVal.Type == "object" && objectVal.Obj != nil {
+		if objectVal.Obj != nil {
 			objectVal.Obj["prototype"] = objectProto
+		}
+		// Set constructor on ObjectPrototype to point back to Object
+		if objectProto.Obj != nil {
+			objectProto.Obj["constructor"] = objectVal
 		}
 	}
 
 	// Define Function constructor with prototype
 	functionProto := vm.env.Get("FunctionPrototype")
-	functionConstructor := &Value{Type: "native", Native: func(args []*Value) *Value {
-		// Function constructor - create a new function
-		return &Value{Type: "function", Func: &Function{Params: []string{}, Body: []Statement{}, Env: vm.env}}
+	functionConstructor := &Value{Type: "native", BuiltInConstructor: "Function", Native: func(args []*Value) *Value {
+		// Function constructor: new Function(p1, p2, ..., body)
+		// Last argument is the function body, preceding arguments are parameter names.
+		if len(args) == 0 {
+			return vm.newFunction(&Function{Params: []string{}, Body: []Statement{}, Env: vm.env})
+		}
+		offset := nativeThisOffset(args)
+		if offset >= len(args) {
+			return vm.newFunction(&Function{Params: []string{}, Body: []Statement{}, Env: vm.env})
+		}
+		bodyStr := ""
+		paramNames := []string{}
+		for i := offset; i < len(args); i++ {
+			if i == len(args)-1 {
+				bodyStr = valueToString(args[i])
+			} else {
+				paramNames = append(paramNames, valueToString(args[i]))
+			}
+		}
+		p := NewParser(bodyStr)
+		prog := p.Parse()
+		fn := &Function{Params: paramNames, Body: prog.Statements, Env: vm.env}
+		return vm.newFunction(fn)
 	}}
 	if functionProto.Type == "object" {
 		functionConstructor.Obj = map[string]*Value{
 			"prototype": functionProto,
+		}
+		// Set constructor on FunctionPrototype to point back to Function
+		if functionProto.Obj != nil {
+			functionProto.Obj["constructor"] = functionConstructor
 		}
 	}
 	vm.env.Define("Function", functionConstructor)
@@ -713,8 +860,16 @@ func (vm *VM) setupBuiltins() {
 	arrayProto := vm.env.Get("ArrayPrototype")
 	if arrayProto.Type == "object" {
 		arrayObj := vm.env.Get("Array")
-		if arrayObj.Type == "object" && arrayObj.Obj != nil {
+		arrayObjType := "object"
+		if arrayObj.Type == "native" || arrayObj.Type == "function" {
+			arrayObjType = arrayObj.Type
+		}
+		if (arrayObjType == "object" || arrayObjType == "native") && arrayObj.Obj != nil {
 			arrayObj.Obj["prototype"] = arrayProto
+		}
+		// Set constructor on ArrayPrototype to point back to Array
+		if arrayProto.Obj != nil {
+			arrayProto.Obj["constructor"] = arrayObj
 		}
 	}
 
@@ -950,11 +1105,12 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 		return &Value{Type: "string", Str: n.InnerHTML()}
 	}}
 	innerHTMLSetter := &Value{Type: "native", Native: func(args []*Value) *Value {
-		if len(args) > 0 {
-			// Parse the HTML fragment and replace children
-			newChildren := htmlparser.ParseFragment(args[0].Str)
+		// When called via callSetter: args = [obj, val]
+		// The value is always the last argument.
+		valIdx := len(args) - 1
+		if valIdx >= 0 {
+			newChildren := htmlparser.ParseFragment(args[valIdx].Str)
 			n.Children = newChildren
-			// Update parent references
 			for _, child := range n.Children {
 				child.Parent = n
 			}
@@ -967,10 +1123,12 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 		return &Value{Type: "string", Str: n.TextContent()}
 	}}
 	textContentSetter := &Value{Type: "native", Native: func(args []*Value) *Value {
-		if len(args) > 0 {
-			// Set text content by replacing all children with a single text node
+		// When called via callSetter: args = [obj, val]
+		// The value is always the last argument.
+		valIdx := len(args) - 1
+		if valIdx >= 0 {
 			n.Children = []*dom.Node{
-				{Type: dom.TextNode, Data: args[0].Str, Parent: n},
+				{Type: dom.TextNode, Data: args[valIdx].Str, Parent: n},
 			}
 		}
 		return &Value{Type: "undefined"}
@@ -986,92 +1144,71 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 		"innerText":   {Type: "string", Str: n.TextContent()},
 		"nodeType":    {Type: "number", Num: float64(n.Type)},
 		"getAttribute": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "null"}
 			}
-			return &Value{Type: "string", Str: n.GetAttribute(args[0].Str)}
+			return &Value{Type: "string", Str: n.GetAttribute(args[offset].Str)}
 		}},
 		"setAttribute": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) >= 2 {
-				n.SetAttribute(args[0].Str, args[1].Str)
+			offset := nativeThisOffset(args)
+			if len(args) >= offset+2 {
+				n.SetAttribute(args[offset].Str, args[offset+1].Str)
 			}
 			return &Value{Type: "undefined"}
 		}},
 		"removeAttribute": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) > 0 {
-				n.RemoveAttribute(args[0].Str)
+			offset := nativeThisOffset(args)
+			if len(args) > offset {
+				n.RemoveAttribute(args[offset].Str)
 			}
 			return &Value{Type: "undefined"}
 		}},
 		"hasAttribute": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "bool", Bool: false}
 			}
-			return &Value{Type: "bool", Bool: n.HasAttribute(args[0].Str)}
+			return &Value{Type: "bool", Bool: n.HasAttribute(args[offset].Str)}
 		}},
 		"querySelector": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "null"}
 			}
-			child := dom.QuerySelector(n, args[0].Str)
+			child := dom.QuerySelector(n, args[offset].Str)
 			return vm.wrapNode(child)
 		}},
 		"querySelectorAll": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "object", Arr: []*Value{}}
 			}
-			children := dom.QuerySelectorAll(n, args[0].Str)
+			children := dom.QuerySelectorAll(n, args[offset].Str)
 			arr := make([]*Value, len(children))
 			for i, c := range children {
 				arr[i] = vm.wrapNode(c)
 			}
 			return &Value{Type: "object", Arr: arr}
 		}},
-		"children": {Type: "native", Native: func(args []*Value) *Value {
-			return vm.wrapNodeList(n.Children)
+		"children": {Type: "object", Arr: []*Value{}, Obj: map[string]*Value{
+			"length": {Type: "number", Num: 0},
 		}},
-		"firstChild": {Type: "native", Native: func(args []*Value) *Value {
-			return vm.wrapNode(firstChild(n))
-		}},
-		"lastChild": {Type: "native", Native: func(args []*Value) *Value {
-			return vm.wrapNode(lastChild(n))
-		}},
-		"parentNode": {Type: "native", Native: func(args []*Value) *Value {
-			return vm.wrapNodeShallow(n.Parent)
-		}},
-		"parentElement": {Type: "native", Native: func(args []*Value) *Value {
-			if n.Parent != nil && n.Parent.Type == dom.ElementNode {
-				return vm.wrapNodeShallow(n.Parent)
-			}
-			return &Value{Type: "null"}
-		}},
-		"nextSibling": {Type: "native", Native: func(args []*Value) *Value {
-			return vm.wrapNode(n.NextSibling)
-		}},
-		"previousSibling": {Type: "native", Native: func(args []*Value) *Value {
-			return vm.wrapNode(n.PrevSibling)
-		}},
-		"nextElementSibling": {Type: "native", Native: func(args []*Value) *Value {
-			sibling := n.NextSibling
-			for sibling != nil && sibling.Type != dom.ElementNode {
-				sibling = sibling.NextSibling
-			}
-			return vm.wrapNode(sibling)
-		}},
-		"previousElementSibling": {Type: "native", Native: func(args []*Value) *Value {
-			sibling := n.PrevSibling
-			for sibling != nil && sibling.Type != dom.ElementNode {
-				sibling = sibling.PrevSibling
-			}
-			return vm.wrapNode(sibling)
-		}},
+		"firstChild": {Type: "null"},
+		"lastChild": {Type: "null"},
+		"parentNode": {Type: "null"},
+		"parentElement": {Type: "null"},
+		"nextSibling": {Type: "null"},
+		"previousSibling": {Type: "null"},
+		"nextElementSibling": {Type: "null"},
+		"previousElementSibling": {Type: "null"},
 		// DOM mutation methods
 		"appendChild": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "undefined"}
 			}
-			child := args[0]
-			// Extract the dom.Node from the wrapped value
+			child := args[offset]
 			if childNode := vm.unwrapNode(child); childNode != nil {
 				n.AppendChild(childNode)
 				return child
@@ -1079,10 +1216,11 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 			return &Value{Type: "undefined"}
 		}},
 		"removeChild": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "undefined"}
 			}
-			child := args[0]
+			child := args[offset]
 			if childNode := vm.unwrapNode(child); childNode != nil {
 				for i, c := range n.Children {
 					if c == childNode {
@@ -1095,11 +1233,12 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 			return &Value{Type: "undefined"}
 		}},
 		"insertBefore": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) < 2 {
-				return args[0]
+			offset := nativeThisOffset(args)
+			if len(args) <= offset+1 {
+				return &Value{Type: "undefined"}
 			}
-			newNode := args[0]
-			refNode := args[1]
+			newNode := args[offset]
+			refNode := args[offset+1]
 			newDomNode := vm.unwrapNode(newNode)
 			refDomNode := vm.unwrapNode(refNode)
 			if newDomNode != nil {
@@ -1115,11 +1254,12 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 			return &Value{Type: "undefined"}
 		}},
 		"replaceChild": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) < 2 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset+1 {
 				return &Value{Type: "undefined"}
 			}
-			newNode := args[0]
-			oldNode := args[1]
+			newNode := args[offset]
+			oldNode := args[offset+1]
 			newDomNode := vm.unwrapNode(newNode)
 			oldDomNode := vm.unwrapNode(oldNode)
 			if newDomNode != nil && oldDomNode != nil {
@@ -1135,18 +1275,20 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 			return &Value{Type: "undefined"}
 		}},
 		"cloneNode": {Type: "native", Native: func(args []*Value) *Value {
+			offset := nativeThisOffset(args)
 			deep := false
-			if len(args) > 0 {
-				deep = args[0].Bool
+			if len(args) > offset {
+				deep = args[offset].Bool
 			}
 			clone := vm.cloneNode(n, deep)
 			return vm.wrapNode(clone)
 		}},
 		"contains": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "bool", Bool: false}
 			}
-			other := vm.unwrapNode(args[0])
+			other := vm.unwrapNode(args[offset])
 			return &Value{Type: "bool", Bool: vm.nodeContains(n, other)}
 		}},
 		"addEventListener": {Type: "native", Native: func(args []*Value) *Value {
@@ -1235,10 +1377,108 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 		"tabIndex": {Type: "number", Num: 0},
 	}}
 
-	// Add descriptors for innerHTML and textContent with getters/setters
+	// Add descriptors for innerHTML, textContent, and other getter/setter properties
 	obj.Descriptors = map[string]*PropertyDescriptor{
 		"innerHTML":   {Get: innerHTMLGetter, Set: innerHTMLSetter, Enumerable: true, Configurable: true},
 		"textContent": {Get: textContentGetter, Set: textContentSetter, Enumerable: true, Configurable: true},
+		"id": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string", Str: n.GetAttribute("id")}
+		}}, Set: &Value{Type: "native", Native: func(args []*Value) *Value {
+			valIdx := len(args) - 1
+			if valIdx >= 0 {
+				n.SetAttribute("id", args[valIdx].Str)
+			}
+			return &Value{Type: "undefined"}
+		}}, Enumerable: true, Configurable: true},
+		"className": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string", Str: n.GetAttribute("class")}
+		}}, Set: &Value{Type: "native", Native: func(args []*Value) *Value {
+			valIdx := len(args) - 1
+			if valIdx >= 0 {
+				n.SetAttribute("class", args[valIdx].Str)
+			}
+			return &Value{Type: "undefined"}
+		}}, Enumerable: true, Configurable: true},
+		"value": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string", Str: n.GetAttribute("value")}
+		}}, Set: &Value{Type: "native", Native: func(args []*Value) *Value {
+			valIdx := len(args) - 1
+			if valIdx >= 0 {
+				n.SetAttribute("value", args[valIdx].Str)
+			}
+			return &Value{Type: "undefined"}
+		}}, Enumerable: true, Configurable: true},
+		"innerText": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string", Str: n.TextContent()}
+		}}, Set: &Value{Type: "native", Native: func(args []*Value) *Value {
+			valIdx := len(args) - 1
+			if valIdx >= 0 {
+				n.Children = []*dom.Node{
+					{Type: dom.TextNode, Data: args[valIdx].Str, Parent: n},
+				}
+			}
+			return &Value{Type: "undefined"}
+		}}, Enumerable: true, Configurable: true},
+		"style": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			styleStr := n.GetAttribute("style")
+			return &Value{Type: "object", Obj: map[string]*Value{
+				"cssText": {Type: "string", Str: styleStr},
+				"display": {Type: "string", Str: ""},
+				"setProperty": {Type: "native", Native: func(innerArgs []*Value) *Value {
+					return &Value{Type: "undefined"}
+				}},
+				"removeProperty": {Type: "native", Native: func(innerArgs []*Value) *Value {
+					return &Value{Type: "string", Str: ""}
+				}},
+			}}
+		}}, Enumerable: true, Configurable: true},
+		"children": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return vm.wrapNodeList(n.Children)
+		}}, Enumerable: true, Configurable: true},
+		"firstChild": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return vm.wrapNode(firstChild(n))
+		}}, Enumerable: true, Configurable: true},
+		"lastChild": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return vm.wrapNode(lastChild(n))
+		}}, Enumerable: true, Configurable: true},
+		"parentNode": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return vm.wrapNodeShallow(n.Parent)
+		}}, Enumerable: true, Configurable: true},
+		"parentElement": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			if n.Parent != nil && n.Parent.Type == dom.ElementNode {
+				return vm.wrapNodeShallow(n.Parent)
+			}
+			return &Value{Type: "null"}
+		}}, Enumerable: true, Configurable: true},
+		"nextSibling": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return vm.wrapNode(n.NextSibling)
+		}}, Enumerable: true, Configurable: true},
+		"previousSibling": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return vm.wrapNode(n.PrevSibling)
+		}}, Enumerable: true, Configurable: true},
+		"nextElementSibling": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			sibling := n.NextSibling
+			for sibling != nil && sibling.Type != dom.ElementNode {
+				sibling = sibling.NextSibling
+			}
+			return vm.wrapNode(sibling)
+		}}, Enumerable: true, Configurable: true},
+		"previousElementSibling": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			sibling := n.PrevSibling
+			for sibling != nil && sibling.Type != dom.ElementNode {
+				sibling = sibling.PrevSibling
+			}
+			return vm.wrapNode(sibling)
+		}}, Enumerable: true, Configurable: true},
+		"childElementCount": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			count := 0
+			for _, c := range n.Children {
+				if c.Type == dom.ElementNode {
+					count++
+				}
+			}
+			return &Value{Type: "number", Num: float64(count)}
+		}}, Enumerable: true, Configurable: true},
 	}
 	// Store the dom.Node reference for unwrapNode (used by DOM mutation methods)
 	obj.NodeRef = n
@@ -1259,11 +1499,11 @@ func (vm *VM) wrapNodeShallow(n *dom.Node) *Value {
 		return &Value{Type: "string", Str: n.InnerHTML()}
 	}}
 	innerHTMLSetter := &Value{Type: "native", Native: func(args []*Value) *Value {
-		if len(args) > 0 {
-			// Parse the HTML fragment and replace children
-			newChildren := htmlparser.ParseFragment(args[0].Str)
+		// When called via callSetter: args = [obj, val]
+		valIdx := len(args) - 1
+		if valIdx >= 0 {
+			newChildren := htmlparser.ParseFragment(args[valIdx].Str)
 			n.Children = newChildren
-			// Update parent references
 			for _, child := range n.Children {
 				child.Parent = n
 			}
@@ -1276,10 +1516,11 @@ func (vm *VM) wrapNodeShallow(n *dom.Node) *Value {
 		return &Value{Type: "string", Str: n.TextContent()}
 	}}
 	textContentSetter := &Value{Type: "native", Native: func(args []*Value) *Value {
-		if len(args) > 0 {
-			// Set text content by replacing all children with a single text node
+		// When called via callSetter: args = [obj, val]
+		valIdx := len(args) - 1
+		if valIdx >= 0 {
 			n.Children = []*dom.Node{
-				{Type: dom.TextNode, Data: args[0].Str, Parent: n},
+				{Type: dom.TextNode, Data: args[valIdx].Str, Parent: n},
 			}
 		}
 		return &Value{Type: "undefined"}
@@ -1294,54 +1535,284 @@ func (vm *VM) wrapNodeShallow(n *dom.Node) *Value {
 		"outerHTML":   {Type: "string", Str: n.OuterHTML()},
 		"innerText":   {Type: "string", Str: n.TextContent()},
 		"getAttribute": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "null"}
 			}
-			return &Value{Type: "string", Str: n.GetAttribute(args[0].Str)}
+			return &Value{Type: "string", Str: n.GetAttribute(args[offset].Str)}
 		}},
 		"setAttribute": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) >= 2 {
-				n.SetAttribute(args[0].Str, args[1].Str)
+			offset := nativeThisOffset(args)
+			if len(args) >= offset+2 {
+				n.SetAttribute(args[offset].Str, args[offset+1].Str)
 			}
 			return &Value{Type: "undefined"}
 		}},
 		"querySelector": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "null"}
 			}
-			child := dom.QuerySelector(n, args[0].Str)
+			child := dom.QuerySelector(n, args[offset].Str)
 			return vm.wrapNodeShallow(child)
 		}},
 		"querySelectorAll": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "object", Arr: []*Value{}}
 			}
-			children := dom.QuerySelectorAll(n, args[0].Str)
+			children := dom.QuerySelectorAll(n, args[offset].Str)
 			arr := make([]*Value, len(children))
 			for i, c := range children {
 				arr[i] = vm.wrapNodeShallow(c)
 			}
 			return &Value{Type: "object", Arr: arr}
 		}},
-		"children": {Type: "native", Native: func(args []*Value) *Value {
-			return vm.wrapNodeListShallow(n.Children)
+		"hasAttribute": {Type: "native", Native: func(args []*Value) *Value {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
+				return &Value{Type: "bool", Bool: false}
+			}
+			return &Value{Type: "bool", Bool: n.HasAttribute(args[offset].Str)}
 		}},
-		"firstChild": {Type: "native", Native: func(args []*Value) *Value {
-			return vm.wrapNodeShallow(firstChild(n))
+		"removeAttribute": {Type: "native", Native: func(args []*Value) *Value {
+			offset := nativeThisOffset(args)
+			if len(args) > offset {
+				n.RemoveAttribute(args[offset].Str)
+			}
+			return &Value{Type: "undefined"}
 		}},
-		"lastChild": {Type: "native", Native: func(args []*Value) *Value {
-			return vm.wrapNodeShallow(lastChild(n))
+		"appendChild": {Type: "native", Native: func(args []*Value) *Value {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
+				return &Value{Type: "undefined"}
+			}
+			child := args[offset]
+			if childNode := vm.unwrapNode(child); childNode != nil {
+				n.AppendChild(childNode)
+				return child
+			}
+			return &Value{Type: "undefined"}
 		}},
-		"parentNode": {Type: "native", Native: func(args []*Value) *Value {
-			return vm.wrapNodeShallow(n.Parent)
+		"insertBefore": {Type: "native", Native: func(args []*Value) *Value {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset+1 {
+				return &Value{Type: "undefined"}
+			}
+			newNode := args[offset]
+			refNode := args[offset+1]
+			newDomNode := vm.unwrapNode(newNode)
+			refDomNode := vm.unwrapNode(refNode)
+			if newDomNode != nil {
+				if newDomNode.Parent != nil {
+					for i, c := range newDomNode.Parent.Children {
+						if c == newDomNode {
+							newDomNode.Parent.Children = append(newDomNode.Parent.Children[:i], newDomNode.Parent.Children[i+1:]...)
+							break
+						}
+					}
+				}
+				if refDomNode != nil {
+					for i, c := range n.Children {
+						if c == refDomNode {
+							newDomNode.Parent = n
+							n.Children = append(n.Children[:i], append([]*dom.Node{newDomNode}, n.Children[i:]...)...)
+							return newNode
+						}
+					}
+				}
+				n.AppendChild(newDomNode)
+			}
+			return newNode
 		}},
-		"childElementCount": {Type: "number", Num: float64(len(n.Children))},
+		"removeChild": {Type: "native", Native: func(args []*Value) *Value {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
+				return &Value{Type: "undefined"}
+			}
+			child := args[offset]
+			if childNode := vm.unwrapNode(child); childNode != nil {
+				for i, c := range n.Children {
+					if c == childNode {
+						n.Children = append(n.Children[:i], n.Children[i+1:]...)
+						break
+					}
+				}
+				return child
+			}
+			return &Value{Type: "undefined"}
+		}},
+		"replaceChild": {Type: "native", Native: func(args []*Value) *Value {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset+1 {
+				return &Value{Type: "undefined"}
+			}
+			newNode := args[offset]
+			oldNode := args[offset+1]
+			newDomNode := vm.unwrapNode(newNode)
+			oldDomNode := vm.unwrapNode(oldNode)
+			if newDomNode != nil && oldDomNode != nil {
+				if newDomNode.Parent != nil {
+					for i, c := range newDomNode.Parent.Children {
+						if c == newDomNode {
+							newDomNode.Parent.Children = append(newDomNode.Parent.Children[:i], newDomNode.Parent.Children[i+1:]...)
+							break
+						}
+					}
+				}
+				for i, c := range n.Children {
+					if c == oldDomNode {
+						newDomNode.Parent = n
+						n.Children[i] = newDomNode
+						oldDomNode.Parent = nil
+						break
+					}
+				}
+			}
+			return oldNode
+		}},
+		"cloneNode": {Type: "native", Native: func(args []*Value) *Value {
+			offset := nativeThisOffset(args)
+			deep := false
+			if len(args) > offset {
+				deep = args[offset].Bool
+			}
+			clone := vm.cloneNode(n, deep)
+			return vm.wrapNodeShallow(clone)
+		}},
+		"contains": {Type: "native", Native: func(args []*Value) *Value {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
+				return &Value{Type: "bool", Bool: false}
+			}
+			other := vm.unwrapNode(args[offset])
+			return &Value{Type: "bool", Bool: vm.nodeContains(n, other)}
+		}},
+		"addEventListener": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "undefined"}
+		}},
+		"removeEventListener": {Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "undefined"}
+		}},
+		"children": {Type: "object", Arr: []*Value{}, Obj: map[string]*Value{
+			"length": {Type: "number", Num: 0},
+		}},
+		"firstChild": {Type: "null"},
+		"lastChild": {Type: "null"},
+		"parentNode": {Type: "null"},
+		"parentElement": {Type: "null"},
+		"nextSibling": {Type: "null"},
+		"previousSibling": {Type: "null"},
+		"childElementCount": {Type: "number", Num: 0},
 	}}
 
-	// Add descriptors for innerHTML and textContent with getters/setters
 	obj.Descriptors = map[string]*PropertyDescriptor{
 		"innerHTML":   {Get: innerHTMLGetter, Set: innerHTMLSetter, Enumerable: true, Configurable: true},
 		"textContent": {Get: textContentGetter, Set: textContentSetter, Enumerable: true, Configurable: true},
+		"id": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string", Str: n.GetAttribute("id")}
+		}}, Set: &Value{Type: "native", Native: func(args []*Value) *Value {
+			valIdx := len(args) - 1
+			if valIdx >= 0 {
+				n.SetAttribute("id", args[valIdx].Str)
+			}
+			return &Value{Type: "undefined"}
+		}}, Enumerable: true, Configurable: true},
+		"className": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string", Str: n.GetAttribute("class")}
+		}}, Set: &Value{Type: "native", Native: func(args []*Value) *Value {
+			valIdx := len(args) - 1
+			if valIdx >= 0 {
+				n.SetAttribute("class", args[valIdx].Str)
+			}
+			return &Value{Type: "undefined"}
+		}}, Enumerable: true, Configurable: true},
+		"value": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string", Str: n.GetAttribute("value")}
+		}}, Set: &Value{Type: "native", Native: func(args []*Value) *Value {
+			valIdx := len(args) - 1
+			if valIdx >= 0 {
+				n.SetAttribute("value", args[valIdx].Str)
+			}
+			return &Value{Type: "undefined"}
+		}}, Enumerable: true, Configurable: true},
+		"innerText": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string", Str: n.TextContent()}
+		}}, Set: &Value{Type: "native", Native: func(args []*Value) *Value {
+			valIdx := len(args) - 1
+			if valIdx >= 0 {
+				n.Children = []*dom.Node{
+					{Type: dom.TextNode, Data: args[valIdx].Str, Parent: n},
+				}
+			}
+			return &Value{Type: "undefined"}
+		}}, Enumerable: true, Configurable: true},
+		"style": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			styleStr := n.GetAttribute("style")
+			return &Value{Type: "object", Obj: map[string]*Value{
+				"cssText": {Type: "string", Str: styleStr},
+				"display": {Type: "string", Str: ""},
+				"setProperty": {Type: "native", Native: func(innerArgs []*Value) *Value {
+					return &Value{Type: "undefined"}
+				}},
+				"removeProperty": {Type: "native", Native: func(innerArgs []*Value) *Value {
+					return &Value{Type: "string", Str: ""}
+				}},
+			}}
+		}}, Enumerable: true, Configurable: true},
+		"children": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return vm.wrapNodeListShallow(n.Children)
+		}}, Enumerable: true, Configurable: true},
+		"firstChild": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return vm.wrapNodeShallow(firstChild(n))
+		}}, Enumerable: true, Configurable: true},
+		"lastChild": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return vm.wrapNodeShallow(lastChild(n))
+		}}, Enumerable: true, Configurable: true},
+		"parentNode": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return vm.wrapNodeShallow(n.Parent)
+		}}, Enumerable: true, Configurable: true},
+		"parentElement": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			if n.Parent != nil && n.Parent.Type == dom.ElementNode {
+				return vm.wrapNodeShallow(n.Parent)
+			}
+			return &Value{Type: "null"}
+		}}, Enumerable: true, Configurable: true},
+		"nextSibling": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return vm.wrapNodeShallow(n.NextSibling)
+		}}, Enumerable: true, Configurable: true},
+		"previousSibling": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return vm.wrapNodeShallow(n.PrevSibling)
+		}}, Enumerable: true, Configurable: true},
+		"nextElementSibling": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			sibling := n.NextSibling
+			for sibling != nil && sibling.Type != dom.ElementNode {
+				sibling = sibling.NextSibling
+			}
+			if sibling != nil {
+				return vm.wrapNodeShallow(sibling)
+			}
+			return &Value{Type: "null"}
+		}}, Enumerable: true, Configurable: true},
+		"previousElementSibling": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			sibling := n.PrevSibling
+			for sibling != nil && sibling.Type != dom.ElementNode {
+				sibling = sibling.PrevSibling
+			}
+			if sibling != nil {
+				return vm.wrapNodeShallow(sibling)
+			}
+			return &Value{Type: "null"}
+		}}, Enumerable: true, Configurable: true},
+		"childElementCount": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			count := 0
+			for _, c := range n.Children {
+				if c.Type == dom.ElementNode {
+					count++
+				}
+			}
+			return &Value{Type: "number", Num: float64(count)}
+		}}, Enumerable: true, Configurable: true},
 	}
 	// Store the dom.Node reference for unwrapNode (used by DOM mutation methods)
 	obj.NodeRef = n
@@ -1476,6 +1947,7 @@ func (vm *VM) Run(code string) (*Value, error) {
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
+				vm.debugLog("RECOVERED panic: %T: %v", r, r)
 				switch v := r.(type) {
 				case *JSException:
 					execErr = fmt.Errorf("JS error: %s", valueToString(v.Value))
@@ -1485,12 +1957,17 @@ func (vm *VM) Run(code string) (*Value, error) {
 			}
 		}()
 
-		for i, stmt := range prog.Statements {
+	// Hoist function declarations in the global scope
+	vm.hoistFunctionDecls(prog.Statements)
+
+	for i, stmt := range prog.Statements {
 			if returning {
+				vm.debugLog("Breaking due to returning flag")
 				break
 			}
 			vm.debugLog("Executing statement %d: %T", i+1, stmt)
 			result, returning, returnVal = vm.execStmt(stmt)
+			vm.debugLog("Statement %d done: returning=%v, resultType=%s", i+1, returning, result.Type)
 		}
 	}()
 
@@ -1513,6 +1990,23 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 		v := vm.evalExpr(s.Expr)
 		return v, false, nil
 	case *VarDecl:
+		if len(s.Decls) > 0 {
+			var lastVal *Value = &Value{Type: "undefined"}
+			for _, d := range s.Decls {
+				if d.IsDestructuring && d.DestructPattern != nil {
+					vm.execDestructuring(d.DestructPattern, d.Value)
+					continue
+				}
+				var val *Value = &Value{Type: "undefined"}
+				if d.Value != nil {
+					val = vm.evalExpr(d.Value)
+				}
+				vm.env.Define(d.Name, val)
+				lastVal = val
+			}
+			return lastVal, false, nil
+		}
+		// Legacy path for VarDecls without Decls
 		if s.IsDestructuring && s.DestructPattern != nil {
 			vm.execDestructuring(s.DestructPattern, s.Value)
 			return &Value{Type: "undefined"}, false, nil
@@ -1555,18 +2049,37 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 	case *ForInStmt:
 		obj := vm.evalExpr(s.Object)
 		if obj.Type == "object" {
-			// Collect all enumerable keys from Obj and Descriptors
+			// Collect all enumerable keys from Obj, Descriptors, and prototype chain
 			keys := make(map[string]bool)
-			if obj.Obj != nil {
-				for key := range obj.Obj {
-					keys[key] = true
-				}
-			}
-			if obj.Descriptors != nil {
-				for key, desc := range obj.Descriptors {
-					if desc.Enumerable {
-						keys[key] = true
+			current := obj
+			depth := 0
+			for current != nil && current.Type == "object" {
+				if current.Obj != nil {
+					for key := range current.Obj {
+						if !keys[key] {
+							keys[key] = true
+						}
 					}
+				}
+				if current.Descriptors != nil {
+					for key, desc := range current.Descriptors {
+						if desc.Enumerable && !keys[key] {
+							keys[key] = true
+						}
+					}
+				}
+				if current.Arr != nil {
+					for i := range current.Arr {
+						key := strconv.Itoa(i)
+						if !keys[key] {
+							keys[key] = true
+						}
+					}
+				}
+				current = current.Proto
+				depth++
+				if depth > 100 {
+					break
 				}
 			}
 			for key := range keys {
@@ -1788,6 +2301,35 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 		throwVal := vm.evalExpr(s.Value)
 		ThrowJS(throwVal)
 		return &Value{Type: "undefined"}, false, nil
+	case *WithStmt:
+		// With statement: with (obj) { body }
+		// Creates a scope where obj's properties are checked first during variable lookup
+		obj := vm.evalExpr(s.Object)
+		var withResult *Value = &Value{Type: "undefined"}
+		var withReturning bool
+		var withRetVal *Value
+		if obj == nil || (obj.Type != "object" && obj.Type != "function") {
+			for _, stmt := range s.Body {
+				withResult, withReturning, withRetVal = vm.execStmt(stmt)
+				if withReturning {
+					return withResult, withReturning, withRetVal
+				}
+			}
+			return withResult, false, nil
+		}
+		withEnv := NewEnvironment(vm.env)
+		withEnv.withObj = obj
+		oldEnv := vm.env
+		vm.env = withEnv
+		for _, stmt := range s.Body {
+			withResult, withReturning, withRetVal = vm.execStmt(stmt)
+			if withReturning {
+				vm.env = oldEnv
+				return withResult, withReturning, withRetVal
+			}
+		}
+		vm.env = oldEnv
+		return withResult, false, nil
 	case *FunctionDecl:
 		fn := &Function{Params: s.Params, DefaultVals: s.DefaultVals, RestParam: s.RestParam, Body: s.Body, Env: vm.env}
 		val := &Value{Type: "function", Func: fn}
@@ -1884,6 +2426,9 @@ func (vm *VM) execBlock(stmts []Statement) (*Value, bool, *Value) {
 	oldEnv := vm.env
 	vm.env = childEnv
 
+	// Hoist function declarations to the top of the scope
+	vm.hoistFunctionDecls(stmts)
+
 	var result *Value = &Value{Type: "undefined"}
 	for _, stmt := range stmts {
 		vm.checkSteps()
@@ -1897,6 +2442,30 @@ func (vm *VM) execBlock(stmts []Statement) (*Value, bool, *Value) {
 
 	vm.env = oldEnv
 	return result, false, nil
+}
+
+// hoistFunctionDecls scans statements for function declarations and defines
+// them in the current scope before any code executes, implementing JavaScript's
+// function hoisting behavior.
+func (vm *VM) hoistFunctionDecls(stmts []Statement) {
+	hoisted := 0
+	for _, stmt := range stmts {
+		if fd, ok := stmt.(*FunctionDecl); ok {
+			hoisted++
+			fn := &Function{Params: fd.Params, DefaultVals: fd.DefaultVals, RestParam: fd.RestParam, Body: fd.Body, Env: vm.env}
+			val := &Value{Type: "function", Func: fn}
+			if fd.IsAsync {
+				val.IsAsync = true
+			}
+			protoObj := &Value{Type: "object", Obj: make(map[string]*Value)}
+			if objProto := vm.env.Get("ObjectPrototype"); objProto.Type == "object" {
+				protoObj.Proto = objProto
+			}
+			protoObj.Obj["constructor"] = val
+			val.PrototypeObj = protoObj
+			vm.env.Define(fd.Name, val)
+		}
+	}
 }
 
 func (vm *VM) evalExpr(expr Expression) *Value {
@@ -1916,6 +2485,8 @@ func (vm *VM) evalExpr(expr Expression) *Value {
 		return &Value{Type: "null"}
 	case *UndefinedLit:
 		return &Value{Type: "undefined"}
+	case *RegexLit:
+		return newRegExp(e.Pattern, e.Flags)
 	case *Ident:
 		return vm.env.Get(e.Name)
 	case *BinaryExpr:
@@ -1944,11 +2515,8 @@ func (vm *VM) evalExpr(expr Expression) *Value {
 				arr = append(arr, vm.evalExpr(el))
 			}
 		}
-		result := &Value{Type: "object", Arr: arr}
-		// Set prototype link for array methods
-		if proto := vm.env.Get("ArrayPrototype"); proto.Type == "object" {
-			result.Proto = proto
-		}
+		result := vm.newArray(arr)
+		result.BuiltInConstructor = "Array"
 		return result
 	case *ObjectLit:
 		vm.trackAlloc() // Track object allocation
@@ -1971,7 +2539,7 @@ func (vm *VM) evalExpr(expr Expression) *Value {
 				obj[prop.Key] = vm.evalExpr(prop.Value)
 			}
 		}
-		result := &Value{Type: "object", Obj: obj}
+		result := &Value{Type: "object", Obj: obj, BuiltInConstructor: "Object"}
 		// Set prototype link to Object.prototype
 		if proto := vm.env.Get("ObjectPrototype"); proto.Type == "object" {
 			result.Proto = proto
@@ -2041,38 +2609,35 @@ func (vm *VM) evalExpr(expr Expression) *Value {
 			}
 		}
 		return promise
-		case *OptionalChainExpr:
-			// Optional chaining: obj?.prop - returns undefined if obj is null/undefined
-			obj := vm.evalExpr(e.Object)
-			if obj.Type == "undefined" || obj.Type == "null" {
-				return &Value{Type: "undefined"}
+	case *OptionalChainExpr:
+		obj := vm.evalExpr(e.Object)
+		if obj.Type == "undefined" || obj.Type == "null" {
+			return &Value{Type: "undefined"}
+		}
+		if e.Computed {
+			prop := vm.evalExpr(e.Property)
+			key := valueToString(prop)
+			if (obj.Type == "object" || obj.Type == "function" || obj.Type == "native") && obj.Obj != nil {
+				if val, ok := obj.Obj[key]; ok {
+					return val
+				}
 			}
-			// Evaluate property access
-			if e.Computed {
-				prop := vm.evalExpr(e.Property)
-				key := valueToString(prop)
-				if obj.Type == "object" && obj.Obj != nil {
-					if val, ok := obj.Obj[key]; ok {
+		} else {
+			if ident, ok := e.Property.(*Ident); ok {
+				if (obj.Type == "object" || obj.Type == "function" || obj.Type == "native") && obj.Obj != nil {
+					if val, ok := obj.Obj[ident.Name]; ok {
 						return val
 					}
 				}
-			} else {
-				if ident, ok := e.Property.(*Ident); ok {
-					if obj.Type == "object" && obj.Obj != nil {
-						if val, ok := obj.Obj[ident.Name]; ok {
-							return val
-						}
-					}
-				}
 			}
-			return &Value{Type: "undefined"}
-		case *NullishCoalescingExpr:
-			// Nullish coalescing: a ?? b - returns b if a is null/undefined
-			left := vm.evalExpr(e.Left)
-			if left.Type == "undefined" || left.Type == "null" {
-				return vm.evalExpr(e.Right)
-			}
-			return left
+		}
+		return &Value{Type: "undefined"}
+	case *NullishCoalescingExpr:
+		left := vm.evalExpr(e.Left)
+		if left.Type == "undefined" || left.Type == "null" {
+			return vm.evalExpr(e.Right)
+		}
+		return left
 	case *ClassExpr:
 		cls := vm.createClassFromExpr(e)
 		return &Value{Type: "class", Class: cls}
@@ -2114,12 +2679,31 @@ func (vm *VM) evalExpr(expr Expression) *Value {
 	case *InExpr:
 		prop := vm.evalExpr(e.Property)
 		obj := vm.evalExpr(e.Object)
-		if obj.Type == "object" && obj.Obj != nil {
-			key := valueToString(prop)
-			_, ok := obj.Obj[key]
-			return &Value{Type: "bool", Bool: ok}
+		key := valueToString(prop)
+		switch obj.Type {
+		case "object", "function", "native":
+			if obj.Obj != nil {
+				if _, ok := obj.Obj[key]; ok {
+					return &Value{Type: "bool", Bool: true}
+				}
+			}
+			if obj.Descriptors != nil {
+				if _, ok := obj.Descriptors[key]; ok {
+					return &Value{Type: "bool", Bool: true}
+				}
+			}
+		case "string":
+			return &Value{Type: "bool", Bool: key == "length" || isStringMethod(key)}
+		case "arrayMethod", "stringMethod":
+			return &Value{Type: "bool", Bool: false}
 		}
 		return &Value{Type: "bool", Bool: false}
+	case *SequenceExpr:
+		var result *Value = &Value{Type: "undefined"}
+		for _, expr := range e.Expressions {
+			result = vm.evalExpr(expr)
+		}
+		return result
 	case *NewExpr:
 		return vm.evalNew(e)
 	}
@@ -2142,6 +2726,22 @@ func (vm *VM) evalTemplateLit(e *TemplateLit) *Value {
 }
 
 func (vm *VM) evalBinary(e *BinaryExpr) *Value {
+	// Short-circuit operators must evaluate lazily
+	switch e.Op {
+	case "&&":
+		left := vm.evalExpr(e.Left)
+		if !isTruthy(left) {
+			return left
+		}
+		return vm.evalExpr(e.Right)
+	case "||":
+		left := vm.evalExpr(e.Left)
+		if isTruthy(left) {
+			return left
+		}
+		return vm.evalExpr(e.Right)
+	}
+
 	left := vm.evalExpr(e.Left)
 	right := vm.evalExpr(e.Right)
 
@@ -2175,16 +2775,6 @@ func (vm *VM) evalBinary(e *BinaryExpr) *Value {
 		return &Value{Type: "bool", Bool: left.Num <= right.Num}
 	case ">=":
 		return &Value{Type: "bool", Bool: left.Num >= right.Num}
-	case "&&":
-		if isTruthy(left) {
-			return right
-		}
-		return left
-	case "||":
-		if isTruthy(left) {
-			return left
-		}
-		return right
 	}
 	return &Value{Type: "undefined"}
 }
@@ -2200,6 +2790,8 @@ func (vm *VM) evalUnary(e *UnaryExpr) *Value {
 		return &Value{Type: "number", Num: val.Num}
 	case "typeof":
 		return &Value{Type: "string", Str: val.Type}
+	case "void":
+		return &Value{Type: "undefined"}
 	}
 	return val
 }
@@ -2241,12 +2833,14 @@ func (vm *VM) evalAssign(e *AssignExpr) *Value {
 			return vm.evalProxySet(obj.Proxy, left, val)
 		}
 
-		if obj.Type == "object" && obj.Obj != nil {
+		if obj.Type == "object" || obj.Type == "function" || obj.Type == "native" {
 			// Check if object is frozen
 			if obj.Frozen {
-				// In strict mode, this would throw an error
-				// For now, just return the value without modifying
 				return val
+			}
+			// Initialize Obj map if needed (functions can have properties in JS)
+			if obj.Obj == nil {
+				obj.Obj = make(map[string]*Value)
 			}
 			prop := ""
 			if left.Computed {
@@ -2254,13 +2848,13 @@ func (vm *VM) evalAssign(e *AssignExpr) *Value {
 			} else if ident, ok := left.Property.(*Ident); ok {
 				prop = ident.Name
 			}
-				// Check for setter via descriptor
-				if obj.Descriptors != nil {
-					if desc, ok := obj.Descriptors[prop]; ok && desc.Set != nil {
-						vm.callFunction(desc.Set, []*Value{val})
-						return val
-					}
+			// Check for setter via descriptor
+			if obj.Descriptors != nil {
+				if desc, ok := obj.Descriptors[prop]; ok && desc.Set != nil {
+					vm.callSetter(desc.Set, obj, val)
+					return val
 				}
+			}
 			obj.Obj[prop] = val
 		}
 	}
@@ -2452,6 +3046,7 @@ func (vm *VM) evalCall(e *CallExpr) *Value {
 
 	if callee.Type == "function" && callee.Func != nil {
 		fn := callee.Func
+
 		childEnv := NewEnvironment(fn.Env)
 
 		// Bind 'this' - prefer ThisBinding from the function value, otherwise use context
@@ -2481,12 +3076,22 @@ func (vm *VM) evalCall(e *CallExpr) *Value {
 			childEnv.Define(fn.RestParam, &Value{Type: "object", Arr: restArgs})
 		}
 
+		// Create the 'arguments' object (array-like with numeric indices, length, and callee)
+		argsObj := &Value{Type: "object", Arr: args, Obj: make(map[string]*Value)}
+		argsObj.Obj["length"] = &Value{Type: "number", Num: float64(len(args))}
+		argsObj.Obj["callee"] = &Value{Type: "function", Func: fn}
+		childEnv.Define("arguments", argsObj)
+
 		oldEnv := vm.env
 		vm.env = childEnv
 
 		// Track recursion depth
+		vm.callStack = append(vm.callStack, fmt.Sprintf("fn(%v)", fn.Params))
 		vm.enterCall()
 		defer vm.exitCall()
+
+		// Hoist function declarations in the function body
+		vm.hoistFunctionDecls(fn.Body)
 
 		// Handle async function - return a Promise
 		if callee.IsAsync {
@@ -2546,6 +3151,13 @@ func (vm *VM) evalCall(e *CallExpr) *Value {
 func (vm *VM) evalMember(e *MemberExpr) *Value {
 	obj := vm.evalExpr(e.Object)
 
+	// Property access on null/undefined should throw TypeError in strict mode.
+	// For compatibility with code that checks properties on potentially undefined
+	// values (like Vue's IIFEs), we only throw for dot access on null, not undefined,
+	// and only when the access would cause real problems.
+	// TODO: Make this configurable or always-throw once VM is more robust.
+	_ = obj
+
 	// Handle Proxy get trap
 	if obj.Type == "proxy" && obj.Proxy != nil {
 		return vm.evalProxyGet(obj.Proxy, e)
@@ -2553,13 +3165,41 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 
 	// Handle native functions with Obj field (e.g., Array.isArray, Promise.resolve)
 	// These are constructors/static methods attached to native functions
-	if obj.Type == "native" && obj.Obj != nil {
-		vm.debugLog("evalMember: native function with Obj field, Obj keys: %d", len(obj.Obj))
+	if obj.Type == "native" {
 		if ident, ok := e.Property.(*Ident); ok {
-			vm.debugLog("evalMember: looking for property '%s' in native Obj", ident.Name)
-			if v, ok := obj.Obj[ident.Name]; ok {
-				vm.debugLog("evalMember: found property '%s' in native Obj", ident.Name)
-				return v
+			// Check for getter via descriptor first
+			if obj.Descriptors != nil {
+				if desc, ok := obj.Descriptors[ident.Name]; ok && desc.Get != nil {
+					return vm.callGetter(desc.Get, obj)
+				}
+			}
+			if obj.Obj != nil {
+				if v, ok := obj.Obj[ident.Name]; ok {
+					if (v.Type == "function" || v.Type == "native") && v.ThisBinding == nil {
+						return vm.bindThis(v, obj)
+					}
+					return v
+				}
+			}
+		}
+	}
+
+	// Handle function types with Obj field (functions are objects in JS)
+	if obj.Type == "function" {
+		if ident, ok := e.Property.(*Ident); ok {
+			// Check for getter via descriptor first
+			if obj.Descriptors != nil {
+				if desc, ok := obj.Descriptors[ident.Name]; ok && desc.Get != nil {
+					return vm.callGetter(desc.Get, obj)
+				}
+			}
+			if obj.Obj != nil {
+				if v, ok := obj.Obj[ident.Name]; ok {
+					if (v.Type == "function" || v.Type == "native") && v.ThisBinding == nil {
+						return vm.bindThis(v, obj)
+					}
+					return v
+				}
 			}
 		}
 	}
@@ -2569,14 +3209,8 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 		if obj.Obj != nil {
 			if ident, ok := e.Property.(*Ident); ok {
 				if v, ok := obj.Obj[ident.Name]; ok {
-					// If the value is a function, bind this
 					if v.Type == "native" || v.Type == "function" {
-						return &Value{
-							Type:        v.Type,
-							Native:      v.Native,
-							Func:        v.Func,
-							ThisBinding: obj,
-						}
+						return vm.bindThis(v, obj)
 					}
 					return v
 				}
@@ -2588,14 +3222,8 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 	if obj.Type == "regexp" && obj.Obj != nil {
 		if ident, ok := e.Property.(*Ident); ok {
 			if v, ok := obj.Obj[ident.Name]; ok {
-				// If the value is a function (exec, test), bind this
 				if v.Type == "native" || v.Type == "function" {
-					return &Value{
-						Type:        v.Type,
-						Native:      v.Native,
-						Func:        v.Func,
-						ThisBinding: obj,
-					}
+					return vm.bindThis(v, obj)
 				}
 				return v
 			}
@@ -2606,21 +3234,15 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 		if e.Computed {
 			prop := vm.evalExpr(e.Property)
 			key := valueToString(prop)
-			// Check for getter via descriptor
 			if obj.Descriptors != nil {
 				if desc, ok := obj.Descriptors[key]; ok && desc.Get != nil {
-					return vm.callFunction(desc.Get, []*Value{})
+					return vm.callGetter(desc.Get, obj)
 				}
 			}
 			if obj.Obj != nil {
 				if v, ok := obj.Obj[key]; ok {
-					// If the value is a function, bind this
-					if v.Type == "function" {
-						return &Value{
-							Type:        "function",
-							Func:        v.Func,
-							ThisBinding: obj,
-						}
+					if v.Type == "function" || v.Type == "native" {
+						return vm.bindThis(v, obj)
 					}
 					return v
 				}
@@ -2643,21 +3265,15 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 				}
 			}
 		} else if ident, ok := e.Property.(*Ident); ok {
-			// Check for getter via descriptor
 			if obj.Descriptors != nil {
 				if desc, ok := obj.Descriptors[ident.Name]; ok && desc.Get != nil {
-					return vm.callFunction(desc.Get, []*Value{})
+					return vm.callGetter(desc.Get, obj)
 				}
 			}
 				if obj.Obj != nil {
 					if v, ok := obj.Obj[ident.Name]; ok {
-						// If the value is a function, bind this
-						if v.Type == "function" {
-							return &Value{
-								Type:        "function",
-								Func:        v.Func,
-								ThisBinding: obj,
-							}
+						if v.Type == "function" || v.Type == "native" {
+							return vm.bindThis(v, obj)
 						}
 						return v
 					}
@@ -2988,6 +3604,16 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 		return vm.lookupInPrototypeWithOriginal(obj.Proto, e, obj)
 	}
 
+	// Function types: look up in FunctionPrototype
+	if obj.Type == "function" || obj.Type == "native" {
+		if fnProto := vm.env.Get("FunctionPrototype"); fnProto.Type == "object" {
+			result := vm.lookupInPrototypeWithOriginal(fnProto, e, obj)
+			if result.Type != "undefined" {
+				return result
+			}
+		}
+	}
+
 	return &Value{Type: "undefined"}
 }
 
@@ -3081,11 +3707,16 @@ func (vm *VM) evalNew(e *NewExpr) *Value {
 		for _, arg := range e.Args {
 			args = append(args, vm.evalExpr(arg))
 		}
+
 		for i, param := range fn.Params {
 			if i < len(args) {
 				childEnv.Define(param, args[i])
 			}
 		}
+		argsObj := &Value{Type: "object", Arr: args, Obj: make(map[string]*Value)}
+		argsObj.Obj["length"] = &Value{Type: "number", Num: float64(len(args))}
+		argsObj.Obj["callee"] = &Value{Type: "function", Func: fn}
+		childEnv.Define("arguments", argsObj)
 
 		obj := &Value{Type: "object", Obj: make(map[string]*Value)}
 		// Link the object to the constructor's prototype chain
@@ -3218,15 +3849,15 @@ func isTruthy(v *Value) bool {
 		return v.Str != ""
 	case "object":
 		return true
+	case "function", "native", "class":
+		return true
 	}
 	return false
 }
 
 func valuesEqual(a, b *Value) bool {
-	if a.Type == "undefined" && b.Type == "undefined" {
-		return true
-	}
-	if a.Type == "null" && b.Type == "null" {
+	// In JavaScript, null == undefined is true (abstract equality)
+	if (a.Type == "null" || a.Type == "undefined") && (b.Type == "null" || b.Type == "undefined") {
 		return true
 	}
 	if a.Type == "number" && b.Type == "number" {
@@ -3238,10 +3869,27 @@ func valuesEqual(a, b *Value) bool {
 	if a.Type == "bool" && b.Type == "bool" {
 		return a.Bool == b.Bool
 	}
+	// For native functions, compare by the Native function pointer
+	// This handles cases like [].constructor === Array where the prototype
+	// lookup creates a copy with ThisBinding set
+	if a.Type == "native" && b.Type == "native" {
+		// Compare function pointers for identity using reflect
+		if a.Native != nil && b.Native != nil {
+			av := reflect.ValueOf(a.Native)
+			bv := reflect.ValueOf(b.Native)
+			if av.Pointer() == bv.Pointer() {
+				return true
+			}
+		}
+		return a == b
+	}
 	// For objects, compare by reference (pointer equality)
 	if a.Type == "object" && b.Type == "object" {
-		// Check if they are the same object (same pointer)
-		// This is a simple reference comparison
+		// For wrapped DOM nodes, compare the underlying *dom.Node
+		// since each wrapNode/wrapNodeShallow call creates a new Value
+		if a.NodeRef != nil && b.NodeRef != nil {
+			return a.NodeRef == b.NodeRef
+		}
 		return a == b
 	}
 	return false
@@ -3278,7 +3926,7 @@ func valueToString(v *Value) string {
 		return strconv.FormatFloat(v.Num, 'f', -1, 64)
 	case "string":
 		return v.Str
-	case "object":
+		case "object":
 		if v.Arr != nil {
 			parts := make([]string, len(v.Arr))
 			for i, a := range v.Arr {
@@ -3287,6 +3935,13 @@ func valueToString(v *Value) string {
 			return "[" + strings.Join(parts, ",") + "]"
 		}
 		if v.Obj != nil {
+			// Check for Error objects with name/message
+			if nameVal, ok := v.Obj["name"]; ok && nameVal.Type == "string" {
+				if msgVal, ok := v.Obj["message"]; ok && msgVal.Type == "string" {
+					return nameVal.Str + ": " + msgVal.Str
+				}
+				return nameVal.Str
+			}
 			return "[object Object]"
 		}
 		return "[object]"
@@ -3560,6 +4215,26 @@ func isArrayMethod(name string) bool {
 
 // callFunction calls a function value with the given arguments.
 // This is used by array methods to invoke callback functions.
+// callGetter invokes a getter function with the object as 'this'.
+func (vm *VM) callGetter(fn *Value, obj *Value) *Value {
+	if fn.Type == "function" && fn.Func != nil {
+		return vm.callFunctionWithThis(fn.Func, obj, []*Value{})
+	}
+	if fn.Type == "native" && fn.Native != nil {
+		return fn.Native([]*Value{obj})
+	}
+	return &Value{Type: "undefined"}
+}
+
+// callSetter invokes a setter function with the object as 'this' and the value.
+func (vm *VM) callSetter(fn *Value, obj *Value, val *Value) {
+	if fn.Type == "function" && fn.Func != nil {
+		vm.callFunctionWithThis(fn.Func, obj, []*Value{val})
+	} else if fn.Type == "native" && fn.Native != nil {
+		fn.Native([]*Value{obj, val})
+	}
+}
+
 func (vm *VM) callFunction(fn *Value, args []*Value) *Value {
 	if fn.Type == "native" && fn.Native != nil {
 		return fn.Native(args)
@@ -3570,6 +4245,34 @@ func (vm *VM) callFunction(fn *Value, args []*Value) *Value {
 	}
 
 	return &Value{Type: "undefined"}
+}
+
+// bindThis returns a copy of v with ThisBinding set to obj.
+// It preserves all fields so that property access on the returned value
+// still works (e.g., Fn.version where Fn was read from window.Fn).
+func (vm *VM) bindThis(v *Value, obj *Value) *Value {
+	return &Value{
+		Type:               v.Type,
+		Num:                v.Num,
+		Str:                v.Str,
+		Bool:               v.Bool,
+		Obj:                v.Obj,
+		Arr:                v.Arr,
+		Func:               v.Func,
+		Class:              v.Class,
+		Promise:            v.Promise,
+		Proxy:              v.Proxy,
+		MapData:            v.MapData,
+		SetData:            v.SetData,
+		Native:             v.Native,
+		ThisBinding:        obj,
+		Descriptors:        v.Descriptors,
+		IsAsync:            v.IsAsync,
+		BuiltInConstructor: v.BuiltInConstructor,
+		NodeRef:            v.NodeRef,
+		Proto:              v.Proto,
+		Frozen:             v.Frozen,
+	}
 }
 
 // callFunctionWithThis calls a user-defined function with an explicit this binding.
@@ -3598,11 +4301,21 @@ func (vm *VM) callFunctionWithThis(f *Function, thisVal *Value, args []*Value) *
 		childEnv.Define(f.RestParam, &Value{Type: "object", Arr: restArgs})
 	}
 
+	// Create the 'arguments' object (array-like with numeric indices, length, and callee)
+	argsObj := &Value{Type: "object", Arr: args, Obj: make(map[string]*Value)}
+	argsObj.Obj["length"] = &Value{Type: "number", Num: float64(len(args))}
+	argsObj.Obj["callee"] = &Value{Type: "function", Func: f}
+	childEnv.Define("arguments", argsObj)
+
 	oldEnv := vm.env
 	vm.env = childEnv
 
+	vm.callStack = append(vm.callStack, fmt.Sprintf("callFnWithThis(%v) body=%d", f.Params, len(f.Body)))
 	vm.enterCall()
 	defer vm.exitCall()
+
+	// Hoist function declarations in the function body
+	vm.hoistFunctionDecls(f.Body)
 
 	var result *Value = &Value{Type: "undefined"}
 	for _, stmt := range f.Body {

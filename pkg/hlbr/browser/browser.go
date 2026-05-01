@@ -74,7 +74,7 @@ func (b *Browser) Navigate(rawURL string) error {
 		b.doc = htmlparser.Parse("<html><head></head><body></body></html>")
 		b.vm = jsengine.NewVM(b.doc)
 		b.vm.SetTimeoutMs(30_000) // 30 seconds default (reduced from 120s)
-		b.vm.SetMaxCallDepth(200) // 200 levels of recursion max
+		b.vm.SetMaxCallDepth(1000)
 		b.vm.SetMaxAllocs(100_000) // 100K object allocations max
 		b.debugLog("Navigate completed (about:blank)")
 		return nil
@@ -109,7 +109,7 @@ func (b *Browser) Navigate(rawURL string) error {
 	b.vm = jsengine.NewVM(b.doc)
 	b.vm.SetTimeoutMs(60_000)  // 60 seconds for heavy pages (reduced from 180s)
 	b.vm.SetMaxSteps(100_000_000) // 100M steps for heavy pages (reduced from 500M)
-	b.vm.SetMaxCallDepth(200)  // 200 levels of recursion max
+	b.vm.SetMaxCallDepth(1000)
 	b.vm.SetMaxAllocs(500_000) // 500K object allocations max
 
 	if !b.noScripts {
@@ -129,6 +129,7 @@ func (b *Browser) executeScripts() {
 	}
 
 	scripts := dom.GetElementsByTagName(b.doc.Root, "script")
+	vueMountPatched := false
 	for _, script := range scripts {
 		src := script.GetAttribute("src")
 		if src != "" {
@@ -137,12 +138,21 @@ func (b *Browser) executeScripts() {
 			} else {
 				b.debugLog("Skipping external script: %s", src)
 			}
-			continue
+		} else {
+			code := script.TextContent()
+			if code != "" {
+				b.vm.Run(code)
+			}
 		}
 
-		code := script.TextContent()
-		if code != "" {
-			b.vm.Run(code)
+		// After each script, check if Vue is now defined and patch $mount
+		if !vueMountPatched {
+			result, _ := b.vm.Run("typeof Vue !== 'undefined' && typeof Vue.compile === 'function'")
+			if result != nil && result.Bool {
+				b.vm.Run(`(function(){var cs=Vue.prototype.$mount;Vue.prototype.$mount=function(el,hydrating){var vm=this,n=vm.$options;if(!n.render){var r=n.template;if(r){if(typeof r==="string"){if(r.charAt(0)==="#"){var t=document.querySelector(r);if(t){r=t.innerHTML}}if(r){var simpleMatch=r.match(/^<([A-Z][a-zA-Z0-9]*)\s*\/?\s*>$/);if(simpleMatch){var compName=simpleMatch[1];n.render=new Function("with(this){return _c('"+compName+"')}");n.staticRenderFns=[];}}}}else if(r&&r.nodeType){r=r.innerHTML;}}return cs.call(this,el,hydrating)}})()`)
+				vueMountPatched = true
+				b.debugLog("Vue $mount polyfill applied")
+			}
 		}
 	}
 }
@@ -180,7 +190,14 @@ func (b *Browser) Evaluate(code string) (any, error) {
 	if b.vm == nil {
 		return nil, nil
 	}
+	// Save and reset step counter for per-evaluate limit
+	prevSteps := b.vm.GetStepCount()
+	prevMax := b.vm.GetMaxSteps()
+	b.vm.SetMaxSteps(10_000_000) // 10M steps per evaluate call
+	b.vm.SetStepCount(0)
 	val, err := b.vm.Run(code)
+	b.vm.SetStepCount(prevSteps)
+	b.vm.SetMaxSteps(prevMax)
 	if err != nil {
 		return nil, err
 	}
@@ -509,6 +526,10 @@ func (b *Browser) extractFormFieldsFromJS(js string) []FormField {
 }
 
 func jsValueToGo(v *jsengine.Value) any {
+	return jsValueToGoWithVisited(v, make(map[*jsengine.Value]bool))
+}
+
+func jsValueToGoWithVisited(v *jsengine.Value, visited map[*jsengine.Value]bool) any {
 	if v == nil {
 		return nil
 	}
@@ -522,17 +543,21 @@ func jsValueToGo(v *jsengine.Value) any {
 	case "string":
 		return v.Str
 	case "object":
+		if visited[v] {
+			return "[circular]"
+		}
+		visited[v] = true
 		if v.Arr != nil {
 			arr := make([]any, len(v.Arr))
 			for i, a := range v.Arr {
-				arr[i] = jsValueToGo(a)
+				arr[i] = jsValueToGoWithVisited(a, visited)
 			}
 			return arr
 		}
 		if v.Obj != nil {
 			obj := make(map[string]any)
 			for k, val := range v.Obj {
-				obj[k] = jsValueToGo(val)
+				obj[k] = jsValueToGoWithVisited(val, visited)
 			}
 			return obj
 		}

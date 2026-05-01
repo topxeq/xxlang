@@ -1,7 +1,8 @@
 package jsengine
 
 import (
-	"fmt"
+	"math"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -83,12 +84,18 @@ func (vm *VM) setupPrototypes() {
 			thisObj := getNativeThis(args)
 			if thisObj != nil {
 				switch thisObj.Type {
+				case "undefined":
+					return &Value{Type: "string", Str: "[object Undefined]"}
+				case "null":
+					return &Value{Type: "string", Str: "[object Null]"}
 				case "string":
-					return &Value{Type: "string", Str: thisObj.Str}
+					return &Value{Type: "string", Str: "[object String]"}
 				case "number":
-					return &Value{Type: "string", Str: strconv.FormatFloat(thisObj.Num, 'f', -1, 64)}
+					return &Value{Type: "string", Str: "[object Number]"}
 				case "bool":
-					return &Value{Type: "string", Str: fmt.Sprintf("%t", thisObj.Bool)}
+					return &Value{Type: "string", Str: "[object Boolean]"}
+				case "function", "native":
+					return &Value{Type: "string", Str: "[object Function]"}
 				case "object":
 					if thisObj.Arr != nil {
 						return &Value{Type: "string", Str: "[object Array]"}
@@ -96,10 +103,16 @@ func (vm *VM) setupPrototypes() {
 					if thisObj.Obj != nil {
 						return &Value{Type: "string", Str: "[object Object]"}
 					}
+					if thisObj.MapData != nil {
+						return &Value{Type: "string", Str: "[object Map]"}
+					}
+					if thisObj.SetData != nil {
+						return &Value{Type: "string", Str: "[object Set]"}
+					}
 					return &Value{Type: "string", Str: "[object Object]"}
 				}
 			}
-			return &Value{Type: "string", Str: "[object Object]"}
+			return &Value{Type: "string", Str: "[object Undefined]"}
 		}},
 		"valueOf": {Type: "native", Native: func(args []*Value) *Value {
 			thisObj := getNativeThis(args)
@@ -602,93 +615,145 @@ func (vm *VM) setupPrototypes() {
 			}}
 		}},
 		"toString": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := args[0]
+			if thisObj != nil && thisObj.Type == "function" && thisObj.Func != nil {
+				params := strings.Join(thisObj.Func.Params, ", ")
+				return &Value{Type: "string", Str: "function (" + params + ") { [code] }"}
+			}
 			return &Value{Type: "string", Str: "function () { [native code] }"}
 		}},
 	}}
 	vm.env.Define("FunctionPrototype", functionProto)
 
-	// String.prototype
+	// String.prototype - methods delegate to callStringMethod via thisBinding
 	stringProto := &Value{Type: "object", Obj: map[string]*Value{
-		"trim": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "string"}
+		"constructor": {Type: "native", BuiltInConstructor: "String", Native: func(args []*Value) *Value {
+			s := ""
+			if len(args) > 0 {
+				s = valueToString(args[0])
+			}
+			return &Value{Type: "string", Str: s}
 		}},
-		"trimStart": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "string"}
+		"toString": {Type: "native", Native: func(args []*Value) *Value {
+			s := stringThisValue(args)
+			return &Value{Type: "string", Str: s}
 		}},
-		"trimEnd": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "string"}
-		}},
-		"split": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "object", Arr: []*Value{}}
-		}},
-		"replace": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "string"}
-		}},
-		"replaceAll": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "string"}
-		}},
-		"match": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "null"}
-		}},
-		"search": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "number", Num: -1}
-		}},
-		"startsWith": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "bool", Bool: false}
-		}},
-		"endsWith": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "bool", Bool: false}
-		}},
-		"includes": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "bool", Bool: false}
-		}},
-		"repeat": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "string"}
-		}},
-		"padStart": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "string"}
-		}},
-		"padEnd": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "string"}
-		}},
-		"toLowerCase": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "string"}
-		}},
-		"toUpperCase": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "string"}
+		"valueOf": {Type: "native", Native: func(args []*Value) *Value {
+			s := stringThisValue(args)
+			return &Value{Type: "string", Str: s}
 		}},
 		"charAt": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "string"}
+			return callStringMethod("charAt", stringThisValue(args), nativeMethodArgs(args), vm)
 		}},
 		"charCodeAt": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "number", Num: 0}
-		}},
-		"substring": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "string"}
-		}},
-		"slice": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "string"}
-		}},
-		"indexOf": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "number", Num: -1}
-		}},
-		"lastIndexOf": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "number", Num: -1}
+			return callStringMethod("charCodeAt", stringThisValue(args), nativeMethodArgs(args), vm)
 		}},
 		"concat": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "string"}
+			return callStringMethod("concat", stringThisValue(args), nativeMethodArgs(args), vm)
+		}},
+		"indexOf": {Type: "native", Native: func(args []*Value) *Value {
+			return callStringMethod("indexOf", stringThisValue(args), nativeMethodArgs(args), vm)
+		}},
+		"lastIndexOf": {Type: "native", Native: func(args []*Value) *Value {
+			return callStringMethod("lastIndexOf", stringThisValue(args), nativeMethodArgs(args), vm)
+		}},
+		"includes": {Type: "native", Native: func(args []*Value) *Value {
+			return callStringMethod("includes", stringThisValue(args), nativeMethodArgs(args), vm)
+		}},
+		"startsWith": {Type: "native", Native: func(args []*Value) *Value {
+			return callStringMethod("startsWith", stringThisValue(args), nativeMethodArgs(args), vm)
+		}},
+		"endsWith": {Type: "native", Native: func(args []*Value) *Value {
+			return callStringMethod("endsWith", stringThisValue(args), nativeMethodArgs(args), vm)
+		}},
+		"slice": {Type: "native", Native: func(args []*Value) *Value {
+			return callStringMethod("slice", stringThisValue(args), nativeMethodArgs(args), vm)
+		}},
+		"substring": {Type: "native", Native: func(args []*Value) *Value {
+			return callStringMethod("substring", stringThisValue(args), nativeMethodArgs(args), vm)
+		}},
+		"substr": {Type: "native", Native: func(args []*Value) *Value {
+			return callStringMethod("substr", stringThisValue(args), nativeMethodArgs(args), vm)
+		}},
+		"toLowerCase": {Type: "native", Native: func(args []*Value) *Value {
+			return callStringMethod("toLowerCase", stringThisValue(args), nativeMethodArgs(args), vm)
+		}},
+		"toUpperCase": {Type: "native", Native: func(args []*Value) *Value {
+			return callStringMethod("toUpperCase", stringThisValue(args), nativeMethodArgs(args), vm)
+		}},
+		"trim": {Type: "native", Native: func(args []*Value) *Value {
+			return callStringMethod("trim", stringThisValue(args), nativeMethodArgs(args), vm)
+		}},
+		"split": {Type: "native", Native: func(args []*Value) *Value {
+			return callStringMethod("split", stringThisValue(args), nativeMethodArgs(args), vm)
+		}},
+		"replace": {Type: "native", Native: func(args []*Value) *Value {
+			return callStringMethod("replace", stringThisValue(args), nativeMethodArgs(args), vm)
+		}},
+		"match": {Type: "native", Native: func(args []*Value) *Value {
+			return callStringMethod("match", stringThisValue(args), nativeMethodArgs(args), vm)
+		}},
+		"search": {Type: "native", Native: func(args []*Value) *Value {
+			return callStringMethod("search", stringThisValue(args), nativeMethodArgs(args), vm)
+		}},
+		"trimStart": {Type: "native", Native: func(args []*Value) *Value {
+			s := strings.TrimSpace(stringThisValue(args))
+			return &Value{Type: "string", Str: s}
+		}},
+		"trimEnd": {Type: "native", Native: func(args []*Value) *Value {
+			s := stringThisValue(args)
+			return &Value{Type: "string", Str: strings.TrimRight(s, " \t\n\r")}
+		}},
+		"repeat": {Type: "native", Native: func(args []*Value) *Value {
+			s := stringThisValue(args)
+			count := 0
+			if len(args) > 1 && args[1].Type == "number" {
+				count = int(args[1].Num)
+			}
+			return &Value{Type: "string", Str: strings.Repeat(s, count)}
+		}},
+		"padStart": {Type: "native", Native: func(args []*Value) *Value {
+			s := stringThisValue(args)
+			targetLen := 0
+			if len(args) > 1 && args[1].Type == "number" {
+				targetLen = int(args[1].Num)
+			}
+			padStr := " "
+			if len(args) > 2 {
+				padStr = valueToString(args[2])
+			}
+			for len(s) < targetLen {
+				s = padStr + s
+			}
+			if len(s) > targetLen {
+				s = s[len(s)-targetLen:]
+			}
+			return &Value{Type: "string", Str: s}
+		}},
+		"padEnd": {Type: "native", Native: func(args []*Value) *Value {
+			s := stringThisValue(args)
+			targetLen := 0
+			if len(args) > 1 && args[1].Type == "number" {
+				targetLen = int(args[1].Num)
+			}
+			padStr := " "
+			if len(args) > 2 {
+				padStr = valueToString(args[2])
+			}
+			for len(s) < targetLen {
+				s = s + padStr
+			}
+			if len(s) > targetLen {
+				s = s[:targetLen]
+			}
+			return &Value{Type: "string", Str: s}
 		}},
 		"localeCompare": {Type: "native", Native: func(args []*Value) *Value {
 			return &Value{Type: "number", Num: 0}
 		}},
 		"normalize": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "string"}
-		}},
-		"toString": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "string"}
-		}},
-		"valueOf": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "string"}
+			s := stringThisValue(args)
+			return &Value{Type: "string", Str: s}
 		}},
 	}}
 	vm.env.Define("StringPrototype", stringProto)
@@ -754,20 +819,33 @@ func GetObjectMethods(vm *VM) map[string]*Value {
 				return &Value{Type: "object", Arr: []*Value{}}
 			}
 			obj := args[offset]
-			if obj.Type != "object" || obj.Obj == nil {
+			if obj.Type != "object" {
 				return &Value{Type: "object", Arr: []*Value{}}
 			}
 			seen := make(map[string]bool)
-			keys := make([]*Value, 0, len(obj.Obj))
-			for k := range obj.Obj {
-				if !seen[k] {
-					keys = append(keys, &Value{Type: "string", Str: k})
-					seen[k] = true
+			keys := make([]*Value, 0)
+			// Include keys from Obj map
+			if obj.Obj != nil {
+				for k := range obj.Obj {
+					if !seen[k] {
+						keys = append(keys, &Value{Type: "string", Str: k})
+						seen[k] = true
+					}
 				}
 			}
-			// Also include keys from descriptors (Object.defineProperty)
+			// Include keys from descriptors (Object.defineProperty)
 			if obj.Descriptors != nil {
 				for k := range obj.Descriptors {
+					if !seen[k] {
+						keys = append(keys, &Value{Type: "string", Str: k})
+						seen[k] = true
+					}
+				}
+			}
+			// Include array indices
+			if obj.Arr != nil {
+				for i := range obj.Arr {
+					k := strconv.Itoa(i)
 					if !seen[k] {
 						keys = append(keys, &Value{Type: "string", Str: k})
 						seen[k] = true
@@ -865,7 +943,7 @@ func GetObjectMethods(vm *VM) map[string]*Value {
 			propName := valueToString(args[offset+1])
 			descObj := args[offset+2]
 
-			if obj.Type != "object" {
+			if obj.Type != "object" && obj.Type != "function" && obj.Type != "native" {
 				return obj
 			}
 			if obj.Obj == nil {
@@ -1068,16 +1146,86 @@ func GetObjectMethods(vm *VM) map[string]*Value {
 
 // newRegExp creates a new RegExp object.
 func newRegExp(pattern, flags string) *Value {
-	return &Value{Type: "object", Obj: map[string]*Value{
+	goPattern := pattern
+	// Convert JS regex flags to Go regex flags where possible
+	goFlags := ""
+	if strings.Contains(flags, "i") {
+		goFlags += "(?i)"
+	}
+	if strings.Contains(flags, "m") {
+		goFlags += "(?m)"
+	}
+	if strings.Contains(flags, "s") {
+		goFlags += "(?s)"
+	}
+
+	compiled, err := regexp.Compile(goFlags + goPattern)
+	if err != nil {
+		return &Value{Type: "object", Obj: map[string]*Value{
+			"pattern": {Type: "string", Str: pattern},
+			"flags":   {Type: "string", Str: flags},
+			"test": {Type: "native", Native: func(args []*Value) *Value {
+				return &Value{Type: "bool", Bool: false}
+			}},
+			"exec": {Type: "native", Native: func(args []*Value) *Value {
+				return &Value{Type: "null"}
+			}},
+		}}
+	}
+
+	regexpObj := &Value{Type: "regexp", Obj: map[string]*Value{
 		"pattern": {Type: "string", Str: pattern},
 		"flags":   {Type: "string", Str: flags},
 		"test": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "bool", Bool: false}
+			testStr := ""
+			if len(args) >= 1 {
+				if args[0]._isThisArg {
+					// Skip 'this' binding prepended by evalCall
+					if len(args) >= 2 {
+						testStr = valueToString(args[1])
+					}
+				} else {
+					testStr = valueToString(args[0])
+				}
+			}
+			return &Value{Type: "bool", Bool: compiled.MatchString(testStr)}
 		}},
 		"exec": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "null"}
+			testStr := ""
+			if len(args) >= 1 {
+				if args[0]._isThisArg {
+					if len(args) >= 2 {
+						testStr = valueToString(args[1])
+					}
+				} else {
+					testStr = valueToString(args[0])
+				}
+			}
+			if testStr == "" {
+				return &Value{Type: "null"}
+			}
+			matches := compiled.FindStringSubmatch(testStr)
+			if matches == nil {
+				return &Value{Type: "null"}
+			}
+			arr := make([]*Value, len(matches))
+			for i, m := range matches {
+				arr[i] = &Value{Type: "string", Str: m}
+			}
+			result := &Value{Type: "object", Obj: map[string]*Value{
+				"0":      arr[0],
+				"index":  {Type: "number", Num: float64(strings.Index(testStr, matches[0]))},
+				"input":  {Type: "string", Str: testStr},
+				"length": {Type: "number", Num: float64(len(matches))},
+			}, Arr: arr}
+			if len(matches) > 1 {
+				result.Obj["1"] = arr[1]
+			}
+			return result
 		}},
 	}}
+	regexpObj.Obj["source"] = &Value{Type: "string", Str: pattern}
+	return regexpObj
 }
 
 // NewError creates a new Error object.
@@ -1185,15 +1333,118 @@ func (vm *VM) evalUpdate(e *UpdateExpr) *Value {
 }
 
 // instanceof implements the JavaScript instanceof operator.
+// It checks whether obj appears in the prototype chain of constructor.prototype.
 func (vm *VM) instanceof(obj, constructor *Value) bool {
-	if constructor.Type != "function" || constructor.Func == nil {
+	// constructor must be a function (native or user-defined) or a constructor object
+	if constructor.Type != "function" && constructor.Type != "native" && constructor.Type != "object" {
 		return false
 	}
+
+	// Determine the built-in constructor name from the constructor value
+	constructorBIC := constructor.BuiltInConstructor
+	if constructorBIC == "" && constructor.Obj != nil {
+		if bic, ok := constructor.Obj["_builtInConstructor"]; ok && bic.Type == "string" {
+			constructorBIC = bic.Str
+		}
+	}
+
+	// Functions are always instances of Function
+	if (obj.Type == "function" || obj.Type == "native") && constructorBIC == "Function" {
+		return true
+	}
+
+	// Primitives (non-object, non-function) are never instances
 	if obj.Type != "object" {
 		return false
 	}
-	// Stub: proper prototype chain walking not yet implemented
+
+	if constructorBIC != "" {
+		// Direct match on BuiltInConstructor
+		if obj.BuiltInConstructor == constructorBIC {
+			return true
+		}
+		// Also check Proto chain for BuiltInConstructor
+		proto := obj.Proto
+		for proto != nil {
+			if proto.BuiltInConstructor == constructorBIC {
+				return true
+			}
+			proto = proto.Proto
+		}
+		// Structural checks when obj.BuiltInConstructor is not set
+		// Arrays are instances of Array
+		if constructorBIC == "Array" && obj.Arr != nil {
+			return true
+		}
+		// Everything that is an object is an instance of Object
+		if constructorBIC == "Object" {
+			return true
+		}
+		// Functions are instances of Function
+		if constructorBIC == "Function" && (obj.Type == "function" || obj.Type == "native") {
+			return true
+		}
+		return false
+	}
+
+	// User-defined function: check prototype chain
+	// constructor.PrototypeObj is the function's .prototype property.
+	// obj must have constructor.PrototypeObj in its Proto chain.
+	protoObj := constructor.PrototypeObj
+	if protoObj == nil {
+		// Try to get .prototype from constructor's Obj map
+		if constructor.Obj != nil {
+			if p, ok := constructor.Obj["prototype"]; ok {
+				protoObj = p
+			}
+		}
+	}
+	if protoObj == nil {
+		return false
+	}
+
+	// Walk the prototype chain of obj
+	proto := obj.Proto
+	depth := 0
+	for proto != nil {
+		if proto == protoObj {
+			return true
+		}
+		proto = proto.Proto
+		depth++
+		if depth > 100 {
+			break
+		}
+	}
+
 	return false
+}
+
+// stringThisValue extracts the string value from the 'this' binding in args.
+// When a String.prototype method is called, args[0] is the this value.
+func stringThisValue(args []*Value) string {
+	if len(args) > 0 && args[0] != nil {
+		this := args[0]
+		if this.Type == "string" {
+			return this.Str
+		}
+		if this.Type == "object" && this.Obj != nil {
+			if s, ok := this.Obj["__string_value__"]; ok && s != nil && s.Type == "string" {
+				return s.Str
+			}
+		}
+	}
+	return ""
+}
+
+// nativeMethodArgs returns the method arguments, stripping the 'this' binding.
+// When native methods are called with a this-binding, args[0] is 'this'.
+func nativeMethodArgs(args []*Value) []*Value {
+	offset := nativeThisOffset(args)
+	if offset >= len(args) {
+		return nil
+	}
+	return args[offset:]
 }
 
 // isStringMethod checks if the given name is a string method.
@@ -1325,6 +1576,15 @@ func callStringMethod(name string, str string, args []*Value, vm *VM) *Value {
 		if len(args) < 2 {
 			return &Value{Type: "string", Str: str}
 		}
+		if args[0].Type == "regexp" && args[0].Obj != nil {
+			if source, ok := args[0].Obj["source"]; ok {
+				re, err := regexp.Compile(source.Str)
+				if err == nil {
+					replacement := valueToString(args[1])
+					return &Value{Type: "string", Str: re.ReplaceAllString(str, replacement)}
+				}
+			}
+		}
 		return &Value{Type: "string", Str: strings.Replace(str, valueToString(args[0]), valueToString(args[1]), 1)}
 	case "concat":
 		var b strings.Builder
@@ -1342,6 +1602,85 @@ func callStringMethod(name string, str string, args []*Value, vm *VM) *Value {
 			return &Value{Type: "string", Str: ""}
 		}
 		return &Value{Type: "string", Str: string(str[idx])}
+	case "charCodeAt":
+		idx := 0
+		if len(args) >= 1 && args[0].Type == "number" {
+			idx = int(args[0].Num)
+		}
+		runes := []rune(str)
+		if idx < 0 || idx >= len(runes) {
+			return &Value{Type: "number", Num: math.NaN()}
+		}
+		return &Value{Type: "number", Num: float64(runes[idx])}
+	case "lastIndexOf":
+		if len(args) < 1 {
+			return &Value{Type: "number", Num: -1}
+		}
+		searchStr := valueToString(args[0])
+		idx := strings.LastIndex(str, searchStr)
+		if len(args) >= 2 && args[1].Type == "number" {
+			pos := int(args[1].Num)
+			if pos >= 0 && pos < idx {
+				lastPart := str[:pos+1]
+				idx = strings.LastIndex(lastPart, searchStr)
+			}
+		}
+		return &Value{Type: "number", Num: float64(idx)}
+	case "match":
+		if len(args) < 1 {
+			return &Value{Type: "null"}
+		}
+		var re *regexp.Regexp
+		regexArg := args[0]
+		if regexArg.Type == "regexp" && regexArg.Obj != nil {
+			if source, ok := regexArg.Obj["source"]; ok {
+				re, _ = regexp.Compile(source.Str)
+			}
+		} else {
+			pattern := valueToString(regexArg)
+			re, _ = regexp.Compile(pattern)
+		}
+		if re == nil {
+			return &Value{Type: "null"}
+		}
+		matches := re.FindStringSubmatch(str)
+		if matches == nil {
+			return &Value{Type: "null"}
+		}
+		arr := make([]*Value, len(matches))
+		for i, m := range matches {
+			arr[i] = &Value{Type: "string", Str: m}
+		}
+		result := &Value{Type: "object", Arr: arr, Obj: map[string]*Value{
+			"index":  {Type: "number", Num: 0},
+			"input":  {Type: "string", Str: str},
+			"length": {Type: "number", Num: float64(len(matches))},
+		}}
+		for i, m := range matches {
+			result.Obj[strconv.Itoa(i)] = &Value{Type: "string", Str: m}
+		}
+		return result
+	case "search":
+		if len(args) < 1 {
+			return &Value{Type: "number", Num: -1}
+		}
+		var re *regexp.Regexp
+		if args[0].Type == "regexp" && args[0].Obj != nil {
+			if source, ok := args[0].Obj["source"]; ok {
+				re, _ = regexp.Compile(source.Str)
+			}
+		} else {
+			pattern := valueToString(args[0])
+			re, _ = regexp.Compile(pattern)
+		}
+		if re == nil {
+			return &Value{Type: "number", Num: -1}
+		}
+		loc := re.FindStringIndex(str)
+		if loc == nil {
+			return &Value{Type: "number", Num: -1}
+		}
+		return &Value{Type: "number", Num: float64(loc[0])}
 	default:
 		return &Value{Type: "undefined"}
 	}

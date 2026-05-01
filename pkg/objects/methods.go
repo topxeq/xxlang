@@ -11035,6 +11035,17 @@ var hlbrNodeMethods = map[string]*Builtin{
 		return NewString(self.node.InnerHTML())
 	}},
 
+	"getInnerHTML": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getInnerHTML. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrNode)
+		if !ok {
+			return newError("receiver for getInnerHTML must be HLBR_NODE, got %s", args[0].Type())
+		}
+		return NewString(self.node.InnerHTML())
+	}},
+
 	"getOuterHTML": {Fn: func(args ...Object) Object {
 		if len(args) != 1 {
 			return newError("wrong number of arguments for getOuterHTML. got=%d, want=1", len(args))

@@ -5,10 +5,10 @@ import "strings"
 type NodeType int
 
 const (
-	ElementNode NodeType = iota
-	TextNode
-	CommentNode
-	DocumentNode
+	ElementNode  NodeType = 1
+	TextNode     NodeType = 3
+	CommentNode  NodeType = 8
+	DocumentNode NodeType = 9
 )
 
 type Node struct {

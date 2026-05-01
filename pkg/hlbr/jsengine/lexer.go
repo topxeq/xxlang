@@ -47,7 +47,8 @@ const (
 	TokArrow   // => for arrow functions
 	TokSpread  // ... for spread operator
 	TokOptChain // ?. for optional chaining
-	TokNullish // ?? for nullish coalescing
+	TokNullish  // ?? for nullish coalescing
+	TokRegex    // /pattern/flags regex literal
 )
 
 type Token struct {
@@ -75,6 +76,8 @@ var keywords = map[string]TokenType{
 	"new":        TokKeyword,
 	"typeof":     TokKeyword,
 	"delete":     TokKeyword,
+	"void":       TokKeyword,
+	"with":       TokKeyword,
 	"in":         TokKeyword,
 	"instanceof": TokKeyword,
 	"switch":     TokKeyword,
@@ -98,9 +101,10 @@ var keywords = map[string]TokenType{
 }
 
 type Lexer struct {
-	input string
-	pos   int
-	ch    byte
+	input   string
+	pos     int
+	ch      byte
+	prevTok TokenType
 }
 
 func NewLexer(input string) *Lexer {
@@ -175,11 +179,22 @@ func (l *Lexer) NextToken() Token {
 			l.skipBlockComment()
 			return l.NextToken()
 		}
-		if l.peekChar() == '=' {
-			l.readChar()
-			tok = Token{TokSlashEq, "/="}
+		// Determine if / starts a regex literal or is a division operator.
+		// After a value-producing token (ident, number, string, ), ], ++, --),
+		// / is division. Otherwise, / starts a regex.
+		if l.canBeDivision() {
+			if l.peekChar() == '=' {
+				l.readChar()
+				tok = Token{TokSlashEq, "/="}
+			} else {
+				tok = Token{TokSlash, "/"}
+			}
 		} else {
-			tok = Token{TokSlash, "/"}
+			// Read regex literal: /pattern/flags
+			pattern, flags := l.readRegex()
+			tok = Token{TokRegex, pattern + "/" + flags}
+			l.prevTok = TokRegex
+			return tok
 		}
 	case '%':
 		tok = Token{TokPercent, "%"}
@@ -274,9 +289,11 @@ func (l *Lexer) NextToken() Token {
 		tok = Token{TokColon, ":"}
 	case '"', '\'':
 		tok = Token{TokString, l.readString(l.ch)}
+		l.prevTok = TokString
 		return tok
 	case '`':
 		tok = Token{TokTemplate, l.readTemplate()}
+		l.prevTok = TokTemplate
 		return tok
 	default:
 		if isDigit(l.ch) {
@@ -284,8 +301,10 @@ func (l *Lexer) NextToken() Token {
 			// Check if it's a BigInt (ends with 'n')
 			if len(num) > 0 && num[len(num)-1] == 'n' {
 				tok = Token{TokBigInt, num[:len(num)-1]}
+				l.prevTok = TokBigInt
 			} else {
 				tok = Token{TokNumber, num}
+				l.prevTok = TokNumber
 			}
 			return tok
 		}
@@ -293,8 +312,10 @@ func (l *Lexer) NextToken() Token {
 			ident := l.readIdent()
 			if kw, ok := keywords[ident]; ok {
 				tok = Token{kw, ident}
+				l.prevTok = kw
 			} else {
 				tok = Token{TokIdent, ident}
+				l.prevTok = TokIdent
 			}
 			return tok
 		}
@@ -302,7 +323,78 @@ func (l *Lexer) NextToken() Token {
 	}
 
 	l.readChar()
+	l.prevTok = tok.Type
 	return tok
+}
+
+// canBeDivision returns true if the previous token context indicates that
+// a / should be treated as a division operator rather than a regex literal start.
+// After value-producing tokens (identifiers, numbers, strings, ), ], ++, --,
+// template literals, etc.), / is division. After operators, (, [, {, ;, comma,
+// and keywords like return/typeof/in/case, / starts a regex.
+// This follows the ECMAScript specification for automatic semicolon insertion
+// and regex/division disambiguation.
+func (l *Lexer) canBeDivision() bool {
+	switch l.prevTok {
+	case TokIdent, TokNumber, TokString, TokBigInt, TokRegex, TokTemplate,
+		TokRParen, TokRBracket, TokRBrace,
+		TokInc, TokDec,
+		TokGt, TokGte, TokLte:
+		return true
+	default:
+		return false
+	}
+}
+
+// readRegex reads a regex literal starting after the opening /.
+// Returns (pattern, flags) where pattern does not include the delimiters.
+// If no closing / is found before EOF, returns what was consumed and an
+// empty flags string (graceful degradation rather than consuming the
+// entire remaining input).
+func (l *Lexer) readRegex() (string, string) {
+	// Skip the opening / - l.ch is currently '/'
+	l.readChar()
+	// Now l.ch is the first char of the pattern, l.pos is past it
+	start := l.pos - 1
+	inCharClass := false
+	closed := false
+	for l.ch != 0 {
+		if l.ch == '\\' {
+			l.readChar()
+			if l.ch != 0 {
+				l.readChar()
+			}
+			continue
+		}
+		if l.ch == '[' && !inCharClass {
+			inCharClass = true
+			l.readChar()
+			continue
+		}
+		if l.ch == ']' && inCharClass {
+			inCharClass = false
+			l.readChar()
+			continue
+		}
+		if l.ch == '/' && !inCharClass {
+			closed = true
+			break
+		}
+		l.readChar()
+	}
+	pattern := l.input[start : l.pos-1]
+
+	// Read flags after closing /
+	var flags string
+	if closed {
+		l.readChar() // skip closing /
+		for isIdentStart(l.ch) || isDigit(l.ch) {
+			flags += string(l.ch)
+			l.readChar()
+		}
+	}
+
+	return pattern, flags
 }
 
 func (l *Lexer) skipWhitespace() {

@@ -1,7 +1,9 @@
 package jsengine
 
 import (
+	"fmt"
 	"strconv"
+	"strings"
 )
 
 // parserState holds the state of the parser for backtracking
@@ -13,17 +15,26 @@ type parserState struct {
 }
 
 type Parser struct {
-	lexer *Lexer
-	cur   Token
-	peek  Token
-	pos   int // Current position for backtracking
+	lexer     *Lexer
+	cur       Token
+	peek      Token
+	pos       int
+	steps     int
+	maxSteps  int
 }
 
 func NewParser(input string) *Parser {
-	p := &Parser{lexer: NewLexer(input)}
+	p := &Parser{lexer: NewLexer(input), maxSteps: 500_000}
 	p.nextToken()
 	p.nextToken()
 	return p
+}
+
+func (p *Parser) tick() {
+	p.steps++
+	if p.maxSteps > 0 && p.steps > p.maxSteps {
+		panic(fmt.Sprintf("parser step limit exceeded at pos=%d cur=%q(type=%d) steps=%d", p.lexer.pos, p.cur.Literal, p.cur.Type, p.steps))
+	}
 }
 
 // save returns the current parser state for later restoration
@@ -56,10 +67,15 @@ func (p *Parser) Parse() *Program {
 			p.nextToken()
 			continue
 		}
+		prevPos := p.lexer.pos
 		stmt := p.parseStatement()
 		if stmt != nil {
 			prog.Statements = append(prog.Statements, stmt)
 		} else {
+			p.nextToken()
+		}
+		// Safety: detect infinite loop where parser makes no progress
+		if p.lexer.pos == prevPos && p.cur.Type != TokEOF {
 			p.nextToken()
 		}
 	}
@@ -115,6 +131,8 @@ func (p *Parser) parseStatement() Statement {
 			return p.parseThrowStmt()
 		case "switch":
 			return p.parseSwitchStmt()
+		case "with":
+			return p.parseWithStmt()
 		case "class":
 			return p.parseClassDecl()
 		}
@@ -131,29 +149,74 @@ func (p *Parser) parseVarDecl() *VarDecl {
 	keyword := p.cur.Literal
 	p.nextToken()
 
-	_ = keyword
+	var decls []VarDeclarator
 
-	// Check for array destructuring: var [a, b] = ...
-	if p.cur.Type == TokLBracket {
-		return p.parseArrayDestructDecl()
+	for {
+		p.tick()
+		if p.cur.Type == TokEOF {
+			break
+		}
+		// Check for array destructuring: var [a, b] = ...
+		if p.cur.Type == TokLBracket {
+			dd := p.parseArrayDestructDecl()
+			decls = append(decls, VarDeclarator{
+				IsDestructuring: true,
+				DestructPattern: dd.DestructPattern,
+				Value:           dd.Value,
+			})
+		} else if p.cur.Type == TokLBrace {
+			dd := p.parseObjectDestructDecl()
+			decls = append(decls, VarDeclarator{
+				IsDestructuring: true,
+				DestructPattern: dd.DestructPattern,
+				Value:           dd.Value,
+			})
+		} else if p.cur.Type == TokLBrace {
+			// Check for object destructuring: var {a, b} = ...
+			dd := p.parseObjectDestructDecl()
+			decls = append(decls, VarDeclarator{
+				IsDestructuring: true,
+				DestructPattern: dd.DestructPattern,
+			})
+		} else if p.cur.Type == TokIdent {
+			// Regular variable declaration
+			name := p.cur.Literal
+			p.nextToken()
+
+			var val Expression
+			if p.cur.Type == TokEq {
+				p.nextToken()
+				val = p.parseAssignExpr()
+			}
+			decls = append(decls, VarDeclarator{
+				Name:  name,
+				Value: val,
+			})
+		} else {
+			break
+		}
+
+		// Check for comma: var a=1, b=2
+		if p.cur.Type == TokComma {
+			p.nextToken()
+		} else {
+			break
+		}
 	}
 
-	// Check for object destructuring: var {a, b} = ...
-	if p.cur.Type == TokLBrace {
-		return p.parseObjectDestructDecl()
+	// Set legacy fields from first declarator for backward compatibility
+	var first VarDeclarator
+	if len(decls) > 0 {
+		first = decls[0]
 	}
-
-	// Regular variable declaration
-	name := p.cur.Literal
-	p.nextToken()
-
-	var val Expression
-	if p.cur.Type == TokEq {
-		p.nextToken()
-		val = p.parseExpression()
+	return &VarDecl{
+		Keyword:         keyword,
+		Decls:           decls,
+		Name:            first.Name,
+		Value:           first.Value,
+		IsDestructuring: first.IsDestructuring,
+		DestructPattern: first.DestructPattern,
 	}
-
-	return &VarDecl{Name: name, Value: val}
 }
 
 // parseArrayDestructDecl parses array destructuring: var [a, b] = arr
@@ -161,14 +224,14 @@ func (p *Parser) parseArrayDestructDecl() *VarDecl {
 	p.nextToken() // skip '['
 
 	var elements []DestructElement
-	for p.cur.Type != TokRBracket {
+	for p.cur.Type != TokRBracket && p.cur.Type != TokEOF {
 		name := p.cur.Literal
 		p.nextToken()
 
 		var defaultVal Expression
 		if p.cur.Type == TokEq {
 			p.nextToken()
-			defaultVal = p.parseExpression()
+			defaultVal = p.parseAssignExpr()
 		}
 
 		elements = append(elements, DestructElement{Name: name, Default: defaultVal})
@@ -177,12 +240,14 @@ func (p *Parser) parseArrayDestructDecl() *VarDecl {
 			p.nextToken()
 		}
 	}
-	p.nextToken() // skip ']'
+	if p.cur.Type == TokRBracket {
+		p.nextToken()
+	}
 
 	var val Expression
 	if p.cur.Type == TokEq {
 		p.nextToken()
-		val = p.parseExpression()
+		val = p.parseAssignExpr()
 	}
 
 	return &VarDecl{
@@ -197,7 +262,7 @@ func (p *Parser) parseObjectDestructDecl() *VarDecl {
 	p.nextToken() // skip '{'
 
 	var elements []DestructElement
-	for p.cur.Type != TokRBrace {
+	for p.cur.Type != TokRBrace && p.cur.Type != TokEOF {
 		propName := p.cur.Literal
 		p.nextToken()
 
@@ -216,7 +281,7 @@ func (p *Parser) parseObjectDestructDecl() *VarDecl {
 		// Check for default value
 		if p.cur.Type == TokEq {
 			p.nextToken()
-			defaultVal = p.parseExpression()
+			defaultVal = p.parseAssignExpr()
 		}
 
 		elements = append(elements, DestructElement{
@@ -229,12 +294,14 @@ func (p *Parser) parseObjectDestructDecl() *VarDecl {
 			p.nextToken()
 		}
 	}
-	p.nextToken() // skip '}'
+	if p.cur.Type == TokRBrace {
+		p.nextToken()
+	}
 
 	var val Expression
 	if p.cur.Type == TokEq {
 		p.nextToken()
-		val = p.parseExpression()
+		val = p.parseAssignExpr()
 	}
 
 	return &VarDecl{
@@ -458,7 +525,7 @@ func (p *Parser) parseGeneratorDecl() *GeneratorDecl {
 
 	var params []string
 	var restParam string
-	for p.cur.Type != TokRParen {
+	for p.cur.Type != TokRParen && p.cur.Type != TokEOF {
 		if p.cur.Type == TokSpread {
 			p.nextToken()
 			if p.cur.Type == TokIdent {
@@ -468,12 +535,16 @@ func (p *Parser) parseGeneratorDecl() *GeneratorDecl {
 		} else if p.cur.Type == TokIdent {
 			params = append(params, p.cur.Literal)
 			p.nextToken()
+		} else {
+			p.nextToken()
 		}
 		if p.cur.Type == TokComma {
 			p.nextToken()
 		}
 	}
-	p.nextToken()
+	if p.cur.Type == TokRParen {
+		p.nextToken()
+	}
 	body := p.parseBlockStmt()
 
 	return &GeneratorDecl{Name: name, Params: params, RestParam: restParam, Body: body.Statements}
@@ -488,7 +559,7 @@ func (p *Parser) parseFunctionDecl() *FunctionDecl {
 	var params []string
 	var restParam string
 	defaultVals := make(map[string]Expression)
-	for p.cur.Type != TokRParen {
+	for p.cur.Type != TokRParen && p.cur.Type != TokEOF {
 		if p.cur.Type == TokSpread {
 			// Rest parameter: ...args
 			p.nextToken()
@@ -503,14 +574,18 @@ func (p *Parser) parseFunctionDecl() *FunctionDecl {
 			// Handle default parameter value: = expr
 			if p.cur.Type == TokEq {
 				p.nextToken()
-				defaultVals[paramName] = p.parseExpression()
+				defaultVals[paramName] = p.parseAssignExpr()
 			}
+		} else {
+			p.nextToken()
 		}
 		if p.cur.Type == TokComma {
 			p.nextToken()
 		}
 	}
-	p.nextToken()
+	if p.cur.Type == TokRParen {
+		p.nextToken()
+	}
 	body := p.parseBlockStmt()
 
 
@@ -526,7 +601,7 @@ func (p *Parser) parseFunctionDeclFromName() *FunctionDecl {
 	var params []string
 	var restParam string
 	defaultVals := make(map[string]Expression)
-	for p.cur.Type != TokRParen {
+	for p.cur.Type != TokRParen && p.cur.Type != TokEOF {
 		if p.cur.Type == TokSpread {
 			p.nextToken()
 			if p.cur.Type == TokIdent {
@@ -539,19 +614,23 @@ func (p *Parser) parseFunctionDeclFromName() *FunctionDecl {
 			p.nextToken()
 			if p.cur.Type == TokEq {
 				p.nextToken()
-				defaultVals[paramName] = p.parseExpression()
+				defaultVals[paramName] = p.parseAssignExpr()
 			}
+		} else {
+			p.nextToken()
 		}
 		if p.cur.Type == TokComma {
 			p.nextToken()
 		}
 	}
-	p.nextToken()
+	if p.cur.Type == TokRParen {
+		p.nextToken()
+	}
 	body := p.parseBlockStmt()
+
 
 	return &FunctionDecl{Name: name, Params: params, DefaultVals: defaultVals, RestParam: restParam, Body: body.Statements}
 }
-
 // parseAsyncFunctionDecl parses an async function declaration
 func (p *Parser) parseAsyncFunctionDecl() *FunctionDecl {
 	p.nextToken() // skip 'async'
@@ -576,24 +655,60 @@ func (p *Parser) parseBody() []Statement {
 func (p *Parser) parseBlockStmt() *BlockStmt {
 	p.nextToken()
 	var stmts []Statement
-	for p.cur.Type != TokRBrace && p.cur.Type != TokEOF {
-		if p.cur.Type == TokSemi {
+	depth := 1
+	for depth > 0 && p.cur.Type != TokEOF {
+		switch p.cur.Type {
+		case TokLBrace:
+			depth++
 			p.nextToken()
-			continue
-		}
-		stmt := p.parseStatement()
-		if stmt != nil {
-			stmts = append(stmts, stmt)
-		} else {
+		case TokRBrace:
+			depth--
+			if depth == 0 {
+				p.nextToken()
+			} else {
+				p.nextToken()
+			}
+		case TokSemi:
 			p.nextToken()
+		default:
+			stmt := p.parseStatement()
+			if stmt != nil {
+				stmts = append(stmts, stmt)
+			} else if p.cur.Type != TokRBrace && p.cur.Type != TokEOF {
+				p.nextToken()
+			}
 		}
 	}
-	p.nextToken()
 	return &BlockStmt{Statements: stmts}
 }
 
 func (p *Parser) parseExpression() Expression {
-	return p.parseAssignExpr()
+	p.steps++
+	if p.maxSteps > 0 && p.steps > p.maxSteps {
+		panic(fmt.Sprintf("parser step limit exceeded at pos=%d cur=%q(type=%d)", p.lexer.pos, p.cur.Literal, p.cur.Type))
+	}
+	left := p.parseAssignExpr()
+	if left == nil {
+		return nil
+	}
+
+	// Comma operator: a, b, c evaluates all and returns last
+	if p.cur.Type == TokComma {
+		exprs := []Expression{left}
+		for p.cur.Type == TokComma && p.cur.Type != TokEOF {
+			p.tick()
+			p.nextToken()
+			right := p.parseAssignExpr()
+			if right == nil {
+				break
+			}
+			exprs = append(exprs, right)
+		}
+		if len(exprs) > 1 {
+			return &SequenceExpr{Expressions: exprs}
+		}
+	}
+	return left
 }
 
 func (p *Parser) parseAssignExpr() Expression {
@@ -627,9 +742,9 @@ func (p *Parser) parseTernaryExpr() Expression {
 
 	if p.cur.Type == TokQuestion {
 		p.nextToken()
-		trueExpr := p.parseExpression()
+		trueExpr := p.parseAssignExpr()
 		p.nextToken()
-		falseExpr := p.parseExpression()
+		falseExpr := p.parseAssignExpr()
 		return &TernaryExpr{Cond: cond, True: trueExpr, False: falseExpr}
 	}
 
@@ -732,6 +847,11 @@ func (p *Parser) parseUnaryExpr() Expression {
 		expr := p.parseUnaryExpr()
 		return &TypeOfExpr{Expr: expr}
 	}
+	if p.cur.Type == TokKeyword && p.cur.Literal == "void" {
+		p.nextToken()
+		expr := p.parseUnaryExpr()
+		return &UnaryExpr{Op: "void", Expr: expr}
+	}
 	if p.cur.Type == TokKeyword && p.cur.Literal == "delete" {
 		p.nextToken()
 		expr := p.parseUnaryExpr()
@@ -752,17 +872,27 @@ func (p *Parser) parseCallExpr() Expression {
 	}
 
 	for {
+		p.tick()
+		if p.cur.Type == TokEOF {
+			break
+		}
 		if p.cur.Type == TokLParen {
 			p.nextToken()
 			var args []Expression
-			for p.cur.Type != TokRParen {
-				args = append(args, p.parseExpression())
-				if p.cur.Type == TokComma {
-					p.nextToken()
-				}
+		for p.cur.Type != TokRParen && p.cur.Type != TokEOF {
+			arg := p.parseAssignExpr()
+			if arg == nil {
+				break
 			}
+			args = append(args, arg)
+			if p.cur.Type == TokComma {
+				p.nextToken()
+			}
+		}
+		if p.cur.Type == TokRParen {
 			p.nextToken()
-			left = &CallExpr{Callee: left, Args: args}
+		}
+		left = &CallExpr{Callee: left, Args: args}
 		} else if p.cur.Type == TokDot {
 			p.nextToken()
 			prop := &Ident{Name: p.cur.Literal}
@@ -775,18 +905,24 @@ func (p *Parser) parseCallExpr() Expression {
 				// obj?.()
 				p.nextToken()
 				var args []Expression
-				for p.cur.Type != TokRParen {
-					args = append(args, p.parseExpression())
+				for p.cur.Type != TokRParen && p.cur.Type != TokEOF {
+					arg := p.parseAssignExpr()
+					if arg == nil {
+						break
+					}
+					args = append(args, arg)
 					if p.cur.Type == TokComma {
 						p.nextToken()
 					}
 				}
-				p.nextToken()
+				if p.cur.Type == TokRParen {
+					p.nextToken()
+				}
 				left = &OptionalChainExpr{Object: left, Property: &CallExpr{Callee: left, Args: args}, Computed: false}
 			} else if p.cur.Type == TokLBracket {
 				// obj?.[key]
 				p.nextToken()
-				prop := p.parseExpression()
+				prop := p.parseAssignExpr()
 				p.nextToken()
 				left = &OptionalChainExpr{Object: left, Property: prop, Computed: true}
 			} else {
@@ -797,7 +933,7 @@ func (p *Parser) parseCallExpr() Expression {
 			}
 		} else if p.cur.Type == TokLBracket {
 			p.nextToken()
-			prop := p.parseExpression()
+			prop := p.parseAssignExpr()
 			p.nextToken()
 			left = &MemberExpr{Object: left, Property: prop, Computed: true}
 		} else if p.cur.Type == TokInc || p.cur.Type == TokDec {
@@ -866,13 +1002,19 @@ func (p *Parser) parsePrimaryExpr() Expression {
 			if p.cur.Type == TokLParen {
 				p.nextToken()
 				var args []Expression
-				for p.cur.Type != TokRParen {
-					args = append(args, p.parseExpression())
-					if p.cur.Type == TokComma {
-						p.nextToken()
-					}
+			for p.cur.Type != TokRParen && p.cur.Type != TokEOF {
+				arg := p.parseAssignExpr()
+				if arg == nil {
+					break
 				}
-				p.nextToken()
+				args = append(args, arg)
+				if p.cur.Type == TokComma {
+					p.nextToken()
+				}
+			}
+				if p.cur.Type == TokRParen {
+					p.nextToken()
+				}
 				return &SuperExpr{Args: args}
 			}
 			return &Ident{Name: "super"}
@@ -884,7 +1026,17 @@ func (p *Parser) parsePrimaryExpr() Expression {
 		return p.parseArrayLit()
 	case TokLBrace:
 		return p.parseObjectLit()
-	case TokSemi, TokRBrace, TokRParen, TokRBracket, TokEOF:
+	case TokRegex:
+		pattern := p.cur.Literal
+		p.nextToken()
+		// Split pattern/flags from the token literal
+		// The literal is stored as "pattern/flags"
+		lastSlash := strings.LastIndex(pattern, "/")
+		if lastSlash >= 0 {
+			return &RegexLit{Pattern: pattern[:lastSlash], Flags: pattern[lastSlash+1:]}
+		}
+		return &RegexLit{Pattern: pattern, Flags: ""}
+	case TokSemi, TokRBrace, TokRParen, TokRBracket, TokComma, TokEOF:
 		return nil
 	}
 
@@ -896,10 +1048,12 @@ func (p *Parser) parsePrimaryExpr() Expression {
 func (p *Parser) parseParenExprOrArrowFunc() Expression {
 	p.nextToken() // skip (
 
-	// Save state for backtracking
-	savedPos := p.lexer.pos
+	// Save complete state for backtracking
+	savedLexerPos := p.lexer.pos
+	savedLexerCh := p.lexer.ch
 	savedCur := p.cur
 	savedPeek := p.peek
+	savedPrevTok := p.lexer.prevTok
 
 	// Check if this could be arrow function parameters
 	var params []string
@@ -938,17 +1092,20 @@ func (p *Parser) parseParenExprOrArrowFunc() Expression {
 		return p.parseArrowFunctionBody(params)
 	}
 
-	// Not an arrow function - backtrack and parse as grouped expression
-	p.lexer.pos = savedPos
+	// Not an arrow function - backtrack and parse as grouped expression.
+	// Restore all saved state completely.
+	p.lexer.pos = savedLexerPos
+	p.lexer.ch = savedLexerCh
 	p.cur = savedCur
 	p.peek = savedPeek
+	p.lexer.prevTok = savedPrevTok
+
+	// p.cur is already the first token inside parens, so parse directly.
+	// parseExpression() handles the comma operator (SequenceExpr).
 	expr := p.parseExpression()
-	// Skip to the closing paren
-	for p.cur.Type != TokRParen && p.cur.Type != TokEOF {
-		p.nextToken()
-	}
+
 	if p.cur.Type == TokRParen {
-		p.nextToken() // skip )
+		p.nextToken()
 	}
 	return expr
 }
@@ -966,7 +1123,7 @@ func (p *Parser) parseArrowFunctionBody(params []string) *ArrowFunctionExpr {
 	}
 
 	// Expression body: implicit return
-	expr := p.parseExpression()
+	expr := p.parseAssignExpr()
 	return &ArrowFunctionExpr{
 		Params:     params,
 		Expression: true,
@@ -989,9 +1146,8 @@ func (p *Parser) parseFunctionExpr() *FunctionExpr {
 	var params []string
 	var restParam string
 	defaultVals := make(map[string]Expression)
-	for p.cur.Type != TokRParen {
+	for p.cur.Type != TokRParen && p.cur.Type != TokEOF {
 		if p.cur.Type == TokSpread {
-			// Rest parameter: ...args
 			p.nextToken()
 			if p.cur.Type == TokIdent {
 				restParam = p.cur.Literal
@@ -1001,17 +1157,20 @@ func (p *Parser) parseFunctionExpr() *FunctionExpr {
 			paramName := p.cur.Literal
 			params = append(params, paramName)
 			p.nextToken()
-			// Handle default parameter value: = expr
 			if p.cur.Type == TokEq {
 				p.nextToken()
-				defaultVals[paramName] = p.parseExpression()
+				defaultVals[paramName] = p.parseAssignExpr()
 			}
+		} else {
+			p.nextToken()
 		}
 		if p.cur.Type == TokComma {
 			p.nextToken()
 		}
 	}
-	p.nextToken()
+	if p.cur.Type == TokRParen {
+		p.nextToken()
+	}
 	body := p.parseBlockStmt()
 
 	return &FunctionExpr{Name: name, Params: params, DefaultVals: defaultVals, RestParam: restParam, Body: body.Statements}
@@ -1024,13 +1183,19 @@ func (p *Parser) parseNewExpr() *NewExpr {
 	var args []Expression
 	if p.cur.Type == TokLParen {
 		p.nextToken()
-		for p.cur.Type != TokRParen {
-			args = append(args, p.parseExpression())
+		for p.cur.Type != TokRParen && p.cur.Type != TokEOF {
+			arg := p.parseAssignExpr()
+			if arg == nil {
+				break
+			}
+			args = append(args, arg)
 			if p.cur.Type == TokComma {
 				p.nextToken()
 			}
 		}
-		p.nextToken()
+		if p.cur.Type == TokRParen {
+			p.nextToken()
+		}
 	}
 
 	return &NewExpr{Callee: callee, Args: args}
@@ -1039,19 +1204,28 @@ func (p *Parser) parseNewExpr() *NewExpr {
 func (p *Parser) parseArrayLit() *ArrayLit {
 	p.nextToken()
 	var elements []Expression
-	for p.cur.Type != TokRBracket {
-		// Check for spread operator
+	for p.cur.Type != TokRBracket && p.cur.Type != TokEOF {
 		if p.cur.Type == TokSpread {
 			p.nextToken()
-			elements = append(elements, &SpreadExpr{Argument: p.parseExpression()})
+			elem := p.parseAssignExpr()
+			if elem == nil {
+				break
+			}
+			elements = append(elements, &SpreadExpr{Argument: elem})
 		} else {
-			elements = append(elements, p.parseExpression())
+			elem := p.parseAssignExpr()
+			if elem == nil {
+				break
+			}
+			elements = append(elements, elem)
 		}
 		if p.cur.Type == TokComma {
 			p.nextToken()
 		}
 	}
-	p.nextToken()
+	if p.cur.Type == TokRBracket {
+		p.nextToken()
+	}
 	return &ArrayLit{Elements: elements}
 }
 
@@ -1105,19 +1279,25 @@ func (p *Parser) parseTemplateLit() *TemplateLit {
 func (p *Parser) parseObjectLit() *ObjectLit {
 	p.nextToken()
 	var props []ObjectProperty
-	for p.cur.Type != TokRBrace {
+	for p.cur.Type != TokRBrace && p.cur.Type != TokEOF {
 		// Check for spread operator: ...obj
 		if p.cur.Type == TokSpread {
 			p.nextToken()
-			value := p.parseExpression()
+			value := p.parseAssignExpr()
+			if value == nil {
+				break
+			}
 			props = append(props, ObjectProperty{Key: "", Value: value, Spread: true})
 		} else if p.cur.Type == TokLBracket {
-			// Computed property name: [expr]
 			p.nextToken()
-			keyExpr := p.parseExpression()
-			p.nextToken() // skip ]
-			p.nextToken() // skip :
-			value := p.parseExpression()
+			keyExpr := p.parseAssignExpr()
+			if p.cur.Type == TokRBracket {
+				p.nextToken()
+			}
+			if p.cur.Type == TokColon {
+				p.nextToken()
+			}
+			value := p.parseAssignExpr()
 			props = append(props, ObjectProperty{Key: "", Value: value, Computed: true, KeyExpr: keyExpr})
 		} else if p.cur.Type == TokIdent {
 			key := p.cur.Literal
@@ -1130,7 +1310,7 @@ func (p *Parser) parseObjectLit() *ObjectLit {
 				// Method shorthand: { f() {} }
 				p.nextToken()
 				var params []string
-				for p.cur.Type != TokRParen {
+				for p.cur.Type != TokRParen && p.cur.Type != TokEOF {
 					if p.cur.Type == TokIdent {
 						params = append(params, p.cur.Literal)
 					}
@@ -1139,28 +1319,40 @@ func (p *Parser) parseObjectLit() *ObjectLit {
 						p.nextToken()
 					}
 				}
-				p.nextToken()
+				if p.cur.Type == TokRParen {
+					p.nextToken()
+				}
 				body := p.parseBlockStmt()
-				fn := &Function{Params: params, Body: body.Statements, Env: nil}
 				props = append(props, ObjectProperty{Key: key, Value: &FunctionExpr{Params: params, Body: body.Statements}})
-				_ = fn
 			} else if p.cur.Type == TokColon {
 				p.nextToken()
-				value := p.parseExpression()
+				value := p.parseAssignExpr()
+				if value == nil {
+					break
+				}
 				props = append(props, ObjectProperty{Key: key, Value: value})
+			} else {
+				break
 			}
 		} else {
 			key := p.cur.Literal
 			p.nextToken()
-			p.nextToken()
-			value := p.parseExpression()
+			if p.cur.Type == TokColon {
+				p.nextToken()
+			}
+			value := p.parseAssignExpr()
+			if value == nil {
+				break
+			}
 			props = append(props, ObjectProperty{Key: key, Value: value})
 		}
 		if p.cur.Type == TokComma {
 			p.nextToken()
 		}
 	}
-	p.nextToken()
+	if p.cur.Type == TokRBrace {
+		p.nextToken()
+	}
 	return &ObjectLit{Properties: props}
 }
 
@@ -1204,24 +1396,74 @@ func (p *Parser) parseThrowStmt() Statement {
 	return &ThrowStmt{Value: val}
 }
 
+// parseWithStmt parses a with statement: with (expr) { body }
+func (p *Parser) parseWithStmt() Statement {
+	p.nextToken() // skip 'with'
+	if p.cur.Type != TokLParen {
+		return nil
+	}
+	p.nextToken() // skip '('
+	obj := p.parseExpression()
+	if p.cur.Type != TokRParen {
+		return nil
+	}
+	p.nextToken() // skip ')'
+	var body []Statement
+	if p.cur.Type == TokLBrace {
+		body = p.parseBlockStmt().Statements
+	} else {
+		stmt := p.parseStatement()
+		if stmt != nil {
+			body = []Statement{stmt}
+		}
+	}
+	return &WithStmt{Object: obj, Body: body}
+}
+
 func (p *Parser) parseSwitchStmt() Statement {
-	p.nextToken()
-	p.nextToken()
-	_ = p.parseExpression()
-	p.nextToken()
-	p.nextToken()
+	p.nextToken() // skip 'switch'
+	if p.cur.Type != TokLParen {
+		p.nextToken()
+	}
+	if p.cur.Type == TokLParen {
+		p.nextToken() // skip '('
+		_ = p.parseExpression()
+		if p.cur.Type == TokRParen {
+			p.nextToken() // skip ')'
+		}
+	}
+	if p.cur.Type == TokLBrace {
+		p.nextToken() // skip '{'
+	}
 
 	for p.cur.Type != TokRBrace && p.cur.Type != TokEOF {
-		if p.cur.Type == TokKeyword && (p.cur.Literal == "case" || p.cur.Literal == "default") {
-			p.nextToken()
-			if p.cur.Literal != "default" {
-				_ = p.parseExpression()
+		if p.cur.Type == TokKeyword && p.cur.Literal == "case" {
+			p.nextToken() // skip 'case'
+			_ = p.parseExpression()
+			if p.cur.Type == TokColon {
+				p.nextToken() // skip ':'
 			}
+			continue
+		}
+		if p.cur.Type == TokKeyword && p.cur.Literal == "default" {
+			p.nextToken() // skip 'default'
+			if p.cur.Type == TokColon {
+				p.nextToken() // skip ':'
+			}
+			continue
+		}
+		if p.cur.Type == TokSemi {
+			p.nextToken()
+			continue
+		}
+		stmt := p.parseStatement()
+		if stmt == nil {
 			p.nextToken()
 		}
-		_ = p.parseStatement()
 	}
-	p.nextToken()
+	if p.cur.Type == TokRBrace {
+		p.nextToken() // skip '}'
+	}
 
 	return &ExpressionStmt{Expr: &Ident{Name: "undefined"}}
 }

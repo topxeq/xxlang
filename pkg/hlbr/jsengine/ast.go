@@ -27,7 +27,19 @@ type ExpressionStmt struct {
 func (s *ExpressionStmt) node() {}
 func (s *ExpressionStmt) stmt() {}
 
+// VarDeclarator represents a single variable declarator in a var/let/const statement
+type VarDeclarator struct {
+	Name  string
+	Value Expression
+	// For destructuring
+	IsDestructuring bool
+	DestructPattern *DestructPattern
+}
+
 type VarDecl struct {
+	Keyword string
+	Decls   []VarDeclarator
+	// Legacy fields kept for backward compatibility
 	Name  string
 	Value Expression
 	// For destructuring
@@ -139,6 +151,15 @@ type TryStmt struct {
 
 func (s *TryStmt) node() {}
 func (s *TryStmt) stmt() {}
+
+// WithStmt represents a with statement: with (expr) { body }
+type WithStmt struct {
+	Object Expression
+	Body   []Statement
+}
+
+func (s *WithStmt) node() {}
+func (s *WithStmt) stmt() {}
 
 // ThrowStmt represents a throw statement
 type ThrowStmt struct {
@@ -252,6 +273,14 @@ type UndefinedLit struct{}
 
 func (e *UndefinedLit) node() {}
 func (e *UndefinedLit) expr() {}
+
+type RegexLit struct {
+	Pattern string
+	Flags   string
+}
+
+func (e *RegexLit) node() {}
+func (e *RegexLit) expr() {}
 
 type BinaryExpr struct {
 	Left  Expression
@@ -453,3 +482,11 @@ type ClassElement struct {
 	IsGetter   bool
 	IsSetter   bool
 }
+
+// SequenceExpr represents a comma expression: (a, b, c) - evaluates all, returns last
+type SequenceExpr struct {
+	Expressions []Expression
+}
+
+func (e *SequenceExpr) node() {}
+func (e *SequenceExpr) expr() {}
