@@ -207,6 +207,11 @@ func (e *Environment) Define(name string, val *Value) {
 	e.store[name] = val
 }
 
+// Delete removes a variable from the environment (used by the delete operator).
+func (e *Environment) Delete(name string) {
+	delete(e.store, name)
+}
+
 type VM struct {
 	env            *Environment
 	doc            *dom.Document
@@ -307,6 +312,11 @@ func (vm *VM) SetStepCount(count int64) {
 // GetStepCount returns the current step count.
 func (vm *VM) GetStepCount() int64 {
 	return vm.stepCount
+}
+
+// Env returns the current global environment for external access.
+func (vm *VM) Env() *Environment {
+	return vm.env
 }
 
 // GetMaxSteps returns the maximum step limit.
@@ -834,7 +844,21 @@ func (vm *VM) setupBuiltins() {
 	}
 	vm.env.Define("Array", arrayConstructor)
 
-	vm.env.Define("Object", &Value{Type: "native", BuiltInConstructor: "Object", Obj: GetObjectMethods(vm)})
+	objectMethods := GetObjectMethods(vm)
+	objectVal := &Value{Type: "native", BuiltInConstructor: "Object", Obj: objectMethods}
+	// Make Object static methods non-writable and non-configurable to prevent
+	// polyfills (e.g. core-js) from replacing them with broken JS implementations.
+	// Our native Go implementations work correctly; polyfill JS ones do not.
+	objectDescs := make(map[string]*PropertyDescriptor)
+	for k := range objectMethods {
+		objectDescs[k] = &PropertyDescriptor{
+			Writable:     false,
+			Configurable: false,
+			Enumerable:   false,
+		}
+	}
+	objectVal.Descriptors = objectDescs
+	vm.env.Define("Object", objectVal)
 
 	// Set Object.prototype to the ObjectPrototype
 	objectProto := vm.env.Get("ObjectPrototype")
@@ -2851,22 +2875,69 @@ func (vm *VM) evalBinary(e *BinaryExpr) *Value {
 }
 
 func (vm *VM) evalUnary(e *UnaryExpr) *Value {
-	val := vm.evalExpr(e.Expr)
 	switch e.Op {
+	case "delete":
+		return vm.evalDelete(e.Expr)
 	case "!":
+		val := vm.evalExpr(e.Expr)
 		return &Value{Type: "bool", Bool: !isTruthy(val)}
 	case "-":
+		val := vm.evalExpr(e.Expr)
 		return &Value{Type: "number", Num: -val.Num}
 	case "+":
+		val := vm.evalExpr(e.Expr)
 		return &Value{Type: "number", Num: val.Num}
 	case "typeof":
-		return &Value{Type: "string", Str: val.Type}
+		// typeof doesn't evaluate the expression for undefined variables
+		if ident, ok := e.Expr.(*Ident); ok {
+			val := vm.env.Get(ident.Name)
+			if val == nil || val.Type == "undefined" {
+				return &Value{Type: "string", Str: "undefined"}
+			}
+			return &Value{Type: "string", Str: jsTypeOf(val)}
+		}
+		val := vm.evalExpr(e.Expr)
+		return &Value{Type: "string", Str: jsTypeOf(val)}
 	case "void":
+		vm.evalExpr(e.Expr)
 		return &Value{Type: "undefined"}
 	case "~":
+		val := vm.evalExpr(e.Expr)
 		return &Value{Type: "number", Num: float64(^toInt32(val))}
 	}
+	val := vm.evalExpr(e.Expr)
 	return val
+}
+
+// evalDelete handles the delete operator which removes a property from an object.
+func (vm *VM) evalDelete(expr Expression) *Value {
+	switch e := expr.(type) {
+	case *MemberExpr:
+		obj := vm.evalExpr(e.Object)
+		if obj == nil || (obj.Type != "object" && obj.Type != "function" && obj.Type != "native") {
+			return &Value{Type: "bool", Bool: true}
+		}
+		var prop string
+		if e.Computed {
+			prop = valueToString(vm.evalExpr(e.Property))
+		} else if ident, ok := e.Property.(*Ident); ok {
+			prop = ident.Name
+		}
+		if obj.Obj != nil {
+			delete(obj.Obj, prop)
+		}
+		if obj.Descriptors != nil {
+			delete(obj.Descriptors, prop)
+		}
+		return &Value{Type: "bool", Bool: true}
+	case *Ident:
+		// delete on a global variable: remove from environment
+		vm.env.Delete(e.Name)
+		return &Value{Type: "bool", Bool: true}
+	default:
+		// delete on non-member expressions returns true
+		return &Value{Type: "bool", Bool: true}
+	}
 }
 
 func (vm *VM) evalAssign(e *AssignExpr) *Value {
@@ -2899,7 +2970,10 @@ func (vm *VM) evalAssign(e *AssignExpr) *Value {
 			vm.env.Set(left.Name, &Value{Type: "number", Num: cur.Num / val.Num})
 		}
 	case *MemberExpr:
-		obj := vm.evalExpr(left.Object)
+		// For assignment, we need the actual object reference (not a bindThis copy).
+		// evalMember may return a copy for function/native types (for method binding),
+		// but assignment must modify the original.
+		obj := vm.evalMemberRaw(left.Object)
 
 		// Handle Proxy set trap
 		if obj.Type == "proxy" && obj.Proxy != nil {
@@ -2923,9 +2997,16 @@ func (vm *VM) evalAssign(e *AssignExpr) *Value {
 			}
 			// Check for setter via descriptor
 			if obj.Descriptors != nil {
-				if desc, ok := obj.Descriptors[prop]; ok && desc.Set != nil {
-					vm.callSetter(desc.Set, obj, val)
-					return val
+				if desc, ok := obj.Descriptors[prop]; ok {
+					// If there's a setter, invoke it
+					if desc.Set != nil {
+						vm.callSetter(desc.Set, obj, val)
+						return val
+					}
+					// If not writable, silently ignore the assignment (strict mode would throw)
+					if !desc.Writable {
+						return val
+					}
 				}
 			}
 			obj.Obj[prop] = val
@@ -3219,6 +3300,36 @@ func (vm *VM) evalCall(e *CallExpr) *Value {
 	}
 
 	return &Value{Type: "undefined"}
+}
+
+// evalMemberRaw evaluates a MemberExpr and returns the raw object value
+// without bindThis copying. Used by evalAssign to ensure property writes
+// go to the actual object, not a temporary copy.
+func (vm *VM) evalMemberRaw(expr Expression) *Value {
+	if me, ok := expr.(*MemberExpr); ok {
+		obj := vm.evalMemberRaw(me.Object)
+		if obj == nil {
+			return &Value{Type: "undefined"}
+		}
+		var key string
+		if me.Computed {
+			key = valueToString(vm.evalExpr(me.Property))
+		} else if ident, ok := me.Property.(*Ident); ok {
+			key = ident.Name
+		}
+		if obj.Obj != nil {
+			if v, ok := obj.Obj[key]; ok {
+				return v
+			}
+		}
+		if obj.Type == "object" && obj.Arr != nil {
+			if key == "length" {
+				return &Value{Type: "number", Num: float64(len(obj.Arr))}
+			}
+		}
+		return &Value{Type: "undefined"}
+	}
+	return vm.evalExpr(expr)
 }
 
 func (vm *VM) evalMember(e *MemberExpr) *Value {
@@ -4048,6 +4159,35 @@ func valuesStrictEqual(a, b *Value) bool {
 		return false
 	}
 	return valuesEqual(a, b)
+}
+
+// jsTypeOf returns the JavaScript typeof string for a value.
+func jsTypeOf(v *Value) string {
+	switch v.Type {
+	case "undefined":
+		return "undefined"
+	case "null":
+		return "object"
+	case "bool":
+		return "boolean"
+	case "number", "bigint":
+		return v.Type
+	case "string":
+		return "string"
+	case "function", "native":
+		return "function"
+	case "object":
+		if v.Arr != nil {
+			return "object"
+		}
+		return "object"
+	case "regexp":
+		return "object"
+	case "symbol":
+		return "symbol"
+	default:
+		return "object"
+	}
 }
 
 func valueToString(v *Value) string {

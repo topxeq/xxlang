@@ -115,12 +115,63 @@ func (b *Browser) Navigate(rawURL string) error {
 	if !b.noScripts {
 		b.debugLog("Executing scripts...")
 		b.executeScripts()
+		// Polyfills (e.g. core-js in vendors.js) may replace Object static methods
+		// like Object.keys with broken JS implementations. Restore the native ones.
+		b.restoreNativeObjectMethods()
 	} else {
 		b.debugLog("Skipping scripts (noScripts=true)")
 	}
 	b.debugLog("Navigate completed")
 
 	return nil
+}
+
+// restoreNativeObjectMethods restores native Object static methods that may have been
+// overwritten by polyfills (e.g. core-js) during script execution. The polyfill
+// implementations are JavaScript functions that don't work correctly in our VM,
+// so we restore the Go-native implementations.
+// Also re-executes index.js modules if they were loaded with broken Object methods.
+func (b *Browser) restoreNativeObjectMethods() {
+	if b.vm == nil {
+		return
+	}
+	// Get the Object value from the environment
+	objVal := b.vm.Env().Get("Object")
+	if objVal == nil || objVal.Obj == nil {
+		return
+	}
+	// Create fresh native Object methods and replace any polyfills
+	nativeMethods := jsengine.GetObjectMethods(b.vm)
+	for k, v := range nativeMethods {
+		objVal.Obj[k] = v
+	}
+
+	// If index.js modules were loaded with broken Object methods,
+	// clear the module cache and re-execute the entry module.
+	requireFn := b.vm.Env().Get("__wpkE2")
+	if requireFn == nil || requireFn.Type == "undefined" {
+		return
+	}
+	// Check if modules were loaded with the broken polyfill by testing
+	// if the entry module's exports are empty
+	testVal, _ := b.vm.Run(`try {
+		var __testExp = window.__wpkE2('2Isf');
+		__testExp && __testExp.__esModule === true ? 'ok' : 'broken'
+	} catch(e) { 'broken' }`)
+	if testVal == nil || testVal.Str != "ok" {
+		b.debugLog("Re-executing index.js modules with restored Object methods")
+		// Clear the module cache in the IIFE closure
+		b.vm.Run(`try {
+			if (window.__wpkN2) {
+				// Delete all cached modules to force re-execution
+				for (var k in window.__wpkN2) {
+					delete window.__wpkN2[k];
+				}
+			}
+			// Re-execute the entry module
+			window.__wpkE2('2Isf');
+		} catch(e) { }`)
+	}
 }
 
 func (b *Browser) executeScripts() {
@@ -202,12 +253,19 @@ func (b *Browser) loadExternalScript(src string) {
 			// Module call: e[t].call(i.exports,i,i.exports,r),i.l=!0,i.exports
 			if strings.Contains(code, "r.e=function(e)") && strings.Contains(code, "e[t].call(i.exports,i,i.exports,r)") {
 				origLen := len(code)
-				// Add test injection after var declarations
+				// Expose the module registry and require function
 				code = strings.Replace(code,
 					"var n={},i={40:0},a={40:0};function r(t)",
-					"var n={},i={40:0},a={40:0};function r(t)",
+					"var n={},i={40:0},a={40:0};window.__wpkN2=n;function r(t)",
 					1)
-				// Expose the require function by injecting before r.o definition
+			// Also expose the modules object by wrapping the module call
+				// When e[t].call(...) is called, we can capture 'e' from the call context
+				// We inject a wrapper in the require function that saves e[t] before calling
+				code = strings.Replace(code,
+					"!function(e){function t(",
+					"!function(e){function t(",
+					1)
+				// Expose the require function and modules object by injecting before r.o definition
 				// (r.e is too large to replace safely)
 				code = strings.Replace(code,
 					"r.o=function(e,t){return Object.prototype.hasOwnProperty.call(e,t)},r.p=",
