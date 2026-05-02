@@ -3,6 +3,7 @@ package browser
 import (
 	"fmt"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -185,11 +186,36 @@ func (b *Browser) loadExternalScript(src string) {
 	if b.vm != nil {
 		// Reset steps before executing external script to prevent cumulative timeout
 		b.vm.ResetSteps()
-		_, err := b.vm.Run(resp.Body)
+		code := resp.Body
+		// For Webpack bundles, inject logging around module execution
+		if len(code) > 200 && strings.Contains(code, "function(t){var n={};function e(r)") {
+			origLen := len(code)
+			// Add entry logging right after function e(r) definition
+			code = strings.Replace(code,
+				"e.o=function(t,n){return Object.prototype.hasOwnProperty.call(t,n)},e.p=",
+				"e.o=function(t,n){return Object.prototype.hasOwnProperty.call(t,n)},window.__wpkReady=true,window.__wpkE=e,e.p=",
+				1)
+			// Add module execution logging
+			code = strings.Replace(code,
+				"return t[r].call(o.exports,o,o.exports,e),o.l=!0,o.exports",
+				"window.__wpkMods=window.__wpkMods||[];window.__wpkMods.push(String(r));var __r=t[r].call(o.exports,o,o.exports,e);o.l=!0;return __r",
+				1)
+			if len(code) != origLen {
+				b.debugLog("Injected Webpack logging in %s (orig=%d, new=%d)", src, origLen, len(code))
+				if strings.Contains(src, "vendors") {
+					os.WriteFile("/mnt1/aiprjs/xxlang/temp/vendors_modified.js", []byte(code), 0644)
+				}
+			}
+		}
+		_, err := b.vm.Run(code)
 		if err != nil {
-			b.debugLog("Error executing external script %s: %v", src, err)
+			b.debugLog("Error executing external script %s: %v (steps=%d)", src, err, b.vm.GetStepCount())
 		} else {
-			b.debugLog("External script executed: %s (size=%d)", src, len(resp.Body))
+			steps := b.vm.GetStepCount()
+			b.debugLog("External script executed: %s (size=%d, steps=%d)", src, len(resp.Body), steps)
+			if strings.Contains(src, "vendors") && steps >= 99_000_000 {
+				b.debugLog("WARNING: vendors.js may have hit step limit!")
+			}
 		}
 	}
 }
@@ -198,10 +224,9 @@ func (b *Browser) Evaluate(code string) (any, error) {
 	if b.vm == nil {
 		return nil, nil
 	}
-	// Save and reset step counter for per-evaluate limit
 	prevSteps := b.vm.GetStepCount()
 	prevMax := b.vm.GetMaxSteps()
-	b.vm.SetMaxSteps(10_000_000) // 10M steps per evaluate call
+	b.vm.SetMaxSteps(10_000_000)
 	b.vm.SetStepCount(0)
 	val, err := b.vm.Run(code)
 	b.vm.SetStepCount(prevSteps)

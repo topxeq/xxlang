@@ -626,8 +626,8 @@ func (p *Parser) parseFunctionDeclFromName() *FunctionDecl {
 	if p.cur.Type == TokRParen {
 		p.nextToken()
 	}
-	body := p.parseBlockStmt()
 
+	body := p.parseBlockStmt()
 
 	return &FunctionDecl{Name: name, Params: params, DefaultVals: defaultVals, RestParam: restParam, Body: body.Statements}
 }
@@ -653,27 +653,36 @@ func (p *Parser) parseBody() []Statement {
 }
 
 func (p *Parser) parseBlockStmt() *BlockStmt {
+	if p.cur.Type != TokLBrace {
+		return &BlockStmt{}
+	}
 	p.nextToken()
 	var stmts []Statement
-	depth := 1
-	for depth > 0 && p.cur.Type != TokEOF {
+	for p.cur.Type != TokEOF {
+		p.tick()
 		switch p.cur.Type {
-		case TokLBrace:
-			depth++
-			p.nextToken()
 		case TokRBrace:
-			depth--
-			if depth == 0 {
-				p.nextToken()
-			} else {
-				p.nextToken()
-			}
+			p.nextToken()
+			return &BlockStmt{Statements: stmts}
 		case TokSemi:
 			p.nextToken()
+		case TokLBrace:
+			// If parseStatement above couldn't handle this {, it means
+			// we have an orphan { that leaked from a failed expression parse.
+			// Parse it as a nested block to properly match its closing }.
+			nested := p.parseBlockStmt()
+			if len(nested.Statements) > 0 {
+				stmts = append(stmts, nested.Statements...)
+			}
 		default:
 			stmt := p.parseStatement()
 			if stmt != nil {
 				stmts = append(stmts, stmt)
+			} else if p.cur.Type == TokLBrace {
+				nested := p.parseBlockStmt()
+				if len(nested.Statements) > 0 {
+					stmts = append(stmts, nested.Statements...)
+				}
 			} else if p.cur.Type != TokRBrace && p.cur.Type != TokEOF {
 				p.nextToken()
 			}
@@ -752,8 +761,41 @@ func (p *Parser) parseTernaryExpr() Expression {
 }
 
 func (p *Parser) parseOrExpr() Expression {
-	left := p.parseAndExpr()
+	left := p.parseBitOrExpr()
 	for p.cur.Type == TokOr {
+		op := p.cur.Literal
+		p.nextToken()
+		right := p.parseBitOrExpr()
+		left = &BinaryExpr{Left: left, Op: op, Right: right}
+	}
+	return left
+}
+
+func (p *Parser) parseBitOrExpr() Expression {
+	left := p.parseBitXorExpr()
+	for p.cur.Type == TokBitOr {
+		op := p.cur.Literal
+		p.nextToken()
+		right := p.parseBitXorExpr()
+		left = &BinaryExpr{Left: left, Op: op, Right: right}
+	}
+	return left
+}
+
+func (p *Parser) parseBitXorExpr() Expression {
+	left := p.parseBitAndExpr()
+	for p.cur.Type == TokBitXor {
+		op := p.cur.Literal
+		p.nextToken()
+		right := p.parseBitAndExpr()
+		left = &BinaryExpr{Left: left, Op: op, Right: right}
+	}
+	return left
+}
+
+func (p *Parser) parseBitAndExpr() Expression {
+	left := p.parseAndExpr()
+	for p.cur.Type == TokBitAnd {
 		op := p.cur.Literal
 		p.nextToken()
 		right := p.parseAndExpr()
@@ -785,23 +827,34 @@ func (p *Parser) parseEqualityExpr() Expression {
 }
 
 func (p *Parser) parseRelationalExpr() Expression {
-	left := p.parseAdditiveExpr()
+	left := p.parseShiftExpr()
 	for p.cur.Type == TokLt || p.cur.Type == TokGt || p.cur.Type == TokLte || p.cur.Type == TokGte {
 		op := p.cur.Literal
 		p.nextToken()
-		right := p.parseAdditiveExpr()
+		right := p.parseShiftExpr()
 		left = &BinaryExpr{Left: left, Op: op, Right: right}
 	}
 	// Handle instanceof and in operators
 	for p.cur.Type == TokKeyword && (p.cur.Literal == "instanceof" || p.cur.Literal == "in") {
 		op := p.cur.Literal
 		p.nextToken()
-		right := p.parseAdditiveExpr()
+		right := p.parseShiftExpr()
 		if op == "instanceof" {
 			left = &InstanceofExpr{Object: left, Constructor: right}
 		} else {
 			left = &InExpr{Property: left, Object: right}
 		}
+	}
+	return left
+}
+
+func (p *Parser) parseShiftExpr() Expression {
+	left := p.parseAdditiveExpr()
+	for p.cur.Type == TokShiftL || p.cur.Type == TokShiftR || p.cur.Type == TokUShiftR {
+		op := p.cur.Literal
+		p.nextToken()
+		right := p.parseAdditiveExpr()
+		left = &BinaryExpr{Left: left, Op: op, Right: right}
 	}
 	return left
 }
@@ -836,7 +889,7 @@ func (p *Parser) parseUnaryExpr() Expression {
 		expr := p.parseUnaryExpr()
 		return &UpdateExpr{Operator: op, Prefix: true, Operand: expr}
 	}
-	if p.cur.Type == TokNot || p.cur.Type == TokMinus || p.cur.Type == TokPlus {
+	if p.cur.Type == TokNot || p.cur.Type == TokMinus || p.cur.Type == TokPlus || p.cur.Type == TokBitNot {
 		op := p.cur.Literal
 		p.nextToken()
 		expr := p.parseUnaryExpr()

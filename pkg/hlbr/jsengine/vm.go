@@ -2828,6 +2828,24 @@ func (vm *VM) evalBinary(e *BinaryExpr) *Value {
 		return &Value{Type: "bool", Bool: left.Num <= right.Num}
 	case ">=":
 		return &Value{Type: "bool", Bool: left.Num >= right.Num}
+	case "&":
+		l, r := toInt32(left), toInt32(right)
+		return &Value{Type: "number", Num: float64(l & r)}
+	case "|":
+		l, r := toInt32(left), toInt32(right)
+		return &Value{Type: "number", Num: float64(l | r)}
+	case "^":
+		l, r := toInt32(left), toInt32(right)
+		return &Value{Type: "number", Num: float64(l ^ r)}
+	case "<<":
+		l, r := toInt32(left), toUint32(right)
+		return &Value{Type: "number", Num: float64(l << (r & 31))}
+	case ">>":
+		l, r := toInt32(left), toUint32(right)
+		return &Value{Type: "number", Num: float64(l >> (r & 31))}
+	case ">>>":
+		l, r := toUint32(left), toUint32(right)
+		return &Value{Type: "number", Num: float64(l >> (r & 31))}
 	}
 	return &Value{Type: "undefined"}
 }
@@ -2845,6 +2863,8 @@ func (vm *VM) evalUnary(e *UnaryExpr) *Value {
 		return &Value{Type: "string", Str: val.Type}
 	case "void":
 		return &Value{Type: "undefined"}
+	case "~":
+		return &Value{Type: "number", Num: float64(^toInt32(val))}
 	}
 	return val
 }
@@ -3888,6 +3908,30 @@ func (vm *VM) instantiateClass(cls *Class, args []Expression) *Value {
 	}
 
 	return obj
+}
+
+func toInt32(v *Value) int32 {
+	n := v.Num
+	if v.Type == "bool" {
+		if v.Bool {
+			n = 1
+		} else {
+			n = 0
+		}
+	}
+	return int32(n)
+}
+
+func toUint32(v *Value) uint32 {
+	n := v.Num
+	if v.Type == "bool" {
+		if v.Bool {
+			n = 1
+		} else {
+			n = 0
+		}
+	}
+	return uint32(n)
 }
 
 func isTruthy(v *Value) bool {

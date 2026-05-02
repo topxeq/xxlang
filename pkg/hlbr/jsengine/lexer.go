@@ -26,6 +26,13 @@ const (
 	TokAnd
 	TokOr
 	TokNot
+	TokBitAnd   // &
+	TokBitOr    // |
+	TokBitXor   // ^
+	TokBitNot   // ~
+	TokShiftL   // <<
+	TokShiftR   // >>
+	TokUShiftR  // >>>
 	TokLParen
 	TokRParen
 	TokLBrace
@@ -229,6 +236,9 @@ func (l *Lexer) NextToken() Token {
 		if l.peekChar() == '=' {
 			l.readChar()
 			tok = Token{TokLte, "<="}
+		} else if l.peekChar() == '<' {
+			l.readChar()
+			tok = Token{TokShiftL, "<<"}
 		} else {
 			tok = Token{TokLt, "<"}
 		}
@@ -236,6 +246,14 @@ func (l *Lexer) NextToken() Token {
 		if l.peekChar() == '=' {
 			l.readChar()
 			tok = Token{TokGte, ">="}
+		} else if l.peekChar() == '>' {
+			l.readChar()
+			if l.peekChar() == '>' {
+				l.readChar()
+				tok = Token{TokUShiftR, ">>>"}
+			} else {
+				tok = Token{TokShiftR, ">>"}
+			}
 		} else {
 			tok = Token{TokGt, ">"}
 		}
@@ -243,12 +261,20 @@ func (l *Lexer) NextToken() Token {
 		if l.peekChar() == '&' {
 			l.readChar()
 			tok = Token{TokAnd, "&&"}
+		} else {
+			tok = Token{TokBitAnd, "&"}
 		}
 	case '|':
 		if l.peekChar() == '|' {
 			l.readChar()
 			tok = Token{TokOr, "||"}
+		} else {
+			tok = Token{TokBitOr, "|"}
 		}
+	case '^':
+		tok = Token{TokBitXor, "^"}
+	case '~':
+		tok = Token{TokBitNot, "~"}
 	case '(':
 		tok = Token{TokLParen, "("}
 	case ')':
