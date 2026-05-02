@@ -725,14 +725,14 @@ func (vm *VM) setupBuiltins() {
 		return &Value{Type: "bool", Bool: args[0].Type == "number" && !math.IsInf(args[0].Num, 0) && !math.IsNaN(args[0].Num)}
 	}})
 
-	vm.env.Define("String", &Value{Type: "native", Native: func(args []*Value) *Value {
+	vm.env.Define("String", &Value{Type: "native", BuiltInConstructor: "String", Native: func(args []*Value) *Value {
 		if len(args) == 0 {
 			return &Value{Type: "string"}
 		}
 		return &Value{Type: "string", Str: valueToString(args[0])}
 	}})
 
-	vm.env.Define("Number", &Value{Type: "native", Native: func(args []*Value) *Value {
+	vm.env.Define("Number", &Value{Type: "native", BuiltInConstructor: "Number", Native: func(args []*Value) *Value {
 		if len(args) == 0 {
 			return &Value{Type: "number"}
 		}
@@ -740,7 +740,7 @@ func (vm *VM) setupBuiltins() {
 		return &Value{Type: "number", Num: n}
 	}})
 
-	vm.env.Define("Boolean", &Value{Type: "native", Native: func(args []*Value) *Value {
+	vm.env.Define("Boolean", &Value{Type: "native", BuiltInConstructor: "Boolean", Native: func(args []*Value) *Value {
 		if len(args) == 0 {
 			return &Value{Type: "bool", Bool: false}
 		}
@@ -943,7 +943,7 @@ func (vm *VM) setupBuiltins() {
 	}
 
 	// RegExp constructor
-	vm.env.Define("RegExp", &Value{Type: "native", Native: func(args []*Value) *Value {
+	vm.env.Define("RegExp", &Value{Type: "native", BuiltInConstructor: "RegExp", Native: func(args []*Value) *Value {
 		pattern := ""
 		flags := ""
 		if len(args) > 0 {
@@ -961,7 +961,7 @@ func (vm *VM) setupBuiltins() {
 	}})
 
 	// Error constructors
-	vm.env.Define("Error", &Value{Type: "native", Native: func(args []*Value) *Value {
+	vm.env.Define("Error", &Value{Type: "native", BuiltInConstructor: "Error", Native: func(args []*Value) *Value {
 		message := ""
 		if len(args) > 0 {
 			message = args[0].Str
@@ -969,7 +969,7 @@ func (vm *VM) setupBuiltins() {
 		return NewError("Error", message)
 	}})
 
-	vm.env.Define("TypeError", &Value{Type: "native", Native: func(args []*Value) *Value {
+	vm.env.Define("TypeError", &Value{Type: "native", BuiltInConstructor: "TypeError", Native: func(args []*Value) *Value {
 		message := ""
 		if len(args) > 0 {
 			message = args[0].Str
@@ -977,7 +977,7 @@ func (vm *VM) setupBuiltins() {
 		return NewTypeError(message)
 	}})
 
-	vm.env.Define("ReferenceError", &Value{Type: "native", Native: func(args []*Value) *Value {
+	vm.env.Define("ReferenceError", &Value{Type: "native", BuiltInConstructor: "ReferenceError", Native: func(args []*Value) *Value {
 		message := ""
 		if len(args) > 0 {
 			message = args[0].Str
@@ -985,7 +985,7 @@ func (vm *VM) setupBuiltins() {
 		return NewReferenceError(message)
 	}})
 
-	vm.env.Define("SyntaxError", &Value{Type: "native", Native: func(args []*Value) *Value {
+	vm.env.Define("SyntaxError", &Value{Type: "native", BuiltInConstructor: "SyntaxError", Native: func(args []*Value) *Value {
 		message := ""
 		if len(args) > 0 {
 			message = args[0].Str
@@ -993,7 +993,7 @@ func (vm *VM) setupBuiltins() {
 		return NewSyntaxError(message)
 	}})
 
-	vm.env.Define("RangeError", &Value{Type: "native", Native: func(args []*Value) *Value {
+	vm.env.Define("RangeError", &Value{Type: "native", BuiltInConstructor: "RangeError", Native: func(args []*Value) *Value {
 		message := ""
 		if len(args) > 0 {
 			message = args[0].Str
@@ -3485,7 +3485,7 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 	}
 
 	// Handle Function.prototype.call, apply, and bind
-	if (obj.Type == "function" && obj.Func != nil) || (obj.Type == "native" && obj.Native != nil) {
+	if (obj.Type == "function" && obj.Func != nil) || (obj.Type == "native" && obj.Native != nil) || (obj.Type == "arrayMethod" && obj.Native != nil) {
 		if ident, ok := e.Property.(*Ident); ok {
 			// Handle fn.prototype - return the constructor's prototype object
 			if ident.Name == "prototype" {
@@ -3502,9 +3502,10 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 				return protoObj
 			}
 			if ident.Name == "call" {
-				// Return a native function that calls the original function with given this
 				fn := obj.Func
 				nativeFn := obj.Native
+				fnType := obj.Type
+				methodName := obj.Str
 				originalThis := obj.ThisBinding
 				return &Value{
 					Type: "native",
@@ -3521,6 +3522,10 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 						var fnArgs []*Value
 						boundThis = args[offset]
 						fnArgs = args[offset+1:]
+						// For arrayMethod, use callArrayMethod directly with the new this
+						if fnType == "arrayMethod" && methodName != "" && boundThis != nil {
+							return callArrayMethod(methodName, boundThis, fnArgs, vm)
+						}
 						// If it's a native function, prepend the 'this' and call
 						if nativeFn != nil {
 							nativeCallArgs := make([]*Value, 0, len(fnArgs)+1)
@@ -3613,23 +3618,69 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 			}
 			// Handle Function.prototype.bind
 			if ident.Name == "bind" {
-				// Return a native function that creates a bound function
 				fn := obj.Func
+				nativeFn := obj.Native
+				fnType := obj.Type
+				methodName := obj.Str
 				originalThis := obj.ThisBinding
 				return &Value{
 					Type: "native",
 					Native: func(args []*Value) *Value {
-						// First arg is the this value to bind
 						var boundThis *Value = originalThis
 						var boundArgs []*Value
 						if len(args) > 0 {
 							boundThis = args[0]
 							boundArgs = args[1:]
 						}
-						// Return a new function with the bound this and partial arguments
+						// For native/arrayMethod functions, return a native bound wrapper
+						if fnType == "arrayMethod" && methodName != "" {
+							return &Value{
+								Type: "native",
+								Native: func(innerArgs []*Value) *Value {
+									callArgs := innerArgs
+									if len(innerArgs) > 0 && innerArgs[0]._isThisArg {
+										callArgs = innerArgs[1:]
+									}
+									allArgs := make([]*Value, 0, len(boundArgs)+len(callArgs))
+									allArgs = append(allArgs, boundArgs...)
+									allArgs = append(allArgs, callArgs...)
+									target := boundThis
+									if target == nil {
+										target = originalThis
+									}
+									if target != nil {
+										return callArrayMethod(methodName, target, allArgs, vm)
+									}
+									return &Value{Type: "undefined"}
+								},
+							}
+						}
+						if (fnType == "native") && nativeFn != nil {
+							return &Value{
+								Type: "native",
+								Native: func(innerArgs []*Value) *Value {
+									// Strip any this-binding prepended by evalCall
+									callArgs := innerArgs
+									if len(innerArgs) > 0 && innerArgs[0]._isThisArg {
+										callArgs = innerArgs[1:]
+									}
+									allArgs := make([]*Value, 0, len(boundArgs)+len(callArgs)+1)
+									if boundThis != nil {
+										boundThisCopy := &Value{}
+										*boundThisCopy = *boundThis
+										boundThisCopy._isThisArg = true
+										allArgs = append(allArgs, boundThisCopy)
+									}
+									allArgs = append(allArgs, boundArgs...)
+									allArgs = append(allArgs, callArgs...)
+									return nativeFn(allArgs)
+								},
+							}
+						}
+						// For user-defined functions
 						return &Value{
-							Type: "function",
-							Func: fn,
+							Type:        "function",
+							Func:        fn,
 							ThisBinding: boundThis,
 							Native: func(innerArgs []*Value) *Value {
 								// Combine bound args with call args
@@ -3678,7 +3729,7 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 	}
 
 	// Function types: look up in FunctionPrototype
-	if obj.Type == "function" || obj.Type == "native" {
+	if obj.Type == "function" || obj.Type == "native" || obj.Type == "arrayMethod" {
 		if fnProto := vm.env.Get("FunctionPrototype"); fnProto.Type == "object" {
 			result := vm.lookupInPrototypeWithOriginal(fnProto, e, obj)
 			if result.Type != "undefined" {
@@ -4589,9 +4640,10 @@ func (vm *VM) processPendingPromises() {
 // setupMapSet adds Map and Set constructors to the VM
 func (vm *VM) setupMapSet() {
 	// Map constructor
-	vm.env.Define("Map", &Value{Type: "native", Native: func(args []*Value) *Value {
+	vm.env.Define("Map", &Value{Type: "native", BuiltInConstructor: "Map", Native: func(args []*Value) *Value {
 		m := &Value{
 			Type:    "map",
+			BuiltInConstructor: "Map",
 			MapData: make(map[string]*Value),
 			Obj:     make(map[string]*Value),
 		}
@@ -4638,9 +4690,10 @@ func (vm *VM) setupMapSet() {
 	}})
 
 	// Set constructor
-	vm.env.Define("Set", &Value{Type: "native", Native: func(args []*Value) *Value {
+	vm.env.Define("Set", &Value{Type: "native", BuiltInConstructor: "Set", Native: func(args []*Value) *Value {
 		s := &Value{
 			Type:    "set",
+			BuiltInConstructor: "Set",
 			SetData: make(map[string]bool),
 			Obj:     make(map[string]*Value),
 		}
@@ -4678,9 +4731,10 @@ func (vm *VM) setupMapSet() {
 	}})
 
 	// WeakMap constructor
-	vm.env.Define("WeakMap", &Value{Type: "native", Native: func(args []*Value) *Value {
+	vm.env.Define("WeakMap", &Value{Type: "native", BuiltInConstructor: "WeakMap", Native: func(args []*Value) *Value {
 		wm := &Value{
 			Type:    "weakmap",
+			BuiltInConstructor: "WeakMap",
 			MapData: make(map[string]*Value),
 			Obj:     make(map[string]*Value),
 		}
@@ -4719,9 +4773,10 @@ func (vm *VM) setupMapSet() {
 	}})
 
 	// WeakSet constructor
-	vm.env.Define("WeakSet", &Value{Type: "native", Native: func(args []*Value) *Value {
+	vm.env.Define("WeakSet", &Value{Type: "native", BuiltInConstructor: "WeakSet", Native: func(args []*Value) *Value {
 		ws := &Value{
 			Type:    "weakset",
+			BuiltInConstructor: "WeakSet",
 			SetData: make(map[string]bool),
 			Obj:     make(map[string]*Value),
 		}
@@ -4756,7 +4811,7 @@ func (vm *VM) setupSymbol() {
 	symbolCounter := 0
 	symbolCache := make(map[string]*Value)
 
-	symbolConstructor := &Value{Type: "native", Native: func(args []*Value) *Value {
+	symbolConstructor := &Value{Type: "native", BuiltInConstructor: "Symbol", Native: func(args []*Value) *Value {
 		symbolCounter++
 		desc := ""
 		if len(args) > 0 {
@@ -4901,7 +4956,7 @@ func (vm *VM) setupReflect() {
 // setupProxy adds Proxy constructor to the VM
 func (vm *VM) setupProxy() {
 	// Proxy constructor: new Proxy(target, handler)
-	vm.env.Define("Proxy", &Value{Type: "native", Native: func(args []*Value) *Value {
+	vm.env.Define("Proxy", &Value{Type: "native", BuiltInConstructor: "Proxy", Native: func(args []*Value) *Value {
 		if len(args) < 2 {
 			return &Value{Type: "undefined"}
 		}

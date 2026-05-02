@@ -608,7 +608,7 @@ func (vm *VM) setupPrototypes() {
 				combinedArgs = append([]*Value{boundThisCopy}, combinedArgs...)
 				if thisObj.Type == "function" && thisObj.Func != nil {
 					return vm.callFunction(thisObj, combinedArgs)
-				} else if thisObj.Type == "native" && thisObj.Native != nil {
+				} else if (thisObj.Type == "native" || thisObj.Type == "arrayMethod") && thisObj.Native != nil {
 					return thisObj.Native(combinedArgs)
 				}
 				return &Value{Type: "undefined"}

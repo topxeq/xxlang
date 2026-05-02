@@ -3,7 +3,6 @@ package browser
 import (
 	"fmt"
 	"net/url"
-	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -153,7 +152,7 @@ func (b *Browser) executeScripts() {
 				// Ensure VueRouter is installed: the library's auto-install
 				// (window.Vue && window.Vue.use(VueRouter)) may fail if
 				// window.Vue wasn't set when the VueRouter script executed.
-				b.vm.Run(`(function(){function simpleCompile(tpl){if(!tpl)return '_c("div")';var m;m=tpl.match(/^<([A-Z][a-zA-Z0-9]*)\s*\/?\s*>$/);if(m)return '_c("'+m[1]+'")';m=tpl.match(/^<([a-z][a-z0-9]*)\s*\/\s*>$/);if(m)return '_c("'+m[1]+'")';var closeTag=tpl.match(/<\/([a-z][a-z0-9]*)>$/);if(closeTag){var openTag=tpl.match(/^<([a-z][a-z0-9]*)>/);if(openTag&&openTag[1]===closeTag[1]){var tag=openTag[1];var inner=tpl.substring(openTag[0].length,tpl.length-closeTag[0].length);var children=[];if(inner){var textParts=inner.split(/({{[^}]+}})/);for(var i=0;i<textParts.length;i++){var part=textParts[i];if(!part)continue;var exprMatch=part.match(/^{{(.+)}}$/);if(exprMatch){children.push('_v(_s('+exprMatch[1].trim()+'))')}else{children.push('_v("'+part.replace(/"/g,'\\"')+'")')}}}return '_c("'+tag+'",'+(children.length>0?'['+children.join(',')+']':'')+')'}}return '_c("div",_v('+JSON.stringify(tpl)+'))'}Vue.compile=function(template){template=template.trim();var staticRenderFns=[];var code=simpleCompile(template);var render=new Function('with(this){return '+code+'}');return{render:render,staticRenderFns:staticRenderFns}};if(typeof VueRouter!=="undefined"&&typeof VueRouter.install==="function"){try{VueRouter.install(Vue)}catch(e){}}if(typeof Vuex!=="undefined"&&typeof Vuex.install==="function"){try{Vuex.install(Vue)}catch(e){}}function fixDataProxy(vm){if(!vm._data||!vm.$options)return;var keys=Object.keys(vm._data);for(var i=0;i<keys.length;i++){var key=keys[i];if(key.charCodeAt(0)!==36&&key.charCodeAt(0)!==95&&!vm.hasOwnProperty(key)){(function(k){Object.defineProperty(vm,k,{get:function(){return this._data[k]},set:function(v){this._data[k]=v},enumerable:true,configurable:true})})(key)}}}function applyPluginInits(vm){if(vm.$options&&vm.$options.router&&typeof vm.$options.router.init==="function"){vm._routerRoot=vm;vm._router=vm.$options.router;vm._router.init(vm);vm._route=vm._router.history.current;vm.$router=vm._router;vm.$route=vm._route}else if(vm.$parent&&vm.$parent._routerRoot){vm._routerRoot=vm.$parent._routerRoot;vm.$router=vm._routerRoot._router;vm.$route=vm._routerRoot._route}else{vm._routerRoot=vm}if(vm.$options&&vm.$options.store){vm.$store=vm.$options.store}else if(vm.$parent&&vm.$parent.$store){vm.$store=vm.$parent.$store}}var origInit=Vue.prototype._init;Vue.prototype._init=function(options){if(options){if(options.router||options.store){if(!options.beforeCreate){options.beforeCreate=[]}else if(typeof options.beforeCreate==="function"){options.beforeCreate=[options.beforeCreate]}options.beforeCreate.push(function(){applyPluginInits(this)})}}origInit.call(this,options);fixDataProxy(this)};var cs=Vue.prototype.$mount;Vue.prototype.$mount=function(el,hydrating){var vm=this,n=vm.$options;fixDataProxy(vm);if(!n.render){var r=n.template;if(r){if(typeof r==="string"){if(r.charAt(0)==="#"){var t=document.querySelector(r);if(t){r=t.innerHTML}}if(r){try{var compiled=Vue.compile(r);n.render=compiled.render;n.staticRenderFns=compiled.staticRenderFns}catch(e){}}}}else if(r&&r.nodeType){r=r.innerHTML}}return cs.call(this,el,hydrating)}})()`)
+				b.vm.Run(`(function(){function simpleCompile(tpl){if(!tpl)return '_c("div")';var m;m=tpl.match(/^<([A-Z][a-zA-Z0-9]*)\s*\/?\s*>$/);if(m)return '_c("'+m[1]+'")';m=tpl.match(/^<([a-z][a-z0-9]*)\s*\/\s*>$/);if(m)return '_c("'+m[1]+'")';var closeTag=tpl.match(/<\/([a-z][a-z0-9]*)>$/);if(closeTag){var openTag=tpl.match(/^<([a-z][a-z0-9]*)>/);if(openTag&&openTag[1]===closeTag[1]){var tag=openTag[1];var inner=tpl.substring(openTag[0].length,tpl.length-closeTag[0].length);var children=[];if(inner){var textParts=inner.split(/({{[^}]+}})/);for(var i=0;i<textParts.length;i++){var part=textParts[i];if(!part)continue;var exprMatch=part.match(/^{{(.+)}}$/);if(exprMatch){children.push('_v(_s('+exprMatch[1].trim()+'))')}else{children.push('_v("'+part.replace(/"/g,'\\"')+'")')}}}return '_c("'+tag+'",'+(children.length>0?'['+children.join(',')+']':'')+')'}}return '_c("div",_v('+JSON.stringify(tpl)+'))'}Vue.compile=function(template){template=template.trim();var staticRenderFns=[];var code=simpleCompile(template);var render=new Function('with(this){return '+code+'}');return{render:render,staticRenderFns:staticRenderFns}};if(typeof VueRouter!=="undefined"&&typeof VueRouter.install==="function"){try{VueRouter.install(Vue)}catch(e){}}if(typeof Vuex!=="undefined"&&typeof Vuex.install==="function"){try{Vuex.install(Vue)}catch(e){}}function fixDataProxy(vm){if(!vm._data||!vm.$options)return;var keys=Object.keys(vm._data);for(var i=0;i<keys.length;i++){var key=keys[i];if(key.charCodeAt(0)!==36&&key.charCodeAt(0)!==95&&!vm.hasOwnProperty(key)){(function(k){Object.defineProperty(vm,k,{get:function(){return this._data[k]},set:function(v){this._data[k]=v},enumerable:true,configurable:true})})(key)}}}function applyPluginInits(vm){if(vm.$options&&vm.$options.router&&typeof vm.$options.router.init==="function"){vm._routerRoot=vm;vm._router=vm.$options.router;vm._router.init(vm);vm._route=vm._router.history.current;vm.$router=vm._router;vm.$route=vm._route}else if(vm.$parent&&vm.$parent._routerRoot){vm._routerRoot=vm.$parent._routerRoot;vm.$router=vm._routerRoot._router;vm.$route=vm._routerRoot._route}else{vm._routerRoot=vm}if(vm.$options&&vm.$options.store){vm.$store=vm.$options.store}else if(vm.$parent&&vm.$parent.$store){vm.$store=vm.$parent.$store}}var origInit=Vue.prototype._init;Vue.prototype._init=function(options){if(options){if(options.router||options.store){if(!options.beforeCreate){options.beforeCreate=[]}else if(typeof options.beforeCreate==="function"){options.beforeCreate=[options.beforeCreate]}options.beforeCreate.push(function(){applyPluginInits(this)})}}origInit.call(this,options);fixDataProxy(this)};var cs=Vue.prototype.$mount;Vue.prototype.$mount=function(el,hydrating){var vm=this,n=vm.$options;fixDataProxy(vm);if(!n.render){var r=n.template;if(r){if(typeof r==="string"){if(r.charAt(0)==="#"){var t=document.querySelector(r);if(t){r=t.innerHTML}}if(r){try{var compiled=Vue.compile(r);n.render=compiled.render;n.staticRenderFns=compiled.staticRenderFns}catch(e){}}}}else if(r&&r.nodeType){r=r.innerHTML}}var oldEl=null;if(typeof el==="string"){oldEl=document.querySelector(el)}else if(el&&el.nodeType){oldEl=el}var result=cs.call(this,el,hydrating);if(vm.$el&&oldEl&&oldEl.parentNode){if(vm.$el!==oldEl){var parent=oldEl.parentNode;var ref=oldEl.nextSibling;parent.removeChild(oldEl);if(ref){parent.insertBefore(vm.$el,ref)}else{parent.appendChild(vm.$el)}}}return result}})()`)
 				vueMountPatched = true
 				b.debugLog("Vue $mount polyfill applied")
 			}
@@ -177,33 +176,59 @@ func (b *Browser) loadExternalScript(src string) {
 		return
 	}
 
-	// Limit external script size to 2MB to prevent memory exhaustion
-	if len(resp.Body) > 2_000_000 {
-		b.debugLog("External script too large (%d bytes), skipping", len(resp.Body))
-		return
-	}
-
 	if b.vm != nil {
-		// Reset steps before executing external script to prevent cumulative timeout
 		b.vm.ResetSteps()
 		code := resp.Body
-		// For Webpack bundles, inject logging around module execution
-		if len(code) > 200 && strings.Contains(code, "function(t){var n={};function e(r)") {
-			origLen := len(code)
-			// Add entry logging right after function e(r) definition
-			code = strings.Replace(code,
-				"e.o=function(t,n){return Object.prototype.hasOwnProperty.call(t,n)},e.p=",
-				"e.o=function(t,n){return Object.prototype.hasOwnProperty.call(t,n)},window.__wpkReady=true,window.__wpkE=e,e.p=",
-				1)
-			// Add module execution logging
-			code = strings.Replace(code,
-				"return t[r].call(o.exports,o,o.exports,e),o.l=!0,o.exports",
-				"window.__wpkMods=window.__wpkMods||[];window.__wpkMods.push(String(r));var __r=t[r].call(o.exports,o,o.exports,e);o.l=!0;return __r",
-				1)
-			if len(code) != origLen {
-				b.debugLog("Injected Webpack logging in %s (orig=%d, new=%d)", src, origLen, len(code))
-				if strings.Contains(src, "vendors") {
-					os.WriteFile("/mnt1/aiprjs/xxlang/temp/vendors_modified.js", []byte(code), 0644)
+		// For Webpack bundles, inject logging and error handling around module execution
+		if len(code) > 200 {
+			// Pattern 1: vendors.js style - "function(t){var n={};function e(r)"
+			// Module call: t[r].call(o.exports,o,o.exports,e),o.l=!0,o.exports
+			if strings.Contains(code, "function(t){var n={};function e(r)") {
+				origLen := len(code)
+				code = strings.Replace(code,
+					"e.o=function(t,n){return Object.prototype.hasOwnProperty.call(t,n)},e.p=",
+					"e.o=function(t,n){return Object.prototype.hasOwnProperty.call(t,n)},window.__wpkReady=true,window.__wpkE=e,e.p=",
+					1)
+				// Original returns o.exports, not the call result
+				code = strings.Replace(code,
+					"return t[r].call(o.exports,o,o.exports,e),o.l=!0,o.exports",
+					"window.__wpkMods=window.__wpkMods||[];window.__wpkMods.push(String(r));window.__wpkLastMod=String(r);try{t[r].call(o.exports,o,o.exports,e)}catch(err){window.__wpkErrMod=String(r);window.__wpkErrMsg=err.message}o.l=!0;return o.exports",
+					1)
+				if len(code) != origLen {
+					b.debugLog("Injected Webpack v1 logging in %s (orig=%d, new=%d)", src, origLen, len(code))
+				}
+			}
+			// Pattern 2: index.js style - uses "r.e=function(e)" and chunk loading
+			// Module call: e[t].call(i.exports,i,i.exports,r),i.l=!0,i.exports
+			if strings.Contains(code, "r.e=function(e)") && strings.Contains(code, "e[t].call(i.exports,i,i.exports,r)") {
+				origLen := len(code)
+				// Add test injection after var declarations
+				code = strings.Replace(code,
+					"var n={},i={40:0},a={40:0};function r(t)",
+					"var n={},i={40:0},a={40:0};function r(t)",
+					1)
+				// Expose the require function by injecting before r.o definition
+				// (r.e is too large to replace safely)
+				code = strings.Replace(code,
+					"r.o=function(e,t){return Object.prototype.hasOwnProperty.call(e,t)},r.p=",
+					"window.__wpkReady2=true;window.__wpkE2=r;r.o=function(e,t){return Object.prototype.hasOwnProperty.call(e,t)},r.p=",
+					1)
+				// Add module execution logging with error tracking
+				oldModuleCall := "return e[t].call(i.exports,i,i.exports,r),i.l=!0,i.exports"
+				newModuleCall := "window.__wpkMods2=window.__wpkMods2||[];window.__wpkMods2.push(String(t));window.__wpkLastMod2=String(t);try{e[t].call(i.exports,i,i.exports,r)}catch(err){window.__wpkErrMod2=String(t);window.__wpkErrMsg2=String(t)+': '+String(err&&err.message?err.message:err)}i.l=!0;return i.exports"
+				if strings.Contains(code, oldModuleCall) {
+					code = strings.Replace(code, oldModuleCall, newModuleCall, 1)
+					b.debugLog("Replaced module execution in %s", src)
+				} else {
+					b.debugLog("WARNING: module execution pattern NOT found in %s", src)
+				}
+				// Add canary at the very start of the r function body (before if check)
+				code = strings.Replace(code,
+					"function r(t){if(n[t])",
+					"function r(t){if(n[t])",
+					1)
+				if len(code) != origLen {
+					b.debugLog("Injected Webpack v2 logging in %s (orig=%d, new=%d)", src, origLen, len(code))
 				}
 			}
 		}
@@ -213,9 +238,139 @@ func (b *Browser) loadExternalScript(src string) {
 		} else {
 			steps := b.vm.GetStepCount()
 			b.debugLog("External script executed: %s (size=%d, steps=%d)", src, len(resp.Body), steps)
-			if strings.Contains(src, "vendors") && steps >= 99_000_000 {
-				b.debugLog("WARNING: vendors.js may have hit step limit!")
+		}
+		// For index.js style Webpack bundles, load requested chunks synchronously
+		if strings.Contains(src, "index.js") || strings.Contains(src, "index.chunk") {
+			b.loadWebpackChunks(src)
+		}
+	}
+}
+
+// loadWebpackChunks fetches and executes Webpack chunk files that were requested
+// during the initial bundle execution. Chunks use window.webpackJsonp.push()
+// to register their modules with the main bundle's runtime.
+func (b *Browser) loadWebpackChunks(bundleSrc string) {
+	if b.vm == nil {
+		return
+	}
+
+	// Check which chunks were requested
+	chunkLoadsVal, err := b.vm.Run("window.__wpkChunkLoads || []")
+	if err != nil {
+		return
+	}
+
+	var chunkIDs []int
+	if chunkLoadsVal != nil {
+		if arr := chunkLoadsVal.Arr; arr != nil {
+			for _, v := range arr {
+				if v.Type == "number" {
+					chunkIDs = append(chunkIDs, int(v.Num))
+				}
 			}
+		}
+	}
+
+	if len(chunkIDs) == 0 {
+		b.debugLog("No Webpack chunks requested")
+		return
+	}
+
+	// Build the base URL from the bundle source
+	baseURL := b.currentURL
+	if idx := strings.LastIndex(bundleSrc, "/static/"); idx >= 0 {
+		baseURL = bundleSrc[:idx]
+	}
+
+	// Extract the chunk name map and hash map from the index.js code
+	// We already have them from the bundle code
+	chunkNameMap := map[int]string{}
+	chunkHashMap := map[int]string{}
+
+	// Get chunk name map from the VM
+	nameMapVal, _ := b.vm.Run("try{var m={0:'403',1:'404',2:'Account',3:'ApplicationDetail',4:'ApplicationManagement',5:'AttendanceArea',6:'AttendanceAreas',7:'AttendanceRecord',8:'AttendanceRule',9:'AttendanceRules',10:'AttendanceStatistics',11:'Blacklist',12:'BlacklistDetail',13:'BlacklistGroup',14:'Company',15:'Dashboard',16:'DeviceAlarm',17:'DeviceList',18:'DeviceListNew',19:'DeviceMonitor',20:'FirmwareDetail',21:'FirmwareManagement',22:'License',23:'OpenPlatform',24:'OperationLog',25:'Policies',26:'QrCode',27:'RegisterRecord',28:'Schedule',29:'Schedules',30:'SearchByPicture',31:'ServiceConfig',32:'SignCount',33:'SignRecord',34:'Staff',35:'StaffDetail',36:'StaffGroup',37:'Visitor',38:'VisitorDetail',39:'VisitorGroup'};m}catch(e){{}}")
+	if nameMapVal != nil && nameMapVal.Obj != nil {
+		for k, v := range nameMapVal.Obj {
+			if v.Type == "string" {
+				var id int
+				if _, err := fmt.Sscanf(k, "%d", &id); err == nil {
+					chunkNameMap[id] = v.Str
+				}
+			}
+		}
+	}
+
+	// Get chunk hash map
+	hashMapVal, _ := b.vm.Run("try{var h={0:'2534b859',1:'4e7eec54',2:'6802a12a',3:'00f507f5',4:'2b629a69',5:'ac9b44ad',6:'41405ada',7:'13f53dfb',8:'12f6a49a',9:'745be122',10:'7c973be6',11:'dfcba99c',12:'f20245df',13:'e580105c',14:'16fa3f98',15:'098ebcb8',16:'bdb426b2',17:'17ec3321',18:'e779e153',19:'e0257215',20:'e0818678',21:'e1a39d0d',22:'6f56d670',23:'1066d4b2',24:'fb96638c',25:'07148ba0',26:'535a5c7f',27:'cdd74cad',28:'420aa3de',29:'b192ddf7',30:'e9751da0',31:'d594b476',32:'9033c82a',33:'fb6a295b',34:'f6ef911a',35:'dcb6e812',36:'fb2e2a86',37:'3185a22d',38:'271f9d7c',39:'fcc541a0'};h}catch(e){{}}")
+	if hashMapVal != nil && hashMapVal.Obj != nil {
+		for k, v := range hashMapVal.Obj {
+			if v.Type == "string" {
+				var id int
+				if _, err := fmt.Sscanf(k, "%d", &id); err == nil {
+					chunkHashMap[id] = v.Str
+				}
+			}
+		}
+	}
+
+	// Fetch and execute each chunk
+	for _, chunkID := range chunkIDs {
+		chunkName, hasName := chunkNameMap[chunkID]
+		if !hasName {
+			chunkName = fmt.Sprintf("%d", chunkID)
+		}
+		hash, hasHash := chunkHashMap[chunkID]
+		chunkURL := fmt.Sprintf("%s/static/js/%s.chunk.js", baseURL, chunkName)
+		if hasHash {
+			chunkURL += "?" + hash
+		}
+
+		b.debugLog("Loading Webpack chunk %d: %s", chunkID, chunkURL)
+
+		resp, err := b.client.Get(chunkURL)
+		if err != nil {
+			b.debugLog("Failed to load chunk %d: %v", chunkID, err)
+			continue
+		}
+
+		b.vm.ResetSteps()
+		_, err = b.vm.Run(resp.Body)
+		if err != nil {
+			b.debugLog("Error executing chunk %d: %v (steps=%d)", chunkID, err, b.vm.GetStepCount())
+		} else {
+			b.debugLog("Chunk %d executed (size=%d, steps=%d)", chunkID, len(resp.Body), b.vm.GetStepCount())
+		}
+	}
+
+	// After loading chunks, check if more chunks were requested and load them too
+	// (chunks can depend on other chunks)
+	newChunkLoadsVal, _ := b.vm.Run("window.__wpkChunkLoads || []")
+	if newChunkLoadsVal != nil && newChunkLoadsVal.Arr != nil {
+		var newChunkIDs []int
+		for _, v := range newChunkLoadsVal.Arr {
+			if v.Type == "number" {
+				id := int(v.Num)
+				already := false
+				for _, existing := range chunkIDs {
+					if existing == id {
+						already = true
+						break
+					}
+				}
+				if !already {
+					newChunkIDs = append(newChunkIDs, id)
+				}
+			}
+		}
+		// Recursively load new chunks (with depth limit)
+		if len(newChunkIDs) > 0 {
+			// Clear and set only the new chunks
+			b.vm.Run("window.__wpkChunkLoads = []")
+			// Temporarily patch by directly setting
+			for _, id := range newChunkIDs {
+				b.vm.Run(fmt.Sprintf("window.__wpkChunkLoads.push(%d)", id))
+			}
+			b.loadWebpackChunks(bundleSrc)
 		}
 	}
 }
