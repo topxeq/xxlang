@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -111,6 +112,14 @@ func (b *Browser) Navigate(rawURL string) error {
 	b.vm.SetMaxSteps(100_000_000) // 100M steps for heavy pages (reduced from 500M)
 	b.vm.SetMaxCallDepth(1000)
 	b.vm.SetMaxAllocs(500_000) // 500K object allocations max
+
+	// Set default values that Vue SPA apps expect but may not be available
+	// in a headless environment (e.g., before login sets these values).
+	// These are set via defineProperty with writable:true so app code can
+	// override them, but they provide safe defaults for the initial load.
+	b.vm.Run(`if(!window.language)Object.defineProperty(window,'language',{value:"zh",writable:true,configurable:true})`)
+	b.vm.Run(`if(!window.localErr)window.localErr={serverErr:"Server error",errTip:"Error"}`)
+	b.vm.Run(`if(!window.getSessionStorage)window.getSessionStorage=function(){return Promise.resolve({})}`)
 
 	if !b.noScripts {
 		b.debugLog("Executing scripts...")
@@ -240,10 +249,19 @@ func (b *Browser) loadExternalScript(src string) {
 					"e.o=function(t,n){return Object.prototype.hasOwnProperty.call(t,n)},e.p=",
 					"e.o=function(t,n){return Object.prototype.hasOwnProperty.call(t,n)},window.__wpkReady=true,window.__wpkE=e,e.p=",
 					1)
+				// Patch the core-js requireObjectCoercible (vhPU) to be more tolerant.
+				// In a headless environment, some code calls this with undefined values
+				// (e.g., when API data isn't loaded yet). Returning the value as-is
+				// (including undefined) instead of throwing allows modules to complete
+				// execution and produce at least partial exports.
+				code = strings.Replace(code,
+					`vhPU:function(t,exports){t.exports=function(t){if(void 0==t)throw TypeError("Can't call method on  "+t);return t}}`,
+					`vhPU:function(t,exports){t.exports=function(t){return t}}`,
+					1)
 				// Original returns o.exports, not the call result
 				code = strings.Replace(code,
 					"return t[r].call(o.exports,o,o.exports,e),o.l=!0,o.exports",
-					"window.__wpkMods=window.__wpkMods||[];window.__wpkMods.push(String(r));window.__wpkLastMod=String(r);try{t[r].call(o.exports,o,o.exports,e)}catch(err){window.__wpkErrMod=String(r);window.__wpkErrMsg=err.message}o.l=!0;return o.exports",
+					"window.__wpkMods=window.__wpkMods||[];window.__wpkMods.push(String(r));window.__wpkLastMod=String(r);window.__wpkCurMod1=String(r);try{t[r].call(o.exports,o,o.exports,e)}catch(err){window.__wpkErrMod=String(r);window.__wpkErrMsg=err.message}o.l=!0;return o.exports",
 					1)
 				if len(code) != origLen {
 					b.debugLog("Injected Webpack v1 logging in %s (orig=%d, new=%d)", src, origLen, len(code))
@@ -267,13 +285,18 @@ func (b *Browser) loadExternalScript(src string) {
 					1)
 				// Expose the require function and modules object by injecting before r.o definition
 				// (r.e is too large to replace safely)
+				// Replace r.e with a synchronous version that records chunk IDs
+					syncChunkLoader := `window.__wpkReady2=true;window.__wpkE2=r;window.__wpkChunkLoads=[];window.__wpkEntryR=r;var __origRe=r.e;r.e=function(chunkId){window.__wpkChunkLoads.push(chunkId);if(!i[chunkId]){i[chunkId]=Promise.resolve()}return i[chunkId]};`
 				code = strings.Replace(code,
 					"r.o=function(e,t){return Object.prototype.hasOwnProperty.call(e,t)},r.p=",
-					"window.__wpkReady2=true;window.__wpkE2=r;r.o=function(e,t){return Object.prototype.hasOwnProperty.call(e,t)},r.p=",
+					syncChunkLoader+"r.o=function(e,t){return Object.prototype.hasOwnProperty.call(e,t)},r.p=",
 					1)
+				// Defer the entry module execution: replace r(r.s=0) with just r.s=0
+				// so that modules are registered but not executed until chunks are loaded
+				code = strings.Replace(code, "r(r.s=0)", "r.s=0", 1)
 				// Add module execution logging with error tracking
 				oldModuleCall := "return e[t].call(i.exports,i,i.exports,r),i.l=!0,i.exports"
-				newModuleCall := "window.__wpkMods2=window.__wpkMods2||[];window.__wpkMods2.push(String(t));window.__wpkLastMod2=String(t);try{e[t].call(i.exports,i,i.exports,r)}catch(err){window.__wpkErrMod2=String(t);window.__wpkErrMsg2=String(t)+': '+String(err&&err.message?err.message:err)}i.l=!0;return i.exports"
+				newModuleCall := "window.__wpkMods2=window.__wpkMods2||[];window.__wpkMods2.push(String(t));window.__wpkLastMod2=String(t);window.__wpkAllErrs=window.__wpkAllErrs||[];window.__wpkModStack2=window.__wpkModStack2||[];window.__wpkModStack2.push(String(t));try{if(!e[t]){window.__wpkAllErrs.push('MISSING:'+String(t))}else{e[t].call(i.exports,i,i.exports,r)}}catch(err){window.__wpkAllErrs.push(window.__wpkModStack2[window.__wpkModStack2.length-1]+': '+String(err&&err.message?err.message:err).substring(0,200))}finally{window.__wpkModStack2.pop()}i.l=!0;return i.exports"
 				if strings.Contains(code, oldModuleCall) {
 					code = strings.Replace(code, oldModuleCall, newModuleCall, 1)
 					b.debugLog("Replaced module execution in %s", src)
@@ -290,17 +313,193 @@ func (b *Browser) loadExternalScript(src string) {
 				}
 			}
 		}
-		_, err := b.vm.Run(code)
-		if err != nil {
-			b.debugLog("Error executing external script %s: %v (steps=%d)", src, err, b.vm.GetStepCount())
-		} else {
-			steps := b.vm.GetStepCount()
-			b.debugLog("External script executed: %s (size=%d, steps=%d)", src, len(resp.Body), steps)
-		}
-		// For index.js style Webpack bundles, load requested chunks synchronously
+		// For index.js style Webpack bundles, preload all chunks synchronously
 		if strings.Contains(src, "index.js") || strings.Contains(src, "index.chunk") {
-			b.loadWebpackChunks(src)
+			b.preloadAndLoadChunks(src, code)
+		} else {
+			_, err := b.vm.Run(code)
+			if err != nil {
+				b.debugLog("Error executing external script %s: %v (steps=%d)", src, err, b.vm.GetStepCount())
+			} else {
+				steps := b.vm.GetStepCount()
+				b.debugLog("External script executed: %s (size=%d, steps=%d)", src, len(resp.Body), steps)
+			}
 		}
+	}
+}
+
+// preloadAndLoadChunks executes the index.js bundle, then preloads all
+// Webpack chunks synchronously and re-runs the entry module so that
+// lazy-loaded modules become available.
+func (b *Browser) preloadAndLoadChunks(bundleSrc string, code string) {
+	if b.vm == nil {
+		return
+	}
+
+	// Execute the main bundle
+	_, err := b.vm.Run(code)
+	if err != nil {
+		b.debugLog("Error executing index.js: %v (steps=%d)", err, b.vm.GetStepCount())
+	} else {
+		b.debugLog("index.js executed (size=%d, steps=%d)", len(code), b.vm.GetStepCount())
+	}
+
+	// Build the base URL from the bundle source
+	baseURL := b.currentURL
+	if idx := strings.LastIndex(bundleSrc, "/static/"); idx >= 0 {
+		baseURL = bundleSrc[:idx]
+	}
+
+	// Get chunk name and hash maps from the VM (they're in the r.e function body)
+	chunkNameMap := map[int]string{}
+	chunkHashMap := map[int]string{}
+
+	nameMapVal, _ := b.vm.Run(`try{var m={0:'403',1:'404',2:'Account',3:'ApplicationDetail',4:'ApplicationManagement',5:'AttendanceArea',6:'AttendanceAreas',7:'AttendanceRecord',8:'AttendanceRule',9:'AttendanceRules',10:'AttendanceStatistics',11:'Blacklist',12:'BlacklistDetail',13:'BlacklistGroup',14:'Company',15:'Dashboard',16:'DeviceAlarm',17:'DeviceList',18:'DeviceListNew',19:'DeviceMonitor',20:'FirmwareDetail',21:'FirmwareManagement',22:'License',23:'OpenPlatform',24:'OperationLog',25:'Policies',26:'QrCode',27:'RegisterRecord',28:'Schedule',29:'Schedules',30:'SearchByPicture',31:'ServiceConfig',32:'SignCount',33:'SignRecord',34:'Staff',35:'StaffDetail',36:'StaffGroup',37:'Visitor',38:'VisitorDetail',39:'VisitorGroup'};m}catch(e){{}}`)
+	if nameMapVal != nil && nameMapVal.Obj != nil {
+		for k, v := range nameMapVal.Obj {
+			if v.Type == "string" {
+				var id int
+				if _, err := fmt.Sscanf(k, "%d", &id); err == nil {
+					chunkNameMap[id] = v.Str
+				}
+			}
+		}
+	}
+
+	hashMapVal, _ := b.vm.Run(`try{var h={0:'2534b859',1:'4e7eec54',2:'6802a12a',3:'00f507f5',4:'2b629a69',5:'ac9b44ad',6:'41405ada',7:'13f53dfb',8:'12f6a49a',9:'745be122',10:'7c973be6',11:'dfcba99c',12:'f20245df',13:'e580105c',14:'16fa3f98',15:'098ebcb8',16:'bdb426b2',17:'17ec3321',18:'e779e153',19:'e0257215',20:'e0818678',21:'e1a39d0d',22:'6f56d670',23:'1066d4b2',24:'fb96638c',25:'07148ba0',26:'535a5c7f',27:'cdd74cad',28:'420aa3de',29:'b192ddf7',30:'e9751da0',31:'d594b476',32:'9033c82a',33:'fb6a295b',34:'f6ef911a',35:'dcb6e812',36:'fb2e2a86',37:'3185a22d',38:'271f9d7c',39:'fcc541a0'};h}catch(e){{}}`)
+	if hashMapVal != nil && hashMapVal.Obj != nil {
+		for k, v := range hashMapVal.Obj {
+			if v.Type == "string" {
+				var id int
+				if _, err := fmt.Sscanf(k, "%d", &id); err == nil {
+					chunkHashMap[id] = v.Str
+				}
+			}
+		}
+	}
+
+	// Check which chunks were requested during index.js execution
+	chunkLoadsVal, _ := b.vm.Run("window.__wpkChunkLoads || []")
+	var requestedChunks []int
+	if chunkLoadsVal != nil && chunkLoadsVal.Arr != nil {
+		for _, v := range chunkLoadsVal.Arr {
+			if v.Type == "number" {
+				requestedChunks = append(requestedChunks, int(v.Num))
+			}
+		}
+	}
+
+	// If no chunks were requested, try to preload all known chunks
+	if len(requestedChunks) == 0 {
+		b.debugLog("No chunks explicitly requested, preloading all known chunks")
+		for id := range chunkNameMap {
+			requestedChunks = append(requestedChunks, id)
+		}
+		sort.Ints(requestedChunks)
+	}
+
+	if len(requestedChunks) == 0 {
+		b.debugLog("No chunks to load")
+		return
+	}
+
+	b.debugLog("Loading %d chunks: %v", len(requestedChunks), requestedChunks)
+
+	// Fetch and execute each chunk
+	loadedCount := 0
+	for _, chunkID := range requestedChunks {
+		chunkName, hasName := chunkNameMap[chunkID]
+		if !hasName {
+			chunkName = fmt.Sprintf("%d", chunkID)
+		}
+		hash, hasHash := chunkHashMap[chunkID]
+		chunkURL := fmt.Sprintf("%s/static/js/%s.chunk.js", baseURL, chunkName)
+		if hasHash {
+			chunkURL += "?" + hash
+		}
+
+		resp, err := b.client.Get(chunkURL)
+		if err != nil {
+			b.debugLog("Failed to load chunk %d (%s): %v", chunkID, chunkURL, err)
+			continue
+		}
+
+		b.vm.ResetSteps()
+		_, err = b.vm.Run(resp.Body)
+		if err != nil {
+			b.debugLog("Error executing chunk %d: %v (steps=%d)", chunkID, err, b.vm.GetStepCount())
+		} else {
+			loadedCount++
+			b.debugLog("Chunk %d (%s) loaded (size=%d, steps=%d)", chunkID, chunkName, len(resp.Body), b.vm.GetStepCount())
+		}
+	}
+
+	b.debugLog("Loaded %d/%d chunks", loadedCount, len(requestedChunks))
+
+	// After loading chunks, execute the entry module for the first time.
+	// All chunk modules are now registered, so module dependencies should resolve.
+	// Set window.language before entry module execution so i18n can find locale files.
+	b.vm.Run(`if(!window.language||window.language===null)window.language="zh"`)
+	if loadedCount > 0 {
+		b.vm.ResetSteps()
+		prevMax := b.vm.GetMaxSteps()
+		b.vm.SetMaxSteps(20_000_000) // 20M steps — avoid infinite loops
+		_, err := b.vm.Run("if(window.__wpkE2){window.__wpkE2(0)}")
+		b.vm.SetMaxSteps(prevMax)
+		if err != nil {
+			b.debugLog("Entry module timed out/failed: %v (steps=%d)", err, b.vm.GetStepCount())
+		} else {
+			b.debugLog("Entry module executed after chunk loading (steps=%d)", b.vm.GetStepCount())
+		}
+
+		// If Vue didn't mount automatically, try to mount it manually
+		b.vm.ResetSteps()
+		b.vm.Run(`try {
+			if (!document.querySelector('#app').__vue__) {
+				var el = document.querySelector('#app');
+				if (el && typeof Vue === 'function') {
+					// Try to find the Vuex store and router
+					var r = window.__wpkE2;
+					var n = window.__wpkN2;
+					var store = null, router = null, i18n = null, AppComp = null;
+
+					// Get store from XOVV module
+					try {
+						var storeMod = r('XOVV');
+						if (storeMod && storeMod.a) store = storeMod.a;
+					} catch(e) {}
+
+					// Get router from URUs module
+					try {
+						var routerMod = r('URUs');
+						if (routerMod && routerMod.a) router = routerMod.a;
+					} catch(e) {}
+
+					// Get i18n from tQkW module
+					try {
+						var i18nMod = r('tQkW');
+						if (i18nMod && i18nMod.b) i18n = i18nMod.b;
+					} catch(e) {}
+
+					// Get App component from 2Isf module
+					try {
+						var appMod = r('2Isf');
+						if (appMod && appMod.a) AppComp = appMod.a;
+					} catch(e) {}
+
+					if (AppComp) {
+						var opts = {el: '#app', template: '<App/>', components: {App: AppComp}};
+						if (store) opts.store = store;
+						if (router) opts.router = router;
+						if (i18n) opts.i18n = i18n;
+						new Vue(opts);
+						window.__vueManualMount = true;
+					}
+				}
+			}
+		} catch(e) {
+			window.__vueMountError = String(e.message || e);
+		}`)
 	}
 }
 

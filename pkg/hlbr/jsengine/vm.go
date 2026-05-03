@@ -3431,6 +3431,18 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 					return v
 				}
 			}
+			// Check for Symbol.iterator on arrays - look up in ArrayPrototype
+			if obj.Arr != nil && prop.Type == "symbol" {
+				arrayProto := vm.env.Get("ArrayPrototype")
+				if arrayProto != nil && arrayProto.Obj != nil {
+					if v, ok := arrayProto.Obj[key]; ok {
+						if v.Type == "native" || v.Type == "function" {
+							return vm.bindThis(v, obj)
+						}
+						return v
+					}
+				}
+			}
 			if obj.Arr != nil {
 				// Check for array methods
 				if key == "length" {
@@ -3866,25 +3878,28 @@ func (vm *VM) lookupInPrototypeWithOriginal(proto *Value, e *MemberExpr, origina
 		return &Value{Type: "undefined"}
 	}
 
+	var key string
 	if ident, ok := e.Property.(*Ident); ok {
-		if proto.Obj != nil {
-			if v, ok := proto.Obj[ident.Name]; ok {
-				// If the value is a function, bind this to the original object
-				// (not the prototype) so method calls work correctly
-				thisVal := originalObj
-				if thisVal == nil {
-					thisVal = proto
-				}
-				if v.Type == "function" || v.Type == "native" {
-					return &Value{
-						Type:        v.Type,
-						Native:      v.Native,
-						Func:        v.Func,
-						ThisBinding: thisVal,
-					}
-				}
-				return v
+		key = ident.Name
+	} else if e.Computed {
+		key = valueToString(vm.evalExpr(e.Property))
+	}
+
+	if key != "" && proto.Obj != nil {
+		if v, ok := proto.Obj[key]; ok {
+			thisVal := originalObj
+			if thisVal == nil {
+				thisVal = proto
 			}
+			if v.Type == "function" || v.Type == "native" {
+				return &Value{
+					Type:        v.Type,
+					Native:      v.Native,
+					Func:        v.Func,
+					ThisBinding: thisVal,
+				}
+			}
+			return v
 		}
 	}
 
@@ -4237,6 +4252,11 @@ func valueToString(v *Value) string {
 		return "[function]"
 	case "native":
 		return "[native function]"
+	case "symbol":
+		if v.Str != "" {
+			return "Symbol(" + v.Str + ")"
+		}
+		return "Symbol(" + strconv.FormatFloat(v.Num, 'f', 0, 64) + ")"
 	}
 	return ""
 }
@@ -5020,6 +5040,48 @@ func (vm *VM) setupSymbol() {
 	vm.env.Define("Symbol", symbolConstructor)
 	// Store iterator symbol for internal use
 	vm.env.Define("_symbolIterator", iteratorSymbol)
+
+	// Add Symbol.iterator to Array.prototype so that for...of works on arrays.
+	// Returns an iterator object with a next() method that yields array values.
+	arrayProto := vm.env.Get("ArrayPrototype")
+	if arrayProto != nil && arrayProto.Obj != nil {
+		symKey := valueToString(iteratorSymbol)
+		arrayProto.Obj[symKey] = &Value{Type: "native", Native: func(args []*Value) *Value {
+			var thisObj *Value
+			if len(args) > 0 && args[0]._isThisArg {
+				thisObj = args[0]
+			}
+			if thisObj == nil || thisObj.Arr == nil {
+				return &Value{Type: "object", Obj: map[string]*Value{
+					"next": {Type: "native", Native: func(nArgs []*Value) *Value {
+						return &Value{Type: "object", Obj: map[string]*Value{
+							"value": {Type: "undefined"},
+							"done":  {Type: "bool", Bool: true},
+						}}
+					}},
+				}}
+			}
+			arr := thisObj.Arr
+			idx := 0
+			iterObj := &Value{Type: "object", Obj: map[string]*Value{
+				"next": {Type: "native", Native: func(nArgs []*Value) *Value {
+					if idx < len(arr) {
+						val := arr[idx]
+						idx++
+						return &Value{Type: "object", Obj: map[string]*Value{
+							"value": val,
+							"done":  {Type: "bool", Bool: false},
+						}}
+					}
+					return &Value{Type: "object", Obj: map[string]*Value{
+						"value": {Type: "undefined"},
+						"done":  {Type: "bool", Bool: true},
+					}}
+				}},
+			}}
+			return iterObj
+		}}
+	}
 }
 
 // setupReflect adds Reflect API to the VM
