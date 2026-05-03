@@ -297,6 +297,14 @@ func (l *Lexer) NextToken() Token {
 			l.readChar()
 			l.readChar()
 			tok = Token{TokSpread, "..."}
+		} else if isDigit(l.peekChar()) {
+			// Dot followed by digit is a number literal: .08 means 0.08
+			// Read the dot and digits as a number
+			l.readChar()
+			num := l.readNumberAfterDot()
+			tok = Token{TokNumber, "." + num}
+			l.prevTok = TokNumber
+			return tok
 		} else {
 			tok = Token{TokDot, "."}
 		}
@@ -479,13 +487,27 @@ func (l *Lexer) readTemplate() string {
 
 func (l *Lexer) readNumber() string {
 	start := l.pos - 1
-	for isDigit(l.ch) || l.ch == '.' {
+	hasDot := false
+	for isDigit(l.ch) || (l.ch == '.' && !hasDot) {
+		if l.ch == '.' {
+			hasDot = true
+		}
 		l.readChar()
 	}
 	// Check for BigInt suffix 'n'
 	if l.ch == 'n' {
 		l.readChar()
 		return l.input[start : l.pos-1]
+	}
+	return l.input[start : l.pos-1]
+}
+
+// readNumberAfterDot reads digits after a leading dot in a number like .08
+// The dot has already been consumed. Returns the digits part (e.g., "08" for ".08").
+func (l *Lexer) readNumberAfterDot() string {
+	start := l.pos - 1
+	for isDigit(l.ch) {
+		l.readChar()
 	}
 	return l.input[start : l.pos-1]
 }

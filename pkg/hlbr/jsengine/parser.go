@@ -1333,7 +1333,6 @@ func (p *Parser) parseObjectLit() *ObjectLit {
 	p.nextToken()
 	var props []ObjectProperty
 	for p.cur.Type != TokRBrace && p.cur.Type != TokEOF {
-		// Check for spread operator: ...obj
 		if p.cur.Type == TokSpread {
 			p.nextToken()
 			value := p.parseAssignExpr()
@@ -1355,12 +1354,9 @@ func (p *Parser) parseObjectLit() *ObjectLit {
 		} else if p.cur.Type == TokIdent {
 			key := p.cur.Literal
 			p.nextToken()
-			// Check for shorthand { x } or method shorthand { f() {} }
 			if p.cur.Type == TokComma || p.cur.Type == TokRBrace {
-				// Shorthand: { x } means { x: x }
 				props = append(props, ObjectProperty{Key: key, Value: &Ident{Name: key}, Shorthand: true})
 			} else if p.cur.Type == TokLParen {
-				// Method shorthand: { f() {} }
 				p.nextToken()
 				var params []string
 				for p.cur.Type != TokRParen && p.cur.Type != TokEOF {

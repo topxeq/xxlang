@@ -263,7 +263,7 @@ func (b *Browser) loadExternalScript(src string) {
 				// We inject a wrapper in the require function that saves e[t] before calling
 				code = strings.Replace(code,
 					"!function(e){function t(",
-					"!function(e){function t(",
+					"!function(e){window.__wpkModsObj=e;function t(",
 					1)
 				// Expose the require function and modules object by injecting before r.o definition
 				// (r.e is too large to replace safely)
