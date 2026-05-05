@@ -238,6 +238,13 @@ type VM struct {
 	maxAllocs    int64         // maximum allocations before error (0 = unlimited)
 	// Abort flag for external cancellation
 	abortFlag    bool          // set to true to abort execution
+	// running flag prevents step counter resets during nested Run() calls
+	running bool
+	// Step profiling callback: called at step milestones for debugging infinite loops
+	stepProfileFn func(step int64, stack []string)
+	_stepProfileLast int64 // last step count at which profile was logged
+	// Step profile AST capture: when set, captures AST of current function at milestones
+	stepProfileAST string // last captured AST snippet for the looping function
 }
 
 // timerTask represents a scheduled timer callback
@@ -275,6 +282,12 @@ func NewVM(doc *dom.Document) *VM {
 	return vm
 }
 
+// SetStepProfile sets a callback for step profiling. Called every 1M steps with
+// the current step count and call stack. Pass nil to disable.
+func (vm *VM) SetStepProfile(fn func(step int64, stack []string)) {
+	vm.stepProfileFn = fn
+}
+
 // SetDebug enables or disables debug mode.
 func (vm *VM) SetDebug(debug bool) {
 	vm.debug = debug
@@ -284,6 +297,11 @@ func (vm *VM) debugLog(format string, args ...interface{}) {
 	if vm.debug {
 		fmt.Printf("[HLBR JS DEBUG] "+format+"\n", args...)
 	}
+}
+
+// DefineGlobal defines a global variable in the top-level environment.
+func (vm *VM) DefineGlobal(name string, val *Value) {
+	vm.env.Define(name, val)
 }
 
 // SetMaxSteps sets the maximum number of execution steps before timeout.
@@ -385,6 +403,11 @@ func (vm *VM) exitCall() {
 // This is called from execStmt, execBlock, and evalExpr to prevent infinite loops.
 func (vm *VM) checkSteps() {
 	vm.stepCount++
+	// Step profiling: log call stack at milestones (every 1M steps)
+	if vm.stepProfileFn != nil && vm.stepCount%1_000_000 == 0 && vm.stepCount != vm._stepProfileLast {
+		vm._stepProfileLast = vm.stepCount
+		vm.stepProfileFn(vm.stepCount, vm.callStack)
+	}
 	// Check abort flag
 	if vm.abortFlag {
 		ThrowJS(NewError("AbortError", "Execution aborted by external request"))
@@ -512,7 +535,25 @@ func (vm *VM) setupBuiltins() {
 			if len(args) <= offset {
 				return &Value{Type: "null"}
 			}
-			tag := args[offset].Str
+			tagArg := args[offset]
+			tag := ""
+			if tagArg.Type == "string" {
+				tag = tagArg.Str
+			} else if tagArg.Type == "object" && tagArg.Obj != nil {
+				// Component object: try to extract name from name or template
+				if name, ok := tagArg.Obj["name"]; ok && name.Type == "string" {
+					tag = name.Str
+				} else {
+					tag = "div"
+				}
+			} else if tagArg.Type == "function" {
+				if tagArg.Func != nil {
+					tag = "div"
+				}
+			}
+			if tag == "" {
+				tag = "div"
+			}
 			newNode := &dom.Node{Type: dom.ElementNode, Data: strings.ToLower(tag)}
 			return vm.wrapNode(newNode)
 		}},
@@ -1243,12 +1284,6 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 			}
 			return &Value{Type: "object", Arr: arr}
 		}},
-		"children": {Type: "object", Arr: []*Value{}, Obj: map[string]*Value{
-			"length": {Type: "number", Num: 0},
-		}},
-		"childNodes": {Type: "object", Arr: []*Value{}, Obj: map[string]*Value{
-			"length": {Type: "number", Num: 0},
-		}},
 		"firstChild": {Type: "null"},
 		"lastChild": {Type: "null"},
 		"parentNode": {Type: "null"},
@@ -1446,6 +1481,30 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 		"textContent": {Get: textContentGetter, Set: textContentSetter, Enumerable: true, Configurable: true},
 		"outerHTML": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
 			return &Value{Type: "string", Str: n.OuterHTML()}
+		}}, Set: &Value{Type: "native", Native: func(args []*Value) *Value {
+			valIdx := len(args) - 1
+			if valIdx >= 0 && n.Parent != nil {
+				newChildren := htmlparser.ParseFragment(args[valIdx].Str)
+				parent := n.Parent
+				insertIdx := -1
+				for i, c := range parent.Children {
+					if c == n {
+						insertIdx = i
+						break
+					}
+				}
+				if insertIdx >= 0 {
+					newSlice := make([]*dom.Node, 0, len(parent.Children)-1+len(newChildren))
+					newSlice = append(newSlice, parent.Children[:insertIdx]...)
+					for _, c := range newChildren {
+						c.Parent = parent
+						newSlice = append(newSlice, c)
+					}
+					newSlice = append(newSlice, parent.Children[insertIdx+1:]...)
+					parent.Children = newSlice
+				}
+			}
+			return &Value{Type: "undefined"}
 		}}, Enumerable: true, Configurable: true},
 		"id": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
 			return &Value{Type: "string", Str: n.GetAttribute("id")}
@@ -1761,12 +1820,6 @@ func (vm *VM) wrapNodeShallow(n *dom.Node) *Value {
 		"removeEventListener": {Type: "native", Native: func(args []*Value) *Value {
 			return &Value{Type: "undefined"}
 		}},
-		"children": {Type: "object", Arr: []*Value{}, Obj: map[string]*Value{
-			"length": {Type: "number", Num: 0},
-		}},
-		"childNodes": {Type: "object", Arr: []*Value{}, Obj: map[string]*Value{
-			"length": {Type: "number", Num: 0},
-		}},
 		"firstChild": {Type: "null"},
 		"lastChild": {Type: "null"},
 		"parentNode": {Type: "null"},
@@ -2007,7 +2060,12 @@ func (vm *VM) Run(code string) (*Value, error) {
 		vm.debugLog("Code: %s", preview)
 	}
 
-	vm.ResetSteps() // reset step counter for each Run call
+	// Only reset step counter when starting a fresh execution, not during nested calls
+	if !vm.running {
+		vm.ResetSteps()
+	}
+	vm.running = true
+	defer func() { vm.running = false }()
 
 	parser := NewParser(code)
 	prog := parser.Parse()
@@ -2105,13 +2163,19 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 		if s.Init != nil {
 			vm.execStmt(s.Init)
 		}
+		iterCount := 0
 		for {
-			vm.checkSteps() // Check for infinite loop in for-statement
+			vm.checkSteps()
 			if s.Cond != nil {
 				cond := vm.evalExpr(s.Cond)
 				if !isTruthy(cond) {
 					break
 				}
+			}
+			iterCount++
+			// Debug: log long-running for loops
+			if iterCount == 100000 && vm.debug {
+				fmt.Printf("[HLBR JS DEBUG] ForStmt: 100K iterations, cond type: %T\n", s.Cond)
 			}
 			ret, brk, retVal := vm.execBlock(s.Body)
 			if brk {
@@ -2133,6 +2197,16 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 				if current.Obj != nil {
 					for key := range current.Obj {
 						if !keys[key] {
+							// Check if this property has a non-enumerable descriptor
+							if current.Descriptors != nil {
+								if desc, ok := current.Descriptors[key]; ok && !desc.Enumerable {
+									continue
+								}
+							}
+							// Skip built-in prototype methods on non-own objects (depth > 0)
+							if depth > 0 && isBuiltinPrototypeProperty(key) {
+								continue
+							}
 							keys[key] = true
 						}
 					}
@@ -2157,6 +2231,15 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 				if depth > 100 {
 					break
 				}
+			}
+			// Debug: log large for-in iterations
+			if len(keys) > 100 && vm.debug {
+				arrLen := 0
+				if obj.Arr != nil {
+					arrLen = len(obj.Arr)
+				}
+				fmt.Printf("[HLBR JS DEBUG] for-in: %d keys, obj type properties: %d, arr len: %d, depth: %d\n",
+					len(keys), len(obj.Obj), arrLen, depth)
 			}
 			for key := range keys {
 				vm.checkSteps()
@@ -2769,6 +2852,21 @@ func (vm *VM) evalExpr(expr Expression) *Value {
 					return &Value{Type: "bool", Bool: true}
 				}
 			}
+			// Walk the prototype chain for the 'in' operator
+			current := obj.Proto
+			for current != nil {
+				if current.Obj != nil {
+					if _, ok := current.Obj[key]; ok {
+						return &Value{Type: "bool", Bool: true}
+					}
+				}
+				if current.Descriptors != nil {
+					if _, ok := current.Descriptors[key]; ok {
+						return &Value{Type: "bool", Bool: true}
+					}
+				}
+				current = current.Proto
+			}
 		case "string":
 			return &Value{Type: "bool", Bool: key == "length" || isStringMethod(key)}
 		case "arrayMethod", "stringMethod":
@@ -3028,10 +3126,10 @@ func (vm *VM) evalCall(e *CallExpr) *Value {
 
 	callee := vm.evalExpr(e.Callee)
 
-	var args []*Value
-	for _, arg := range e.Args {
-		args = append(args, vm.evalExpr(arg))
-	}
+		var args []*Value
+		for _, arg := range e.Args {
+			args = append(args, vm.evalExpr(arg))
+		}
 
 	// Handle native functions (including array methods)
 	// Convention: only prepend 'this' if the callee has a ThisBinding set by
@@ -3239,8 +3337,12 @@ func (vm *VM) evalCall(e *CallExpr) *Value {
 		oldEnv := vm.env
 		vm.env = childEnv
 
-		// Track recursion depth
-		vm.callStack = append(vm.callStack, fmt.Sprintf("fn(%v)", fn.Params))
+		// Track recursion depth — include first statement type for identification
+		var firstStmt string
+		if len(fn.Body) > 0 {
+			firstStmt = fmt.Sprintf(" %T", fn.Body[0])
+		}
+		vm.callStack = append(vm.callStack, fmt.Sprintf("fn(%v)%s", fn.Params, firstStmt))
 		vm.enterCall()
 		defer vm.exitCall()
 
@@ -3317,9 +3419,33 @@ func (vm *VM) evalMemberRaw(expr Expression) *Value {
 		} else if ident, ok := me.Property.(*Ident); ok {
 			key = ident.Name
 		}
+		// Handle function.prototype — return the constructor's prototype object
+		if (obj.Type == "function" || obj.Type == "native") && key == "prototype" {
+			if obj.PrototypeObj != nil {
+				return obj.PrototypeObj
+			}
+			protoObj := &Value{Type: "object", Obj: make(map[string]*Value)}
+			if objProto := vm.env.Get("ObjectPrototype"); objProto != nil && objProto.Type == "object" {
+				protoObj.Proto = objProto
+			}
+			protoObj.Obj["constructor"] = obj
+			obj.PrototypeObj = protoObj
+			return protoObj
+		}
 		if obj.Obj != nil {
 			if v, ok := obj.Obj[key]; ok {
 				return v
+			}
+		}
+		// Handle descriptors (getters should be called for raw access too)
+		if obj.Descriptors != nil {
+			if desc, ok := obj.Descriptors[key]; ok {
+				if desc.Get != nil {
+					return vm.callGetter(desc.Get, obj)
+				}
+				if desc.Value != nil {
+					return desc.Value
+				}
 			}
 		}
 		if obj.Type == "object" && obj.Arr != nil {
@@ -3335,11 +3461,24 @@ func (vm *VM) evalMemberRaw(expr Expression) *Value {
 func (vm *VM) evalMember(e *MemberExpr) *Value {
 	obj := vm.evalExpr(e.Object)
 
-	// Property access on null/undefined should throw TypeError in strict mode.
-	// For compatibility with code that checks properties on potentially undefined
-	// values (like Vue's IIFEs), we only throw for dot access on null, not undefined,
-	// and only when the access would cause real problems.
-	// TODO: Make this configurable or always-throw once VM is more robust.
+	// Precompute the property key for computed member expressions.
+	// This is crucial for prototype chain lookups: re-evaluating e.Property
+	// inside lookupInPrototypeWithKey would use the wrong environment scope,
+	// causing variable-based computed keys to resolve incorrectly.
+	computedKey := ""
+	var computedProp *Value
+	if e.Computed {
+		computedProp = vm.evalExpr(e.Property)
+		computedKey = valueToString(computedProp)
+	} else if ident, ok := e.Property.(*Ident); ok {
+		computedKey = ident.Name
+	}
+
+	// Property access on null/undefined: in real browsers, this throws TypeError.
+	// However, we currently can't throw here because too much existing code and
+	// library code relies on safe property access patterns like `obj && obj.foo`.
+	// The vhPU patch in browser.go handles the core-js case instead.
+	// TODO: Re-enable TypeError once all downstream code is fixed.
 	_ = obj
 
 	// Handle Proxy get trap
@@ -3416,8 +3555,8 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 
 	if obj.Type == "object" {
 		if e.Computed {
-			prop := vm.evalExpr(e.Property)
-			key := valueToString(prop)
+			key := computedKey
+			prop := computedProp
 			if obj.Descriptors != nil {
 				if desc, ok := obj.Descriptors[key]; ok && desc.Get != nil {
 					return vm.callGetter(desc.Get, obj)
@@ -3848,13 +3987,13 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 
 	// Walk prototype chain if property not found on this object
 	if obj.Type == "object" && obj.Proto != nil {
-		return vm.lookupInPrototypeWithOriginal(obj.Proto, e, obj)
+		return vm.lookupInPrototypeWithKey(obj.Proto, e, obj, computedKey)
 	}
 
 	// Function types: look up in FunctionPrototype
 	if obj.Type == "function" || obj.Type == "native" || obj.Type == "arrayMethod" {
 		if fnProto := vm.env.Get("FunctionPrototype"); fnProto.Type == "object" {
-			result := vm.lookupInPrototypeWithOriginal(fnProto, e, obj)
+			result := vm.lookupInPrototypeWithKey(fnProto, e, obj, computedKey)
 			if result.Type != "undefined" {
 				return result
 			}
@@ -3869,23 +4008,29 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 // The originalObj parameter is used to set ThisBinding on found methods,
 // so that when obj.hasOwnProperty() is called, 'this' refers to obj, not the prototype.
 func (vm *VM) lookupInPrototype(proto *Value, e *MemberExpr) *Value {
-	return vm.lookupInPrototypeWithOriginal(proto, e, nil)
+	return vm.lookupInPrototypeWithKey(proto, e, nil, "")
 }
 
-// lookupInPrototypeWithOriginal walks the prototype chain with an explicit original object.
-func (vm *VM) lookupInPrototypeWithOriginal(proto *Value, e *MemberExpr, originalObj *Value) *Value {
+// lookupInPrototypeWithKey walks the prototype chain with an explicit original object
+// and an optional precomputed key string. When precomputedKey is non-empty, it is used
+// directly instead of re-evaluating e.Property. This is critical for computed member
+// expressions like obj[varKey] where re-evaluating the property expression would use
+// the wrong environment scope.
+func (vm *VM) lookupInPrototypeWithKey(proto *Value, e *MemberExpr, originalObj *Value, precomputedKey string) *Value {
 	if proto == nil || proto.Type != "object" {
 		return &Value{Type: "undefined"}
 	}
 
 	var key string
-	if ident, ok := e.Property.(*Ident); ok {
+	if precomputedKey != "" {
+		key = precomputedKey
+	} else if ident, ok := e.Property.(*Ident); ok {
 		key = ident.Name
 	} else if e.Computed {
 		key = valueToString(vm.evalExpr(e.Property))
 	}
 
-	if key != "" && proto.Obj != nil {
+		if key != "" && proto.Obj != nil {
 		if v, ok := proto.Obj[key]; ok {
 			thisVal := originalObj
 			if thisVal == nil {
@@ -3896,6 +4041,7 @@ func (vm *VM) lookupInPrototypeWithOriginal(proto *Value, e *MemberExpr, origina
 					Type:        v.Type,
 					Native:      v.Native,
 					Func:        v.Func,
+					Obj:         v.Obj,
 					ThisBinding: thisVal,
 				}
 			}
@@ -3905,7 +4051,7 @@ func (vm *VM) lookupInPrototypeWithOriginal(proto *Value, e *MemberExpr, origina
 
 	// Walk up the prototype chain
 	if proto.Proto != nil {
-		return vm.lookupInPrototypeWithOriginal(proto.Proto, e, originalObj)
+		return vm.lookupInPrototypeWithKey(proto.Proto, e, originalObj, precomputedKey)
 	}
 
 	return &Value{Type: "undefined"}
@@ -3978,9 +4124,20 @@ func (vm *VM) evalNew(e *NewExpr) *Value {
 
 		oldEnv := vm.env
 		vm.env = childEnv
+		var result *Value
 		for _, stmt := range fn.Body {
-			vm.execStmt(stmt)
+			ret, returning, retVal := vm.execStmt(stmt)
+			if returning {
+				result = ret
+				// In JS, if a constructor returns an object, new returns that object.
+				// If it returns a primitive (or undefined), new returns this.
+				if retVal != nil && (retVal.Type == "object" || retVal.Type == "function" || retVal.Type == "native") {
+					obj = retVal
+				}
+				break
+			}
 		}
+		_ = result
 		vm.env = oldEnv
 
 		return obj
@@ -4111,6 +4268,80 @@ func toUint32(v *Value) uint32 {
 	return uint32(n)
 }
 
+// isBuiltinPrototypeProperty returns true for built-in Object.prototype and
+// Array.prototype property names that should be non-enumerable and thus
+// excluded from for-in loops when found on the prototype chain (depth > 0).
+var builtinNonEnumerableProps = map[string]bool{
+	"hasOwnProperty":          true,
+	"isPrototypeOf":           true,
+	"propertyIsEnumerable":    true,
+	"toString":                true,
+	"valueOf":                 true,
+	"toLocaleString":          true,
+	"constructor":             true,
+	"__defineGetter__":        true,
+	"__defineSetter__":        true,
+	"__lookupGetter__":        true,
+	"__lookupSetter__":        true,
+	"__proto__":               true,
+	// Array.prototype methods (also non-enumerable in real JS)
+	"push":    true,
+	"pop":     true,
+	"shift":   true,
+	"unshift": true,
+	"slice":   true,
+	"splice":  true,
+	"concat":  true,
+	"join":    true,
+	"indexOf": true,
+	"lastIndexOf": true,
+	"forEach": true,
+	"map":     true,
+	"filter":  true,
+	"reduce":  true,
+	"reduceRight": true,
+	"some":    true,
+	"every":   true,
+	"find":    true,
+	"findIndex": true,
+	"includes": true,
+	"fill":    true,
+	"reverse": true,
+	"sort":    true,
+	"flat":    true,
+	"flatMap": true,
+	"keys":    true,
+	"values":  true,
+	"entries": true,
+	// Function.prototype methods
+	"call":    true,
+	"apply":   true,
+	"bind":    true,
+	// String.prototype methods
+	"charAt":     true,
+	"charCodeAt": true,
+	"substring":  true,
+	"substr":     true,
+	"split":      true,
+	"replace":    true,
+	"toUpperCase": true,
+	"toLowerCase": true,
+	"trim":       true,
+	"trimStart":  true,
+	"trimEnd":    true,
+	"startsWith": true,
+	"endsWith":   true,
+	"repeat":     true,
+	"padStart":   true,
+	"padEnd":     true,
+	"match":      true,
+	"search":     true,
+}
+
+func isBuiltinPrototypeProperty(key string) bool {
+	return builtinNonEnumerableProps[key]
+}
+
 func isTruthy(v *Value) bool {
 	switch v.Type {
 	case "undefined", "null":
@@ -4148,6 +4379,25 @@ func valuesEqual(a, b *Value) bool {
 	// lookup creates a copy with ThisBinding set
 	if a.Type == "native" && b.Type == "native" {
 		// Compare function pointers for identity using reflect
+		if a.Native != nil && b.Native != nil {
+			av := reflect.ValueOf(a.Native)
+			bv := reflect.ValueOf(b.Native)
+			if av.Pointer() == bv.Pointer() {
+				return true
+			}
+		}
+		return a == b
+	}
+	// For JS functions, compare by the underlying Func pointer.
+	// Multiple Value objects may reference the same function (e.g., when
+	// looking up a variable twice), so we compare by the Func field.
+	if a.Type == "function" && b.Type == "function" {
+		if a.Func != nil && b.Func != nil {
+			if a.Func == b.Func {
+				return true
+			}
+		}
+		// For native functions wrapped as "function" type, compare Native pointer
 		if a.Native != nil && b.Native != nil {
 			av := reflect.ValueOf(a.Native)
 			bv := reflect.ValueOf(b.Native)
@@ -4203,6 +4453,12 @@ func jsTypeOf(v *Value) string {
 	default:
 		return "object"
 	}
+}
+
+// ValueToString converts a Value to its string representation.
+// This is the exported version of valueToString for use by other packages.
+func ValueToString(v *Value) string {
+	return valueToString(v)
 }
 
 func valueToString(v *Value) string {
@@ -4618,7 +4874,11 @@ func (vm *VM) callFunctionWithThis(f *Function, thisVal *Value, args []*Value) *
 	oldEnv := vm.env
 	vm.env = childEnv
 
-	vm.callStack = append(vm.callStack, fmt.Sprintf("callFnWithThis(%v) body=%d", f.Params, len(f.Body)))
+	var firstStmt string
+	if len(f.Body) > 0 {
+		firstStmt = fmt.Sprintf(" %T", f.Body[0])
+	}
+	vm.callStack = append(vm.callStack, fmt.Sprintf("callFnWithThis(%v) body=%d%s", f.Params, len(f.Body), firstStmt))
 	vm.enterCall()
 	defer vm.exitCall()
 

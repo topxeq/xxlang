@@ -824,19 +824,25 @@ func GetObjectMethods(vm *VM) map[string]*Value {
 			}
 			seen := make(map[string]bool)
 			keys := make([]*Value, 0)
-			// Include keys from Obj map
+			// Include own enumerable keys from Obj map (not prototype-inherited)
 			if obj.Obj != nil {
 				for k := range obj.Obj {
 					if !seen[k] {
+						// Skip non-enumerable descriptor properties
+						if obj.Descriptors != nil {
+							if desc, ok := obj.Descriptors[k]; ok && !desc.Enumerable {
+								continue
+							}
+						}
 						keys = append(keys, &Value{Type: "string", Str: k})
 						seen[k] = true
 					}
 				}
 			}
-			// Include keys from descriptors (Object.defineProperty)
+			// Include enumerable keys from descriptors (Object.defineProperty)
 			if obj.Descriptors != nil {
-				for k := range obj.Descriptors {
-					if !seen[k] {
+				for k, desc := range obj.Descriptors {
+					if !seen[k] && desc.Enumerable {
 						keys = append(keys, &Value{Type: "string", Str: k})
 						seen[k] = true
 					}
@@ -1138,6 +1144,54 @@ func GetObjectMethods(vm *VM) map[string]*Value {
 			}
 			return &Value{Type: "bool", Bool: valuesStrictEqual(args[offset], args[offset+1])}
 		}},
+		// Object.getOwnPropertyNames(obj) — returns all own property names
+		// (enumerable and non-enumerable), but not Symbol-keyed properties.
+		"getOwnPropertyNames": {Type: "native", Native: func(args []*Value) *Value {
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
+				return &Value{Type: "object", Arr: []*Value{}}
+			}
+			obj := args[offset]
+			if obj.Type != "object" && obj.Type != "function" {
+				return &Value{Type: "object", Arr: []*Value{}}
+			}
+			seen := make(map[string]bool)
+			keys := make([]*Value, 0)
+			// Obj map properties
+			if obj.Obj != nil {
+				for k := range obj.Obj {
+					if !seen[k] {
+						keys = append(keys, &Value{Type: "string", Str: k})
+						seen[k] = true
+					}
+				}
+			}
+			// Descriptor properties (even non-enumerable ones)
+			if obj.Descriptors != nil {
+				for k := range obj.Descriptors {
+					if !seen[k] {
+						keys = append(keys, &Value{Type: "string", Str: k})
+						seen[k] = true
+					}
+				}
+			}
+			// Array indices
+			if obj.Arr != nil {
+				for i := range obj.Arr {
+					k := strconv.Itoa(i)
+					if !seen[k] {
+						keys = append(keys, &Value{Type: "string", Str: k})
+						seen[k] = true
+					}
+				}
+			}
+			// For functions, include "prototype" if it has one
+			if (obj.Type == "function" || obj.Type == "native") && !seen["prototype"] {
+				keys = append(keys, &Value{Type: "string", Str: "prototype"})
+				seen["prototype"] = true
+			}
+			return &Value{Type: "object", Arr: keys}
+		}},
 	}
 }
 
@@ -1222,6 +1276,9 @@ func newRegExp(pattern, flags string) *Value {
 		}},
 	}}
 	regexpObj.Obj["source"] = &Value{Type: "string", Str: pattern}
+	regexpObj.Obj["global"] = &Value{Type: "bool", Bool: strings.Contains(flags, "g")}
+	regexpObj.Obj["ignoreCase"] = &Value{Type: "bool", Bool: strings.Contains(flags, "i")}
+	regexpObj.Obj["multiline"] = &Value{Type: "bool", Bool: strings.Contains(flags, "m")}
 	return regexpObj
 }
 
@@ -1619,17 +1676,22 @@ func callStringMethod(name string, str string, args []*Value, vm *VM) *Value {
 				re, err := regexp.Compile(source.Str)
 				if err == nil {
 					if args[1].Type == "function" || args[1].Type == "native" {
-						result := re.ReplaceAllStringFunc(str, func(match string) string {
-							cbArgs := []*Value{
-								{Type: "string", Str: match},
-							}
-							retVal := vm.callFunction(args[1], cbArgs)
-							return valueToString(retVal)
-						})
+						global := false
+						if gFlag, ok := args[0].Obj["global"]; ok && gFlag.Type == "bool" && gFlag.Bool {
+							global = true
+						}
+						result := strReplaceWithCallback(re, str, args[1], vm, global)
 						return &Value{Type: "string", Str: result}
 					}
 					replacement := valueToString(args[1])
-					return &Value{Type: "string", Str: re.ReplaceAllString(str, replacement)}
+					if global, ok := args[0].Obj["global"]; ok && global.Type == "bool" && global.Bool {
+						return &Value{Type: "string", Str: re.ReplaceAllString(str, replacement)}
+					}
+					loc := re.FindStringIndex(str)
+					if loc != nil {
+						return &Value{Type: "string", Str: str[:loc[0]] + replacement + str[loc[1]:]}
+					}
+					return &Value{Type: "string", Str: str}
 				}
 			}
 		}
@@ -2014,4 +2076,56 @@ func callArrayMethod(name string, obj *Value, args []*Value, vm *VM) *Value {
 	default:
 		return &Value{Type: "undefined"}
 	}
+}
+
+// strReplaceWithCallback performs str.replace(regex, callback) with proper
+// capture group arguments passed to the callback, matching JS spec behavior.
+func strReplaceWithCallback(re *regexp.Regexp, str string, callback *Value, vm *VM, global bool) string {
+	if !global {
+		loc := re.FindStringSubmatchIndex(str)
+		if loc == nil {
+			return str
+		}
+		cbArgs := buildReplaceCallbackArgs(str, loc)
+		retVal := vm.callFunction(callback, cbArgs)
+		replacement := valueToString(retVal)
+		return str[:loc[0]] + replacement + str[loc[1]:]
+	}
+
+	var result strings.Builder
+	lastEnd := 0
+	matches := re.FindAllStringSubmatchIndex(str, -1)
+	for _, loc := range matches {
+		result.WriteString(str[lastEnd:loc[0]])
+		cbArgs := buildReplaceCallbackArgs(str, loc)
+		retVal := vm.callFunction(callback, cbArgs)
+		result.WriteString(valueToString(retVal))
+		lastEnd = loc[1]
+	}
+	result.WriteString(str[lastEnd:])
+	return result.String()
+}
+
+// buildReplaceCallbackArgs creates the callback arguments for String.prototype.replace
+// per the ECMAScript spec: (match, p1, p2, ..., offset, string)
+func buildReplaceCallbackArgs(str string, loc []int) []*Value {
+	match := str[loc[0]:loc[1]]
+	cbArgs := []*Value{{Type: "string", Str: match}}
+
+	// Capture groups: loc[2], loc[3] is group 1, loc[4], loc[5] is group 2, etc.
+	for i := 2; i+1 < len(loc); i += 2 {
+		if loc[i] == -1 {
+			cbArgs = append(cbArgs, &Value{Type: "undefined"})
+		} else {
+			cbArgs = append(cbArgs, &Value{Type: "string", Str: str[loc[i]:loc[i+1]]})
+		}
+	}
+
+	// Offset argument
+	cbArgs = append(cbArgs, &Value{Type: "number", Num: float64(loc[0])})
+
+	// Original string argument
+	cbArgs = append(cbArgs, &Value{Type: "string", Str: str})
+
+	return cbArgs
 }

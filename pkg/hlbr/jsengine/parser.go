@@ -945,7 +945,19 @@ func (p *Parser) parseCallExpr() Expression {
 		if p.cur.Type == TokRParen {
 			p.nextToken()
 		}
-		left = &CallExpr{Callee: left, Args: args}
+		callExpr := &CallExpr{Callee: left, Args: args}
+		if newExpr, ok := callExpr.Callee.(*NewExpr); ok {
+			if len(newExpr.Args) > 0 && len(args) == 0 {
+				left = newExpr
+			} else if len(newExpr.Args) == 0 {
+				newExpr.Args = args
+				left = newExpr
+			} else {
+				left = callExpr
+			}
+		} else {
+			left = callExpr
+		}
 		} else if p.cur.Type == TokDot {
 			p.nextToken()
 			prop := &Ident{Name: p.cur.Literal}
@@ -1233,6 +1245,26 @@ func (p *Parser) parseNewExpr() *NewExpr {
 	p.nextToken()
 	callee := p.parsePrimaryExpr()
 
+	// Consume member expression chains on the callee (e.g., Vuex.Store, a.b.c)
+	// but NOT call expressions with arguments — those belong to the NewExpr.
+	for p.cur.Type == TokDot {
+		p.nextToken()
+		if p.cur.Type == TokIdent {
+			prop := &Ident{Name: p.cur.Literal}
+			p.nextToken()
+			callee = &MemberExpr{Object: callee, Property: prop, Computed: false}
+		} else if p.cur.Type == TokLBracket {
+			p.nextToken()
+			prop := p.parseAssignExpr()
+			if p.cur.Type == TokRBracket {
+				p.nextToken()
+			}
+			callee = &MemberExpr{Object: callee, Property: prop, Computed: true}
+		} else {
+			break
+		}
+	}
+
 	var args []Expression
 	if p.cur.Type == TokLParen {
 		p.nextToken()
@@ -1253,6 +1285,10 @@ func (p *Parser) parseNewExpr() *NewExpr {
 
 	return &NewExpr{Callee: callee, Args: args}
 }
+
+// countNewExprArgs is a debug helper that returns the number of args
+// for the most recently parsed NewExpr with the given callee name.
+var _ = func() {} // placeholder
 
 func (p *Parser) parseArrayLit() *ArrayLit {
 	p.nextToken()
