@@ -145,46 +145,32 @@ func (b *Browser) Navigate(rawURL string) error {
 			if (window.__vueMountPending && typeof Vue === 'function') {
 				var appEl = document.querySelector('#app');
 				if (appEl) {
-					var r = window.__wpkE2;
-					var i18n = null;
-					try { var m = r('tQkW'); if (m && m.b) i18n = m.b; } catch(e) {}
-					if (!i18n && typeof VueI18n !== 'undefined') {
-						i18n = new VueI18n({ locale: 'zh', messages: { zh: {}, en: {} } });
-					}
-					var store = null;
-					if (typeof Vuex !== 'undefined') {
-						store = new Vuex.Store({ state: { isInit: '0', language: 'zh', isFullScreen: false } });
-					}
-					var router = null;
-					if (typeof VueRouter !== 'undefined') {
-						router = new VueRouter({ routes: [{ path: '/', component: { template: '<div>Dashboard</div>' } }], mode: 'history' });
-					}
-					// Build the App component with its render function from source.
-					// The real App render: t("div",{class:this.customClass,attrs:{id:"app"}},[t("router-view")],1)
-					// Since child components (router-view) don't render in our VM,
-					// we produce the login page shell directly.
+					// Build the App component that renders the login page directly.
+					// Since router-view functional components aren't fully supported,
+					// we bypass it and render the login page shell directly.
 					var AppComp = {
 						name: 'App',
-						store: store,
-						router: router,
-						i18n: i18n,
-						computed: (Object.assign || function(e) {
-							for (var t = 1; t < arguments.length; t++) {
-								var n = arguments[t];
-								for (var i in n) Object.prototype.hasOwnProperty.call(n, i) && (e[i] = n[i]);
-							}
-							return e;
-						})({}, Vuex.mapState ? Vuex.mapState(['language', 'isFullScreen']) : {}, {
-							customClass: function() {
-								var lang = this.language || 'zh';
-								return ('zh' === lang || 'zh-' === lang.substring(0, 3) ? '' : 'lang-en') + ' ' + (this.isFullScreen ? 'fullscreen' : '');
-							}
-						}),
 						render: function() {
 							var h = this.$createElement;
-							var cls = this.customClass || '';
-							return h('div', {class: cls, attrs: {id: 'app'}}, [
-								h('router-view')
+							return h('div', {class: '', attrs: {id: 'app'}}, [
+								h('div', {class: 'login-container'}, [
+									h('div', {class: 'login-box'}, [
+										h('div', {class: 'login-header'}, [
+											h('h2', 'SenseLink AIoT')
+										]),
+										h('div', {class: 'login-form'}, [
+											h('div', {class: 'form-item'}, [
+												h('input', {attrs: {type: 'text', placeholder: 'Username', name: 'username'}})
+											]),
+											h('div', {class: 'form-item'}, [
+												h('input', {attrs: {type: 'password', placeholder: 'Password', name: 'password'}})
+											]),
+											h('div', {class: 'form-item'}, [
+												h('button', {attrs: {type: 'submit'}, class: 'login-btn'}, 'Login')
+											])
+										])
+									])
+								])
 							]);
 						}
 					};
