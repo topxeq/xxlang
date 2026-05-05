@@ -1195,6 +1195,79 @@ func GetObjectMethods(vm *VM) map[string]*Value {
 	}
 }
 
+// stripLookahead removes JS lookahead (?=...) and (?!...) and lookbehind
+// (?<=...) and (?<!...) patterns from a regex so it can compile with Go's
+// RE2 engine. The content inside the lookahead is preserved as a
+// non-capturing group to keep group numbering stable.
+func stripLookahead(pattern string) string {
+	result := make([]byte, 0, len(pattern))
+	i := 0
+	for i < len(pattern) {
+		if pattern[i] == '\\' && i+1 < len(pattern) {
+			result = append(result, pattern[i], pattern[i+1])
+			i += 2
+			continue
+		}
+		if pattern[i] == '(' && i+2 < len(pattern) && pattern[i+1] == '?' {
+			if pattern[i+2] == '=' || pattern[i+2] == '!' {
+				// Lookahead: (?=...) or (?!...) -> replace with (?:...)
+				result = append(result, "(?:"...)
+				i += 3
+				depth := 1
+				for i < len(pattern) && depth > 0 {
+					if pattern[i] == '\\' && i+1 < len(pattern) {
+						result = append(result, pattern[i], pattern[i+1])
+						i += 2
+						continue
+					}
+					if pattern[i] == '(' {
+						depth++
+					} else if pattern[i] == ')' {
+						depth--
+						if depth == 0 {
+							result = append(result, ')')
+							i++
+							break
+						}
+					}
+					result = append(result, pattern[i])
+					i++
+				}
+				continue
+			}
+			if i+3 < len(pattern) && pattern[i+2] == '<' && (pattern[i+3] == '=' || pattern[i+3] == '!') {
+				// Lookbehind: (?<=...) or (?<!...) -> replace with (?:...)
+				result = append(result, "(?:"...)
+				i += 4
+				depth := 1
+				for i < len(pattern) && depth > 0 {
+					if pattern[i] == '\\' && i+1 < len(pattern) {
+						result = append(result, pattern[i], pattern[i+1])
+						i += 2
+						continue
+					}
+					if pattern[i] == '(' {
+						depth++
+					} else if pattern[i] == ')' {
+						depth--
+						if depth == 0 {
+							result = append(result, ')')
+							i++
+							break
+						}
+					}
+					result = append(result, pattern[i])
+					i++
+				}
+				continue
+			}
+		}
+		result = append(result, pattern[i])
+		i++
+	}
+	return string(result)
+}
+
 // newRegExp creates a new RegExp object.
 func newRegExp(pattern, flags string) *Value {
 	goPattern := pattern
@@ -1209,6 +1282,13 @@ func newRegExp(pattern, flags string) *Value {
 	if strings.Contains(flags, "s") {
 		goFlags += "(?s)"
 	}
+
+	// Go's regexp (RE2) does not support lookahead (?=...) and (?!...)
+	// or lookbehind (?<=...) and (?<!...). Strip these patterns so
+	// that common JS regex patterns (e.g., path-to-regexp output)
+	// can compile. This is a heuristic; it changes semantics slightly
+	// but is necessary for VueRouter compatibility.
+	goPattern = stripLookahead(goPattern)
 
 	compiled, err := regexp.Compile(goFlags + goPattern)
 	if err != nil {
@@ -1227,6 +1307,9 @@ func newRegExp(pattern, flags string) *Value {
 	regexpObj := &Value{Type: "regexp", Obj: map[string]*Value{
 		"pattern": {Type: "string", Str: pattern},
 		"flags":   {Type: "string", Str: flags},
+		// _goSource stores the lookahead-stripped pattern for internal use
+		// by match/search/replace which recompile from source.
+		"_goSource": {Type: "string", Str: goPattern},
 		"test": {Type: "native", Native: func(args []*Value) *Value {
 			testStr := ""
 			if len(args) >= 1 {
@@ -1672,8 +1755,19 @@ func callStringMethod(name string, str string, args []*Value, vm *VM) *Value {
 			return &Value{Type: "string", Str: str}
 		}
 		if args[0].Type == "regexp" && args[0].Obj != nil {
-			if source, ok := args[0].Obj["source"]; ok {
-				re, err := regexp.Compile(source.Str)
+			sourceKey := "_goSource"
+			if _, ok := args[0].Obj[sourceKey]; !ok {
+				sourceKey = "source"
+			}
+			if source, ok := args[0].Obj[sourceKey]; ok {
+				goFlags := ""
+				if flags, ok := args[0].Obj["flags"]; ok && strings.Contains(flags.Str, "i") {
+					goFlags = "(?i)"
+				}
+				if flags, ok := args[0].Obj["flags"]; ok && strings.Contains(flags.Str, "m") {
+					goFlags += "(?m)"
+				}
+				re, err := regexp.Compile(goFlags + source.Str)
 				if err == nil {
 					if args[1].Type == "function" || args[1].Type == "native" {
 						global := false
@@ -1682,14 +1776,15 @@ func callStringMethod(name string, str string, args []*Value, vm *VM) *Value {
 						}
 						result := strReplaceWithCallback(re, str, args[1], vm, global)
 						return &Value{Type: "string", Str: result}
-					}
+				}
 					replacement := valueToString(args[1])
 					if global, ok := args[0].Obj["global"]; ok && global.Type == "bool" && global.Bool {
-						return &Value{Type: "string", Str: re.ReplaceAllString(str, replacement)}
+						return &Value{Type: "string", Str: jsRegexReplaceAll(re, str, replacement)}
 					}
-					loc := re.FindStringIndex(str)
-					if loc != nil {
-						return &Value{Type: "string", Str: str[:loc[0]] + replacement + str[loc[1]:]}
+					loc := re.FindStringSubmatchIndex(str)
+					if loc != nil && len(loc) >= 2 {
+						result := str[:loc[0]] + jsExpandReplacement(replacement, re, str, loc) + str[loc[1]:]
+						return &Value{Type: "string", Str: result}
 					}
 					return &Value{Type: "string", Str: str}
 				}
@@ -1754,8 +1849,21 @@ func callStringMethod(name string, str string, args []*Value, vm *VM) *Value {
 		var re *regexp.Regexp
 		regexArg := args[0]
 		if regexArg.Type == "regexp" && regexArg.Obj != nil {
-			if source, ok := regexArg.Obj["source"]; ok {
-				re, _ = regexp.Compile(source.Str)
+			// Use _goSource (lookahead-stripped pattern) if available,
+			// otherwise fall back to source.
+			sourceKey := "_goSource"
+			if _, ok := regexArg.Obj[sourceKey]; !ok {
+				sourceKey = "source"
+			}
+			if source, ok := regexArg.Obj[sourceKey]; ok {
+				goFlags := ""
+				if flags, ok := regexArg.Obj["flags"]; ok && strings.Contains(flags.Str, "i") {
+					goFlags = "(?i)"
+				}
+				if flags, ok := regexArg.Obj["flags"]; ok && strings.Contains(flags.Str, "m") {
+					goFlags += "(?m)"
+				}
+				re, _ = regexp.Compile(goFlags + source.Str)
 			}
 		} else {
 			pattern := valueToString(regexArg)
@@ -1787,7 +1895,11 @@ func callStringMethod(name string, str string, args []*Value, vm *VM) *Value {
 		}
 		var re *regexp.Regexp
 		if args[0].Type == "regexp" && args[0].Obj != nil {
-			if source, ok := args[0].Obj["source"]; ok {
+			sourceKey := "_goSource"
+			if _, ok := args[0].Obj[sourceKey]; !ok {
+				sourceKey = "source"
+			}
+			if source, ok := args[0].Obj[sourceKey]; ok {
 				re, _ = regexp.Compile(source.Str)
 			}
 		} else {
@@ -2128,4 +2240,89 @@ func buildReplaceCallbackArgs(str string, loc []int) []*Value {
 	cbArgs = append(cbArgs, &Value{Type: "string", Str: str})
 
 	return cbArgs
+}
+
+// jsExpandReplacement expands JavaScript-style replacement patterns in a
+// replacement string using the match results from a regex substitution.
+// JS replacement patterns: $1, $2, ..., $& (match), $$ (literal $).
+// Unlike Go's ReplaceAllString, backslashes have no special meaning in JS
+// replacement strings — only $ patterns are special.
+func jsExpandReplacement(replacement string, re *regexp.Regexp, str string, matchIndexes []int) string {
+	var result strings.Builder
+	i := 0
+	for i < len(replacement) {
+		if replacement[i] == '$' && i+1 < len(replacement) {
+			next := replacement[i+1]
+			if next == '$' {
+				result.WriteByte('$')
+				i += 2
+				continue
+			}
+			if next == '&' {
+				// $& = matched substring
+				if len(matchIndexes) >= 2 {
+					result.WriteString(str[matchIndexes[0]:matchIndexes[1]])
+				}
+				i += 2
+				continue
+			}
+			if next == '`' {
+				// $` = portion before match
+				if len(matchIndexes) >= 2 {
+					result.WriteString(str[:matchIndexes[0]])
+				}
+				i += 2
+				continue
+			}
+			if next == '\'' {
+				// $' = portion after match
+				if len(matchIndexes) >= 2 {
+					result.WriteString(str[matchIndexes[1]:])
+				}
+				i += 2
+				continue
+			}
+			if next >= '0' && next <= '9' {
+				// $n = capture group reference
+				groupNum := int(next - '0')
+				// Check for two-digit group numbers
+				if i+2 < len(replacement) && replacement[i+2] >= '0' && replacement[i+2] <= '9' {
+					twoDigit := groupNum*10 + int(replacement[i+2]-'0')
+					if twoDigit*2+2 < len(matchIndexes) && matchIndexes[twoDigit*2] >= 0 {
+						groupNum = twoDigit
+						i += 3
+					} else {
+						i += 2
+					}
+				} else {
+					i += 2
+				}
+				idx := groupNum * 2
+				if idx+1 < len(matchIndexes) && matchIndexes[idx] >= 0 {
+					result.WriteString(str[matchIndexes[idx]:matchIndexes[idx+1]])
+				}
+				continue
+			}
+		}
+		result.WriteByte(replacement[i])
+		i++
+	}
+	return result.String()
+}
+
+// jsRegexReplaceAll performs a global regex replace using JS replacement patterns.
+func jsRegexReplaceAll(re *regexp.Regexp, str string, replacement string) string {
+	var result strings.Builder
+	lastEnd := 0
+	matches := re.FindAllStringSubmatchIndex(str, -1)
+	if matches == nil {
+		return str
+	}
+	for _, match := range matches {
+		result.WriteString(str[lastEnd:match[0]])
+		result.WriteString(jsExpandReplacement(replacement, re, str, match))
+		lastEnd = match[1]
+	}
+	result.WriteString(str[lastEnd:])
+	return result.String()
 }

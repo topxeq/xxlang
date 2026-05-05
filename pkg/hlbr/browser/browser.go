@@ -517,8 +517,8 @@ func (b *Browser) preloadAndLoadChunks(bundleSrc string, code string) {
 		// Try entry module execution with a moderate step limit.
 		// The full Vue app initialization can be very expensive (100M+ steps)
 		// due to RSA crypto, Vuex reactivity, and Vue Router setup.
-		// We use a 5M step budget; if it completes, great; if not, we mount manually.
-		b.vm.SetMaxSteps(5_000_000)
+		// We use a 50M step budget to allow full app initialization.
+		b.vm.SetMaxSteps(50_000_000)
 		_, err := b.vm.Run("if(window.__wpkE2){window.__wpkE2(0)}")
 		b.vm.SetMaxSteps(prevMax)
 		if err != nil {

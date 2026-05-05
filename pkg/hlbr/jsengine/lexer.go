@@ -1,5 +1,10 @@
 package jsengine
 
+import (
+	"strconv"
+	"strings"
+)
+
 type TokenType int
 
 const (
@@ -457,16 +462,67 @@ func (l *Lexer) skipBlockComment() {
 
 func (l *Lexer) readString(quote byte) string {
 	l.readChar()
-	start := l.pos - 1
+	var result strings.Builder
 	for l.ch != quote && l.ch != 0 {
 		if l.ch == '\\' {
 			l.readChar()
+			switch l.ch {
+			case 'n':
+				result.WriteByte('\n')
+			case 't':
+				result.WriteByte('\t')
+			case 'r':
+				result.WriteByte('\r')
+			case '\\':
+				result.WriteByte('\\')
+			case '\'':
+				result.WriteByte('\'')
+			case '"':
+				result.WriteByte('"')
+			case '`':
+				result.WriteByte('`')
+			case '/':
+				result.WriteByte('/')
+			case '0':
+				result.WriteByte(0)
+			case 'u':
+				l.readChar()
+				hex := ""
+				for i := 0; i < 4 && l.ch != 0; i++ {
+					hex += string(l.ch)
+					l.readChar()
+				}
+				if r, err := strconv.ParseInt(hex, 16, 32); err == nil {
+					result.WriteRune(rune(r))
+				} else {
+					result.WriteString("\\u" + hex)
+				}
+				continue
+			case 'x':
+				l.readChar()
+				hex := ""
+				for i := 0; i < 2 && l.ch != 0; i++ {
+					hex += string(l.ch)
+					l.readChar()
+				}
+				if r, err := strconv.ParseInt(hex, 16, 32); err == nil {
+					result.WriteByte(byte(r))
+				} else {
+					result.WriteString("\\x" + hex)
+				}
+				continue
+			default:
+				if l.ch != 0 {
+					result.WriteByte(l.ch)
+				}
+			}
+		} else {
+			result.WriteByte(l.ch)
 		}
 		l.readChar()
 	}
-	result := l.input[start : l.pos-1]
 	l.readChar()
-	return result
+	return result.String()
 }
 
 // readTemplate reads a template literal: `Hello ${name}!`

@@ -245,6 +245,11 @@ type VM struct {
 	_stepProfileLast int64 // last step count at which profile was logged
 	// Step profile AST capture: when set, captures AST of current function at milestones
 	stepProfileAST string // last captured AST snippet for the looping function
+	// accessorDepth tracks nested getter/setter calls to prevent infinite re-entrancy.
+	// Vue 2's reactivity can create getter→setter→getter→... chains when Dep.target
+	// tracking goes wrong. Real browsers handle this via the JS engine's call stack,
+	// but our VM needs an explicit guard.
+	accessorDepth int
 }
 
 // timerTask represents a scheduled timer callback
@@ -621,6 +626,26 @@ func (vm *VM) setupBuiltins() {
 			"language": {Type: "string", Str: "en-US"},
 			"platform": {Type: "string", Str: "Xxlang"},
 			"cookieEnabled": {Type: "bool", Bool: true},
+		}},
+		"history": {Type: "object", Obj: map[string]*Value{
+			"length": {Type: "number", Num: 1},
+			"scrollRestoration": {Type: "string", Str: "auto"},
+			"state": {Type: "null"},
+			"pushState": {Type: "native", Native: func(args []*Value) *Value {
+				return &Value{Type: "undefined"}
+			}},
+			"replaceState": {Type: "native", Native: func(args []*Value) *Value {
+				return &Value{Type: "undefined"}
+			}},
+			"go": {Type: "native", Native: func(args []*Value) *Value {
+				return &Value{Type: "undefined"}
+			}},
+			"back": {Type: "native", Native: func(args []*Value) *Value {
+				return &Value{Type: "undefined"}
+			}},
+			"forward": {Type: "native", Native: func(args []*Value) *Value {
+				return &Value{Type: "undefined"}
+			}},
 		}},
 		"innerWidth":  {Type: "number", Num: 1024},
 		"innerHeight": {Type: "number", Num: 768},
@@ -1951,6 +1976,9 @@ func (vm *VM) wrapNodeShallow(n *dom.Node) *Value {
 
 // newArray creates a new array Value with the ArrayPrototype link.
 func (vm *VM) newArray(elements []*Value) *Value {
+	if elements == nil {
+		elements = []*Value{}
+	}
 	arr := &Value{Type: "object", Arr: elements}
 	if proto := vm.env.Get("ArrayPrototype"); proto.Type == "object" {
 		arr.Proto = proto
@@ -2359,6 +2387,45 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 	case *BreakStmt:
 		return &Value{Type: "undefined"}, true, nil
 	case *ContinueStmt:
+		return &Value{Type: "undefined"}, false, nil
+	case *SwitchStmt:
+		disc := vm.evalExpr(s.Discriminant)
+		matched := false
+		var defaultIdx int = -1
+		for i, c := range s.Cases {
+			if c.Test == nil {
+				defaultIdx = i
+				continue
+			}
+			testVal := vm.evalExpr(c.Test)
+			if !matched && valuesEqual(disc, testVal) {
+				matched = true
+			}
+			if matched {
+				for _, stmt := range c.Consequent {
+					val, brk, retVal := vm.execStmt(stmt)
+					if brk {
+						if retVal != nil {
+							return val, true, retVal
+						}
+						return &Value{Type: "undefined"}, false, nil
+					}
+				}
+			}
+		}
+		if !matched && defaultIdx >= 0 {
+			for i := defaultIdx; i < len(s.Cases); i++ {
+				for _, stmt := range s.Cases[i].Consequent {
+					val, brk, retVal := vm.execStmt(stmt)
+					if brk {
+						if retVal != nil {
+							return val, true, retVal
+						}
+						return &Value{Type: "undefined"}, false, nil
+					}
+				}
+			}
+		}
 		return &Value{Type: "undefined"}, false, nil
 	case *BlockStmt:
 		return vm.execBlock(s.Statements)
@@ -4781,22 +4848,38 @@ func isArrayMethod(name string) bool {
 // This is used by array methods to invoke callback functions.
 // callGetter invokes a getter function with the object as 'this'.
 func (vm *VM) callGetter(fn *Value, obj *Value) *Value {
+	vm.accessorDepth++
+	if vm.accessorDepth > 100 {
+		vm.accessorDepth--
+		// Break the re-entrancy cycle: return undefined to prevent infinite getter loops.
+		// This mirrors how real JS engines throw a stack overflow for deeply recursive
+		// getter chains, but we silently return undefined to keep Vue's reactivity going.
+		return &Value{Type: "undefined"}
+	}
+	result := &Value{Type: "undefined"}
 	if fn.Type == "function" && fn.Func != nil {
-		return vm.callFunctionWithThis(fn.Func, obj, []*Value{})
+		result = vm.callFunctionWithThis(fn.Func, obj, []*Value{})
+	} else if fn.Type == "native" && fn.Native != nil {
+		result = fn.Native([]*Value{obj})
 	}
-	if fn.Type == "native" && fn.Native != nil {
-		return fn.Native([]*Value{obj})
-	}
-	return &Value{Type: "undefined"}
+	vm.accessorDepth--
+	return result
 }
 
 // callSetter invokes a setter function with the object as 'this' and the value.
 func (vm *VM) callSetter(fn *Value, obj *Value, val *Value) {
+	vm.accessorDepth++
+	if vm.accessorDepth > 100 {
+		vm.accessorDepth--
+		// Break the re-entrancy cycle: skip the setter call to prevent infinite loops.
+		return
+	}
 	if fn.Type == "function" && fn.Func != nil {
 		vm.callFunctionWithThis(fn.Func, obj, []*Value{val})
 	} else if fn.Type == "native" && fn.Native != nil {
 		fn.Native([]*Value{obj, val})
 	}
+	vm.accessorDepth--
 }
 
 func (vm *VM) callFunction(fn *Value, args []*Value) *Value {

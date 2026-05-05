@@ -141,6 +141,21 @@ type BlockStmt struct {
 func (s *BlockStmt) node() {}
 func (s *BlockStmt) stmt() {}
 
+// SwitchStmt represents a switch statement with discriminant and case clauses.
+type SwitchStmt struct {
+	Discriminant Expression
+	Cases        []SwitchCase
+}
+
+// SwitchCase represents a single case (or default) clause in a switch statement.
+type SwitchCase struct {
+	Test       Expression // nil for default case
+	Consequent []Statement
+}
+
+func (s *SwitchStmt) node() {}
+func (s *SwitchStmt) stmt() {}
+
 // TryStmt represents a try-catch-finally statement
 type TryStmt struct {
 	Body     []Statement

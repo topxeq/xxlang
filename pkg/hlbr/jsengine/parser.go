@@ -1510,9 +1510,10 @@ func (p *Parser) parseSwitchStmt() Statement {
 	if p.cur.Type != TokLParen {
 		p.nextToken()
 	}
+	var discriminant Expression
 	if p.cur.Type == TokLParen {
 		p.nextToken() // skip '('
-		_ = p.parseExpression()
+		discriminant = p.parseExpression()
 		if p.cur.Type == TokRParen {
 			p.nextToken() // skip ')'
 		}
@@ -1521,13 +1522,29 @@ func (p *Parser) parseSwitchStmt() Statement {
 		p.nextToken() // skip '{'
 	}
 
+	var cases []SwitchCase
 	for p.cur.Type != TokRBrace && p.cur.Type != TokEOF {
 		if p.cur.Type == TokKeyword && p.cur.Literal == "case" {
 			p.nextToken() // skip 'case'
-			_ = p.parseExpression()
+			testExpr := p.parseExpression()
 			if p.cur.Type == TokColon {
 				p.nextToken() // skip ':'
 			}
+			var body []Statement
+			for p.cur.Type != TokRBrace && p.cur.Type != TokEOF &&
+				!(p.cur.Type == TokKeyword && (p.cur.Literal == "case" || p.cur.Literal == "default")) {
+				if p.cur.Type == TokSemi {
+					p.nextToken()
+					continue
+				}
+				stmt := p.parseStatement()
+				if stmt != nil {
+					body = append(body, stmt)
+				} else {
+					p.nextToken()
+				}
+			}
+			cases = append(cases, SwitchCase{Test: testExpr, Consequent: body})
 			continue
 		}
 		if p.cur.Type == TokKeyword && p.cur.Literal == "default" {
@@ -1535,6 +1552,21 @@ func (p *Parser) parseSwitchStmt() Statement {
 			if p.cur.Type == TokColon {
 				p.nextToken() // skip ':'
 			}
+			var body []Statement
+			for p.cur.Type != TokRBrace && p.cur.Type != TokEOF &&
+				!(p.cur.Type == TokKeyword && (p.cur.Literal == "case" || p.cur.Literal == "default")) {
+				if p.cur.Type == TokSemi {
+					p.nextToken()
+					continue
+				}
+				stmt := p.parseStatement()
+				if stmt != nil {
+					body = append(body, stmt)
+				} else {
+					p.nextToken()
+				}
+			}
+			cases = append(cases, SwitchCase{Test: nil, Consequent: body})
 			continue
 		}
 		if p.cur.Type == TokSemi {
@@ -1550,7 +1582,7 @@ func (p *Parser) parseSwitchStmt() Statement {
 		p.nextToken() // skip '}'
 	}
 
-	return &ExpressionStmt{Expr: &Ident{Name: "undefined"}}
+	return &SwitchStmt{Discriminant: discriminant, Cases: cases}
 }
 
 // parseClassDecl parses a class declaration: class Name [extends SuperClass] { body }
