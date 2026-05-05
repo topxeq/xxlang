@@ -327,6 +327,12 @@ func (p *Parser) parseIfStmt() *IfStmt {
 		if stmt != nil {
 			bodyStmts = []Statement{stmt}
 		}
+		// Skip optional semicolons before checking for else.
+		// Without this, "if(c)x++;else y" would fail because
+		// the parser sees ";" after x++ instead of "else".
+		for p.cur.Type == TokSemi {
+			p.nextToken()
+		}
 	}
 
 	stmt := &IfStmt{Cond: cond, Body: bodyStmts}

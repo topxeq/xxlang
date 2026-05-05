@@ -4502,7 +4502,7 @@ func isTruthy(v *Value) bool {
 		return v.Num != 0 && !math.IsNaN(v.Num)
 	case "string":
 		return v.Str != ""
-	case "object":
+	case "object", "regexp":
 		return true
 	case "function", "native", "class":
 		return true

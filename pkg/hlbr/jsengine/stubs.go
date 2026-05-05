@@ -1304,59 +1304,80 @@ func newRegExp(pattern, flags string) *Value {
 		}}
 	}
 
-	regexpObj := &Value{Type: "regexp", Obj: map[string]*Value{
-		"pattern": {Type: "string", Str: pattern},
-		"flags":   {Type: "string", Str: flags},
-		// _goSource stores the lookahead-stripped pattern for internal use
-		// by match/search/replace which recompile from source.
-		"_goSource": {Type: "string", Str: goPattern},
-		"test": {Type: "native", Native: func(args []*Value) *Value {
-			testStr := ""
-			if len(args) >= 1 {
-				if args[0]._isThisArg {
-					// Skip 'this' binding prepended by evalCall
-					if len(args) >= 2 {
-						testStr = valueToString(args[1])
-					}
-				} else {
-					testStr = valueToString(args[0])
+	regexpObj := &Value{Type: "regexp", Obj: make(map[string]*Value)}
+	regexpObj.Obj["pattern"] = &Value{Type: "string", Str: pattern}
+	regexpObj.Obj["flags"] = &Value{Type: "string", Str: flags}
+	regexpObj.Obj["lastIndex"] = &Value{Type: "number", Num: 0}
+	regexpObj.Obj["_goSource"] = &Value{Type: "string", Str: goPattern}
+	regexpObj.Obj["test"] = &Value{Type: "native", Native: func(args []*Value) *Value {
+		testStr := ""
+		if len(args) >= 1 {
+			if args[0]._isThisArg {
+				if len(args) >= 2 {
+					testStr = valueToString(args[1])
 				}
+			} else {
+				testStr = valueToString(args[0])
 			}
-			return &Value{Type: "bool", Bool: compiled.MatchString(testStr)}
-		}},
-		"exec": {Type: "native", Native: func(args []*Value) *Value {
-			testStr := ""
-			if len(args) >= 1 {
-				if args[0]._isThisArg {
-					if len(args) >= 2 {
-						testStr = valueToString(args[1])
-					}
-				} else {
-					testStr = valueToString(args[0])
+		}
+		return &Value{Type: "bool", Bool: compiled.MatchString(testStr)}
+	}}
+	regexpObj.Obj["exec"] = &Value{Type: "native", Native: func(args []*Value) *Value {
+		testStr := ""
+		if len(args) >= 1 {
+			if args[0]._isThisArg {
+				if len(args) >= 2 {
+					testStr = valueToString(args[1])
 				}
+			} else {
+				testStr = valueToString(args[0])
 			}
-			if testStr == "" {
-				return &Value{Type: "null"}
+		}
+		// Read lastIndex for global flag support
+		lastIdx := 0
+		if regexpObj.Obj["lastIndex"] != nil && regexpObj.Obj["lastIndex"].Type == "number" {
+			lastIdx = int(regexpObj.Obj["lastIndex"].Num)
+		}
+		// If lastIndex is beyond the string, reset and return null
+		if lastIdx > len(testStr) {
+			regexpObj.Obj["lastIndex"] = &Value{Type: "number", Num: 0}
+			return &Value{Type: "null"}
+		}
+		searchStr := testStr[lastIdx:]
+		matches := compiled.FindStringSubmatch(searchStr)
+		if matches == nil {
+			// With g flag, reset lastIndex on failure
+			if strings.Contains(flags, "g") {
+				regexpObj.Obj["lastIndex"] = &Value{Type: "number", Num: 0}
 			}
-			matches := compiled.FindStringSubmatch(testStr)
-			if matches == nil {
-				return &Value{Type: "null"}
-			}
-			arr := make([]*Value, len(matches))
-			for i, m := range matches {
+			return &Value{Type: "null"}
+		}
+		// Update lastIndex: position after the match in the original string
+		matchPos := strings.Index(searchStr, matches[0])
+		newLastIndex := lastIdx + matchPos + len(matches[0])
+		regexpObj.Obj["lastIndex"] = &Value{Type: "number", Num: float64(newLastIndex)}
+		// Build result array with all capture groups
+		arr := make([]*Value, len(matches))
+		for i, m := range matches {
+			if m != "" {
 				arr[i] = &Value{Type: "string", Str: m}
+			} else {
+				arr[i] = &Value{Type: "undefined"}
 			}
-			result := &Value{Type: "object", Obj: map[string]*Value{
-				"0":      arr[0],
-				"index":  {Type: "number", Num: float64(strings.Index(testStr, matches[0]))},
-				"input":  {Type: "string", Str: testStr},
-				"length": {Type: "number", Num: float64(len(matches))},
-			}, Arr: arr}
-			if len(matches) > 1 {
-				result.Obj["1"] = arr[1]
+		}
+		obj := map[string]*Value{
+			"index":  {Type: "number", Num: float64(lastIdx + matchPos)},
+			"input":  {Type: "string", Str: testStr},
+			"length": {Type: "number", Num: float64(len(matches))},
+		}
+		for i, m := range matches {
+			if m != "" {
+				obj[strconv.Itoa(i)] = &Value{Type: "string", Str: m}
+			} else {
+				obj[strconv.Itoa(i)] = &Value{Type: "undefined"}
 			}
-			return result
-		}},
+		}
+		return &Value{Type: "object", Obj: obj, Arr: arr}
 	}}
 	regexpObj.Obj["source"] = &Value{Type: "string", Str: pattern}
 	regexpObj.Obj["global"] = &Value{Type: "bool", Bool: strings.Contains(flags, "g")}
