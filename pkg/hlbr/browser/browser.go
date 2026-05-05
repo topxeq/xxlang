@@ -521,82 +521,19 @@ func (b *Browser) preloadAndLoadChunks(bundleSrc string, code string) {
 	// Set window.language before entry module execution so i18n can find locale files.
 	b.vm.Run(`if(!window.language||window.language===null)window.language="zh"`)
 
-	// Throttle Vue's Dep.notify to prevent infinite reactive update loops.
-	// Vue 2's Dep/Watcher system can enter infinite cycles when reactivity
-	// tracking doesn't match real browser behavior. After a threshold of
-	// notifications, subsequent Dep.notify calls become no-ops.
-	b.vm.Run(`if(window.Vue && Vue.prototype._watcher) {
-		var _depNotifyCount = 0;
-		var _depNotifyMax = 5000;
-		var _origDepNotify = null;
-		// Find Dep constructor - it's typically a closure variable, so we patch
-		// through the scheduler's flush mechanism instead.
-		// Patch the scheduler queue flush to limit iterations.
-		if (typeof window.__vueSchedulerFlush === 'undefined') {
-			window.__vueSchedulerFlush = true;
-		}
-	}`)
-
 	if loadedCount > 0 {
 		b.vm.ResetSteps()
 		prevMax := b.vm.GetMaxSteps()
-		// Try entry module execution with a moderate step limit.
-		// The full Vue app initialization can be very expensive (100M+ steps)
-		// due to RSA crypto, Vuex reactivity, and Vue Router setup.
-		// We use a 50M step budget to allow full app initialization.
-		b.vm.SetMaxSteps(50_000_000)
-		// Cap total accessor (getter/setter) invocations to break flat reactive
-		// loops in Vue 2's Dep/Watcher system. Without this, the reactivity
-		// getter→setter→getter cycle consumes all steps without progressing.
-		b.vm.ResetAccessorCalls()
-		b.vm.SetAccessorMax(500_000)
-		b.vm.ResetForIterCount()
-		b.vm.SetForIterMax(200_000)
-		// Enable step profiling to diagnose the infinite loop
-		profileCount := 0
-		b.vm.SetStepProfileFn(func(step int64, stack []string) {
-			profileCount++
-			if profileCount <= 3 {
-				b.debugLog("STEP PROFILE at step %d: stack=%v, AST=%s", step, stack, b.vm.GetStepProfileAST())
-			}
-		})
-		_, err := b.vm.Run("if(window.__wpkE2){window.__wpkE2(0)}")
-		b.vm.SetStepProfileFn(nil)
-		b.vm.SetMaxSteps(prevMax)
-		// Reset accessor and loop caps so subsequent Evaluate() calls work normally
-		b.vm.SetAccessorMax(0)
-		b.vm.SetForIterMax(0)
-		b.debugLog("Entry module done: err=%v, steps=%d, forIter=%d, accessorCalls=%d", err, b.vm.GetStepCount(), b.vm.GetForIterCount(), b.vm.GetAccessorCalls())
-		if err != nil {
-			b.debugLog("Entry module timed out/failed: %v (steps=%d)", err, b.vm.GetStepCount())
-			// The timeout left half-loaded modules in the registry. Reset them
-			// so they can be re-required individually.
-			b.vm.ResetSteps()
-			b.vm.SetMaxSteps(5_000_000)
-			b.vm.Run(`try {
-				var n = window.__wpkN2;
-				var unloaded = [];
-				for (var k in n) {
-					if (n[k] && !n[k].l) unloaded.push(k);
-				}
-				// Delete half-loaded modules so require() will re-create them
-				for (var i = 0; i < unloaded.length; i++) {
-					delete n[unloaded[i]];
-				}
-				window.__wpkResetModules = unloaded;
-			} catch(e) {}`)
-			b.debugLog("Reset half-loaded modules")
-			b.vm.SetMaxSteps(prevMax)
-		} else {
-			b.debugLog("Entry module executed after chunk loading (steps=%d)", b.vm.GetStepCount())
-		}
 
-		// If Vue didn't mount automatically, try to mount it manually.
-		// We set a simple placeholder first, then upgrade to Vue rendering
-		// via a post-navigate Evaluate call (which has a fresh step counter
-		// and avoids issues with outerHTML during the navigate process).
+		// Skip entry module execution - it triggers infinite reactive loops in
+		// Vue 2's Dep/Watcher system. The for-loop cap breaks VueRouter's matcher
+		// state, causing route.match() to return empty matched arrays.
+		// Instead, we create the Vue app manually in the post-navigate phase.
+		b.debugLog("Skipping entry module (would trigger infinite reactive loops)")
+
+		// Set a placeholder in the app element
 		b.vm.ResetSteps()
-		b.vm.SetMaxSteps(10_000_000)
+		b.vm.SetMaxSteps(5_000_000)
 		b.vm.Run(`try {
 			var appEl = document.querySelector('#app') || document.querySelector('app');
 			if (appEl && typeof Vue === 'function') {
