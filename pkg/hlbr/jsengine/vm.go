@@ -4116,6 +4116,22 @@ func (vm *VM) lookupInPrototypeWithKey(proto *Value, e *MemberExpr, originalObj 
 		}
 	}
 
+	// Check descriptors in the prototype chain (for Object.defineProperty getters/setters)
+	if key != "" && proto.Descriptors != nil {
+		if desc, ok := proto.Descriptors[key]; ok {
+			thisVal := originalObj
+			if thisVal == nil {
+				thisVal = proto
+			}
+			if desc.Get != nil {
+				return vm.callGetter(desc.Get, thisVal)
+			}
+			if desc.Value != nil {
+				return desc.Value
+			}
+		}
+	}
+
 	// Walk up the prototype chain
 	if proto.Proto != nil {
 		return vm.lookupInPrototypeWithKey(proto.Proto, e, originalObj, precomputedKey)
@@ -4184,8 +4200,14 @@ func (vm *VM) evalNew(e *NewExpr) *Value {
 		obj := &Value{Type: "object", Obj: make(map[string]*Value)}
 		// Link the object to the constructor's prototype chain
 		// In JS: obj.__proto__ = Constructor.prototype
-		if callee.PrototypeObj != nil {
-			obj.Proto = callee.PrototypeObj
+		protoObj := callee.PrototypeObj
+		if protoObj == nil && callee.Obj != nil {
+			if p, ok := callee.Obj["prototype"]; ok {
+				protoObj = p
+			}
+		}
+		if protoObj != nil {
+			obj.Proto = protoObj
 		}
 		childEnv.Define("this", obj)
 
