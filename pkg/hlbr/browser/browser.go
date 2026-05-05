@@ -282,6 +282,11 @@ func (b *Browser) executeScripts() {
 	// patch above may have run before VueRouter/Vuex scripts were loaded.
 	if b.vm != nil {
 		b.vm.Run(`try{if(typeof Vue==="function"&&typeof VueRouter==="function"&&typeof VueRouter.install==="function"&&!Vue.options.components.RouterView){VueRouter.install(Vue)}}catch(e){}`)
+		// Ensure $route/$router getters are on Vue.prototype even if
+		// VueRouter.install failed (common in headless VM due to
+		// prototype chain issues). The router-view functional component
+		// needs these to determine the current route.
+		b.vm.Run(`try{if(typeof Vue==="function"&&typeof VueRouter==="function"){var d1=Object.getOwnPropertyDescriptor(Vue.prototype,"$route");if(!d1||!d1.get){Object.defineProperty(Vue.prototype,"$router",{get:function(){return this._routerRoot&&this._routerRoot._router},configurable:true});Object.defineProperty(Vue.prototype,"$route",{get:function(){return this._routerRoot&&this._routerRoot._route},configurable:true})}if(typeof VueRouter.prototype.init==="function"){VueRouter.prototype.init=function(app){var self=this;this.apps.push(app);if(!this.app){this.app=app;var history=this.history;var location=history.getCurrentLocation();if(!location)location="/";var route=self.match(location,history.current);history.current=route;history.listen(function(r){self.apps.forEach(function(a){a._route=r})})}}}}}catch(e){}`)
 		b.vm.Run(`try{if(typeof Vue==="function"&&typeof Vuex==="function"&&typeof Vuex.install==="function"&&!Vue.options.store){Vuex.install(Vue)}}catch(e){}`)
 	}
 }
