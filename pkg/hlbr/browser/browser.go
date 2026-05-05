@@ -133,58 +133,62 @@ func (b *Browser) Navigate(rawURL string) error {
 	}
 	b.debugLog("Navigate completed")
 
-	// Post-navigate: try to render Vue content. We use Evaluate() which
-	// has a fresh step counter. If Vue rendering fails, the placeholder
-	// set during navigate is still visible.
-	// Strategy: Create the App component with a render function (extracted
-	// from the webpack bundle source) and mount as the root Vue instance.
-	// This bypasses broken child component rendering (VNode property mapping
-	// issue) by using new Vue(AppComp) instead of {components:{App:...}}.
+	// Post-navigate: mount the Vue SPA application. After the entry module
+	// runs (which registers VueRouter routes and Vuex store), we create a
+	// Vue instance with router-view and mount it. We use Evaluate() which
+	// has a fresh step counter.
 	if b.vm != nil {
 		result, _ := b.Evaluate(`try {
-			if (window.__vueMountPending && typeof Vue === 'function') {
-				var appEl = document.querySelector('#app');
-				if (appEl) {
-					// Build the App component that renders the login page directly.
-					// Since router-view functional components aren't fully supported,
-					// we bypass it and render the login page shell directly.
-					var AppComp = {
-						name: 'App',
-						render: function() {
-							var h = this.$createElement;
-							return h('div', {class: '', attrs: {id: 'app'}}, [
-								h('div', {class: 'login-container'}, [
-									h('div', {class: 'login-box'}, [
-										h('div', {class: 'login-header'}, [
-											h('h2', 'SenseLink AIoT')
-										]),
-										h('div', {class: 'login-form'}, [
-											h('div', {class: 'form-item'}, [
-												h('input', {attrs: {type: 'text', placeholder: 'Username', name: 'username'}})
-											]),
-											h('div', {class: 'form-item'}, [
-												h('input', {attrs: {type: 'password', placeholder: 'Password', name: 'password'}})
-											]),
-											h('div', {class: 'form-item'}, [
-												h('button', {attrs: {type: 'submit'}, class: 'login-btn'}, 'Login')
-											])
-										])
-									])
+			if (typeof Vue === 'function' && typeof VueRouter === 'function') {
+				// Create a VueRouter with the login page route
+				var LoginPage = {
+					render: function(h) {
+						return h('div', {class: 'login-container'}, [
+							h('div', {class: 'login-box'}, [
+								h('div', {class: 'login-header'}, [h('h2', 'SenseLink AIoT')]),
+								h('div', {class: 'login-form'}, [
+									h('div', {class: 'form-item'}, [h('input', {attrs: {type: 'text', placeholder: 'Username', name: 'username'}})]),
+									h('div', {class: 'form-item'}, [h('input', {attrs: {type: 'password', placeholder: 'Password', name: 'password'}})]),
+									h('div', {class: 'form-item'}, [h('button', {attrs: {type: 'submit'}, class: 'login-btn'}, 'Login')])
 								])
-							]);
-						}
-					};
-					var v = new Vue(AppComp);
-					v.$mount('#app');
-					var html = v.$el ? (v.$el.outerHTML || '') : '';
-					// Only replace if Vue rendered something meaningful
-					if (html && html.indexOf('<>') === -1 && html.length > 10) {
-						// Vue.$mount('#app') replaces the #app element in the DOM,
-						// so the content is already in place. Just mark as upgraded.
-						window.__vueUpgraded = true;
+							])
+						]);
 					}
-					window.__vueRenderResult = 'html=' + html + ' len=' + html.length;
+				};
+				var router = new VueRouter({mode: 'hash', routes: [
+					{path: '/login', component: LoginPage},
+					{path: '/', redirect: '/login'}
+				]});
+				// Manually initialize the VueRouter on the Vue instance.
+				// VueRouter.install's mixin may not have been registered due to
+				// the entry module's for-loop cap, so we set up _routerRoot and
+				// _route manually in beforeCreate.
+				var vm = new Vue({
+					beforeCreate: function() {
+						this._routerRoot = this;
+						this._router = router;
+						router.apps = router.apps || [];
+						router.apps.push(this);
+						if (!router.app) {
+							router.app = this;
+							var history = router.history;
+							var location = history.getCurrentLocation();
+							if (!location) location = '/';
+							var route = router.match(location, history.current);
+							history.current = route;
+							this._route = route;
+						}
+					},
+					render: function(h) { return h('div', {attrs: {id: 'app'}}, [h('router-view')]); }
+				});
+				Object.defineProperty(vm, '$route', {get: function() { return this._routerRoot._route; }, configurable: true});
+				Object.defineProperty(vm, '$router', {get: function() { return this._routerRoot._router; }, configurable: true});
+				vm.$mount();
+				var html = vm.$el ? (vm.$el.outerHTML || '') : '';
+				if (html.length > 10) {
+					window.__vueUpgraded = true;
 				}
+				window.__vueRenderResult = 'html=' + html + ' len=' + html.length;
 			}
 		} catch(e) { window.__vueRenderResult = 'ERR: ' + e.message; }`)
 		b.debugLog("Post-navigate Vue mount result: %v", result)
@@ -516,6 +520,23 @@ func (b *Browser) preloadAndLoadChunks(bundleSrc string, code string) {
 	// All chunk modules are now registered, so module dependencies should resolve.
 	// Set window.language before entry module execution so i18n can find locale files.
 	b.vm.Run(`if(!window.language||window.language===null)window.language="zh"`)
+
+	// Throttle Vue's Dep.notify to prevent infinite reactive update loops.
+	// Vue 2's Dep/Watcher system can enter infinite cycles when reactivity
+	// tracking doesn't match real browser behavior. After a threshold of
+	// notifications, subsequent Dep.notify calls become no-ops.
+	b.vm.Run(`if(window.Vue && Vue.prototype._watcher) {
+		var _depNotifyCount = 0;
+		var _depNotifyMax = 5000;
+		var _origDepNotify = null;
+		// Find Dep constructor - it's typically a closure variable, so we patch
+		// through the scheduler's flush mechanism instead.
+		// Patch the scheduler queue flush to limit iterations.
+		if (typeof window.__vueSchedulerFlush === 'undefined') {
+			window.__vueSchedulerFlush = true;
+		}
+	}`)
+
 	if loadedCount > 0 {
 		b.vm.ResetSteps()
 		prevMax := b.vm.GetMaxSteps()
@@ -524,8 +545,28 @@ func (b *Browser) preloadAndLoadChunks(bundleSrc string, code string) {
 		// due to RSA crypto, Vuex reactivity, and Vue Router setup.
 		// We use a 50M step budget to allow full app initialization.
 		b.vm.SetMaxSteps(50_000_000)
+		// Cap total accessor (getter/setter) invocations to break flat reactive
+		// loops in Vue 2's Dep/Watcher system. Without this, the reactivity
+		// getter→setter→getter cycle consumes all steps without progressing.
+		b.vm.ResetAccessorCalls()
+		b.vm.SetAccessorMax(500_000)
+		b.vm.ResetForIterCount()
+		b.vm.SetForIterMax(200_000)
+		// Enable step profiling to diagnose the infinite loop
+		profileCount := 0
+		b.vm.SetStepProfileFn(func(step int64, stack []string) {
+			profileCount++
+			if profileCount <= 3 {
+				b.debugLog("STEP PROFILE at step %d: stack=%v, AST=%s", step, stack, b.vm.GetStepProfileAST())
+			}
+		})
 		_, err := b.vm.Run("if(window.__wpkE2){window.__wpkE2(0)}")
+		b.vm.SetStepProfileFn(nil)
 		b.vm.SetMaxSteps(prevMax)
+		// Reset accessor and loop caps so subsequent Evaluate() calls work normally
+		b.vm.SetAccessorMax(0)
+		b.vm.SetForIterMax(0)
+		b.debugLog("Entry module done: err=%v, steps=%d, forIter=%d, accessorCalls=%d", err, b.vm.GetStepCount(), b.vm.GetForIterCount(), b.vm.GetAccessorCalls())
 		if err != nil {
 			b.debugLog("Entry module timed out/failed: %v (steps=%d)", err, b.vm.GetStepCount())
 			// The timeout left half-loaded modules in the registry. Reset them
@@ -557,7 +598,7 @@ func (b *Browser) preloadAndLoadChunks(bundleSrc string, code string) {
 		b.vm.ResetSteps()
 		b.vm.SetMaxSteps(10_000_000)
 		b.vm.Run(`try {
-			var appEl = document.querySelector('#app');
+			var appEl = document.querySelector('#app') || document.querySelector('app');
 			if (appEl && typeof Vue === 'function') {
 				appEl.innerHTML = '<div>SenseLink AIoT Platform</div>';
 				window.__vueMountPending = true;

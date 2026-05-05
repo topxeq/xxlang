@@ -250,6 +250,58 @@ type VM struct {
 	// tracking goes wrong. Real browsers handle this via the JS engine's call stack,
 	// but our VM needs an explicit guard.
 	accessorDepth int
+	// accessorCalls counts total getter/setter invocations to cap flat (non-nested) loops.
+	// Vue 2's Dep/Watcher system can create shallow but very long reactive chains.
+	// After a threshold, we suppress further accessor calls to let the program proceed.
+	accessorCalls int
+	accessorMax   int
+	// forIterCount tracks total for/while loop iterations to break infinite reactive cycles.
+	// Vue's scheduler flush loops can restart infinitely via nextTick. A cumulative
+	// iteration cap ensures the program eventually progresses past the reactivity phase.
+	forIterCount int
+	forIterMax   int
+}
+
+// SetAccessorMax sets the maximum number of accessor (getter/setter) invocations
+// allowed before suppressing further calls. Set to 0 for unlimited.
+func (vm *VM) SetAccessorMax(max int) {
+	vm.accessorMax = max
+}
+
+// ResetAccessorCalls resets the accessor invocation counter.
+func (vm *VM) ResetAccessorCalls() {
+	vm.accessorCalls = 0
+}
+
+// SetForIterMax sets the maximum cumulative for/while loop iterations.
+// Set to 0 for unlimited.
+func (vm *VM) SetForIterMax(max int) {
+	vm.forIterMax = max
+}
+
+// ResetForIterCount resets the for/while loop iteration counter.
+func (vm *VM) ResetForIterCount() {
+	vm.forIterCount = 0
+}
+
+// GetForIterCount returns the current for/while loop iteration count.
+func (vm *VM) GetForIterCount() int {
+	return vm.forIterCount
+}
+
+// GetAccessorCalls returns the current accessor invocation count.
+func (vm *VM) GetAccessorCalls() int {
+	return vm.accessorCalls
+}
+
+// SetStepProfileFn sets a callback for step profiling during execution.
+func (vm *VM) SetStepProfileFn(fn func(step int64, stack []string)) {
+	vm.stepProfileFn = fn
+}
+
+// GetStepProfileAST returns the last captured AST snippet for the looping function.
+func (vm *VM) GetStepProfileAST() string {
+	return vm.stepProfileAST
 }
 
 // timerTask represents a scheduled timer callback
@@ -2191,7 +2243,6 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 		if s.Init != nil {
 			vm.execStmt(s.Init)
 		}
-		iterCount := 0
 		for {
 			vm.checkSteps()
 			if s.Cond != nil {
@@ -2200,10 +2251,9 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 					break
 				}
 			}
-			iterCount++
-			// Debug: log long-running for loops
-			if iterCount == 100000 && vm.debug {
-				fmt.Printf("[HLBR JS DEBUG] ForStmt: 100K iterations, cond type: %T\n", s.Cond)
+			vm.forIterCount++
+			if vm.forIterMax > 0 && vm.forIterCount > vm.forIterMax {
+				break
 			}
 			ret, brk, retVal := vm.execBlock(s.Body)
 			if brk {
@@ -2367,9 +2417,13 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 		return &Value{Type: "undefined"}, false, nil
 	case *WhileStmt:
 		for {
-			vm.checkSteps() // Check for infinite loop in while-statement
+			vm.checkSteps()
 			cond := vm.evalExpr(s.Cond)
 			if !isTruthy(cond) {
+				break
+			}
+			vm.forIterCount++
+			if vm.forIterMax > 0 && vm.forIterCount > vm.forIterMax {
 				break
 			}
 			ret, brk, retVal := vm.execBlock(s.Body)
@@ -3174,9 +3228,16 @@ func (vm *VM) evalAssign(e *AssignExpr) *Value {
 					}
 				}
 			}
-			obj.Obj[prop] = val
+		obj.Obj[prop] = val
+		// When assigning to a function's .prototype property, also update PrototypeObj
+		// so that evalNew uses the updated prototype chain (e.g., after Sub.prototype = Object.create(Super.prototype))
+		if prop == "prototype" && (obj.Type == "function" || obj.Type == "native") {
+			obj.PrototypeObj = val
 		}
 	}
+
+	return val
+}
 
 	return val
 }
@@ -4871,11 +4932,9 @@ func isArrayMethod(name string) bool {
 // callGetter invokes a getter function with the object as 'this'.
 func (vm *VM) callGetter(fn *Value, obj *Value) *Value {
 	vm.accessorDepth++
-	if vm.accessorDepth > 100 {
+	vm.accessorCalls++
+	if vm.accessorDepth > 100 || (vm.accessorMax > 0 && vm.accessorCalls > vm.accessorMax) {
 		vm.accessorDepth--
-		// Break the re-entrancy cycle: return undefined to prevent infinite getter loops.
-		// This mirrors how real JS engines throw a stack overflow for deeply recursive
-		// getter chains, but we silently return undefined to keep Vue's reactivity going.
 		return &Value{Type: "undefined"}
 	}
 	result := &Value{Type: "undefined"}
@@ -4891,9 +4950,9 @@ func (vm *VM) callGetter(fn *Value, obj *Value) *Value {
 // callSetter invokes a setter function with the object as 'this' and the value.
 func (vm *VM) callSetter(fn *Value, obj *Value, val *Value) {
 	vm.accessorDepth++
-	if vm.accessorDepth > 100 {
+	vm.accessorCalls++
+	if vm.accessorDepth > 100 || (vm.accessorMax > 0 && vm.accessorCalls > vm.accessorMax) {
 		vm.accessorDepth--
-		// Break the re-entrancy cycle: skip the setter call to prevent infinite loops.
 		return
 	}
 	if fn.Type == "function" && fn.Func != nil {
@@ -4941,6 +5000,7 @@ func (vm *VM) bindThis(v *Value, obj *Value) *Value {
 		NodeRef:            v.NodeRef,
 		Proto:              v.Proto,
 		Frozen:             v.Frozen,
+		PrototypeObj:       v.PrototypeObj,
 	}
 }
 
