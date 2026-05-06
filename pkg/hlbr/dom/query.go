@@ -40,21 +40,33 @@ func QuerySelectorAll(root *Node, selector string) []*Node {
 	return selectByTag(root, selector)
 }
 
-// selectByAttributeSelector handles selectors like "tag[attr]" or "tag[attr='value']"
+// selectByAttributeSelector handles selectors like "tag[attr]", "tag[attr='value']", "tag[attr=\"value\"]", "tag[attr=value]"
 func selectByAttributeSelector(root *Node, selector string) []*Node {
 	var results []*Node
 
-	// Parse selector: tag[attr] or tag[attr='value']
-	attrPattern := regexp.MustCompile(`^([a-zA-Z]*)\[([a-zA-Z-]+)(?:=[\'"]([^\'"]*)[\'"])?\]$`)
-	matches := attrPattern.FindStringSubmatch(selector)
-
-	if matches == nil {
+	// Parse: extract the part before [ and the content inside []
+	bracketIdx := strings.Index(selector, "[")
+	if bracketIdx < 0 || !strings.HasSuffix(selector, "]") {
 		return results
 	}
 
-	tag := strings.ToLower(matches[1])
-	attr := matches[2]
-	value := matches[3] // Empty if no value specified
+	tag := strings.ToLower(selector[:bracketIdx])
+	attrExpr := selector[bracketIdx+1 : len(selector)-1]
+
+	// Split attrExpr into attr and optional value
+	var attr, value string
+	if eqIdx := strings.Index(attrExpr, "="); eqIdx >= 0 {
+		attr = attrExpr[:eqIdx]
+		valPart := attrExpr[eqIdx+1:]
+		// Strip surrounding quotes if present
+		if len(valPart) >= 2 && ((valPart[0] == '\'' && valPart[len(valPart)-1] == '\'') || (valPart[0] == '"' && valPart[len(valPart)-1] == '"')) {
+			value = valPart[1 : len(valPart)-1]
+		} else {
+			value = valPart
+		}
+	} else {
+		attr = attrExpr
+	}
 
 	walk(root, func(n *Node) {
 		if n.Type != ElementNode {

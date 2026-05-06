@@ -1512,13 +1512,18 @@ func (vm *VM) instanceof(obj, constructor *Value) bool {
 	}
 
 	// Primitives (non-object, non-function) are never instances
-	if obj.Type != "object" {
+	// Exception: regexp type values are objects and can be instanceof RegExp
+	if obj.Type != "object" && obj.Type != "regexp" {
 		return false
 	}
 
 	if constructorBIC != "" {
 		// Direct match on BuiltInConstructor
 		if obj.BuiltInConstructor == constructorBIC {
+			return true
+		}
+		// RegExp type is always instanceof RegExp
+		if obj.Type == "regexp" && constructorBIC == "RegExp" {
 			return true
 		}
 		// Also check Proto chain for BuiltInConstructor
