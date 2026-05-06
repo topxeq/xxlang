@@ -1,6 +1,7 @@
 package jsengine
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/topxeq/xxlang/pkg/hlbr/dom"
@@ -8,200 +9,121 @@ import (
 )
 
 // CompileVueTemplate compiles a Vue template string and returns a Value
-// containing render and staticRenderFns. The render function is a native
-// Go function that walks the parsed template AST and generates VNodes
-// by calling the createElement (h) function passed by Vue.
+// containing render and staticRenderFns. It works by:
+// 1. Parsing the template HTML in Go (fast, no VM step limit)
+// 2. Generating render function code (_c/_v/_s calls)
+// 3. Using new Function('with(this){return ...}') to create the render
+//
+// This approach is generic — it handles any Vue component with a template,
+// not specific libraries. The with(this) scope ensures that template
+// expressions like `authorized`, `ruleForm.username`, `$t('key')` resolve
+// against the Vue component instance at render time.
 func (vm *VM) CompileVueTemplate(template string) *Value {
 	template = strings.TrimSpace(template)
 	if template == "" {
-		return vm.makeEmptyCompileResult()
+		return vm.compileResult(`with(this){return _c("div")}`)
 	}
 
 	nodes := htmlparser.ParseFragment(template)
 	if len(nodes) == 0 {
-		return vm.makeEmptyCompileResult()
+		return vm.compileResult(`with(this){return _c("div")}`)
 	}
 
-	astNodes := nodes
-
-	renderFn := &Value{
-		Type: "native",
-		Native: func(args []*Value) *Value {
-			var h *Value
-			var vueInst *Value
-			offset := nativeThisOffset(args)
-			// When Vue calls render.call(vm, h), the first arg is `this` (Vue instance)
-			// and the second arg is `h` (createElement).
-			if offset > 0 && len(args) > 0 {
-				vueInst = args[0]
-			}
-			if len(args) > offset {
-				h = args[offset]
-			}
-			if h == nil {
-				h = vm.env.Get("_c")
-			}
-			if h == nil {
-				return &Value{Type: "null"}
-			}
-
-			// Set the Vue instance as `this` in the VM environment so that
-			// expression evaluation (e.g., `authorized`, `ruleForm.username`)
-			// resolves against the component's data properties.
-			savedThis := vm.env.Get("this")
-			if vueInst != nil {
-				vm.env.Set("this", vueInst)
-			}
-
-			var result *Value
-			if len(astNodes) == 1 {
-				result = vm.vueRenderNode(astNodes[0], h)
-			} else {
-				var childVNodes []*Value
-				for _, n := range astNodes {
-					vn := vm.vueRenderNode(n, h)
-					if vn != nil {
-						childVNodes = append(childVNodes, vn)
-					}
-				}
-				result = vm.vueCallH(h, "div", nil, childVNodes)
-			}
-
-			// Restore `this`
-			if savedThis != nil {
-				vm.env.Set("this", savedThis)
-			}
-
-			return result
-		},
+	var code string
+	if len(nodes) == 1 {
+		code = genCode(nodes[0])
+	} else {
+		var childCodes []string
+		for _, n := range nodes {
+			childCodes = append(childCodes, genCode(n))
+		}
+		code = `_c("div",[` + strings.Join(childCodes, ",") + `])`
 	}
 
+	renderCode := "with(this){return " + code + "}"
+	return vm.compileResult(renderCode)
+}
+
+// compileResult creates a Value with render and staticRenderFns from code string.
+func (vm *VM) compileResult(renderCode string) *Value {
+	// Create the render function using new Function(code)
+	fnVal := vm.newFunctionFromCode(renderCode)
 	return &Value{
 		Type: "object",
 		Obj: map[string]*Value{
-			"render":          renderFn,
+			"render":          fnVal,
 			"staticRenderFns": {Type: "object", Arr: []*Value{}},
 			"_compiled":       {Type: "bool", Bool: true},
+			"_renderCode":     {Type: "string", Str: renderCode},
 		},
 	}
 }
 
-func (vm *VM) makeEmptyCompileResult() *Value {
-	emptyRender := &Value{
-		Type: "native",
-		Native: func(args []*Value) *Value {
-			var h *Value
-			offset := nativeThisOffset(args)
-			if len(args) > offset {
-				h = args[offset]
-			}
-			if h != nil {
-				return vm.vueCallH(h, "div", nil, nil)
-			}
-			return &Value{Type: "null"}
-		},
+// newFunctionFromCode creates a function value using new Function(renderCode).
+func (vm *VM) newFunctionFromCode(code string) *Value {
+	functionConstructor := vm.env.Get("Function")
+	if functionConstructor == nil || (functionConstructor.Type != "native" && functionConstructor.Type != "function") {
+		// Fallback: can't create function
+		return &Value{Type: "null"}
 	}
-	return &Value{
-		Type: "object",
-		Obj: map[string]*Value{
-			"render":          emptyRender,
-			"staticRenderFns": {Type: "object", Arr: []*Value{}},
-		},
-	}
+
+	// Call new Function(code) which parses the code and creates a function
+	result := vm.callFunction(functionConstructor, []*Value{
+		{Type: "string", Str: code},
+	})
+	return result
 }
 
-// vueRenderNode generates a VNode for a DOM node by calling h().
-func (vm *VM) vueRenderNode(node *dom.Node, h *Value) *Value {
+// ---- Code Generation ----
+
+// genCode generates render function code for a DOM node.
+func genCode(node *dom.Node) string {
 	if node.Type == dom.TextNode {
-		return vm.vueRenderTextNode(node.Data, h)
+		return genTextCode(node.Data)
 	}
 	if node.Type != dom.ElementNode {
-		return nil
+		return `_v("")`
 	}
-	return vm.vueRenderElementNode(node, h)
+	return genElementCode(node)
 }
 
-// vueRenderTextNode generates a VNode for a text node, handling {{ expr }}.
-func (vm *VM) vueRenderTextNode(text string, h *Value) *Value {
+// interpRe matches {{ expr }} interpolation in text.
+var interpRe = regexp.MustCompile(`\{\{([\s\S]*?)\}\}`)
+
+// genTextCode generates code for a text node, handling {{ expr }}.
+func genTextCode(text string) string {
 	if text == "" {
-		return &Value{Type: "string", Str: ""}
+		return `_v("")`
 	}
-
 	if !strings.Contains(text, "{{") {
-		return &Value{Type: "string", Str: text}
+		return `_v("` + escapeJS(text) + `")`
 	}
 
-	// Text with interpolation - evaluate and concatenate
-	parts := vueSplitInterp(text)
-	var result string
-	for _, p := range parts {
-		if p.isExpr {
-			val := vm.vueEvalStringExpr(p.content)
-			result += valueToString(val)
-		} else {
-			result += p.content
+	parts := interpRe.Split(text, -1)
+	matches := interpRe.FindAllStringSubmatch(text, -1)
+
+	var items []string
+	for i, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			items = append(items, `"`+escapeJS(trimmed)+`"`)
+		}
+		if i < len(matches) {
+			expr := strings.TrimSpace(matches[i][1])
+			items = append(items, `_s(`+expr+`)`)
 		}
 	}
-	return &Value{Type: "string", Str: result}
+	if len(items) == 0 {
+		return `_v("")`
+	}
+	if len(items) == 1 {
+		return `_v(` + items[0] + `)`
+	}
+	return `_v(` + strings.Join(items, "+") + `)`
 }
 
-// vueInterpPart represents a part of text (plain or interpolated).
-type vueInterpPart struct {
-	isExpr  bool
-	content string
-}
-
-// vueSplitInterp splits text into plain and {{ expr }} parts.
-func vueSplitInterp(text string) []vueInterpPart {
-	var parts []vueInterpPart
-	for {
-		idx := strings.Index(text, "{{")
-		if idx < 0 {
-			if text != "" {
-				parts = append(parts, vueInterpPart{isExpr: false, content: text})
-			}
-			break
-		}
-		if idx > 0 {
-			parts = append(parts, vueInterpPart{isExpr: false, content: text[:idx]})
-		}
-		endIdx := strings.Index(text[idx:], "}}")
-		if endIdx < 0 {
-			parts = append(parts, vueInterpPart{isExpr: false, content: text[idx:]})
-			break
-		}
-		expr := strings.TrimSpace(text[idx+2 : idx+endIdx])
-		parts = append(parts, vueInterpPart{isExpr: true, content: expr})
-		text = text[idx+endIdx+2:]
-	}
-	return parts
-}
-
-// vueEvalStringExpr evaluates a JavaScript expression string in the current VM context.
-// For Vue render functions, expressions like `authorized` or `ruleForm.username`
-// need to resolve against the Vue instance (this).
-func (vm *VM) vueEvalStringExpr(expr string) *Value {
-	// Try evaluating with `this.` prefix for simple identifiers and member expressions
-	thisPrefixed := "this." + expr
-	p := NewParser(thisPrefixed)
-	node := p.parseExpression()
-	if node != nil {
-		val := vm.evalExpr(node)
-		if val != nil && val.Type != "undefined" {
-			return val
-		}
-	}
-	// Fallback: evaluate without this prefix (for globals like $t, $router, etc.)
-	p2 := NewParser(expr)
-	node2 := p2.parseExpression()
-	if node2 == nil {
-		return &Value{Type: "undefined"}
-	}
-	return vm.evalExpr(node2)
-}
-
-// vueRenderDir holds parsed Vue directives for runtime rendering.
-type vueRenderDir struct {
+// dirInfo holds parsed Vue directive information for code generation.
+type dirInfo struct {
 	ifExp     string
 	elseIfExp string
 	else_     bool
@@ -222,32 +144,34 @@ type vueRenderDir struct {
 	slotVal   string
 }
 
-// vueRenderElementNode generates a VNode for an element.
-func (vm *VM) vueRenderElementNode(node *dom.Node, h *Value) *Value {
-	dir := vueParseDirectives(node.Attr)
+// genElementCode generates render function code for an element node.
+func genElementCode(node *dom.Node) string {
+	tag := node.Data
+	dir := parseDirectives(node.Attr)
 
 	if dir.ifExp != "" {
-		return vm.vueRenderIf(dir.ifExp, node, h)
+		return genIfCode(dir.ifExp, node)
 	}
 	if dir.elseIfExp != "" || dir.else_ {
-		return nil
+		return `_c("div")`
 	}
+
+	code := genElementInnerCode(tag, dir, node)
 
 	if dir.forExp != "" {
-		return vm.vueRenderFor(dir.forExp, node, h)
+		code = wrapForCode(dir.forExp, code)
 	}
 
-	return vm.vueRenderElementInner(node.Data, dir, node, h)
+	return code
 }
 
-// vueRenderIf handles v-if/v-else-if/v-else conditional rendering.
-func (vm *VM) vueRenderIf(ifExp string, ifNode *dom.Node, h *Value) *Value {
-	type condBranch struct {
+// genIfCode generates conditional render code for v-if/v-else-if/v-else chains.
+func genIfCode(ifExp string, ifNode *dom.Node) string {
+	type branch struct {
 		exp  string
 		node *dom.Node
 	}
-
-	branches := []condBranch{{exp: ifExp, node: ifNode}}
+	branches := []branch{{exp: ifExp, node: ifNode}}
 
 	parent := ifNode.Parent
 	if parent != nil {
@@ -260,11 +184,11 @@ func (vm *VM) vueRenderIf(ifExp string, ifNode *dom.Node, h *Value) *Value {
 			if !foundIf {
 				continue
 			}
-			childDir := vueParseDirectives(child.Attr)
-			if childDir.elseIfExp != "" {
-				branches = append(branches, condBranch{exp: childDir.elseIfExp, node: child})
-			} else if childDir.else_ {
-				branches = append(branches, condBranch{exp: "", node: child})
+			cd := parseDirectives(child.Attr)
+			if cd.elseIfExp != "" {
+				branches = append(branches, branch{exp: cd.elseIfExp, node: child})
+			} else if cd.else_ {
+				branches = append(branches, branch{exp: "", node: child})
 				break
 			} else {
 				break
@@ -272,242 +196,153 @@ func (vm *VM) vueRenderIf(ifExp string, ifNode *dom.Node, h *Value) *Value {
 		}
 	}
 
-	for _, br := range branches {
-		if br.exp == "" {
-			dir := vueParseDirectives(br.node.Attr)
-			dir.ifExp, dir.elseIfExp = "", ""
-			dir.else_ = false
-			if dir.forExp != "" {
-				return vm.vueRenderFor(dir.forExp, br.node, h)
-			}
-			return vm.vueRenderElementInner(br.node.Data, dir, br.node, h)
+	var parts []string
+	for i, br := range branches {
+		tag := br.node.Data
+		d := parseDirectives(br.node.Attr)
+		d.ifExp, d.elseIfExp = "", ""
+		d.else_ = false
+		inner := genElementInnerCode(tag, d, br.node)
+		if d.forExp != "" {
+			inner = wrapForCode(d.forExp, inner)
 		}
-		condVal := vm.vueEvalStringExpr(br.exp)
-		if isTruthy(condVal) {
-			dir := vueParseDirectives(br.node.Attr)
-			dir.ifExp, dir.elseIfExp = "", ""
-			dir.else_ = false
-			if dir.forExp != "" {
-				return vm.vueRenderFor(dir.forExp, br.node, h)
-			}
-			return vm.vueRenderElementInner(br.node.Data, dir, br.node, h)
+		if i == 0 {
+			parts = append(parts, `(`+br.exp+`)?`+inner+`:`)
+		} else if br.exp != "" {
+			parts = append(parts, `(`+br.exp+`)?`+inner+`:`)
+		} else {
+			parts = append(parts, inner)
 		}
 	}
-
-	return nil
+	if branches[len(branches)-1].exp != "" {
+		parts = append(parts, `_c("div")`)
+	}
+	return `(` + strings.Join(parts, "") + `)`
 }
 
-// vueRenderFor handles v-for iteration.
-func (vm *VM) vueRenderFor(forExp string, node *dom.Node, h *Value) *Value {
+// wrapForCode generates v-for render code using _l().
+func wrapForCode(forExp, innerCode string) string {
 	forExp = strings.TrimSpace(forExp)
 	inIdx := strings.LastIndex(forExp, " in ")
 	if inIdx < 0 {
 		inIdx = strings.LastIndex(forExp, " of ")
 	}
 	if inIdx < 0 {
-		return vm.vueRenderElementInner(node.Data, vueParseDirectives(node.Attr), node, h)
+		return innerCode
 	}
-
-	leftPart := strings.TrimSpace(forExp[:inIdx])
+	left := strings.TrimSpace(forExp[:inIdx])
 	listExpr := strings.TrimSpace(forExp[inIdx+4:])
-
-	leftPart = strings.Trim(leftPart, "()")
-	parts := strings.SplitN(leftPart, ",", 2)
+	left = strings.Trim(left, "()")
+	parts := strings.SplitN(left, ",", 2)
 	itemVar := strings.TrimSpace(parts[0])
 	indexVar := ""
 	if len(parts) > 1 {
 		indexVar = strings.TrimSpace(parts[1])
 	}
-
-	listVal := vm.vueEvalStringExpr(listExpr)
-	if listVal == nil || listVal.Arr == nil {
-		return nil
+	iter := itemVar
+	if indexVar != "" {
+		iter = itemVar + "," + indexVar
 	}
-
-	var vnodes []*Value
-	for i, item := range listVal.Arr {
-		vm.env.Set(itemVar, item)
-		if indexVar != "" {
-			vm.env.Set(indexVar, &Value{Type: "number", Num: float64(i)})
-		}
-
-		dir := vueParseDirectives(node.Attr)
-		dir.ifExp, dir.elseIfExp = "", ""
-		dir.else_ = false
-		dir.forExp = ""
-		vn := vm.vueRenderElementInner(node.Data, dir, node, h)
-		if vn != nil {
-			vnodes = append(vnodes, vn)
-		}
-	}
-
-	return &Value{Type: "object", Arr: vnodes}
+	return `_l((` + listExpr + `),function(` + iter + `){return ` + innerCode + `})`
 }
 
-// vueRenderElementInner generates a VNode for an element without conditional/loop handling.
-func (vm *VM) vueRenderElementInner(tag string, dir *vueRenderDir, node *dom.Node, h *Value) *Value {
-	dataObj := make(map[string]*Value)
+// genElementInnerCode generates the _c() call for an element.
+func genElementInnerCode(tag string, dir *dirInfo, node *dom.Node) string {
+	var dataEntries []string
 
 	if dir.staticCls != "" {
-		dataObj["staticClass"] = &Value{Type: "string", Str: dir.staticCls}
+		dataEntries = append(dataEntries, `staticClass:`+quoteJS(dir.staticCls))
 	}
 	if dir.dynaCls != "" {
-		dataObj["class"] = vm.vueEvalStringExpr(dir.dynaCls)
+		dataEntries = append(dataEntries, `class:(`+dir.dynaCls+`)`)
 	}
 	if dir.staticSty != "" {
-		dataObj["staticStyle"] = &Value{Type: "string", Str: dir.staticSty}
+		dataEntries = append(dataEntries, `staticStyle:`+quoteJS(dir.staticSty))
 	}
 	if dir.dynaSty != "" {
-		dataObj["style"] = vm.vueEvalStringExpr(dir.dynaSty)
+		dataEntries = append(dataEntries, `style:(`+dir.dynaSty+`)`)
 	}
 	if dir.keyVal != "" {
-		dataObj["key"] = vm.vueEvalStringExpr(dir.keyVal)
+		dataEntries = append(dataEntries, `key:(`+dir.keyVal+`)`)
 	}
 	if dir.refVal != "" {
-		dataObj["ref"] = &Value{Type: "string", Str: dir.refVal}
+		dataEntries = append(dataEntries, `ref:`+quoteJS(dir.refVal))
 	}
 	if dir.slotVal != "" {
-		dataObj["slot"] = &Value{Type: "string", Str: dir.slotVal}
+		dataEntries = append(dataEntries, `slot:`+quoteJS(dir.slotVal))
 	}
-
 	if dir.showExp != "" {
-		dataObj["directives"] = &Value{Type: "object", Arr: []*Value{
-			{Type: "object", Obj: map[string]*Value{
-				"name":    {Type: "string", Str: "show"},
-				"rawName": {Type: "string", Str: "v-show"},
-				"value":   vm.vueEvalStringExpr(dir.showExp),
-			}},
-		}}
+		dataEntries = append(dataEntries, `directives:[{name:"show",rawName:"v-show",value:(`+dir.showExp+`)}]`)
 	}
-
 	if dir.htmlExp != "" {
-		dataObj["domProps"] = &Value{Type: "object", Obj: map[string]*Value{
-			"innerHTML": vm.vueEvalStringExpr(dir.htmlExp),
-		}}
+		dataEntries = append(dataEntries, `domProps:{innerHTML:(`+dir.htmlExp+`)}`)
 	}
-
 	if dir.modelExp != "" {
-		modelVal := vm.vueEvalStringExpr(dir.modelExp)
-		if dp, ok := dataObj["domProps"]; ok && dp.Obj != nil {
-			dp.Obj["value"] = modelVal
-		} else {
-			dataObj["domProps"] = &Value{Type: "object", Obj: map[string]*Value{
-				"value": modelVal,
-			}}
-		}
-		modelExpr := dir.modelExp
-		if on, ok := dataObj["on"]; ok && on.Obj != nil {
-			on.Obj["input"] = &Value{Type: "native", Native: func(args []*Value) *Value {
-				vm.vueEvalStringExpr(modelExpr + "=$event.target.value")
-				return &Value{Type: "undefined"}
-			}}
-		} else {
-			dataObj["on"] = &Value{Type: "object", Obj: map[string]*Value{
-				"input": {Type: "native", Native: func(args []*Value) *Value {
-					vm.vueEvalStringExpr(modelExpr + "=$event.target.value")
-					return &Value{Type: "undefined"}
-				}},
-			}}
-		}
+		dataEntries = append(dataEntries, `domProps:{value:(`+dir.modelExp+`)}`)
+		dataEntries = append(dataEntries, `on:{input:function($event){`+dir.modelExp+`=$event.target.value}}`)
 	}
-
 	if len(dir.bindAttrs) > 0 {
-		attrsMap := make(map[string]*Value)
+		var items []string
 		for k, v := range dir.bindAttrs {
-			attrsMap[k] = vm.vueEvalStringExpr(v)
+			items = append(items, quoteJS(k)+`:(`+v+`)`)
 		}
-		if existing, ok := dataObj["attrs"]; ok && existing.Obj != nil {
-			for k, v := range attrsMap {
-				existing.Obj[k] = v
-			}
-		} else {
-			dataObj["attrs"] = &Value{Type: "object", Obj: attrsMap}
-		}
+		dataEntries = append(dataEntries, `attrs:{`+strings.Join(items, ",")+`}`)
 	}
-
 	if len(dir.onEvents) > 0 {
-		eventsMap := make(map[string]*Value)
+		var items []string
 		for k, v := range dir.onEvents {
-			handlerExpr := v
-			eventsMap[k] = &Value{Type: "native", Native: func(args []*Value) *Value {
-				return vm.vueEvalStringExpr(handlerExpr)
-			}}
+			items = append(items, quoteJS(k)+`:function($event){`+v+`}`)
 		}
-		if existing, ok := dataObj["on"]; ok && existing.Obj != nil {
-			for k, v := range eventsMap {
-				existing.Obj[k] = v
-			}
-		} else {
-			dataObj["on"] = &Value{Type: "object", Obj: eventsMap}
-		}
+		dataEntries = append(dataEntries, `on:{`+strings.Join(items, ",")+`}`)
 	}
-
 	if len(dir.plainAttr) > 0 {
-		attrsMap := make(map[string]*Value)
+		var items []string
 		for k, v := range dir.plainAttr {
-			attrsMap[k] = &Value{Type: "string", Str: v}
+			items = append(items, quoteJS(k)+":"+quoteJS(v))
 		}
-		if existing, ok := dataObj["attrs"]; ok && existing.Obj != nil {
-			for k, v := range attrsMap {
-				existing.Obj[k] = v
-			}
-		} else {
-			dataObj["attrs"] = &Value{Type: "object", Obj: attrsMap}
-		}
+		dataEntries = append(dataEntries, `attrs:{`+strings.Join(items, ",")+`}`)
 	}
 
-	var childVNodes []*Value
+	var childCodes []string
 	if dir.textExp != "" {
-		val := vm.vueEvalStringExpr(dir.textExp)
-		childVNodes = append(childVNodes, &Value{Type: "string", Str: valueToString(val)})
+		childCodes = []string{`_v(_s(` + dir.textExp + `))`}
 	} else {
 		for _, child := range node.Children {
-			vn := vm.vueRenderNode(child, h)
-			if vn != nil {
-				childVNodes = append(childVNodes, vn)
-			}
+			childCodes = append(childCodes, genCode(child))
 		}
 	}
 
-	var dataVal *Value
-	if len(dataObj) > 0 {
-		dataVal = &Value{Type: "object", Obj: dataObj}
+	dataStr := ""
+	if len(dataEntries) > 0 {
+		dataStr = `{` + strings.Join(dataEntries, ",") + `}`
+	}
+	childStr := ""
+	if len(childCodes) > 0 {
+		childStr = `[` + strings.Join(childCodes, ",") + `]`
 	}
 
-	return vm.vueCallH(h, tag, dataVal, childVNodes)
-}
-
-// vueCallH calls the createElement (h) function with the given arguments.
-func (vm *VM) vueCallH(h *Value, tag string, data *Value, children []*Value) *Value {
-	var args []*Value
-	args = append(args, &Value{Type: "string", Str: tag})
-
-	if data != nil {
-		args = append(args, data)
-	}
-
-	if len(children) > 0 {
-		if data == nil {
-			args = append(args, &Value{Type: "object", Obj: map[string]*Value{}})
+	parts := []string{quoteJS(tag)}
+	if dataStr != "" {
+		parts = append(parts, dataStr)
+		if childStr != "" {
+			parts = append(parts, childStr)
 		}
-		args = append(args, &Value{Type: "object", Arr: children})
+	} else if childStr != "" {
+		parts = append(parts, childStr)
 	}
-
-	return vm.callFunction(h, args)
+	return `_c(` + strings.Join(parts, ",") + `)`
 }
 
-// vueParseDirectives extracts Vue directives from element attributes.
-func vueParseDirectives(attrs []dom.Attribute) *vueRenderDir {
-	dir := &vueRenderDir{
+// parseDirectives extracts Vue directives from element attributes.
+func parseDirectives(attrs []dom.Attribute) *dirInfo {
+	dir := &dirInfo{
 		bindAttrs: make(map[string]string),
 		onEvents:  make(map[string]string),
 		plainAttr: make(map[string]string),
 	}
-
 	for _, attr := range attrs {
 		name := attr.Key
 		value := attr.Value
-
 		switch {
 		case name == "v-if":
 			dir.ifExp = value
@@ -528,15 +363,15 @@ func vueParseDirectives(attrs []dom.Attribute) *vueRenderDir {
 		case name == ":key":
 			dir.keyVal = value
 		case name == "key":
-			dir.keyVal = value
+			dir.keyVal = quoteJS(value)
 		case name == ":ref":
 			dir.refVal = value
 		case name == "ref":
-			dir.refVal = value
+			dir.refVal = quoteJS(value)
 		case name == ":slot":
 			dir.slotVal = value
 		case name == "slot":
-			dir.slotVal = value
+			dir.slotVal = quoteJS(value)
 		case strings.HasPrefix(name, ":"):
 			bindAttr := name[1:]
 			switch bindAttr {
@@ -559,10 +394,10 @@ func vueParseDirectives(attrs []dom.Attribute) *vueRenderDir {
 			}
 		case strings.HasPrefix(name, "@"):
 			eventName := name[1:]
-			dir.onEvents[eventName] = value
+			dir.onEvents[eventName] = normalizeHandler(value)
 		case strings.HasPrefix(name, "v-on:"):
 			eventName := name[5:]
-			dir.onEvents[eventName] = value
+			dir.onEvents[eventName] = normalizeHandler(value)
 		case name == "class":
 			dir.staticCls = value
 		case name == "style":
@@ -573,6 +408,38 @@ func vueParseDirectives(attrs []dom.Attribute) *vueRenderDir {
 			}
 		}
 	}
-
 	return dir
+}
+
+// simpleNameRe matches simple JavaScript identifiers.
+var simpleNameRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
+
+// normalizeHandler converts event handler expressions to function bodies.
+func normalizeHandler(handler string) string {
+	handler = strings.TrimSpace(handler)
+	if strings.HasPrefix(handler, "function(") || strings.HasPrefix(handler, "(") {
+		return handler
+	}
+	if strings.Contains(handler, "(") || strings.Contains(handler, "++") || strings.Contains(handler, "--") {
+		return handler
+	}
+	if simpleNameRe.MatchString(handler) {
+		return handler + "($event)"
+	}
+	return handler
+}
+
+// escapeJS escapes a string for use inside JavaScript string literals.
+func escapeJS(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, "\"", "\\\"")
+	s = strings.ReplaceAll(s, "\n", "\\n")
+	s = strings.ReplaceAll(s, "\r", "\\r")
+	s = strings.ReplaceAll(s, "\t", "\\t")
+	return s
+}
+
+// quoteJS wraps a string in double quotes with escaping.
+func quoteJS(s string) string {
+	return `"` + escapeJS(s) + `"`
 }

@@ -154,37 +154,9 @@ func (b *Browser) Navigate(rawURL string) error {
 					router = null;
 				}
 
-				// Apply Element-UI component render function shims.
-				// The original render functions are compiled with new Function()
-				// which doesn't work properly in our VM. These shims provide
-				// simplified render functions that produce the same output.
-				// Note: we use this.$attrs.propName as fallback because Vue's
-				// propsData initialization doesn't work in our VM, so props
-				// passed as attrs need to be read from $attrs.
-				try {
-					var ElForm = Vue.options.components.ElForm;
-					var ElFormItem = Vue.options.components.ElFormItem;
-					var ElInput = Vue.options.components.ElInput;
-					var ElButton = Vue.options.components.ElButton;
-					var ElDropdown = Vue.options.components.ElDropdown;
-					var ElDropdownMenu = Vue.options.components.ElDropdownMenu;
-					var ElDropdownItem = Vue.options.components.ElDropdownItem;
-					var ElIcon = Vue.options.components.ElIcon;
-					var ElCheckbox = Vue.options.components.ElCheckbox;
-					if (ElForm) ElForm.options.render = function(h) { return h('form', {class: ['el-form', (this.labelPosition || this.$attrs.labelPosition) ? 'el-form--label-' + (this.labelPosition || this.$attrs.labelPosition) : '', this.inline ? 'el-form--inline' : ''], attrs: this.$attrs}, this.$slots.default); };
-					if (ElFormItem) ElFormItem.options.render = function(h) { return h('div', {class: ['el-form-item'], attrs: {prop: this.prop || this.$attrs.prop}}, [(this.label || this.$attrs.label) ? h('label', {class: 'el-form-item__label'}, [this.label || this.$attrs.label]) : '', h('div', {class: 'el-form-item__content'}, this.$slots.default)]); };
-					if (ElInput) ElInput.options.render = function(h) { var a = {type: this.type || this.$attrs.type || 'text', placeholder: this.placeholder || this.$attrs.placeholder, name: this.$attrs.name, disabled: this.disabled || this.$attrs.disabled, autocomplete: this.autocomplete || 'off', maxlength: this.maxlength || this.$attrs.maxlength}; return h('div', {class: ['el-input', (this.size || this.$attrs.size) ? 'el-input--' + (this.size || this.$attrs.size) : '']}, [this.$slots.prefix ? h('span', {class: 'el-input__prefix'}, this.$slots.prefix) : '', h('input', {class: 'el-input__inner', attrs: a, domProps: {value: this.value}}), this.$slots.suffix ? h('span', {class: 'el-input__suffix'}, this.$slots.suffix) : '']); };
-					if (ElButton) ElButton.options.render = function(h) { return h('button', {class: ['el-button', (this.type || this.$attrs.type) ? 'el-button--' + (this.type || this.$attrs.type) : '', (this.size || this.$attrs.size) ? 'el-button--' + (this.size || this.$attrs.size) : ''], attrs: {type: this.nativeType || 'button', disabled: this.disabled || this.$attrs.disabled}}, this.$slots.default); };
-					if (ElDropdown) ElDropdown.options.render = function(h) { return h('div', {class: ['el-dropdown'], attrs: this.$attrs}, this.$slots.default); };
-					if (ElDropdownMenu) ElDropdownMenu.options.render = function(h) { return h('div', {class: 'el-dropdown-menu'}, this.$slots.default); };
-					if (ElDropdownItem) ElDropdownItem.options.render = function(h) { return h('li', {class: 'el-dropdown-item'}, this.$slots.default); };
-					if (ElIcon) ElIcon.options.render = function(h) { return h('i', {class: this.name || 'el-icon'}); };
-					if (ElCheckbox) ElCheckbox.options.render = function(h) { return h('label', {class: 'el-checkbox'}, [h('input', {class: 'el-checkbox__input', attrs: {type: 'checkbox', disabled: this.disabled || this.$attrs.disabled}, domProps: {checked: this.value}}), h('span', {class: 'el-checkbox__label'}, this.$slots.default)]); };
-				} catch(e) {}
-
 				// The login page fallback component for when the SPA's
 				// components can't be rendered (they use templates that
-				// our simple compiler can't handle).
+				// our compiler can't handle).
 				loginComponent = {
 					render: function(h) {
 						return h('div', {class: 'login-container'}, [

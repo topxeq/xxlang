@@ -2044,7 +2044,7 @@ func callArrayMethod(name string, obj *Value, args []*Value, vm *VM) *Value {
 	case "concat":
 		result := append([]*Value{}, arr...)
 		for _, arg := range args {
-			if arg.Type == "array" {
+			if arg.Type == "object" && arg.Arr != nil {
 				result = append(result, arg.Arr...)
 			} else {
 				result = append(result, arg)
