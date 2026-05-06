@@ -140,11 +140,23 @@ func (b *Browser) Navigate(rawURL string) error {
 	if b.vm != nil {
 		result, _ := b.Evaluate(`try {
 			if (typeof Vue === 'function' && typeof VueRouter === 'function') {
-				// Create a VueRouter with the login page route.
-				// The router-view component does not work correctly in our VM
-				// (functional component VNode creation bug), so we resolve the
-				// matched route component manually in the render function.
-				var LoginPage = {
+				// Try to use the SPA's captured router (from the entry module).
+				// If the entry module ran successfully, window.__spaRouter will
+				// have the real route definitions. Otherwise, fall back to a
+				// manually created login page.
+				var spaRouter = window.__spaRouter;
+				var router;
+				var loginComponent;
+
+				if (spaRouter && spaRouter.match) {
+					router = spaRouter;
+				} else {
+					router = null;
+				}
+				// The login page fallback component for when the SPA's
+				// components can't be rendered (they use templates that
+				// our simple compiler can't handle).
+				var loginComponent = {
 					render: function(h) {
 						return h('div', {class: 'login-container'}, [
 							h('div', {class: 'login-box'}, [
@@ -158,10 +170,12 @@ func (b *Browser) Navigate(rawURL string) error {
 						]);
 					}
 				};
-				var router = new VueRouter({mode: 'hash', routes: [
-					{path: '/login', component: LoginPage},
-					{path: '/', redirect: '/login'}
-				]});
+				if (!router) {
+					router = new VueRouter({mode: 'hash', routes: [
+						{path: '/login', component: loginComponent},
+						{path: '/', redirect: '/login'}
+					]});
+				}
 				// Manually initialize the VueRouter on the Vue instance.
 				// VueRouter.install's mixin may not have been registered due to
 				// the entry module's for-loop cap, so we set up _routerRoot and
@@ -189,8 +203,24 @@ func (b *Browser) Navigate(rawURL string) error {
 						if (route && route.matched && route.matched.length > 0) {
 							var record = route.matched[0];
 							var comp = record.components && record.components.default;
-							if (comp) { return h(comp); }
+							// Only render components that have a render function.
+							// Template-only components can't be compiled by our
+							// simple compiler, so fall back to the login page.
+							if (comp && typeof comp.render === 'function') { return h(comp); }
+							if (comp && comp.template && !comp.render) {
+								// Try to compile the template with Vue.compile
+								try {
+									var compiled = Vue.compile(comp.template);
+									if (compiled && typeof compiled.render === 'function') {
+										comp.render = compiled.render;
+										comp.staticRenderFns = compiled.staticRenderFns || [];
+										return h(comp);
+									}
+								} catch(e) {}
+							}
 						}
+						// Fallback: render the manual login page
+						if (loginComponent) { return h(loginComponent); }
 						return h('div', {attrs: {id: 'app'}}, ['Loading...']);
 					}
 				});
@@ -395,6 +425,18 @@ func (b *Browser) loadExternalScript(src string) {
 				// Defer the entry module execution: replace r(r.s=0) with just r.s=0
 				// so that modules are registered but not executed until chunks are loaded
 				code = strings.Replace(code, "r(r.s=0)", "r.s=0", 1)
+				// Inject SPA router/store capture into the entry module.
+				// The SPA's entry module creates: var P=new VueRouter({...}); new Vue({router:P,store:S})
+				// We capture P and S as window.__spaRouter and window.__spaStore.
+				code = strings.Replace(code,
+					"var P=new VueRouter",
+					"var P;Object.defineProperty(window,'__spaRouter',{get:function(){return P},configurable:true});P=new VueRouter",
+					1)
+				// Capture the Vuex store similarly
+				code = strings.Replace(code,
+					"var S=new Vuex.Store",
+					"var S;Object.defineProperty(window,'__spaStore',{get:function(){return S},configurable:true});S=new Vuex.Store",
+					1)
 				// Add module execution logging with error tracking
 				oldModuleCall := "return e[t].call(i.exports,i,i.exports,r),i.l=!0,i.exports"
 				newModuleCall := "window.__wpkMods2=window.__wpkMods2||[];window.__wpkMods2.push(String(t));window.__wpkLastMod2=String(t);window.__wpkAllErrs=window.__wpkAllErrs||[];window.__wpkModStack2=window.__wpkModStack2||[];window.__wpkModStack2.push(String(t));try{if(!e[t]){window.__wpkAllErrs.push('MISSING:'+String(t))}else{e[t].call(i.exports,i,i.exports,r)}}catch(err){window.__wpkAllErrs.push(window.__wpkModStack2[window.__wpkModStack2.length-1]+': '+String(err&&err.message?err.message:err).substring(0,200))}finally{window.__wpkModStack2.pop()}i.l=!0;return i.exports"
@@ -418,6 +460,16 @@ func (b *Browser) loadExternalScript(src string) {
 		if strings.Contains(src, "index.js") || strings.Contains(src, "index.chunk") {
 			b.preloadAndLoadChunks(src, code)
 		} else {
+			// Patch Vue's nextTick scheduler to prevent infinite reactive loops.
+			// In our VM, Promise.then executes callbacks synchronously, which
+			// causes Vue's Dep/Watcher scheduler to flush endlessly. We add a
+			// flush counter to the scheduler (qe) that stops after N flushes.
+			if strings.Contains(src, "vue.all.min.js") {
+				code = strings.Replace(code,
+					"function qe(){Je=!1;var e=Ke.slice(0);Ke.length=0;for(var t=0;t<e.length;t++)e[t]()}",
+					"function qe(){Je=!1;var e=Ke.slice(0);Ke.length=0;window.__ntFlush=(window.__ntFlush||0)+1;if(window.__ntFlush>50)return;for(var t=0;t<e.length;t++)e[t]()}",
+					1)
+			}
 			_, err := b.vm.Run(code)
 			if err != nil {
 				b.debugLog("Error executing external script %s: %v (steps=%d)", src, err, b.vm.GetStepCount())
@@ -551,25 +603,35 @@ func (b *Browser) preloadAndLoadChunks(bundleSrc string, code string) {
 		b.vm.ResetSteps()
 		prevMax := b.vm.GetMaxSteps()
 
-		// Skip entry module execution - it triggers infinite reactive loops in
-		// Vue 2's Dep/Watcher system. The for-loop cap breaks VueRouter's matcher
-		// state, causing route.match() to return empty matched arrays.
-		// Instead, we create the Vue app manually in the post-navigate phase.
-		b.debugLog("Skipping entry module (would trigger infinite reactive loops)")
+		// Execute the entry module. We patched Vue's nextTick scheduler
+		// (in loadExternalScript) to cap flushes at 50, preventing the
+		// infinite reactive loop that Vue 2's Dep/Watcher system triggers
+		// when Promise.then is synchronous (as in our VM).
+		b.vm.SetMaxSteps(50_000_000)
+		b.vm.SetForIterMax(200_000)
+		// Reset nextTick flush counter before entry module
+		b.vm.Run("window.__ntFlush=0")
+		_, entryErr := b.vm.Run("try{window.__wpkEntryR(window.__wpkEntryR.s=0)}catch(e){window.__entryErr=String(e&&e.message?e.message:e)}")
+		entrySteps := b.vm.GetStepCount()
+		b.vm.SetForIterMax(0)
+		b.vm.SetMaxSteps(prevMax)
+		b.vm.SetAccessorMax(0)
 
-		// Set a placeholder in the app element
+		if entryErr != nil {
+			b.debugLog("Entry module error: %v (steps=%d)", entryErr, entrySteps)
+		} else {
+			b.debugLog("Entry module executed (steps=%d)", entrySteps)
+		}
+
+		// Check if the SPA mounted itself
 		b.vm.ResetSteps()
 		b.vm.SetMaxSteps(5_000_000)
 		b.vm.Run(`try {
 			var appEl = document.querySelector('#app') || document.querySelector('app');
-			if (appEl && typeof Vue === 'function') {
-				appEl.innerHTML = '<div>SenseLink AIoT Platform</div>';
+			if (!appEl || !appEl.innerHTML || appEl.innerHTML.length < 10) {
 				window.__vueMountPending = true;
-				window.__vueManualMount = true;
 			}
-		} catch(e) {
-			window.__vueMountError = String(e.message || e);
-		}`)
+		} catch(e) {}`)
 		b.vm.SetMaxSteps(prevMax)
 	}
 }
