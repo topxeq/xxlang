@@ -36,11 +36,16 @@ func getNativeThis(args []*Value) *Value {
 
 // nativeThisOffset returns 1 if args[0] is a prepended 'this' argument,
 // 0 otherwise. Used by Object static methods to skip the 'this' arg.
-func nativeThisOffset(args []*Value) int {
+func NativeThisOffset(args []*Value) int {
 	if len(args) > 0 && args[0]._isThisArg {
 		return 1
 	}
 	return 0
+}
+
+// nativeThisOffset is the unexported alias for internal use.
+func nativeThisOffset(args []*Value) int {
+	return NativeThisOffset(args)
 }
 
 // Sets up Object.prototype, Array.prototype, Function.prototype, String.prototype,
