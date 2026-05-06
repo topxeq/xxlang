@@ -140,7 +140,10 @@ func (b *Browser) Navigate(rawURL string) error {
 	if b.vm != nil {
 		result, _ := b.Evaluate(`try {
 			if (typeof Vue === 'function' && typeof VueRouter === 'function') {
-				// Create a VueRouter with the login page route
+				// Create a VueRouter with the login page route.
+				// The router-view component does not work correctly in our VM
+				// (functional component VNode creation bug), so we resolve the
+				// matched route component manually in the render function.
 				var LoginPage = {
 					render: function(h) {
 						return h('div', {class: 'login-container'}, [
@@ -173,17 +176,40 @@ func (b *Browser) Navigate(rawURL string) error {
 							router.app = this;
 							var history = router.history;
 							var location = history.getCurrentLocation();
-							if (!location) location = '/';
+							if (!location) location = '/login';
 							var route = router.match(location, history.current);
 							history.current = route;
 							this._route = route;
 						}
 					},
-					render: function(h) { return h('div', {attrs: {id: 'app'}}, [h('router-view')]); }
+					render: function(h) {
+						// Resolve the matched route component manually since
+						// h('router-view') does not work in our VM.
+						var route = this._route;
+						if (route && route.matched && route.matched.length > 0) {
+							var record = route.matched[0];
+							var comp = record.components && record.components.default;
+							if (comp) { return h(comp); }
+						}
+						return h('div', {attrs: {id: 'app'}}, ['Loading...']);
+					}
 				});
 				Object.defineProperty(vm, '$route', {get: function() { return this._routerRoot._route; }, configurable: true});
 				Object.defineProperty(vm, '$router', {get: function() { return this._routerRoot._router; }, configurable: true});
+				// Mount to the <app> element (the SPA's mount point).
+				// If <app> is not found, fall back to body.
+				var mountTarget = document.querySelector('app') || document.body;
 				vm.$mount();
+				// Vue's $mount() without a selector creates the element off-document.
+				// Replace the mount target's content with the rendered element.
+				if (mountTarget && vm.$el) {
+					mountTarget.innerHTML = '';
+					if (vm.$el.nodeType === 1) {
+						mountTarget.appendChild(vm.$el);
+					} else {
+						mountTarget.textContent = vm.$el.textContent || '';
+					}
+				}
 				var html = vm.$el ? (vm.$el.outerHTML || '') : '';
 				if (html.length > 10) {
 					window.__vueUpgraded = true;
