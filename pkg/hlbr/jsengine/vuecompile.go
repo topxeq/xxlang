@@ -281,12 +281,19 @@ func genElementInnerCode(tag string, dir *dirInfo, node *dom.Node) string {
 		dataEntries = append(dataEntries, `domProps:{value:(`+dir.modelExp+`)}`)
 		dataEntries = append(dataEntries, `on:{input:function($event){`+dir.modelExp+`=$event.target.value}}`)
 	}
+	var allAttrItems []string
 	if len(dir.bindAttrs) > 0 {
-		var items []string
 		for k, v := range dir.bindAttrs {
-			items = append(items, quoteJS(k)+`:(`+v+`)`)
+			allAttrItems = append(allAttrItems, quoteJS(k)+`:(`+v+`)`)
 		}
-		dataEntries = append(dataEntries, `attrs:{`+strings.Join(items, ",")+`}`)
+	}
+	if len(dir.plainAttr) > 0 {
+		for k, v := range dir.plainAttr {
+			allAttrItems = append(allAttrItems, quoteJS(k)+":"+quoteJS(v))
+		}
+	}
+	if len(allAttrItems) > 0 {
+		dataEntries = append(dataEntries, `attrs:{`+strings.Join(allAttrItems, ",")+`}`)
 	}
 	if len(dir.onEvents) > 0 {
 		var items []string
@@ -294,13 +301,6 @@ func genElementInnerCode(tag string, dir *dirInfo, node *dom.Node) string {
 			items = append(items, quoteJS(k)+`:function($event){`+v+`}`)
 		}
 		dataEntries = append(dataEntries, `on:{`+strings.Join(items, ",")+`}`)
-	}
-	if len(dir.plainAttr) > 0 {
-		var items []string
-		for k, v := range dir.plainAttr {
-			items = append(items, quoteJS(k)+":"+quoteJS(v))
-		}
-		dataEntries = append(dataEntries, `attrs:{`+strings.Join(items, ",")+`}`)
 	}
 
 	var childCodes []string
