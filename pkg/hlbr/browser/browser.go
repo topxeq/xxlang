@@ -431,6 +431,13 @@ func (b *Browser) executeScripts() {
 		// when i18n messages are loaded asynchronously via XHR (which
 		// our VM does not support), so translations are unavailable.
 		b.vm.Run(`try{if(typeof Vue==="function"&&typeof Vue.prototype.$t==="function"){var origT=Vue.prototype.$t;Vue.prototype.$t=function(key){var result=origT.call(this,key);if(result===undefined||result===null||result==="")return key;return result}}catch(e){}`)
+		// Expose Vue instance tree for programmatic access. In our headless
+		// VM, Vue component methods may be lost during Vue.extend/mergeOptions
+		// processing, and DOM event handlers are not bound because Vue's
+		// real DOM patching doesn't run. This exposes __vueInstances__ on
+		// window so that users can find and interact with Vue components
+		// directly (e.g., setting data via vm._data, calling methods).
+		b.vm.Run(`try{if(typeof Vue==="function"&&window.__spaRouter&&window.__spaRouter.apps){window.__vueInstances__=window.__spaRouter.apps}}catch(e){}`)
 	}
 }
 
