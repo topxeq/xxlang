@@ -887,6 +887,90 @@ func (vm *VM) setupBuiltins() {
 		return &Value{Type: "bool", Bool: isTruthy(args[0])}
 	}})
 
+	vm.env.Define("Event", &Value{Type: "native", BuiltInConstructor: "Event", Native: func(args []*Value) *Value {
+		offset := NativeThisOffset(args)
+		eventType := ""
+		if len(args) > offset && args[offset] != nil {
+			eventType = args[offset].Str
+		}
+		bubbles := false
+		cancelable := false
+		if len(args) > offset+1 && args[offset+1] != nil && args[offset+1].Type == "object" && args[offset+1].Obj != nil {
+			if b, ok := args[offset+1].Obj["bubbles"]; ok && b != nil {
+				bubbles = b.Bool
+			}
+			if c, ok := args[offset+1].Obj["cancelable"]; ok && c != nil {
+				cancelable = c.Bool
+			}
+		}
+		return &Value{Type: "object", Obj: map[string]*Value{
+			"type":             {Type: "string", Str: eventType},
+			"bubbles":          {Type: "bool", Bool: bubbles},
+			"cancelable":       {Type: "bool", Bool: cancelable},
+			"defaultPrevented": {Type: "bool", Bool: false},
+			"target":           {Type: "null"},
+			"currentTarget":    {Type: "null"},
+			"timeStamp":        {Type: "number", Num: float64(0)},
+		}}
+	}})
+
+	vm.env.Define("CustomEvent", &Value{Type: "native", BuiltInConstructor: "CustomEvent", Native: func(args []*Value) *Value {
+		offset := NativeThisOffset(args)
+		eventType := ""
+		if len(args) > offset && args[offset] != nil {
+			eventType = args[offset].Str
+		}
+		bubbles := false
+		cancelable := false
+		var detail *Value
+		if len(args) > offset+1 && args[offset+1] != nil && args[offset+1].Type == "object" && args[offset+1].Obj != nil {
+			if b, ok := args[offset+1].Obj["bubbles"]; ok && b != nil {
+				bubbles = b.Bool
+			}
+			if c, ok := args[offset+1].Obj["cancelable"]; ok && c != nil {
+				cancelable = c.Bool
+			}
+			if d, ok := args[offset+1].Obj["detail"]; ok {
+				detail = d
+			}
+		}
+		obj := map[string]*Value{
+			"type":             {Type: "string", Str: eventType},
+			"bubbles":          {Type: "bool", Bool: bubbles},
+			"cancelable":       {Type: "bool", Bool: cancelable},
+			"defaultPrevented": {Type: "bool", Bool: false},
+			"target":           {Type: "null"},
+			"currentTarget":    {Type: "null"},
+			"timeStamp":        {Type: "number", Num: float64(0)},
+		}
+		if detail != nil {
+			obj["detail"] = detail
+		} else {
+			obj["detail"] = &Value{Type: "null"}
+		}
+		return &Value{Type: "object", Obj: obj}
+	}})
+
+	vm.env.Define("MouseEvent", &Value{Type: "native", BuiltInConstructor: "MouseEvent", Native: func(args []*Value) *Value {
+		offset := NativeThisOffset(args)
+		eventType := "click"
+		if len(args) > offset && args[offset] != nil {
+			eventType = args[offset].Str
+		}
+		return &Value{Type: "object", Obj: map[string]*Value{
+			"type":             {Type: "string", Str: eventType},
+			"bubbles":          {Type: "bool", Bool: true},
+			"cancelable":       {Type: "bool", Bool: true},
+			"defaultPrevented": {Type: "bool", Bool: false},
+			"target":           {Type: "null"},
+			"currentTarget":    {Type: "null"},
+			"timeStamp":        {Type: "number", Num: float64(0)},
+			"clientX":          {Type: "number", Num: 0},
+			"clientY":          {Type: "number", Num: 0},
+			"button":           {Type: "number", Num: 0},
+		}}
+	}})
+
 	arrayConstructor := &Value{Type: "native", BuiltInConstructor: "Array", Native: func(args []*Value) *Value {
 		arr := vm.newArray(args)
 		arr.BuiltInConstructor = "Array"
@@ -1479,15 +1563,66 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 			return &Value{Type: "bool", Bool: vm.nodeContains(n, other)}
 		}},
 		"addEventListener": {Type: "native", Native: func(args []*Value) *Value {
-			// Stub: event listener registration
+			offset := nativeThisOffset(args)
+			if len(args) <= offset+1 {
+				return &Value{Type: "undefined"}
+			}
+			eventType := args[offset].Str
+			handler := args[offset+1]
+			if n.EventListeners == nil {
+				n.EventListeners = make(map[string][]interface{})
+			}
+			n.EventListeners[eventType] = append(n.EventListeners[eventType], handler)
 			return &Value{Type: "undefined"}
 		}},
 		"removeEventListener": {Type: "native", Native: func(args []*Value) *Value {
-			// Stub: event listener removal
+			offset := nativeThisOffset(args)
+			if len(args) <= offset+1 {
+				return &Value{Type: "undefined"}
+			}
+			eventType := args[offset].Str
+			handler := args[offset+1]
+			if n.EventListeners != nil {
+				handlers := n.EventListeners[eventType]
+				for i, h := range handlers {
+					if h == handler {
+						n.EventListeners[eventType] = append(handlers[:i], handlers[i+1:]...)
+						break
+					}
+				}
+			}
 			return &Value{Type: "undefined"}
 		}},
 		"dispatchEvent": {Type: "native", Native: func(args []*Value) *Value {
-			// Stub: event dispatch
+			offset := nativeThisOffset(args)
+			if len(args) <= offset {
+				return &Value{Type: "bool", Bool: true}
+			}
+			event := args[offset]
+			var eventType string
+			if event != nil && event.Type == "object" && event.Obj != nil {
+				if t, ok := event.Obj["type"]; ok && t != nil {
+					eventType = t.Str
+				}
+			}
+			if eventType == "" {
+				return &Value{Type: "bool", Bool: true}
+			}
+			if n.EventListeners != nil {
+				handlers := n.EventListeners[eventType]
+				for _, h := range handlers {
+					if fn, ok := h.(*Value); ok && fn != nil {
+						vm.callFunction(fn, []*Value{{Type: "object", Obj: map[string]*Value{
+							"type":       {Type: "string", Str: eventType},
+							"target":     args[0],
+							"currentTarget": args[0],
+							"bubbles":    {Type: "bool", Bool: true},
+							"cancelable": {Type: "bool", Bool: true},
+							"defaultPrevented": {Type: "bool", Bool: false},
+						}}})
+					}
+				}
+			}
 			return &Value{Type: "bool", Bool: true}
 		}},
 		"focus": {Type: "native", Native: func(args []*Value) *Value {
@@ -1499,7 +1634,23 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 			return &Value{Type: "undefined"}
 		}},
 		"click": {Type: "native", Native: func(args []*Value) *Value {
-			// Stub: click
+			thisObj := getNativeThis(args)
+			event := &Value{Type: "object", Obj: map[string]*Value{
+				"type":           {Type: "string", Str: "click"},
+				"target":         thisObj,
+				"currentTarget":  thisObj,
+				"bubbles":        {Type: "bool", Bool: true},
+				"cancelable":     {Type: "bool", Bool: true},
+				"defaultPrevented": {Type: "bool", Bool: false},
+			}}
+			if n.EventListeners != nil {
+				handlers := n.EventListeners["click"]
+				for _, h := range handlers {
+					if fn, ok := h.(*Value); ok && fn != nil {
+						vm.callFunction(fn, []*Value{event})
+					}
+				}
+			}
 			return &Value{Type: "undefined"}
 		}},
 		"scrollIntoView": {Type: "native", Native: func(args []*Value) *Value {

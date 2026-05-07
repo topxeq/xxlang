@@ -426,6 +426,11 @@ func (b *Browser) executeScripts() {
 		// needs these to determine the current route.
 		b.vm.Run(`try{if(typeof Vue==="function"&&typeof VueRouter==="function"){var d1=Object.getOwnPropertyDescriptor(Vue.prototype,"$route");if(!d1||!d1.get){Object.defineProperty(Vue.prototype,"$router",{get:function(){return this._routerRoot&&this._routerRoot._router},configurable:true});Object.defineProperty(Vue.prototype,"$route",{get:function(){return this._routerRoot&&this._routerRoot._route},configurable:true})}if(typeof VueRouter.prototype.init==="function"){VueRouter.prototype.init=function(app){var self=this;this.apps.push(app);if(!this.app){this.app=app;var history=this.history;var location=history.getCurrentLocation();if(!location)location="/";var route=self.match(location,history.current);history.current=route;history.listen(function(r){self.apps.forEach(function(a){a._route=r})})}}}}}catch(e){}`)
 		b.vm.Run(`try{if(typeof Vue==="function"&&typeof Vuex==="function"&&typeof Vuex.install==="function"&&!Vue.options.store){Vuex.install(Vue)}}catch(e){}`)
+		// Patch Vue.prototype.$t (i18n) to return the key as fallback
+		// when the original $t returns undefined/null. This is common
+		// when i18n messages are loaded asynchronously via XHR (which
+		// our VM does not support), so translations are unavailable.
+		b.vm.Run(`try{if(typeof Vue==="function"&&typeof Vue.prototype.$t==="function"){var origT=Vue.prototype.$t;Vue.prototype.$t=function(key){var result=origT.call(this,key);if(result===undefined||result===null||result==="")return key;return result}}catch(e){}`)
 	}
 }
 

@@ -12,13 +12,14 @@ const (
 )
 
 type Node struct {
-	Type        NodeType
-	Data        string
-	Attr        []Attribute
-	Children    []*Node
-	Parent      *Node
-	PrevSibling *Node
-	NextSibling *Node
+	Type            NodeType
+	Data            string
+	Attr            []Attribute
+	Children        []*Node
+	Parent          *Node
+	PrevSibling     *Node
+	NextSibling     *Node
+	EventListeners  map[string][]interface{}
 }
 
 type Attribute struct {
