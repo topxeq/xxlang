@@ -531,8 +531,6 @@ func (vm *VM) setupPrototypes() {
 	// Function.prototype
 	functionProto := &Value{Type: "object", Obj: map[string]*Value{
 		"call": {Type: "native", Native: func(args []*Value) *Value {
-			// Function.prototype.call(thisArg, ...args)
-			// args[0] is the function (via ThisBinding), args[1] is thisArg, args[2+] are arguments
 			thisObj := getNativeThis(args)
 			if thisObj == nil {
 				return &Value{Type: "undefined"}
@@ -548,7 +546,6 @@ func (vm *VM) setupPrototypes() {
 			if thisArg == nil {
 				thisArg = &Value{Type: "undefined"}
 			}
-			// Prepend thisArg to args with marker
 			thisArg._isThisArg = true
 			callArgs = append([]*Value{thisArg}, callArgs...)
 			if thisObj.Type == "function" && thisObj.Func != nil {
@@ -1196,6 +1193,21 @@ func GetObjectMethods(vm *VM) map[string]*Value {
 				seen["prototype"] = true
 			}
 			return &Value{Type: "object", Arr: keys}
+		}},
+	}
+}
+
+// GetArrayPrototypeMethods returns the built-in Array.prototype methods that
+// core-js polyfills may overwrite with broken JS implementations. These are
+// restored after script execution to ensure correct behavior in our VM.
+func GetArrayPrototypeMethods(vm *VM) map[string]*Value {
+	return map[string]*Value{
+		"concat": {Type: "native", Native: func(args []*Value) *Value {
+			thisObj := getNativeThis(args)
+			if thisObj != nil && thisObj.Type == "object" && thisObj.Arr != nil {
+				return callArrayMethod("concat", thisObj, args[1:], vm)
+			}
+			return &Value{Type: "object", Arr: []*Value{}}
 		}},
 	}
 }

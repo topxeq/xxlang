@@ -130,19 +130,31 @@ func (vm *VM) lookupWithObject(obj *Value, name string) *Value {
 		if current.Descriptors != nil {
 			if desc, ok := current.Descriptors[name]; ok {
 				if desc.Get != nil {
-					return vm.callGetter(desc.Get, current)
+					result := vm.callGetter(desc.Get, current)
+					if result != nil && (result.Type == "function" || result.Type == "native") && result.ThisBinding == nil {
+						result.ThisBinding = obj
+					}
+					return result
 				}
 				if desc.Value != nil {
-					return desc.Value
+					result := desc.Value
+					if result != nil && (result.Type == "function" || result.Type == "native") && result.ThisBinding == nil {
+						result.ThisBinding = obj
+					}
+					return result
 				}
 			}
 		}
 		if current.Obj != nil {
 			if v, ok := current.Obj[name]; ok {
+				if v != nil && (v.Type == "function" || v.Type == "native") && v.ThisBinding == nil {
+					copied := *v
+					copied.ThisBinding = obj
+					return &copied
+				}
 				return v
 			}
 		}
-		// Walk the prototype chain via Proto field
 		if current.Proto != nil {
 			current = current.Proto
 			visited++

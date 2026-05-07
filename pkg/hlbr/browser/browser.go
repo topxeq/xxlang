@@ -306,6 +306,19 @@ func (b *Browser) restoreNativeObjectMethods() {
 		objVal.Obj[k] = v
 	}
 
+	// Restore Array.prototype methods that core-js may have replaced with
+	// broken JS polyfills. core-js's Array.prototype.concat polyfill
+	// doesn't work correctly in our VM — specifically, [].concat.apply([], nestedArr)
+	// fails to flatten nested arrays, which breaks Vue's simpleNormalizeChildren
+	// and results in empty Element-UI form components (el-form without children).
+	arrProto := b.vm.Env().Get("ArrayPrototype")
+	if arrProto != nil && arrProto.Obj != nil {
+		nativeArrMethods := jsengine.GetArrayPrototypeMethods(b.vm)
+		for k, v := range nativeArrMethods {
+			arrProto.Obj[k] = v
+		}
+	}
+
 	// If index.js modules were loaded with broken Object methods,
 	// clear the module cache and re-execute the entry module.
 	requireFn := b.vm.Env().Get("__wpkE2")
@@ -389,7 +402,24 @@ func (b *Browser) executeScripts() {
 	// After all scripts, ensure Vue plugins are installed. The per-script
 	// patch above may have run before VueRouter/Vuex scripts were loaded.
 	if b.vm != nil {
-		b.vm.Run(`try{if(typeof Vue==="function"&&typeof VueRouter==="function"&&typeof VueRouter.install==="function"&&!Vue.options.components.RouterView){VueRouter.install(Vue)}}catch(e){}`)
+		b.vm.Run(`try{if(typeof Vue==="function"&&typeof VueRouter==="function"&&typeof VueRouter.install==="function"&&!Vue.options.components.RouterView){VueRouter.install(Vue)}}catch(e){})`)
+		// Flatten Vue.options components/directives/filters so that all
+		// inherited (prototype-chain) properties become own properties.
+		// Vue's resolveAsset uses hasOwnProperty to look up components, but
+		// when Element-UI registers via Vue.use(), the components end up on
+		// the prototype chain of Vue.options.components (because
+		// Object.create is used in mergeOptions). Without flattening,
+		// hasOwnProperty fails and Element-UI components (ElForm, ElInput,
+		// etc.) are not resolved, resulting in empty <el-form> elements.
+		b.vm.Run(`try{if(typeof Vue==="function"){function flattenOwn(obj){if(!obj||typeof obj!=="object")return;for(var k in obj){if(!Object.prototype.hasOwnProperty.call(obj,k)){obj[k]=obj[k]}}return obj}flattenOwn(Vue.options.components);flattenOwn(Vue.options.directives);flattenOwn(Vue.options.filters)}}catch(e){})`)
+		// Patch Element-UI container components (ElForm, ElFormItem, etc.)
+		// that use _t("default") inside compiled render functions. In our VM,
+		// _t called from _c inside with(this){} scope can produce broken
+		// children when the _t result is wrapped in [_t("default")] and
+		// Array.prototype.concat.apply fails to flatten. Replace their render
+		// functions with versions that use this.$slots.default directly,
+		// which is reliable in our VM.
+		b.vm.Run(`try{if(typeof Vue==="function"&&typeof ELEMENT==="object"){var formComps={ElForm:{cls:"el-form",tag:"form",attrs:["size","model","labelWidth","labelPosition","labelSuffix","inline","disabled"]},ElFormItem:{cls:"el-form-item",tag:"div",attrs:["label","prop","labelWidth","required","rules","error","showMessage","inline"]},ElDialog:{cls:"el-dialog",tag:"div",attrs:["title","width"]},ElCard:{cls:"el-card",tag:"div",attrs:["shadow"]}};for(var name in formComps){var info=formComps[name];var Ctor=Vue.component(name);if(Ctor&&Ctor.options&&typeof Ctor.options.render==="function"&&!Ctor.options._slotPatched){(function(nm,inf){Ctor.options.render=function(h){var attrs={};for(var a=0;a<inf.attrs.length;a++){var k=inf.attrs[a];if(this[k]!==undefined&&this[k]!==null&&this[k]!==""){attrs[k]=this[k]}}var classes=[inf.cls];if(nm==="ElForm"){if(this.labelPosition)classes.push("el-form--label-"+this.labelPosition);if(this.inline)classes.push("el-form--inline")}var slot=this.$slots.default||[];return h(inf.tag,{class:classes,attrs:attrs},slot)}})(name,info);Ctor.options._slotPatched=true}}var ElInput=Vue.component("ElInput");if(ElInput&&ElInput.options&&typeof ElInput.options.render==="function"&&!ElInput.options._slotPatched){ElInput.options.render=function(h){var inputAttrs={type:this.type||"text",placeholder:this.placeholder||"",autocomplete:this.autocomplete||"off",value:this.value!==undefined?this.value:""};if(this.name)inputAttrs.name=this.name;if(this.disabled)inputAttrs.disabled=true;if(this.readonly)inputAttrs.readonly=true;if(this.maxlength)inputAttrs.maxlength=this.maxlength;var inputEl=h("input",{class:"el-input__inner",attrs:inputAttrs,on:{input:function(e){this.$emit("input",e.target.value)}.bind(this)}});var children=[inputEl];var prepend=this.$slots.prepend;if(prepend){children.unshift(h("div",{class:"el-input-group__prepend"},prepend))}var append=this.$slots.append;if(append){children.push(h("div",{class:"el-input-group__append"},append))}var wrapperClass="el-input";if(this.disabled)wrapperClass+=" is-disabled";return h("div",{class:wrapperClass},children)};ElInput.options._slotPatched=true}var ElButton=Vue.component("ElButton");if(ElButton&&ElButton.options&&typeof ElButton.options.render==="function"&&!ElButton.options._slotPatched){ElButton.options.render=function(h){var attrs={type:this.type||"button"};if(this.disabled)attrs.disabled=true;var classes=["el-button"];if(this.type)classes.push("el-button--"+this.type);if(this.size)classes.push("el-button--"+this.size);if(this.disabled)classes.push("is-disabled");return h("button",{class:classes,attrs:attrs,on:{click:this.handleClick}},this.$slots.default||[])};ElButton.options._slotPatched=true}}catch(e){})`)
 		// Ensure $route/$router getters are on Vue.prototype even if
 		// VueRouter.install failed (common in headless VM due to
 		// prototype chain issues). The router-view functional component
