@@ -3392,6 +3392,16 @@ func (vm *VM) evalAssign(e *AssignExpr) *Value {
 				}
 			}
 		obj.Obj[prop] = val
+		// When assigning to a property that has a data descriptor,
+		// also update the descriptor's Value to keep it in sync.
+		// Without this, the descriptor's stale Value takes priority
+		// over Obj during property reads, causing reads to return
+		// the old value instead of the newly assigned one.
+		if obj.Descriptors != nil {
+			if desc, ok := obj.Descriptors[prop]; ok && desc.Get == nil && desc.Set == nil {
+				desc.Value = val
+			}
+		}
 		// When assigning to a function's .prototype property, also update PrototypeObj
 		// so that evalNew uses the updated prototype chain (e.g., after Sub.prototype = Object.create(Super.prototype))
 		if prop == "prototype" && (obj.Type == "function" || obj.Type == "native") {

@@ -1069,20 +1069,29 @@ func GetObjectMethods(vm *VM) map[string]*Value {
 			}
 			for _, source := range args[offset+1:] {
 				if source.Type == "object" && source.Obj != nil {
-					for k, v := range source.Obj {
-						target.Obj[k] = v
-					}
-					// Also copy descriptor properties
+					// Copy descriptor properties first, so that Obj values
+					// (which reflect the current property values) take priority
+					// over stale descriptor values.
 					if source.Descriptors != nil {
 						if target.Descriptors == nil {
 							target.Descriptors = make(map[string]*PropertyDescriptor)
 						}
 						for k, desc := range source.Descriptors {
-							if desc.Value != nil {
-								target.Obj[k] = desc.Value
-							}
 							descCopy := *desc
 							target.Descriptors[k] = &descCopy
+						}
+					}
+					// Copy Obj values after descriptors so they take priority.
+					// In JS, Object.assign copies the actual property values,
+					// not descriptor values. A descriptor with value:undefined
+					// should not overwrite a correct Obj value.
+					for k, v := range source.Obj {
+						target.Obj[k] = v
+						// Keep descriptor Value in sync with Obj
+						if target.Descriptors != nil {
+							if desc, ok := target.Descriptors[k]; ok && desc.Get == nil && desc.Set == nil {
+								desc.Value = v
+							}
 						}
 					}
 				}
