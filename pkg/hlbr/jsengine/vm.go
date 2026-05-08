@@ -1995,6 +1995,46 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 			}
 			return &Value{Type: "number", Num: float64(count)}
 		}}, Enumerable: true, Configurable: true},
+		"offsetWidth": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 100}
+		}}, Enumerable: true, Configurable: true},
+		"offsetHeight": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 30}
+		}}, Enumerable: true, Configurable: true},
+		"offsetLeft": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 0}
+		}}, Enumerable: true, Configurable: true},
+		"offsetTop": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 0}
+		}}, Enumerable: true, Configurable: true},
+		"clientWidth": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 100}
+		}}, Enumerable: true, Configurable: true},
+		"clientHeight": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 30}
+		}}, Enumerable: true, Configurable: true},
+		"scrollWidth": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 100}
+		}}, Enumerable: true, Configurable: true},
+		"scrollHeight": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 30}
+		}}, Enumerable: true, Configurable: true},
+		"scrollTop": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 0}
+		}}, Set: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "undefined"}
+		}}, Enumerable: true, Configurable: true},
+		"scrollLeft": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 0}
+		}}, Set: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "undefined"}
+		}}, Enumerable: true, Configurable: true},
+		"offsetParent": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			if n.Parent != nil && n.Parent.Type == dom.ElementNode {
+				return vm.wrapNodeShallow(n.Parent)
+			}
+			return &Value{Type: "null"}
+		}}, Enumerable: true, Configurable: true},
 	}
 	// Store the dom.Node reference for unwrapNode (used by DOM mutation methods)
 	obj.NodeRef = n
@@ -2362,6 +2402,46 @@ func (vm *VM) wrapNodeShallow(n *dom.Node) *Value {
 				}
 			}
 			return &Value{Type: "number", Num: float64(count)}
+		}}, Enumerable: true, Configurable: true},
+		"offsetWidth": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 100}
+		}}, Enumerable: true, Configurable: true},
+		"offsetHeight": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 30}
+		}}, Enumerable: true, Configurable: true},
+		"offsetLeft": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 0}
+		}}, Enumerable: true, Configurable: true},
+		"offsetTop": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 0}
+		}}, Enumerable: true, Configurable: true},
+		"clientWidth": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 100}
+		}}, Enumerable: true, Configurable: true},
+		"clientHeight": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 30}
+		}}, Enumerable: true, Configurable: true},
+		"scrollWidth": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 100}
+		}}, Enumerable: true, Configurable: true},
+		"scrollHeight": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 30}
+		}}, Enumerable: true, Configurable: true},
+		"scrollTop": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 0}
+		}}, Set: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "undefined"}
+		}}, Enumerable: true, Configurable: true},
+		"scrollLeft": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: 0}
+		}}, Set: &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "undefined"}
+		}}, Enumerable: true, Configurable: true},
+		"offsetParent": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
+			if n.Parent != nil && n.Parent.Type == dom.ElementNode {
+				return vm.wrapNodeShallow(n.Parent)
+			}
+			return &Value{Type: "null"}
 		}}, Enumerable: true, Configurable: true},
 	}
 	// Store the dom.Node reference for unwrapNode (used by DOM mutation methods)
