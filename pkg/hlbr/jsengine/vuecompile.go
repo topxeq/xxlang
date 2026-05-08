@@ -266,10 +266,10 @@ func genElementInnerCode(tag string, dir *dirInfo, node *dom.Node) string {
 		dataEntries = append(dataEntries, `key:(`+dir.keyVal+`)`)
 	}
 	if dir.refVal != "" {
-		dataEntries = append(dataEntries, `ref:`+quoteJS(dir.refVal))
+		dataEntries = append(dataEntries, `ref:(`+dir.refVal+`)`)
 	}
 	if dir.slotVal != "" {
-		dataEntries = append(dataEntries, `slot:`+quoteJS(dir.slotVal))
+		dataEntries = append(dataEntries, `slot:(`+dir.slotVal+`)`)
 	}
 	if dir.showExp != "" {
 		dataEntries = append(dataEntries, `directives:[{name:"show",rawName:"v-show",value:(`+dir.showExp+`)}]`)
