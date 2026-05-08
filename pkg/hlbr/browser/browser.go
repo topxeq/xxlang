@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"net/url"
@@ -121,6 +122,13 @@ func (b *Browser) Navigate(rawURL string) error {
 	b.vm.Run(`if(!window.language)Object.defineProperty(window,'language',{value:"zh",writable:true,configurable:true})`)
 	b.vm.Run(`if(!window.localErr)window.localErr={serverErr:"Server error",errTip:"Error"}`)
 	b.vm.Run(`if(!window.getSessionStorage)window.getSessionStorage=function(){return Promise.resolve({})}`)
+	// Install stubs for commonly used browser APIs that our VM doesn't support.
+	// XHR and fetch stubs capture request details but don't make real network
+	// calls. Users can inject responses via window.__hlbrXHRResponses.
+	b.vm.Run(`window.__hlbrXHRResponses={};window.__hlbrXHRLog=[];if(typeof XMLHttpRequest==="undefined"){window.XMLHttpRequest=function(){this.readyState=0;this.status=0;this.statusText="";this.responseText="";this.response=null;this.responseType="";this.timeout=0;this.withCredentials=false;this.onreadystatechange=null;this.onload=null;this.onerror=null;this.onabort=null;this.ontimeout=null;this._method="";this._url="";this._headers={};this._async=true;this._sent=false};XMLHttpRequest.prototype.open=function(m,u,a){this._method=m;this._url=u;this._async=a!==false;this.readyState=1};XMLHttpRequest.prototype.setRequestHeader=function(k,v){this._headers[k]=v};XMLHttpRequest.prototype.send=function(body){this._sent=true;this._body=body;window.__hlbrXHRLog.push({method:this._method,url:this._url,headers:Object.assign({},this._headers),body:body});var key=this._method+" "+this._url;var resp=window.__hlbrXHRResponses[key];if(resp){this.status=resp.status||200;this.statusText=resp.statusText||"OK";this.responseText=resp.responseText||"";this.response=this.responseText;this.readyState=4;if(this.onreadystatechange)this.onreadystatechange();if(this.onload)this.onload()}else{this.status=0;this.readyState=4;if(this.onerror)this.onerror()}};XMLHttpRequest.prototype.abort=function(){this.readyState=0};XMLHttpRequest.UNSENT=0;XMLHttpRequest.OPENED=1;XMLHttpRequest.HEADERS_RECEIVED=2;XMLHttpRequest.LOADING=3;XMLHttpRequest.DONE=4}`)
+	b.vm.Run(`if(typeof fetch==="undefined"){window.fetch=function(url,opts){var method=(opts&&opts.method)||"GET";var key=method+" "+url;window.__hlbrXHRLog.push({method:method,url:url,headers:opts&&opts.headers||{},body:opts&&opts.body});var resp=window.__hlbrXHRResponses[key];if(resp){return Promise.resolve({ok:resp.status>=200&&resp.status<300,status:resp.status||200,statusText:resp.statusText||"OK",headers:new Headers(),json:function(){return Promise.resolve(JSON.parse(resp.responseText||"{}"))},text:function(){return Promise.resolve(resp.responseText||"")},blob:function(){return Promise.resolve(null)}})}return Promise.reject(new Error("Network error: no stub response for "+key))}}`)
+	b.vm.Run(`if(typeof Number.isInteger==="undefined"){Number.isInteger=function(v){return typeof v==="number"&&isFinite(v)&&Math.floor(v)===v}}`)
+	b.vm.Run(`if(typeof Number.isNaN==="undefined"){Number.isNaN=function(v){return typeof v==="number"&&isNaN(v)}}`)
 
 	if !b.noScripts {
 		b.debugLog("Executing scripts...")
@@ -1067,6 +1075,40 @@ func (b *Browser) WaitForSelector(selector string, timeoutMs int) bool {
 		time.Sleep(50 * time.Millisecond)
 	}
 	return false
+}
+
+// SetXHRResponse sets a stub response for XHR/fetch requests matching
+// the given method and URL. When a script makes an XHR or fetch request
+// for "GET /api/data", the stub response is returned synchronously.
+func (b *Browser) SetXHRResponse(method, url string, status int, responseBody string) {
+	if b.vm == nil {
+		return
+	}
+	// Escape the response body for safe JS string embedding
+	escaped := strings.ReplaceAll(responseBody, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `'`, `\'`)
+	escaped = strings.ReplaceAll(escaped, "\n", `\n`)
+	b.vm.Run(fmt.Sprintf(
+		`window.__hlbrXHRResponses[%q]={status:%d,responseText:'%s'}`,
+		method+" "+url, status, escaped,
+	))
+}
+
+// GetXHRLog returns all XHR/fetch requests made by scripts.
+func (b *Browser) GetXHRLog() []map[string]any {
+	if b.vm == nil {
+		return nil
+	}
+	result, err := b.Evaluate(`JSON.stringify(window.__hlbrXHRLog||[])`)
+	if err != nil {
+		return nil
+	}
+	str := fmt.Sprintf("%v", result)
+	var logs []map[string]any
+	if err := json.Unmarshal([]byte(str), &logs); err != nil {
+		return nil
+	}
+	return logs
 }
 
 func (b *Browser) Client() *httpclient.Client {

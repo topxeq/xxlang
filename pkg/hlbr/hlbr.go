@@ -222,6 +222,16 @@ func (b *Browser) WaitForSelector(selector string, timeoutMs int) bool {
 	return b.browser.WaitForSelector(selector, timeoutMs)
 }
 
+// SetXHRResponse sets a stub response for XHR/fetch requests.
+func (b *Browser) SetXHRResponse(method, url string, status int, responseBody string) {
+	b.browser.SetXHRResponse(method, url, status, responseBody)
+}
+
+// GetXHRLog returns all XHR/fetch requests made by scripts.
+func (b *Browser) GetXHRLog() []map[string]any {
+	return b.browser.GetXHRLog()
+}
+
 func Launch(opts *Options) (*Browser, error) {
 	return New(opts)
 }
