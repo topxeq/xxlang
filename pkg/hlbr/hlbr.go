@@ -186,6 +186,17 @@ func (b *Browser) VM() interface{} {
 	return b.browser.VM()
 }
 
+// Fill sets the value of the first element matching the CSS selector and
+// dispatches an "input" event so that Vue v-model bindings are updated.
+func (b *Browser) Fill(selector, value string) error {
+	return b.browser.Fill(selector, value)
+}
+
+// Click clicks the first element matching the CSS selector.
+func (b *Browser) Click(selector string) error {
+	return b.browser.Click(selector)
+}
+
 func Launch(opts *Options) (*Browser, error) {
 	return New(opts)
 }

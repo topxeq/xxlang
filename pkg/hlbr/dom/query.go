@@ -16,6 +16,25 @@ func QuerySelector(root *Node, selector string) *Node {
 func QuerySelectorAll(root *Node, selector string) []*Node {
 	selector = strings.TrimSpace(selector)
 
+	// Handle comma-separated selector groups: "input,textarea,select"
+	if strings.Contains(selector, ",") {
+		var results []*Node
+		seen := make(map[*Node]bool)
+		for _, part := range strings.Split(selector, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			for _, n := range QuerySelectorAll(root, part) {
+				if !seen[n] {
+					seen[n] = true
+					results = append(results, n)
+				}
+			}
+		}
+		return results
+	}
+
 	if strings.HasPrefix(selector, "#") {
 		return selectByID(root, selector[1:])
 	}

@@ -1058,6 +1058,23 @@ func (vm *VM) setupBuiltins() {
 	}
 	vm.env.Define("Array", arrayConstructor)
 
+	// Make Array static methods non-writable and non-configurable to prevent
+	// polyfills from replacing them with broken JS implementations.
+	if arrayConstructor.Obj != nil {
+		if arrayConstructor.Descriptors == nil {
+			arrayConstructor.Descriptors = make(map[string]*PropertyDescriptor)
+		}
+		for k := range arrayConstructor.Obj {
+			if _, exists := arrayConstructor.Descriptors[k]; !exists {
+				arrayConstructor.Descriptors[k] = &PropertyDescriptor{
+					Writable:     false,
+					Configurable: false,
+					Enumerable:   false,
+				}
+			}
+		}
+	}
+
 	objectMethods := GetObjectMethods(vm)
 	objectVal := &Value{Type: "native", BuiltInConstructor: "Object", Obj: objectMethods}
 	// Make Object static methods non-writable and non-configurable to prevent
@@ -3306,6 +3323,12 @@ func (vm *VM) evalDelete(expr Expression) *Value {
 			prop = ident.Name
 		}
 		if obj.Obj != nil {
+			// Check if property is non-configurable before deleting
+			if obj.Descriptors != nil {
+				if desc, ok := obj.Descriptors[prop]; ok && !desc.Configurable {
+					return &Value{Type: "bool", Bool: false}
+				}
+			}
 			delete(obj.Obj, prop)
 		}
 		if obj.Descriptors != nil {

@@ -278,6 +278,7 @@ func genElementInnerCode(tag string, dir *dirInfo, node *dom.Node) string {
 		dataEntries = append(dataEntries, `domProps:{innerHTML:(`+dir.htmlExp+`)}`)
 	}
 	if dir.modelExp != "" {
+		dir.plainAttr["data-vmodel"] = dir.modelExp
 		dataEntries = append(dataEntries, `domProps:{value:(`+dir.modelExp+`)}`)
 		dataEntries = append(dataEntries, `on:{input:function($event){`+dir.modelExp+`=$event.target.value}}`)
 	}

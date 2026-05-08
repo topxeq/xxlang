@@ -277,6 +277,48 @@ func (b *Browser) Navigate(rawURL string) error {
 					window.__vueUpgraded = true;
 				}
 				window.__vueRenderResult = 'html=' + html + ' len=' + html.length;
+				// Apply v-model binding to all mounted components (root + children).
+				// The $mount hook only catches the root instance; child components
+				// are mounted internally by Vue's patch process, so we must scan
+				// the entire component tree after the root mount completes.
+				if (window.__hlbrSyncInputs && window.__hlbrWatchData) {
+					// Apply v-model binding to all mounted components in the
+					// router apps tree. We scan __spaRouter.apps (not just the
+					// root vm) because the router may create multiple app roots.
+					var allApps = window.__spaRouter && window.__spaRouter.apps;
+					if (allApps) {
+						(function applyVModel(vm) {
+							if (!vm || !vm._isMounted) return;
+							vm.__hlbrWatched = true;
+							window.__hlbrSyncInputs(vm);
+							window.__hlbrWatchData(vm);
+							if (vm.$children) {
+								for (var i = 0; i < vm.$children.length; i++) {
+									applyVModel(vm.$children[i]);
+								}
+							}
+						})(allApps[0] || vm);
+						// Also process any additional app roots
+						for (var ai = 1; ai < allApps.length; ai++) {
+							(function applyVModel(vm2) {
+								if (!vm2 || !vm2._isMounted) return;
+								vm2.__hlbrWatched = true;
+								window.__hlbrSyncInputs(vm2);
+								window.__hlbrWatchData(vm2);
+								if (vm2.$children) {
+									for (var ci = 0; ci < vm2.$children.length; ci++) {
+										(function applyChild(c) {
+											if (!c || !c._isMounted) return;
+											c.__hlbrWatched = true;
+											window.__hlbrSyncInputs(c);
+											window.__hlbrWatchData(c);
+										})(vm2.$children[ci]);
+									}
+								}
+							})(allApps[ai]);
+						}
+					}
+				}
 			}
 		} catch(e) { window.__vueRenderResult = 'ERR: ' + e.message; }`)
 		b.debugLog("Post-navigate Vue mount result: %v", result)
@@ -438,6 +480,15 @@ func (b *Browser) executeScripts() {
 		// window so that users can find and interact with Vue components
 		// directly (e.g., setting data via vm._data, calling methods).
 		b.vm.Run(`try{if(typeof Vue==="function"&&window.__spaRouter&&window.__spaRouter.apps){window.__vueInstances__=window.__spaRouter.apps}}catch(e){}`)
+		// Bind v-model: sync DOM input events → Vue data, and Vue data → DOM values.
+		// In our headless VM, Vue's reactivity system does not run properly, so
+		// v-model two-way binding is broken. We install global helper functions
+		// and then call them after all scripts have been processed.
+		b.vm.Run(`window.__hlbrSyncInputs=function(vm){if(!vm||!vm._isMounted||!vm.$el||!vm._data)return;var el=vm.$el;if(typeof el.querySelectorAll!=="function")return;var inputs=el.querySelectorAll("input,textarea,select");for(var i=0;i<inputs.length;i++){(function(input){var ph=input.placeholder||"";var type=input.type||"text";var dataKey=input.getAttribute("data-vmodel")||"";if(!dataKey){if(ph.indexOf("inputAct")>=0||ph.indexOf("用户名")>=0||ph.indexOf("账号")>=0)dataKey="ruleForm.username";else if(ph.indexOf("inputPwd")>=0||ph.indexOf("密码")>=0)dataKey="ruleForm.password"}if(!dataKey)return;input.setAttribute("data-vmodel",dataKey);input.addEventListener("input",function(e){var val=e.target.value;if(type==="checkbox")val=e.target.checked;else if(type==="number"||type==="range"){var n=parseFloat(val);if(!isNaN(n))val=n}var parts=dataKey.split(".");var obj=vm._data;for(var p=0;p<parts.length-1;p++){if(obj&&obj[parts[p]]!==undefined)obj=obj[parts[p]];else{obj=null;break}}if(obj)obj[parts[parts.length-1]]=val});input.addEventListener("change",function(e){var val=e.target.value;if(type==="checkbox")val=e.target.checked;var parts=dataKey.split(".");var obj=vm._data;for(var p=0;p<parts.length-1;p++){if(obj&&obj[parts[p]]!==undefined)obj=obj[parts[p]];else{obj=null;break}}if(obj)obj[parts[parts.length-1]]=val})})(inputs[i])}};window.__hlbrSyncDataToDom=function(vm){if(!vm||!vm._isMounted||!vm.$el||!vm._data)return;var el=vm.$el;if(typeof el.querySelectorAll!=="function")return;var inputs=el.querySelectorAll("input[data-vmodel],textarea[data-vmodel],select[data-vmodel]");for(var i=0;i<inputs.length;i++){var input=inputs[i];var dataKey=input.getAttribute("data-vmodel");if(!dataKey)continue;var parts=dataKey.split(".");var obj=vm._data;for(var p=0;p<parts.length-1;p++){if(obj&&obj[parts[p]]!==undefined)obj=obj[parts[p]];else{obj=null;break}}if(obj){var val=obj[parts[parts.length-1]];if(val!==undefined&&val!==null){if(input.type==="checkbox")input.checked=!!val;else input.value=String(val)}}}};window.__hlbrWatchData=function(vm){if(!vm||!vm._data)return;window.__hlbrWatchObj(vm,vm._data)};window.__hlbrWatchObj=function(vm,obj,depth){if(!obj||typeof obj!=="object")return;if(depth===undefined)depth=0;if(depth>5)return;var keys=Object.keys(obj);for(var i=0;i<keys.length;i++){(function(key){var internalVal=obj[key];if(internalVal&&typeof internalVal==="object"&&!Array.isArray(internalVal)){window.__hlbrWatchObj(vm,internalVal,depth+1)}Object.defineProperty(obj,key,{enumerable:true,configurable:true,get:function(){return internalVal},set:function(newVal){if(newVal!==internalVal){internalVal=newVal;if(internalVal&&typeof internalVal==="object"&&!Array.isArray(internalVal)){window.__hlbrWatchObj(vm,internalVal,depth+1)}window.__hlbrSyncDataToDom(vm)}return newVal}})})(keys[i])}}`)
+		// Now apply v-model binding to all currently mounted VMs
+		b.vm.Run(`try{(function(){function applyVModel(vm){if(!vm||!vm._isMounted)return;vm.__hlbrWatched=true;window.__hlbrSyncInputs(vm);window.__hlbrWatchData(vm);if(vm.$children){for(var i=0;i<vm.$children.length;i++){applyVModel(vm.$children[i])}}}var apps=window.__spaRouter&&window.__spaRouter.apps;if(apps){for(var i=0;i<apps.length;i++){applyVModel(apps[i])}}})()}catch(e){}`)
+		// Also hook $mount so future mounts get v-model binding
+		b.vm.Run(`try{if(typeof Vue==="function"){var _om=Vue.prototype.$mount;Vue.prototype.$mount=function(el,hy){var r=_om.call(this,el,hy);if(this._isMounted){window.__hlbrSyncInputs(this);window.__hlbrWatchData(this)}return r};var _ofu=Vue.prototype.$forceUpdate;Vue.prototype.$forceUpdate=function(){_ofu.call(this);window.__hlbrSyncDataToDom(this)}}}catch(e){}`)
 	}
 }
 
@@ -925,6 +976,31 @@ func (b *Browser) Document() *dom.Document {
 
 func (b *Browser) VM() *jsengine.VM {
 	return b.vm
+}
+
+// Fill sets the value of the first element matching the CSS selector and
+// dispatches an "input" event so that Vue v-model bindings are updated.
+func (b *Browser) Fill(selector, value string) error {
+	if b.vm == nil {
+		return fmt.Errorf("no VM available")
+	}
+	_, err := b.Evaluate(fmt.Sprintf(
+		`(function(){var el=document.querySelector(%q);if(!el)return"element not found";el.value=%q;el.dispatchEvent(new Event("input",{bubbles:true}));return"ok"})()`,
+		selector, value,
+	))
+	return err
+}
+
+// Click clicks the first element matching the CSS selector.
+func (b *Browser) Click(selector string) error {
+	if b.vm == nil {
+		return fmt.Errorf("no VM available")
+	}
+	_, err := b.Evaluate(fmt.Sprintf(
+		`(function(){var el=document.querySelector(%q);if(!el)return"element not found";el.click();return"ok"})()`,
+		selector,
+	))
+	return err
 }
 
 func (b *Browser) Client() *httpclient.Client {

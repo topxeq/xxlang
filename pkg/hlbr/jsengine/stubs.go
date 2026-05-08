@@ -961,6 +961,14 @@ func GetObjectMethods(vm *VM) map[string]*Value {
 				obj.Descriptors = make(map[string]*PropertyDescriptor)
 			}
 
+			// Check if an existing descriptor is non-configurable.
+			// Per ECMAScript spec, non-configurable properties cannot be
+			// reconfigured or deleted. This prevents polyfills (e.g. core-js)
+			// from overwriting our native Go implementations like Object.assign.
+			if existingDesc, ok := obj.Descriptors[propName]; ok && !existingDesc.Configurable {
+				return obj
+			}
+
 			desc := &PropertyDescriptor{
 				Enumerable:   true,
 				Configurable: true,
@@ -1055,11 +1063,8 @@ func GetObjectMethods(vm *VM) map[string]*Value {
 			return &Value{Type: "undefined"}
 		}},
 		// Object.assign(target, ...sources)
-		"assign": {Type: "native", Native: func(args []*Value) *Value {
+	"assign": {Type: "native", Native: func(args []*Value) *Value {
 			offset := nativeThisOffset(args)
-			if len(args) < offset+1 {
-				return &Value{Type: "undefined"}
-			}
 			target := args[offset]
 			if target.Type != "object" {
 				return target
@@ -1069,9 +1074,6 @@ func GetObjectMethods(vm *VM) map[string]*Value {
 			}
 			for _, source := range args[offset+1:] {
 				if source.Type == "object" && source.Obj != nil {
-					// Copy descriptor properties first, so that Obj values
-					// (which reflect the current property values) take priority
-					// over stale descriptor values.
 					if source.Descriptors != nil {
 						if target.Descriptors == nil {
 							target.Descriptors = make(map[string]*PropertyDescriptor)
@@ -1081,13 +1083,8 @@ func GetObjectMethods(vm *VM) map[string]*Value {
 							target.Descriptors[k] = &descCopy
 						}
 					}
-					// Copy Obj values after descriptors so they take priority.
-					// In JS, Object.assign copies the actual property values,
-					// not descriptor values. A descriptor with value:undefined
-					// should not overwrite a correct Obj value.
 					for k, v := range source.Obj {
 						target.Obj[k] = v
-						// Keep descriptor Value in sync with Obj
 						if target.Descriptors != nil {
 							if desc, ok := target.Descriptors[k]; ok && desc.Get == nil && desc.Set == nil {
 								desc.Value = v
@@ -1489,31 +1486,76 @@ func (vm *VM) setVar(name string, val *Value) {
 
 // evalUpdate evaluates an update expression (++i, i++, --i, i--).
 func (vm *VM) evalUpdate(e *UpdateExpr) *Value {
-	ident, ok := e.Operand.(*Ident)
-	if !ok {
-		return &Value{Type: "undefined"}
+	// Handle identifier operand: x++ / ++x
+	if ident, ok := e.Operand.(*Ident); ok {
+		current := vm.getVar(ident.Name)
+		if current == nil {
+			current = &Value{Type: "number", Num: 0}
+		}
+		var newVal float64
+		if current.Type == "number" {
+			newVal = current.Num
+		} else {
+			newVal = 0
+		}
+		if e.Operator == "++" {
+			newVal++
+		} else {
+			newVal--
+		}
+		result := &Value{Type: "number", Num: newVal}
+		vm.setVar(ident.Name, result)
+		if e.Prefix {
+			return result
+		}
+		return current
 	}
-	current := vm.getVar(ident.Name)
-	if current == nil {
-		current = &Value{Type: "number", Num: 0}
+
+	// Handle member expression operand: obj.prop++ / ++obj.prop
+	if member, ok := e.Operand.(*MemberExpr); ok {
+		obj := vm.evalMemberRaw(member.Object)
+		var prop string
+		if member.Computed {
+			prop = valueToString(vm.evalExpr(member.Property))
+		} else if ident, ok := member.Property.(*Ident); ok {
+			prop = ident.Name
+		}
+		if prop == "" || (obj.Type != "object" && obj.Type != "function" && obj.Type != "native") {
+			return &Value{Type: "number", Num: 0}
+		}
+		if obj.Obj == nil {
+			obj.Obj = make(map[string]*Value)
+		}
+		// Read current value
+		current, ok := obj.Obj[prop]
+		if !ok || current == nil {
+			current = &Value{Type: "number", Num: 0}
+		}
+		var curNum float64
+		if current.Type == "number" {
+			curNum = current.Num
+		}
+		var newVal float64
+		if e.Operator == "++" {
+			newVal = curNum + 1
+		} else {
+			newVal = curNum - 1
+		}
+		newValV := &Value{Type: "number", Num: newVal}
+		// Write back using the assignment path (respects descriptors/setters)
+		obj.Obj[prop] = newValV
+		if obj.Descriptors != nil {
+			if desc, ok := obj.Descriptors[prop]; ok && desc.Get == nil && desc.Set == nil {
+				desc.Value = newValV
+			}
+		}
+		if e.Prefix {
+			return newValV
+		}
+		return &Value{Type: "number", Num: curNum}
 	}
-	var newVal float64
-	if current.Type == "number" {
-		newVal = current.Num
-	} else {
-		newVal = 0
-	}
-	if e.Operator == "++" {
-		newVal++
-	} else {
-		newVal--
-	}
-	result := &Value{Type: "number", Num: newVal}
-	vm.setVar(ident.Name, result)
-	if e.Prefix {
-		return result
-	}
-	return current
+
+	return &Value{Type: "undefined"}
 }
 
 // instanceof implements the JavaScript instanceof operator.
