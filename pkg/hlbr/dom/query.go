@@ -2,6 +2,7 @@ package dom
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -149,6 +150,11 @@ func tokenizeSelector(selector string) []selectorSegment {
 func selectSimple(root *Node, selector string) []*Node {
 	selector = strings.TrimSpace(selector)
 
+	// Check for pseudo-classes like :first-child, :last-child, :nth-child(n)
+	if colonIdx := strings.Index(selector, ":"); colonIdx >= 0 {
+		return selectByPseudoClass(root, selector, colonIdx)
+	}
+
 	if strings.HasPrefix(selector, "#") && !strings.Contains(selector[1:], "#") && !strings.Contains(selector, ".") && !strings.Contains(selector, "[") {
 		return selectByID(root, selector[1:])
 	}
@@ -167,6 +173,149 @@ func selectSimple(root *Node, selector string) []*Node {
 	}
 
 	return selectByTag(root, selector)
+}
+
+// selectByPseudoClass handles selectors with pseudo-classes.
+// e.g. "li:first-child", "tr:nth-child(2)", "div:last-child"
+func selectByPseudoClass(root *Node, selector string, colonIdx int) []*Node {
+	baseSelector := selector[:colonIdx]
+	pseudoPart := selector[colonIdx+1:]
+
+	// Get base candidates
+	var candidates []*Node
+	if baseSelector == "" {
+		walk(root, func(n *Node) {
+			if n.Type == ElementNode {
+				candidates = append(candidates, n)
+			}
+		})
+	} else {
+		candidates = selectSimple(root, baseSelector)
+	}
+
+	// Filter by pseudo-class
+	var results []*Node
+	for _, n := range candidates {
+		if matchPseudoClass(n, pseudoPart) {
+			results = append(results, n)
+		}
+	}
+	return results
+}
+
+// matchPseudoClass checks if a node matches a pseudo-class expression.
+func matchPseudoClass(n *Node, pseudo string) bool {
+	// Handle :first-child
+	if pseudo == "first-child" {
+		if n.Parent == nil {
+			return true
+		}
+		for _, sib := range n.Parent.Children {
+			if sib.Type == ElementNode {
+				return sib == n
+			}
+		}
+		return false
+	}
+
+	// Handle :last-child
+	if pseudo == "last-child" {
+		if n.Parent == nil {
+			return true
+		}
+		for i := len(n.Parent.Children) - 1; i >= 0; i-- {
+			if n.Parent.Children[i].Type == ElementNode {
+				return n.Parent.Children[i] == n
+			}
+		}
+		return false
+	}
+
+	// Handle :nth-child(n)
+	if strings.HasPrefix(pseudo, "nth-child(") && strings.HasSuffix(pseudo, ")") {
+		arg := pseudo[10 : len(pseudo)-1]
+		return matchNthChild(n, arg)
+	}
+
+	// Handle :not(selector)
+	if strings.HasPrefix(pseudo, "not(") && strings.HasSuffix(pseudo, ")") {
+		arg := pseudo[4 : len(pseudo)-1]
+		matches := selectSimple(n, arg)
+		for _, m := range matches {
+			if m == n {
+				return false
+			}
+		}
+		return true
+	}
+
+	return false
+}
+
+// matchNthChild checks if a node is the nth child (1-indexed).
+func matchNthChild(n *Node, arg string) bool {
+	if n.Parent == nil {
+		return false
+	}
+
+	// Find the 1-based index of this element among its element siblings
+	index := 0
+	for _, sib := range n.Parent.Children {
+		if sib.Type == ElementNode {
+			index++
+			if sib == n {
+				break
+			}
+		}
+	}
+
+	// Handle specific number: "3"
+	if num, err := strconv.Atoi(arg); err == nil {
+		return index == num
+	}
+
+	// Handle "odd" and "even"
+	if arg == "odd" {
+		return index%2 == 1
+	}
+	if arg == "even" {
+		return index%2 == 0
+	}
+
+	// Handle "an+b" pattern (simplified: only handles "2n+1", "3n", "n+2", etc.)
+	anbPattern := regexp.MustCompile(`^(\d*)n\s*\+\s*(\d+)$|^(\d*)n$|^n\s*\+\s*(\d+)$`)
+	if m := anbPattern.FindStringSubmatch(arg); m != nil {
+		aStr := ""
+		bStr := ""
+		if m[2] != "" { // "an+b"
+			aStr = m[1]
+			bStr = m[2]
+		} else if m[3] != "" { // "an"
+			aStr = m[3]
+			bStr = "0"
+		} else if m[4] != "" { // "n+b"
+			aStr = "1"
+			bStr = m[4]
+		}
+		a := 1
+		if aStr != "" {
+			if v, err := strconv.Atoi(aStr); err == nil {
+				a = v
+			}
+		}
+		b, _ := strconv.Atoi(bStr)
+		if a == 0 {
+			return index == b
+		}
+		// Check: index = a*n + b for some non-negative integer n
+		diff := index - b
+		if diff < 0 {
+			return false
+		}
+		return diff%a == 0
+	}
+
+	return false
 }
 
 // selectByCombinators handles complex selectors with combinators.

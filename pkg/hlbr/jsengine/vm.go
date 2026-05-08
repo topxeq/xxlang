@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1700,23 +1701,120 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 		}},
 		"classList": {Type: "object", Obj: map[string]*Value{
 			"add": {Type: "native", Native: func(args []*Value) *Value {
-				// Stub: add class
+				if len(args) > 0 {
+					classes := strings.Fields(n.GetAttribute("class"))
+					classSet := make(map[string]bool)
+					for _, c := range classes {
+						classSet[c] = true
+					}
+					for _, a := range args {
+						cls := a.Str
+						if cls != "" && !classSet[cls] {
+							classes = append(classes, cls)
+							classSet[cls] = true
+						}
+					}
+					n.SetAttribute("class", strings.Join(classes, " "))
+				}
 				return &Value{Type: "undefined"}
 			}},
 			"remove": {Type: "native", Native: func(args []*Value) *Value {
-				// Stub: remove class
+				if len(args) > 0 {
+					classes := strings.Fields(n.GetAttribute("class"))
+					removeSet := make(map[string]bool)
+					for _, a := range args {
+						removeSet[a.Str] = true
+					}
+					var kept []string
+					for _, c := range classes {
+						if !removeSet[c] {
+							kept = append(kept, c)
+						}
+					}
+					n.SetAttribute("class", strings.Join(kept, " "))
+				}
 				return &Value{Type: "undefined"}
 			}},
 			"toggle": {Type: "native", Native: func(args []*Value) *Value {
-				// Stub: toggle class
+				if len(args) > 0 {
+					cls := args[0].Str
+					classes := strings.Fields(n.GetAttribute("class"))
+					found := false
+					var kept []string
+					for _, c := range classes {
+						if c == cls {
+							found = true
+						} else {
+							kept = append(kept, c)
+						}
+					}
+					if found {
+						n.SetAttribute("class", strings.Join(kept, " "))
+						return &Value{Type: "bool", Bool: false}
+					}
+					kept = append(kept, cls)
+					n.SetAttribute("class", strings.Join(kept, " "))
+					return &Value{Type: "bool", Bool: true}
+				}
 				return &Value{Type: "bool", Bool: false}
 			}},
 			"contains": {Type: "native", Native: func(args []*Value) *Value {
-				// Stub: contains class
+				if len(args) > 0 {
+					classes := strings.Fields(n.GetAttribute("class"))
+					for _, c := range classes {
+						if c == args[0].Str {
+							return &Value{Type: "bool", Bool: true}
+						}
+					}
+				}
 				return &Value{Type: "bool", Bool: false}
 			}},
 		}},
-		"style": {Type: "object", Obj: make(map[string]*Value)},
+		"style": {Type: "object", Obj: func() map[string]*Value {
+			styleObj := make(map[string]*Value)
+			styleAttr := n.GetAttribute("style")
+			if styleAttr != "" {
+				for _, part := range strings.Split(styleAttr, ";") {
+					kv := strings.SplitN(strings.TrimSpace(part), ":", 2)
+					if len(kv) == 2 {
+						camelKey := cssToCamel(strings.TrimSpace(kv[0]))
+						styleObj[camelKey] = &Value{Type: "string", Str: strings.TrimSpace(kv[1])}
+					}
+				}
+			}
+			styleObj["setProperty"] = &Value{Type: "native", Native: func(args []*Value) *Value {
+				offset := nativeThisOffset(args)
+				if len(args) >= offset+2 {
+					prop := args[offset].Str
+					val := args[offset+1].Str
+					camelKey := cssToCamel(prop)
+					currentStyle := n.GetAttribute("style")
+					styleMap := parseStyleAttr(currentStyle)
+					styleMap[camelKey] = val
+					n.SetAttribute("style", buildStyleAttr(styleMap))
+				}
+				return &Value{Type: "undefined"}
+			}}
+			styleObj["removeProperty"] = &Value{Type: "native", Native: func(args []*Value) *Value {
+				offset := nativeThisOffset(args)
+				if len(args) >= offset+1 {
+					prop := args[offset].Str
+					camelKey := cssToCamel(prop)
+					currentStyle := n.GetAttribute("style")
+					styleMap := parseStyleAttr(currentStyle)
+					oldVal := ""
+					if v, ok := styleMap[camelKey]; ok {
+						oldVal = v
+						delete(styleMap, camelKey)
+					}
+					n.SetAttribute("style", buildStyleAttr(styleMap))
+					return &Value{Type: "string", Str: oldVal}
+				}
+				return &Value{Type: "string", Str: ""}
+			}}
+			styleObj["cssText"] = &Value{Type: "string", Str: styleAttr}
+			return styleObj
+		}()},
 		"dataset": {Type: "object", Obj: make(map[string]*Value)},
 		"checked": {Type: "bool", Bool: false},
 		"disabled": {Type: "bool", Bool: false},
@@ -1803,16 +1901,49 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 		}}, Enumerable: true, Configurable: true},
 		"style": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
 			styleStr := n.GetAttribute("style")
-			return &Value{Type: "object", Obj: map[string]*Value{
-				"cssText": {Type: "string", Str: styleStr},
-				"display": {Type: "string", Str: ""},
-				"setProperty": {Type: "native", Native: func(innerArgs []*Value) *Value {
-					return &Value{Type: "undefined"}
-				}},
-				"removeProperty": {Type: "native", Native: func(innerArgs []*Value) *Value {
-					return &Value{Type: "string", Str: ""}
-				}},
+			styleObj := make(map[string]*Value)
+			styleObj["cssText"] = &Value{Type: "string", Str: styleStr}
+			styleObj["display"] = &Value{Type: "string", Str: ""}
+			if styleStr != "" {
+				for _, part := range strings.Split(styleStr, ";") {
+					kv := strings.SplitN(strings.TrimSpace(part), ":", 2)
+					if len(kv) == 2 {
+						camelKey := cssToCamel(strings.TrimSpace(kv[0]))
+						styleObj[camelKey] = &Value{Type: "string", Str: strings.TrimSpace(kv[1])}
+					}
+				}
+			}
+			styleObj["setProperty"] = &Value{Type: "native", Native: func(innerArgs []*Value) *Value {
+				offset := nativeThisOffset(innerArgs)
+				if len(innerArgs) >= offset+2 {
+					prop := innerArgs[offset].Str
+					val := innerArgs[offset+1].Str
+					camelKey := cssToCamel(prop)
+					currentStyle := n.GetAttribute("style")
+					styleMap := parseStyleAttr(currentStyle)
+					styleMap[camelKey] = val
+					n.SetAttribute("style", buildStyleAttr(styleMap))
+				}
+				return &Value{Type: "undefined"}
 			}}
+			styleObj["removeProperty"] = &Value{Type: "native", Native: func(innerArgs []*Value) *Value {
+				offset := nativeThisOffset(innerArgs)
+				if len(innerArgs) >= offset+1 {
+					prop := innerArgs[offset].Str
+					camelKey := cssToCamel(prop)
+					currentStyle := n.GetAttribute("style")
+					styleMap := parseStyleAttr(currentStyle)
+					oldVal := ""
+					if v, ok := styleMap[camelKey]; ok {
+						oldVal = v
+						delete(styleMap, camelKey)
+					}
+					n.SetAttribute("style", buildStyleAttr(styleMap))
+					return &Value{Type: "string", Str: oldVal}
+				}
+				return &Value{Type: "string", Str: ""}
+			}}
+			return &Value{Type: "object", Obj: styleObj}
 		}}, Enumerable: true, Configurable: true},
 		"children": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
 			return vm.wrapNodeList(n.Children)
@@ -2132,16 +2263,49 @@ func (vm *VM) wrapNodeShallow(n *dom.Node) *Value {
 		}}, Enumerable: true, Configurable: true},
 		"style": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
 			styleStr := n.GetAttribute("style")
-			return &Value{Type: "object", Obj: map[string]*Value{
-				"cssText": {Type: "string", Str: styleStr},
-				"display": {Type: "string", Str: ""},
-				"setProperty": {Type: "native", Native: func(innerArgs []*Value) *Value {
-					return &Value{Type: "undefined"}
-				}},
-				"removeProperty": {Type: "native", Native: func(innerArgs []*Value) *Value {
-					return &Value{Type: "string", Str: ""}
-				}},
+			styleObj := make(map[string]*Value)
+			styleObj["cssText"] = &Value{Type: "string", Str: styleStr}
+			styleObj["display"] = &Value{Type: "string", Str: ""}
+			if styleStr != "" {
+				for _, part := range strings.Split(styleStr, ";") {
+					kv := strings.SplitN(strings.TrimSpace(part), ":", 2)
+					if len(kv) == 2 {
+						camelKey := cssToCamel(strings.TrimSpace(kv[0]))
+						styleObj[camelKey] = &Value{Type: "string", Str: strings.TrimSpace(kv[1])}
+					}
+				}
+			}
+			styleObj["setProperty"] = &Value{Type: "native", Native: func(innerArgs []*Value) *Value {
+				offset := nativeThisOffset(innerArgs)
+				if len(innerArgs) >= offset+2 {
+					prop := innerArgs[offset].Str
+					val := innerArgs[offset+1].Str
+					camelKey := cssToCamel(prop)
+					currentStyle := n.GetAttribute("style")
+					styleMap := parseStyleAttr(currentStyle)
+					styleMap[camelKey] = val
+					n.SetAttribute("style", buildStyleAttr(styleMap))
+				}
+				return &Value{Type: "undefined"}
 			}}
+			styleObj["removeProperty"] = &Value{Type: "native", Native: func(innerArgs []*Value) *Value {
+				offset := nativeThisOffset(innerArgs)
+				if len(innerArgs) >= offset+1 {
+					prop := innerArgs[offset].Str
+					camelKey := cssToCamel(prop)
+					currentStyle := n.GetAttribute("style")
+					styleMap := parseStyleAttr(currentStyle)
+					oldVal := ""
+					if v, ok := styleMap[camelKey]; ok {
+						oldVal = v
+						delete(styleMap, camelKey)
+					}
+					n.SetAttribute("style", buildStyleAttr(styleMap))
+					return &Value{Type: "string", Str: oldVal}
+				}
+				return &Value{Type: "string", Str: ""}
+			}}
+			return &Value{Type: "object", Obj: styleObj}
 		}}, Enumerable: true, Configurable: true},
 		"children": {Get: &Value{Type: "native", Native: func(args []*Value) *Value {
 			return vm.wrapNodeListShallow(n.Children)
@@ -6093,4 +6257,64 @@ func (vm *VM) WaitForTimers(timeoutMs int) {
 // HasPendingTimers returns true if there are pending timers.
 func (vm *VM) HasPendingTimers() bool {
 	return len(vm.pendingTimers) > 0
+}
+
+// cssToCamel converts a CSS property name to camelCase.
+// e.g. "background-color" → "backgroundColor", "font-size" → "fontSize"
+func cssToCamel(s string) string {
+	parts := strings.Split(s, "-")
+	for i := 1; i < len(parts); i++ {
+		if len(parts[i]) > 0 {
+			parts[i] = strings.ToUpper(parts[i][:1]) + parts[i][1:]
+		}
+	}
+	return strings.Join(parts, "")
+}
+
+// parseStyleAttr parses a CSS style attribute string into a map.
+func parseStyleAttr(styleAttr string) map[string]string {
+	result := make(map[string]string)
+	if styleAttr == "" {
+		return result
+	}
+	for _, part := range strings.Split(styleAttr, ";") {
+		kv := strings.SplitN(strings.TrimSpace(part), ":", 2)
+		if len(kv) == 2 {
+			camelKey := cssToCamel(strings.TrimSpace(kv[0]))
+			result[camelKey] = strings.TrimSpace(kv[1])
+		}
+	}
+	return result
+}
+
+// buildStyleAttr builds a CSS style attribute string from a map.
+func buildStyleAttr(styleMap map[string]string) string {
+	keys := make([]string, 0, len(styleMap))
+	for k := range styleMap {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var parts []string
+	for _, k := range keys {
+		cssKey := camelToCSS(k)
+		parts = append(parts, cssKey+": "+styleMap[k])
+	}
+	return strings.Join(parts, "; ")
+}
+
+// camelToCSS converts a camelCase property name to CSS kebab-case.
+// e.g. "backgroundColor" → "background-color"
+func camelToCSS(s string) string {
+	var buf strings.Builder
+	for i, ch := range s {
+		if ch >= 'A' && ch <= 'Z' {
+			if i > 0 {
+				buf.WriteByte('-')
+			}
+			buf.WriteByte(byte(ch + 32))
+		} else {
+			buf.WriteRune(ch)
+		}
+	}
+	return buf.String()
 }
