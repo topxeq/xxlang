@@ -175,3 +175,75 @@ func TestNthChildOddPseudoClass(t *testing.T) {
 		t.Errorf("expected 2 odd children, got %d", len(results))
 	}
 }
+
+func TestMatchesSelectorTag(t *testing.T) {
+	root := buildTestTree()
+	input := QuerySelector(root, "input")
+	if input == nil {
+		t.Fatal("input not found")
+	}
+	matched, _ := MatchesSelector(input, "input")
+	if !matched {
+		t.Error("input should match 'input'")
+	}
+}
+
+func TestMatchesSelectorClass(t *testing.T) {
+	root := buildTestTree()
+	input := QuerySelector(root, "input")
+	if input == nil {
+		t.Fatal("input not found")
+	}
+	matched, _ := MatchesSelector(input, ".el-input__inner")
+	if !matched {
+		t.Error("input should match '.el-input__inner'")
+	}
+}
+
+func TestMatchesSelectorCombined(t *testing.T) {
+	root := buildTestTree()
+	input := QuerySelector(root, "input")
+	if input == nil {
+		t.Fatal("input not found")
+	}
+	matched, _ := MatchesSelector(input, "input.el-input__inner")
+	if !matched {
+		t.Error("input should match 'input.el-input__inner'")
+	}
+}
+
+func TestMatchesSelectorMiss(t *testing.T) {
+	root := buildTestTree()
+	input := QuerySelector(root, "input")
+	if input == nil {
+		t.Fatal("input not found")
+	}
+	matched, _ := MatchesSelector(input, "button")
+	if matched {
+		t.Error("input should not match 'button'")
+	}
+}
+
+func TestMatchesSelectorAttribute(t *testing.T) {
+	root := buildTestTree()
+	input := QuerySelector(root, "input")
+	if input == nil {
+		t.Fatal("input not found")
+	}
+	matched, _ := MatchesSelector(input, `input[type="text"]`)
+	if !matched {
+		t.Error(`input should match 'input[type="text"]'`)
+	}
+}
+
+func TestMatchesSelectorComma(t *testing.T) {
+	root := buildTestTree()
+	input := QuerySelector(root, "input")
+	if input == nil {
+		t.Fatal("input not found")
+	}
+	matched, _ := MatchesSelector(input, "button, input")
+	if !matched {
+		t.Error("input should match 'button, input'")
+	}
+}

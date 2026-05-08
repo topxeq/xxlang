@@ -517,6 +517,46 @@ func (vm *VM) setupBuiltins() {
 			vm.output = append(vm.output, strings.Join(parts, " "))
 			return &Value{Type: "undefined"}
 		}},
+		"warn": {Type: "native", Native: func(args []*Value) *Value {
+			parts := make([]string, len(args))
+			for i, a := range args {
+				parts[i] = valueToString(a)
+			}
+			vm.output = append(vm.output, "[warn] "+strings.Join(parts, " "))
+			return &Value{Type: "undefined"}
+		}},
+		"error": {Type: "native", Native: func(args []*Value) *Value {
+			parts := make([]string, len(args))
+			for i, a := range args {
+				parts[i] = valueToString(a)
+			}
+			vm.output = append(vm.output, "[error] "+strings.Join(parts, " "))
+			return &Value{Type: "undefined"}
+		}},
+		"info": {Type: "native", Native: func(args []*Value) *Value {
+			parts := make([]string, len(args))
+			for i, a := range args {
+				parts[i] = valueToString(a)
+			}
+			vm.output = append(vm.output, "[info] "+strings.Join(parts, " "))
+			return &Value{Type: "undefined"}
+		}},
+		"debug": {Type: "native", Native: func(args []*Value) *Value {
+			parts := make([]string, len(args))
+			for i, a := range args {
+				parts[i] = valueToString(a)
+			}
+			vm.output = append(vm.output, "[debug] "+strings.Join(parts, " "))
+			return &Value{Type: "undefined"}
+		}},
+		"trace": {Type: "native", Native: func(args []*Value) *Value {
+			parts := make([]string, len(args))
+			for i, a := range args {
+				parts[i] = valueToString(a)
+			}
+			vm.output = append(vm.output, "[trace] "+strings.Join(parts, " "))
+			return &Value{Type: "undefined"}
+		}},
 	}})
 
 	var title string
@@ -685,6 +725,15 @@ func (vm *VM) setupBuiltins() {
 			"pathname": {Type: "string", Str: "/"},
 			"search": {Type: "string", Str: ""},
 			"hash": {Type: "string", Str: ""},
+			"reload": {Type: "native", Native: func(args []*Value) *Value {
+				return &Value{Type: "undefined"}
+			}},
+			"replace": {Type: "native", Native: func(args []*Value) *Value {
+				return &Value{Type: "undefined"}
+			}},
+			"assign": {Type: "native", Native: func(args []*Value) *Value {
+				return &Value{Type: "undefined"}
+			}},
 		}},
 		"navigator": {Type: "object", Obj: map[string]*Value{
 			"userAgent": {Type: "string", Str: "Xxlang-HLBR/1.0"},
@@ -1692,12 +1741,32 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 			return &Value{Type: "object", Arr: []*Value{}}
 		}},
 		"closest": {Type: "native", Native: func(args []*Value) *Value {
-			// Stub: closest selector
+			offset := nativeThisOffset(args)
+			if len(args) <= offset || n == nil {
+				return &Value{Type: "null"}
+			}
+			selector := args[offset].Str
+			current := n
+			for current != nil {
+				matched, _ := dom.MatchesSelector(current, selector)
+				if matched {
+					return vm.wrapNode(current)
+				}
+				current = current.Parent
+			}
 			return &Value{Type: "null"}
 		}},
 		"matches": {Type: "native", Native: func(args []*Value) *Value {
-			// Stub: matches selector
-			return &Value{Type: "bool", Bool: false}
+			if len(args) == 0 || n == nil {
+				return &Value{Type: "bool", Bool: false}
+			}
+			offset := nativeThisOffset(args)
+			selector := ""
+			if len(args) > offset {
+				selector = args[offset].Str
+			}
+			matched, _ := dom.MatchesSelector(n, selector)
+			return &Value{Type: "bool", Bool: matched}
 		}},
 		"classList": {Type: "object", Obj: map[string]*Value{
 			"add": {Type: "native", Native: func(args []*Value) *Value {
@@ -5641,6 +5710,47 @@ func (vm *VM) setupPromise() {
 		}}
 	}}
 
+	// Promise.race static method
+	promiseRace := &Value{Type: "native", Native: func(args []*Value) *Value {
+		if len(args) == 0 {
+			return &Value{Type: "promise", Promise: &Promise{
+				State:     "pending",
+				OnFulfill: make([]*Function, 0),
+				OnReject:  make([]*Function, 0),
+				Env:       vm.env,
+			}}
+		}
+		promises := args[0]
+		if promises.Type != "object" || promises.Arr == nil {
+			return &Value{Type: "promise", Promise: &Promise{
+				State:     "rejected",
+				Rejection: &Value{Type: "string", Str: "Promise.race requires an array"},
+				OnFulfill: make([]*Function, 0),
+				OnReject:  make([]*Function, 0),
+				Env:       vm.env,
+			}}
+		}
+		for _, p := range promises.Arr {
+			if p.Type == "promise" && p.Promise != nil && (p.Promise.State == "fulfilled" || p.Promise.State == "rejected") {
+				return p
+			} else if p.Type != "promise" {
+				return &Value{Type: "promise", Promise: &Promise{
+					State:     "fulfilled",
+					Value:     p,
+					OnFulfill: make([]*Function, 0),
+					OnReject:  make([]*Function, 0),
+					Env:       vm.env,
+				}}
+			}
+		}
+		return &Value{Type: "promise", Promise: &Promise{
+			State:     "pending",
+			OnFulfill: make([]*Function, 0),
+			OnReject:  make([]*Function, 0),
+			Env:       vm.env,
+		}}
+	}}
+
 	// Define Promise as an object with constructor and static methods
 	vm.env.Define("Promise", &Value{
 		Type: "object",
@@ -5649,6 +5759,7 @@ func (vm *VM) setupPromise() {
 			"resolve":     promiseResolve,
 			"reject":      promiseReject,
 			"all":         promiseAll,
+			"race":        promiseRace,
 		},
 	})
 

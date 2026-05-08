@@ -379,18 +379,161 @@ func selectByCombinators(root *Node, segments []selectorSegment) []*Node {
 	return deduped
 }
 
+// MatchesSelector checks if a node matches a CSS selector string.
+// It handles comma-separated selectors (returns true if any match).
+func MatchesSelector(n *Node, selector string) (bool, error) {
+	if n == nil {
+		return false, nil
+	}
+	parts := strings.Split(selector, ",")
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if matchComplexSelector(n, part) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // matchComplexSelector checks if a node matches a simple selector.
 func matchComplexSelector(n *Node, selector string) bool {
 	if n == nil || n.Type != ElementNode {
 		return false
 	}
 	selector = strings.TrimSpace(selector)
+	return matchSimpleSelector(n, selector)
+}
 
-	// Use selectSimple on a temporary root containing just this node
-	matches := selectSimple(n, selector)
-	// selectSimple walks all descendants; we only want to check if n itself matches
-	for _, m := range matches {
-		if m == n {
+// matchSimpleSelector checks if a single node matches a simple CSS selector.
+func matchSimpleSelector(n *Node, selector string) bool {
+	selector = strings.TrimSpace(selector)
+	if selector == "" || selector == "*" {
+		return true
+	}
+
+	// Check for pseudo-classes like :first-child
+	if colonIdx := strings.Index(selector, ":"); colonIdx >= 0 {
+		baseSelector := selector[:colonIdx]
+		pseudoPart := selector[colonIdx+1:]
+		if baseSelector != "" && !matchSimpleSelector(n, baseSelector) {
+			return false
+		}
+		return matchPseudoClass(n, pseudoPart)
+	}
+
+	// Check for attribute selectors like "script[src]" or "input[type='text']"
+	if strings.Contains(selector, "[") && strings.HasSuffix(selector, "]") {
+		return matchAttributeSelector(n, selector)
+	}
+
+	// Check for combined selectors like "p#intro" or "div.className" or "input.el-input__inner"
+	if strings.Contains(selector, "#") || strings.Contains(selector, ".") {
+		return matchCombinedSelector(n, selector)
+	}
+
+	// Simple tag selector
+	return n.Data == strings.ToLower(selector)
+}
+
+// matchAttributeSelector checks if a node matches a selector with attribute brackets.
+func matchAttributeSelector(n *Node, selector string) bool {
+	bracketIdx := strings.Index(selector, "[")
+	if bracketIdx < 0 || !strings.HasSuffix(selector, "]") {
+		return false
+	}
+	tagPart := selector[:bracketIdx]
+	attrPart := selector[bracketIdx+1 : len(selector)-1]
+
+	// Check tag part
+	if tagPart != "" && !matchSimpleSelector(n, tagPart) {
+		return false
+	}
+
+	// Parse attribute part
+	eqIdx := strings.Index(attrPart, "=")
+	if eqIdx < 0 {
+		// Just attribute presence: [disabled]
+		return n.GetAttribute(attrPart) != ""
+	}
+	attrName := strings.TrimSpace(attrPart[:eqIdx])
+	attrVal := strings.TrimSpace(attrPart[eqIdx+1:])
+	// Remove quotes
+	if len(attrVal) >= 2 && ((attrVal[0] == '"' && attrVal[len(attrVal)-1] == '"') || (attrVal[0] == '\'' && attrVal[len(attrVal)-1] == '\'')) {
+		attrVal = attrVal[1 : len(attrVal)-1]
+	}
+	return n.GetAttribute(attrName) == attrVal
+}
+
+// matchCombinedSelector checks if a node matches a combined selector like "div.cls#id".
+func matchCombinedSelector(n *Node, selector string) bool {
+	// Parse tag, class, and id parts
+	tag := ""
+	remaining := selector
+
+	// Extract tag if it starts with a letter (not # or .)
+	if len(remaining) > 0 && remaining[0] != '#' && remaining[0] != '.' {
+		i := 0
+		for i < len(remaining) && remaining[i] != '#' && remaining[i] != '.' && remaining[i] != '[' && remaining[i] != ':' {
+			i++
+		}
+		tag = remaining[:i]
+		remaining = remaining[i:]
+	}
+
+	// Check tag
+	if tag != "" && n.Data != strings.ToLower(tag) {
+		return false
+	}
+
+	// Parse id and classes from remaining
+	for len(remaining) > 0 {
+		if remaining[0] == '#' {
+			remaining = remaining[1:]
+			i := 0
+			for i < len(remaining) && remaining[i] != '.' && remaining[i] != '#' && remaining[i] != '[' && remaining[i] != ':' {
+				i++
+			}
+			id := remaining[:i]
+			remaining = remaining[i:]
+			if n.GetAttribute("id") != id {
+				return false
+			}
+		} else if remaining[0] == '.' {
+			remaining = remaining[1:]
+			i := 0
+			for i < len(remaining) && remaining[i] != '.' && remaining[i] != '#' && remaining[i] != '[' && remaining[i] != ':' {
+				i++
+			}
+			cls := remaining[:i]
+			remaining = remaining[i:]
+			if !hasClass(n, cls) {
+				return false
+			}
+		} else if remaining[0] == '[' {
+			closeIdx := strings.Index(remaining, "]")
+			if closeIdx < 0 {
+				break
+			}
+			attrSel := remaining[:closeIdx+1]
+			remaining = remaining[closeIdx+1:]
+			if !matchAttributeSelector(n, tag+attrSel) {
+				return false
+			}
+		} else {
+			break
+		}
+	}
+	return true
+}
+
+// hasClass checks if a node has a specific CSS class.
+func hasClass(n *Node, cls string) bool {
+	classAttr := n.GetAttribute("class")
+	for _, c := range strings.Fields(classAttr) {
+		if c == cls {
 			return true
 		}
 	}

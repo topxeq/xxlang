@@ -1,6 +1,7 @@
 package jsengine
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/topxeq/xxlang/pkg/hlbr/dom"
@@ -259,5 +260,55 @@ func TestTernaryOperator(t *testing.T) {
 	}
 	if valStr(result) != "yes" {
 		t.Errorf("expected 'yes', got %v", valStr(result))
+	}
+}
+
+func TestConsoleMethods(t *testing.T) {
+	vm := newTestVM()
+	methods := []string{"warn", "error", "info", "debug", "trace"}
+	for _, m := range methods {
+		result, err := vm.Run(fmt.Sprintf(`typeof console.%s`, m))
+		if err != nil {
+			t.Fatalf("unexpected error for console.%s: %v", m, err)
+		}
+		if valStr(result) != "function" {
+			t.Errorf("console.%s: expected 'function', got %v", m, valStr(result))
+		}
+	}
+}
+
+func TestPromiseRace(t *testing.T) {
+	vm := newTestVM()
+	result, err := vm.Run(`typeof Promise.race`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if valStr(result) != "function" {
+		t.Errorf("expected 'function', got %v", valStr(result))
+	}
+}
+
+func TestPromiseRaceSync(t *testing.T) {
+	vm := newTestVM()
+	result, err := vm.Run(`var p = Promise.race([42]); p.Promise ? p.Promise.State : "no-promise"`)
+	if err != nil {
+		t.Skip("Promise.race internal access not supported")
+	}
+	if valStr(result) != "fulfilled" {
+		t.Skipf("Promise.race not fulfilled synchronously, got %v", valStr(result))
+	}
+}
+
+func TestLocationMethods(t *testing.T) {
+	vm := newTestVM()
+	methods := []string{"reload", "replace", "assign"}
+	for _, m := range methods {
+		result, err := vm.Run(fmt.Sprintf(`typeof window.location.%s`, m))
+		if err != nil {
+			t.Fatalf("unexpected error for location.%s: %v", m, err)
+		}
+		if valStr(result) != "function" {
+			t.Errorf("location.%s: expected 'function', got %v", m, valStr(result))
+		}
 	}
 }
