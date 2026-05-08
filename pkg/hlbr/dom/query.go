@@ -35,15 +35,125 @@ func QuerySelectorAll(root *Node, selector string) []*Node {
 		return results
 	}
 
-	if strings.HasPrefix(selector, "#") {
-		return selectByID(root, selector[1:])
-	}
-	if strings.HasPrefix(selector, ".") {
-		return selectByClass(root, selector[1:])
+	// Tokenize the selector into simple selector segments connected by
+	// combinators (space = descendant, > = child, + = adjacent sibling).
+	segments := tokenizeSelector(selector)
+	if len(segments) == 1 {
+		return selectSimple(root, segments[0].selector)
 	}
 
-	if strings.Contains(selector, " ") {
-		return selectDescendant(root, selector)
+	return selectByCombinators(root, segments)
+}
+
+// selectorSegment represents one segment of a complex CSS selector.
+type selectorSegment struct {
+	combinator string // "" (first), " " (descendant), ">" (child), "+" (adjacent sibling)
+	selector   string // simple selector like "div", ".foo", "#id", "input[type='text']"
+}
+
+// tokenizeSelector splits a complex CSS selector into segments.
+// E.g. "div > .foo input[type='text']" → [{"" "div"}, {">" ".foo"}, {" " "input[type='text']"}]
+func tokenizeSelector(selector string) []selectorSegment {
+	var segments []selectorSegment
+	i := 0
+	n := len(selector)
+
+	for i < n {
+		// Skip leading whitespace
+		for i < n && selector[i] == ' ' {
+			i++
+		}
+		if i >= n {
+			break
+		}
+
+		// Check for combinator at current position
+		combinator := " " // default is descendant
+		if len(segments) > 0 {
+			// Look back: if the previous character before whitespace was > or +, it's that combinator
+			// We already skipped whitespace, so check if the previous segment ended with a combinator marker
+		}
+
+		// Now parse the simple selector until we hit a combinator
+		start := i
+		inBrackets := 0
+		for i < n {
+			ch := selector[i]
+			if ch == '[' {
+				inBrackets++
+			} else if ch == ']' {
+				inBrackets--
+			} else if inBrackets == 0 {
+				if ch == ' ' || ch == '>' || ch == '+' {
+					// Potential combinator
+					sel := strings.TrimSpace(selector[start:i])
+					if sel != "" {
+						segments = append(segments, selectorSegment{combinator: combinator, selector: sel})
+					}
+					// Determine next combinator
+					if ch == '>' || ch == '+' {
+						segments = append(segments, selectorSegment{combinator: string(ch), selector: ""})
+						i++
+						// Skip whitespace after combinator
+						for i < n && selector[i] == ' ' {
+							i++
+						}
+						combinator = " " // reset for next segment
+						start = i
+						continue
+					}
+					// It's a space — descendant combinator
+					combinator = " "
+					i++
+					// Skip remaining whitespace
+					for i < n && selector[i] == ' ' {
+						i++
+					}
+					start = i
+					continue
+				}
+			}
+			i++
+		}
+		// Final segment
+		sel := strings.TrimSpace(selector[start:])
+		if sel != "" {
+			segments = append(segments, selectorSegment{combinator: combinator, selector: sel})
+		}
+		break
+	}
+
+	// Clean up: merge combinator-only segments into the next segment
+	var cleaned []selectorSegment
+	for i := 0; i < len(segments); i++ {
+		s := segments[i]
+		if s.selector == "" && s.combinator != "" {
+			// This is a combinator-only segment; apply it to the next segment
+			if i+1 < len(segments) {
+				segments[i+1].combinator = s.combinator
+			}
+			continue
+		}
+		cleaned = append(cleaned, s)
+	}
+
+	// First segment has no combinator
+	if len(cleaned) > 0 {
+		cleaned[0].combinator = ""
+	}
+
+	return cleaned
+}
+
+// selectSimple handles a single simple selector (no combinators).
+func selectSimple(root *Node, selector string) []*Node {
+	selector = strings.TrimSpace(selector)
+
+	if strings.HasPrefix(selector, "#") && !strings.Contains(selector[1:], "#") && !strings.Contains(selector, ".") && !strings.Contains(selector, "[") {
+		return selectByID(root, selector[1:])
+	}
+	if strings.HasPrefix(selector, ".") && !strings.Contains(selector[1:], ".") && !strings.Contains(selector, "#") && !strings.Contains(selector, "[") {
+		return selectByClass(root, selector[1:])
 	}
 
 	// Check for attribute selectors like "script[src]" or "link[rel='stylesheet']"
@@ -57,6 +167,85 @@ func QuerySelectorAll(root *Node, selector string) []*Node {
 	}
 
 	return selectByTag(root, selector)
+}
+
+// selectByCombinators handles complex selectors with combinators.
+func selectByCombinators(root *Node, segments []selectorSegment) []*Node {
+	if len(segments) == 0 {
+		return nil
+	}
+
+	// Start with the first segment
+	results := selectSimple(root, segments[0].selector)
+
+	// Apply each subsequent segment with its combinator
+	for i := 1; i < len(segments); i++ {
+		seg := segments[i]
+		var next []*Node
+
+		for _, candidate := range results {
+			switch seg.combinator {
+			case " ":
+				// Descendant: find all descendants of candidate matching the selector
+				next = append(next, selectSimple(candidate, seg.selector)...)
+			case ">":
+				// Child: find direct children of candidate matching the selector
+				for _, child := range candidate.Children {
+					if matchComplexSelector(child, seg.selector) {
+						next = append(next, child)
+					}
+				}
+			case "+":
+				// Adjacent sibling: find the next sibling matching the selector
+				if candidate.Parent != nil {
+					found := false
+					for _, sib := range candidate.Parent.Children {
+						if found && sib.Type == ElementNode {
+							if matchComplexSelector(sib, seg.selector) {
+								next = append(next, sib)
+							}
+							break
+						}
+						if sib == candidate {
+							found = true
+						}
+					}
+				}
+			}
+		}
+
+		results = next
+	}
+
+	// Deduplicate
+	seen := make(map[*Node]bool)
+	var deduped []*Node
+	for _, n := range results {
+		if !seen[n] {
+			seen[n] = true
+			deduped = append(deduped, n)
+		}
+	}
+
+	return deduped
+}
+
+// matchComplexSelector checks if a node matches a simple selector.
+func matchComplexSelector(n *Node, selector string) bool {
+	if n == nil || n.Type != ElementNode {
+		return false
+	}
+	selector = strings.TrimSpace(selector)
+
+	// Use selectSimple on a temporary root containing just this node
+	matches := selectSimple(n, selector)
+	// selectSimple walks all descendants; we only want to check if n itself matches
+	for _, m := range matches {
+		if m == n {
+			return true
+		}
+	}
+	return false
 }
 
 // selectByAttributeSelector handles selectors like "tag[attr]", "tag[attr='value']", "tag[attr=\"value\"]", "tag[attr=value]"
@@ -225,60 +414,6 @@ func selectByTag(root *Node, tag string) []*Node {
 		}
 	})
 	return results
-}
-
-func selectDescendant(root *Node, selector string) []*Node {
-	parts := strings.Fields(selector)
-	if len(parts) == 0 {
-		return nil
-	}
-
-	var candidates []*Node
-	candidates = append(candidates, root)
-
-	for _, part := range parts {
-		var next []*Node
-		for _, c := range candidates {
-			children := queryNode(c, part)
-			next = append(next, children...)
-		}
-		candidates = next
-	}
-
-	return candidates
-}
-
-func queryNode(root *Node, selector string) []*Node {
-	var results []*Node
-	walk(root, func(n *Node) {
-		if matchSelector(n, selector) {
-			results = append(results, n)
-		}
-	})
-	return results
-}
-
-func matchSelector(n *Node, selector string) bool {
-	if n.Type != ElementNode {
-		return false
-	}
-
-	selector = strings.TrimSpace(selector)
-
-	if strings.HasPrefix(selector, "#") {
-		return n.GetAttribute("id") == selector[1:]
-	}
-	if strings.HasPrefix(selector, ".") {
-		classes := strings.Fields(n.GetAttribute("class"))
-		for _, c := range classes {
-			if c == selector[1:] {
-				return true
-			}
-		}
-		return false
-	}
-
-	return strings.ToLower(n.Data) == strings.ToLower(selector)
 }
 
 func walk(n *Node, fn func(*Node)) {

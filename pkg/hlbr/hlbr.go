@@ -197,6 +197,31 @@ func (b *Browser) Click(selector string) error {
 	return b.browser.Click(selector)
 }
 
+// GetElementText returns the text content of the first matching element.
+func (b *Browser) GetElementText(selector string) (string, error) {
+	return b.browser.GetElementText(selector)
+}
+
+// GetElementAttribute returns the value of an attribute on the first matching element.
+func (b *Browser) GetElementAttribute(selector, attr string) (string, error) {
+	return b.browser.GetElementAttribute(selector, attr)
+}
+
+// SetElementAttribute sets an attribute on the first matching element.
+func (b *Browser) SetElementAttribute(selector, attr, value string) error {
+	return b.browser.SetElementAttribute(selector, attr, value)
+}
+
+// Exists returns true if at least one element matches the selector.
+func (b *Browser) Exists(selector string) bool {
+	return b.browser.Exists(selector)
+}
+
+// WaitForSelector polls until an element matching the selector exists or timeout.
+func (b *Browser) WaitForSelector(selector string, timeoutMs int) bool {
+	return b.browser.WaitForSelector(selector, timeoutMs)
+}
+
 func Launch(opts *Options) (*Browser, error) {
 	return New(opts)
 }

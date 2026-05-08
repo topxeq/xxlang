@@ -1003,6 +1003,72 @@ func (b *Browser) Click(selector string) error {
 	return err
 }
 
+// GetElementText returns the text content of the first element matching the selector.
+func (b *Browser) GetElementText(selector string) (string, error) {
+	if b.vm == nil {
+		return "", fmt.Errorf("no VM available")
+	}
+	result, err := b.Evaluate(fmt.Sprintf(
+		`(function(){var el=document.querySelector(%q);if(!el)return"";return el.textContent||el.innerText||""})()`,
+		selector,
+	))
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%v", result), nil
+}
+
+// GetElementAttribute returns the value of an attribute on the first matching element.
+func (b *Browser) GetElementAttribute(selector, attr string) (string, error) {
+	if b.vm == nil {
+		return "", fmt.Errorf("no VM available")
+	}
+	result, err := b.Evaluate(fmt.Sprintf(
+		`(function(){var el=document.querySelector(%q);if(!el)return"";return el.getAttribute(%q)||""})()`,
+		selector, attr,
+	))
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%v", result), nil
+}
+
+// SetElementAttribute sets an attribute on the first element matching the selector.
+func (b *Browser) SetElementAttribute(selector, attr, value string) error {
+	if b.vm == nil {
+		return fmt.Errorf("no VM available")
+	}
+	_, err := b.Evaluate(fmt.Sprintf(
+		`(function(){var el=document.querySelector(%q);if(!el)return"element not found";el.setAttribute(%q,%q);return"ok"})()`,
+		selector, attr, value,
+	))
+	return err
+}
+
+// Exists returns true if at least one element matches the selector.
+func (b *Browser) Exists(selector string) bool {
+	if b.vm == nil {
+		return false
+	}
+	result, _ := b.Evaluate(fmt.Sprintf(
+		`document.querySelector(%q)!==null`,
+		selector,
+	))
+	return fmt.Sprintf("%v", result) == "true"
+}
+
+// WaitForSelector polls until an element matching the selector exists or timeout.
+func (b *Browser) WaitForSelector(selector string, timeoutMs int) bool {
+	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if b.Exists(selector) {
+			return true
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return false
+}
+
 func (b *Browser) Client() *httpclient.Client {
 	return b.client
 }
