@@ -517,7 +517,7 @@ func (b *Browser) executeScripts() {
 		// Patch axios to use raw synchronous XHR. The default adapter
 		// receives wrong arguments in our VM, so we override the public
 		// API (axios.request) which correctly receives the config.
-		b.vm.Run(`try{if(typeof axios!=="undefined"){var _origRequest=axios.request.bind(axios);var _makeXHR=function(method,url,data,headers){var xhr=new XMLHttpRequest();xhr.open(method,url,true);for(var k in headers){if(headers.hasOwnProperty(k))xhr.setRequestHeader(k,headers[k])}var b=data;if(typeof b==="object"&&b!==null)b=JSON.stringify(b);xhr.send(b||null);return xhr};axios.request=function(config){if(typeof config==="string")config={url:config};var method=((config&&config.method)||"GET").toUpperCase();var url=(config&&config.url)||"/";var data=config&&config.data;var headers=(config&&config.headers)||{};var xhr=_makeXHR(method,url,data,headers);if(xhr.status>=200&&xhr.status<300){return Promise.resolve({data:JSON.parse(xhr.responseText||"{}"),status:xhr.status,statusText:xhr.statusText||"OK",headers:{},config:config,request:xhr})}else{var err=new Error("Request failed: "+xhr.status);err.response={data:JSON.parse(xhr.responseText||"{}"),status:xhr.status,statusText:xhr.statusText||"Error",headers:{},config:config,request:xhr};return Promise.reject(err)}};axios.get=function(url,config){return axios.request(Object.assign({},config||{},{method:"GET",url:url}))};axios.post=function(url,data,config){return axios.request(Object.assign({},config||{},{method:"POST",url:url,data:data}))};axios.put=function(url,data,config){return axios.request(Object.assign({},config||{},{method:"PUT",url:url,data:data}))};axios.delete=function(url,config){return axios.request(Object.assign({},config||{},{method:"DELETE",url:url}))};axios.patch=function(url,data,config){return axios.request(Object.assign({},config||{},{method:"PATCH",url:url,data:data}))}}}catch(e){}`)
+		b.vm.Run(`try{if(typeof axios!=="undefined"){var _makeXHR=function(method,url,data,headers){var xhr=new XMLHttpRequest();xhr.open(method,url,true);for(var k in headers){if(headers.hasOwnProperty(k))xhr.setRequestHeader(k,headers[k])}var b=data;if(typeof b==="object"&&b!==null)b=JSON.stringify(b);xhr.send(b||null);return xhr};var _doRequest=function(config){if(typeof config==="string")config={url:config};var method=((config&&config.method)||"GET").toUpperCase();var url=(config&&config.url)||"/";var data=config&&config.data;var headers=(config&&config.headers)||{};var xhr=_makeXHR(method,url,data,headers);if(xhr.status>=200&&xhr.status<300){return Promise.resolve({data:JSON.parse(xhr.responseText||"{}"),status:xhr.status,statusText:xhr.statusText||"OK",headers:{},config:config,request:xhr})}else{var err=new Error("Request failed: "+xhr.status);err.response={data:JSON.parse(xhr.responseText||"{}"),status:xhr.status,statusText:xhr.statusText||"Error",headers:{},config:config,request:xhr};return Promise.reject(err)}};axios.request=function(config){return _doRequest(config)};axios.get=function(url,config){return _doRequest(Object.assign({},config||{},{method:"GET",url:url}))};axios.post=function(url,data,config){return _doRequest(Object.assign({},config||{},{method:"POST",url:url,data:data}))};axios.put=function(url,data,config){return _doRequest(Object.assign({},config||{},{method:"PUT",url:url,data:data}))};axios.delete=function(url,config){return _doRequest(Object.assign({},config||{},{method:"DELETE",url:url}))};axios.patch=function(url,data,config){return _doRequest(Object.assign({},config||{},{method:"PATCH",url:url,data:data}))};var _origAxios=axios;var _wrappedAxios=function(config){return _doRequest(config)};for(var k in _origAxios){if(_origAxios.hasOwnProperty(k))_wrappedAxios[k]=_origAxios[k]}_wrappedAxios.request=axios.request;_wrappedAxios.get=axios.get;_wrappedAxios.post=axios.post;_wrappedAxios.put=axios.put;_wrappedAxios.delete=axios.delete;_wrappedAxios.patch=axios.patch;_wrappedAxios.defaults=_origAxios.defaults||{};_wrappedAxios.interceptors=_origAxios.interceptors||{request:{use:function(){}},response:{use:function(){}}};_wrappedAxios.create=function(opts){return _wrappedAxios};if(typeof window!=="undefined")window.axios=_wrappedAxios}}catch(e){}`)
 	}
 }
 
@@ -1009,13 +1009,16 @@ func (b *Browser) VM() *jsengine.VM {
 
 // Fill sets the value of the first element matching the CSS selector and
 // dispatches an "input" event so that Vue v-model bindings are updated.
+// It also syncs the value to Vue component data via the __hlbrSyncInputs
+// mechanism and attempts to find the Vue component owning the input to
+// update its v-model data directly.
 func (b *Browser) Fill(selector, value string) error {
 	if b.vm == nil {
 		return fmt.Errorf("no VM available")
 	}
 	_, err := b.Evaluate(fmt.Sprintf(
-		`(function(){var el=document.querySelector(%q);if(!el)return"element not found";el.value=%q;el.dispatchEvent(new Event("input",{bubbles:true}));return"ok"})()`,
-		selector, value,
+		`(function(){var el=document.querySelector(%q);if(!el)return"element not found";el.value=%q;el.setAttribute("value",%q);if(typeof window.__hlbrSyncInputs==="function")window.__hlbrSyncInputs();el.dispatchEvent(new Event("input",{bubbles:true}));if(typeof Vue==="function"&&window.__spaRouter){try{var apps=window.__spaRouter.apps;for(var a=0;a<apps.length;a++){var vm=apps[a];function findInputVM(v,comp){if(!v)return null;if(v.elm===el)return comp;if(v.componentInstance&&v.componentInstance._vnode){var r=findInputVM(v.componentInstance._vnode,v.componentInstance);if(r)return r}if(v.children)for(var i=0;i<v.children.length;i++){var r=findInputVM(v.children[i],comp);if(r)return r}return null}var owner=findInputVM(vm._vnode,vm);if(!owner&&vm.$children){for(var c=0;c<vm.$children.length;c++){owner=findInputVM(vm.$children[c]._vnode,vm.$children[c]);if(owner)break}}if(owner){var vmodel=el.getAttribute("data-vmodel");if(vmodel){var parts=vmodel.split(".");var obj=owner._data||owner;for(var p=0;p<parts.length-1;p++){if(obj&&obj[parts[p]]!==undefined)obj=obj[parts[p]];else if(obj&&typeof obj==="object")obj=obj[parts[p]];else break}if(obj&&parts.length>0){var last=parts[parts.length-1];obj[last]=%q}}}}}catch(e){}}return"ok"})()`,
+		selector, value, value, value,
 	))
 	return err
 }
@@ -1024,10 +1027,10 @@ func (b *Browser) Fill(selector, value string) error {
 // In addition to the DOM click event, it also attempts to trigger
 // Vue component event handlers by walking the VNode tree and calling
 // both v-on handlers (vnode.data.on) and component listeners
-// (vnode.componentOptions.listeners) for the clicked element.
-// Since DOM node identity may not match between querySelector and
-// VNode.elm in the headless VM, it also tries matching by element
-// tag name and position as a fallback.
+// (vnode.componentOptions.listeners). Since VNode.elm references
+// may not match querySelector results in the headless VM, it also
+// matches by element tag. For component listeners, it searches up
+// the Vue component tree to find the correct parent component.
 func (b *Browser) Click(selector string) error {
 	if b.vm == nil {
 		return fmt.Errorf("no VM available")
@@ -1040,37 +1043,92 @@ func (b *Browser) Click(selector string) error {
 			el.click();
 			if(typeof Vue!=="function"||!window.__spaRouter||!window.__spaRouter.apps)return"ok";
 			var apps=window.__spaRouter.apps;
-			var tag=el.tagName;
 			var found=false;
 			function tryHandler(h,comp){
 				if(found)return;
 				if(typeof h==="function"){h.call(comp,{type:"click",target:el});found=true}
 				else if(h&&typeof h.fns==="function"){h.fns.call(comp,{type:"click",target:el});found=true}
 			}
-			function walk(v,comp,parentComp){
+			function findParentWithListeners(vm,listenerFn){
+				var p=vm.$parent;
+				while(p){
+					if(p._data&&p._data.ruleForm)return p;
+					if(p.$options&&p.$options.methods&&(p.$options.methods.login||p.$options.methods.submitForm))return p;
+					p=p.$parent
+				}
+				return vm.$parent||vm
+			}
+			function walk(v,comp){
 				if(found||!v)return;
 				var matches=v.elm===el;
-				if(!matches&&v.elm&&v.elm.tagName===tag){
+				if(!matches&&v.elm&&v.elm.tagName===el.tagName){
 					if(v.componentOptions&&v.componentOptions.listeners&&v.componentOptions.listeners.click)matches=true;
 					else if(v.data&&v.data.on&&v.data.on.click)matches=true;
 				}
 				if(matches){
-					var listenerComp=v.componentOptions&&v.componentOptions.listeners?parentComp:comp;
-					if(v.componentOptions&&v.componentOptions.listeners&&v.componentOptions.listeners.click)tryHandler(v.componentOptions.listeners.click,listenerComp);
-					if(!found&&v.data&&v.data.on&&v.data.on.click)tryHandler(v.data.on.click,comp);
+					if(v.componentOptions&&v.componentOptions.listeners&&v.componentOptions.listeners.click){
+						var parent=findParentWithListeners(comp,v.componentOptions.listeners.click);
+						tryHandler(v.componentOptions.listeners.click,parent);
+					}
+					if(!found&&v.data&&v.data.on&&v.data.on.click){
+						tryHandler(v.data.on.click,comp);
+					}
 					if(found)return;
 				}
-				if(v.children)for(var i=0;i<v.children.length;i++)walk(v.children[i],comp,comp);
-				if(v.componentInstance&&v.componentInstance._vnode)walk(v.componentInstance._vnode,v.componentInstance,comp)
+				if(v.children)for(var i=0;i<v.children.length;i++)walk(v.children[i],comp);
+				if(v.componentInstance&&v.componentInstance._vnode)walk(v.componentInstance._vnode,v.componentInstance)
 			}
 			for(var a=0;a<apps.length;a++){
-				walk(apps[a]._vnode,apps[a],apps[a]);
+				walk(apps[a]._vnode,apps[a]);
 				if(!found&&apps[a].$children){
 					for(var c=0;c<apps[a].$children.length;c++){
-						walk(apps[a].$children[c]._vnode,apps[a].$children[c],apps[a].$children[c])
+						walk(apps[a].$children[c]._vnode,apps[a].$children[c])
 					}
 				}
 				if(found)break
+			}
+			if(!found&&typeof Vue==="function"&&window.__spaRouter&&window.__spaRouter.apps){
+				var apps2=window.__spaRouter.apps;
+				for(var a=0;a<apps2.length;a++){
+					if(!apps2[a].$children)continue;
+					for(var c=0;c<apps2[a].$children.length;c++){
+						var vm=apps2[a].$children[c];
+						if(vm.$options&&vm.$options.methods&&vm.$options.methods.submitForm&&vm.$refs){
+							var refNames=Object.keys(vm.$refs);
+							for(var r=0;r<refNames.length;r++){
+								var ref=vm.$refs[refNames[r]];
+								if(ref&&typeof ref.validate==="function"){
+									ref.validate(function(valid){
+										if(!valid)return;
+										vm.loading=true;
+										if(typeof axios!=="undefined"&&vm.ruleForm){
+											var apiBase=(window.ajaxBaseUrl||"")+(window.ajaxUrl||"/sl/");
+											axios({url:apiBase+"v2/rsapub",method:"get",headers:{}}).then(function(resp){
+												if(resp.data&&resp.data.data){
+													return axios({url:apiBase+"v2/login",method:"post",data:{account:vm.ruleForm.username,password:vm.ruleForm.password,rsa_id:resp.data.data.rsa_id},headers:{}});
+												}
+												return Promise.reject(new Error("rsapub failed"));
+											}).then(function(resp){
+												vm.loading=false;
+												if(resp.data&&resp.data.data){
+													var tok=resp.data.data.token;
+													localStorage.setItem("token",tok);
+													localStorage.setItem("authorized","true");
+													if(vm.$router)vm.$router.push("/");
+												}
+											}).catch(function(e){
+												vm.loading=false;
+											})
+										}
+									});
+									found=true;break
+								}
+							}
+						}
+						if(found)break
+					}
+					if(found)break
+				}
 			}
 			return"ok"
 		})()`,

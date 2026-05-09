@@ -937,6 +937,94 @@ func (vm *VM) setupBuiltins() {
 		return &Value{Type: "bool", Bool: isTruthy(args[0])}
 	}})
 
+	vm.env.Define("Date", &Value{Type: "native", BuiltInConstructor: "Date", Native: func(args []*Value) *Value {
+		ts := float64(time.Now().UnixNano() / 1e6)
+		offset := NativeThisOffset(args)
+		if len(args) > offset {
+			if args[offset].Type == "number" {
+				ts = args[offset].Num
+			} else if args[offset].Type == "string" {
+				if t, err := time.Parse(time.RFC3339, args[offset].Str); err == nil {
+					ts = float64(t.UnixNano() / 1e6)
+				}
+			}
+		}
+		obj := make(map[string]*Value)
+		obj["getTime"] = &Value{Type: "native", Native: func(a2 []*Value) *Value {
+			return &Value{Type: "number", Num: ts}
+		}}
+		obj["valueOf"] = &Value{Type: "native", Native: func(a2 []*Value) *Value {
+			return &Value{Type: "number", Num: ts}
+		}}
+		obj["toString"] = &Value{Type: "native", Native: func(a2 []*Value) *Value {
+			t := time.Unix(0, int64(ts)*1e6)
+			return &Value{Type: "string", Str: t.UTC().Format("Mon Jan 02 2006 15:04:05 GMT+0000 (Coordinated Universal Time)")}
+		}}
+		obj["toISOString"] = &Value{Type: "native", Native: func(a2 []*Value) *Value {
+			t := time.Unix(0, int64(ts)*1e6)
+			return &Value{Type: "string", Str: t.UTC().Format("2006-01-02T15:04:05.000Z")}
+		}}
+		obj["toJSON"] = &Value{Type: "native", Native: func(a2 []*Value) *Value {
+			t := time.Unix(0, int64(ts)*1e6)
+			return &Value{Type: "string", Str: t.UTC().Format("2006-01-02T15:04:05.000Z")}
+		}}
+		obj["getFullYear"] = &Value{Type: "native", Native: func(a2 []*Value) *Value {
+			t := time.Unix(0, int64(ts)*1e6)
+			return &Value{Type: "number", Num: float64(t.Year())}
+		}}
+		obj["getMonth"] = &Value{Type: "native", Native: func(a2 []*Value) *Value {
+			t := time.Unix(0, int64(ts)*1e6)
+			return &Value{Type: "number", Num: float64(t.Month() - 1)}
+		}}
+		obj["getDate"] = &Value{Type: "native", Native: func(a2 []*Value) *Value {
+			t := time.Unix(0, int64(ts)*1e6)
+			return &Value{Type: "number", Num: float64(t.Day())}
+		}}
+		obj["getHours"] = &Value{Type: "native", Native: func(a2 []*Value) *Value {
+			t := time.Unix(0, int64(ts)*1e6)
+			return &Value{Type: "number", Num: float64(t.Hour())}
+		}}
+		obj["getMinutes"] = &Value{Type: "native", Native: func(a2 []*Value) *Value {
+			t := time.Unix(0, int64(ts)*1e6)
+			return &Value{Type: "number", Num: float64(t.Minute())}
+		}}
+		obj["getSeconds"] = &Value{Type: "native", Native: func(a2 []*Value) *Value {
+			t := time.Unix(0, int64(ts)*1e6)
+			return &Value{Type: "number", Num: float64(t.Second())}
+		}}
+		obj["getMilliseconds"] = &Value{Type: "native", Native: func(a2 []*Value) *Value {
+			t := time.Unix(0, int64(ts)*1e6)
+			return &Value{Type: "number", Num: float64(t.Nanosecond() / 1e6)}
+		}}
+		obj["getTimezoneOffset"] = &Value{Type: "native", Native: func(a2 []*Value) *Value {
+			_, offset := time.Unix(0, int64(ts)*1e6).Zone()
+			return &Value{Type: "number", Num: float64(-offset / 60)}
+		}}
+		return &Value{Type: "object", Obj: obj, BuiltInConstructor: "Date"}
+	}})
+	dateObj := vm.env.Get("Date")
+	if dateObj.Type == "native" {
+		if dateObj.Obj == nil {
+			dateObj.Obj = make(map[string]*Value)
+		}
+		dateObj.Obj["now"] = &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: float64(time.Now().UnixNano() / 1e6)}
+		}}
+		dateObj.Obj["parse"] = &Value{Type: "native", Native: func(args []*Value) *Value {
+			if len(args) == 0 || args[0].Type != "string" {
+				return &Value{Type: "number", Num: math.NaN()}
+			}
+			if t, err := time.Parse(time.RFC3339, args[0].Str); err == nil {
+				return &Value{Type: "number", Num: float64(t.UnixNano() / 1e6)}
+			}
+			return &Value{Type: "number", Num: math.NaN()}
+		}}
+		dateObj.Obj["UTC"] = &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "number", Num: math.NaN()}
+		}}
+	}
+	vm.env.Define("DatePrototype", &Value{Type: "object", Obj: make(map[string]*Value)})
+
 	vm.env.Define("Event", &Value{Type: "native", BuiltInConstructor: "Event", Native: func(args []*Value) *Value {
 		offset := NativeThisOffset(args)
 		eventType := ""
@@ -3768,6 +3856,26 @@ func (vm *VM) evalCall(e *CallExpr) *Value {
 			args = append(args, vm.evalExpr(arg))
 		}
 
+	// Handle Object(value) call - must return value itself if it's already
+	// an object/function. This is critical for webpack code like Object(v.c)()
+	// where Object(fn) must return fn (not wrap it).
+	if callee.Type == "native" && callee.BuiltInConstructor == "Object" && callee.Native == nil {
+		if len(args) > 0 {
+			val := args[0]
+			switch val.Type {
+			case "function", "native", "class", "object", "regexp", "promise", "map", "set", "iterator", "proxy":
+				return val
+			case "string", "number", "bool", "bigint":
+				obj := make(map[string]*Value)
+				obj["valueOf"] = &Value{Type: "native", Native: func(a2 []*Value) *Value { return val }}
+				obj["toString"] = &Value{Type: "native", Native: func(a2 []*Value) *Value { return &Value{Type: "string", Str: valueToString(val)} }}
+				return &Value{Type: "object", Obj: obj, BuiltInConstructor: "Object"}
+			}
+		}
+		obj := make(map[string]*Value)
+		return &Value{Type: "object", Obj: obj, BuiltInConstructor: "Object"}
+	}
+
 	// Handle native functions (including array methods)
 	// Convention: only prepend 'this' if the callee has a ThisBinding set by
 	// evalMember (via prototype chain lookup). Do NOT prepend this for regular
@@ -5011,33 +5119,70 @@ func isTruthy(v *Value) bool {
 		return v.Num != 0 && !math.IsNaN(v.Num)
 	case "string":
 		return v.Str != ""
-	case "object", "regexp":
+	case "object", "regexp", "promise":
 		return true
 	case "function", "native", "class":
+		return true
+	case "map", "set", "weakmap", "weakset", "iterator":
+		return true
+	case "arrayMethod", "stringMethod":
 		return true
 	}
 	return false
 }
 
 func valuesEqual(a, b *Value) bool {
-	// In JavaScript, null == undefined is true (abstract equality)
+	// ECMAScript Abstract Equality Comparison (==)
+	// Step 1: null == undefined is true
 	if (a.Type == "null" || a.Type == "undefined") && (b.Type == "null" || b.Type == "undefined") {
 		return true
 	}
-	if a.Type == "number" && b.Type == "number" {
-		return a.Num == b.Num
+	// Step 2: same type — use strict equality
+	if a.Type == b.Type {
+		return valuesStrictEqualSameType(a, b)
 	}
-	if a.Type == "string" && b.Type == "string" {
+	// Step 3: Number == String → ToNumber(string) == number
+	if a.Type == "number" && b.Type == "string" {
+		nb := toNumberValue(b)
+		return numbersEqual(a.Num, nb.Num)
+	}
+	if a.Type == "string" && b.Type == "number" {
+		na := toNumberValue(a)
+		return numbersEqual(na.Num, b.Num)
+	}
+	// Step 4: Boolean == X → ToNumber(boolean) == X
+	if a.Type == "bool" {
+		return valuesEqual(toNumberValue(a), b)
+	}
+	if b.Type == "bool" {
+		return valuesEqual(a, toNumberValue(b))
+	}
+	// Step 5: String/Number == Object → ToPrimitive(object) == string/number
+	if (a.Type == "string" || a.Type == "number") && (b.Type == "object" || b.Type == "regexp") {
+		pb := toPrimitiveValue(b)
+		return valuesEqual(a, pb)
+	}
+	if (b.Type == "string" || b.Type == "number") && (a.Type == "object" || a.Type == "regexp") {
+		pa := toPrimitiveValue(a)
+		return valuesEqual(pa, b)
+	}
+	return false
+}
+
+// valuesStrictEqualSameType compares two values of the same type for strict equality.
+func valuesStrictEqualSameType(a, b *Value) bool {
+	switch a.Type {
+	case "undefined", "null":
+		return true
+	case "number":
+		return numbersEqual(a.Num, b.Num)
+	case "bigint":
 		return a.Str == b.Str
-	}
-	if a.Type == "bool" && b.Type == "bool" {
+	case "string":
+		return a.Str == b.Str
+	case "bool":
 		return a.Bool == b.Bool
-	}
-	// For native functions, compare by the Native function pointer
-	// This handles cases like [].constructor === Array where the prototype
-	// lookup creates a copy with ThisBinding set
-	if a.Type == "native" && b.Type == "native" {
-		// Compare function pointers for identity using reflect
+	case "native":
 		if a.Native != nil && b.Native != nil {
 			av := reflect.ValueOf(a.Native)
 			bv := reflect.ValueOf(b.Native)
@@ -5046,17 +5191,12 @@ func valuesEqual(a, b *Value) bool {
 			}
 		}
 		return a == b
-	}
-	// For JS functions, compare by the underlying Func pointer.
-	// Multiple Value objects may reference the same function (e.g., when
-	// looking up a variable twice), so we compare by the Func field.
-	if a.Type == "function" && b.Type == "function" {
+	case "function":
 		if a.Func != nil && b.Func != nil {
 			if a.Func == b.Func {
 				return true
 			}
 		}
-		// For native functions wrapped as "function" type, compare Native pointer
 		if a.Native != nil && b.Native != nil {
 			av := reflect.ValueOf(a.Native)
 			bv := reflect.ValueOf(b.Native)
@@ -5065,24 +5205,88 @@ func valuesEqual(a, b *Value) bool {
 			}
 		}
 		return a == b
-	}
-	// For objects, compare by reference (pointer equality)
-	if a.Type == "object" && b.Type == "object" {
-		// For wrapped DOM nodes, compare the underlying *dom.Node
-		// since each wrapNode/wrapNodeShallow call creates a new Value
+	case "object", "regexp":
 		if a.NodeRef != nil && b.NodeRef != nil {
 			return a.NodeRef == b.NodeRef
 		}
 		return a == b
+	case "symbol":
+		return a == b
 	}
 	return false
+}
+
+// numbersEqual compares two float64 values following JS semantics (NaN != NaN).
+func numbersEqual(a, b float64) bool {
+	if math.IsNaN(a) || math.IsNaN(b) {
+		return false
+	}
+	return a == b
+}
+
+// toNumberValue converts a Value to a number Value following JS ToNumber rules.
+func toNumberValue(v *Value) *Value {
+	switch v.Type {
+	case "number":
+		return v
+	case "bool":
+		if v.Bool {
+			return &Value{Type: "number", Num: 1}
+		}
+		return &Value{Type: "number", Num: 0}
+	case "string":
+		n, ok := jsParseNumber(v.Str)
+		if ok {
+			return &Value{Type: "number", Num: n}
+		}
+		return &Value{Type: "number", Num: math.NaN()}
+	case "null":
+		return &Value{Type: "number", Num: 0}
+	case "undefined":
+		return &Value{Type: "number", Num: math.NaN()}
+	default:
+		return &Value{Type: "number", Num: math.NaN()}
+	}
+}
+
+// toPrimitiveValue converts an object Value to a primitive Value (string or number).
+func toPrimitiveValue(v *Value) *Value {
+	if v.Type == "object" && v.Obj != nil {
+		if v, ok := v.Obj["valueOf"]; ok && (v.Type == "function" || v.Type == "native") {
+			return &Value{Type: "string", Str: valueToString(v)}
+		}
+		if ts, ok := v.Obj["toString"]; ok && (ts.Type == "function" || ts.Type == "native") {
+			return &Value{Type: "string", Str: valueToString(v)}
+		}
+	}
+	return &Value{Type: "string", Str: valueToString(v)}
+}
+
+// jsParseNumber parses a string to a float64 following JS ToNumber semantics.
+// Returns the number and true if successful, or 0 and false if the string is not a valid number.
+func jsParseNumber(s string) (float64, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, true
+	}
+	if s == "Infinity" || s == "+Infinity" {
+		return math.Inf(1), true
+	}
+	if s == "-Infinity" {
+		return math.Inf(-1), true
+	}
+	n, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return math.NaN(), false
+	}
+	return n, true
 }
 
 func valuesStrictEqual(a, b *Value) bool {
 	if a.Type != b.Type {
 		return false
 	}
-	return valuesEqual(a, b)
+	return valuesStrictEqualSameType(a, b)
 }
 
 // jsTypeOf returns the JavaScript typeof string for a value.
