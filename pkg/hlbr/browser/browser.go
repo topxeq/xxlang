@@ -111,7 +111,7 @@ func (b *Browser) Navigate(rawURL string) error {
 	b.debugLog("HTML parsed, creating JS VM...")
 	b.vm = jsengine.NewVM(b.doc)
 	b.vm.SetTimeoutMs(60_000)  // 60 seconds for heavy pages (reduced from 180s)
-	b.vm.SetMaxSteps(100_000_000) // 100M steps for heavy pages (reduced from 500M)
+	b.vm.SetMaxSteps(100_000_000) // 100M steps for heavy SPA pages
 	b.vm.SetMaxCallDepth(1000)
 	b.vm.SetMaxAllocs(5_000_000) // 5M object allocations for heavy SPA pages
 

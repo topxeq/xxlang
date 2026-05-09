@@ -3856,19 +3856,52 @@ func (vm *VM) evalCall(e *CallExpr) *Value {
 			args = append(args, vm.evalExpr(arg))
 		}
 
-	// Handle Object(value) call - must return value itself if it's already
-	// an object/function. This is critical for webpack code like Object(v.c)()
-	// where Object(fn) must return fn (not wrap it).
+	// Handle Object(value) call - per ECMAScript spec, Object(value) returns
+	// value itself if it's already an object. For primitives, it wraps them.
+	// Critical for webpack code like Object(v.c)() where Object(fn) must
+	// return fn itself.
 	if callee.Type == "native" && callee.BuiltInConstructor == "Object" && callee.Native == nil {
 		if len(args) > 0 {
 			val := args[0]
 			switch val.Type {
-			case "function", "native", "class", "object", "regexp", "promise", "map", "set", "iterator", "proxy":
-				return val
-			case "string", "number", "bool", "bigint":
+			case "undefined", "null":
+				obj := make(map[string]*Value)
+				return &Value{Type: "object", Obj: obj, BuiltInConstructor: "Object"}
+			case "string":
+				obj := make(map[string]*Value)
+				obj["valueOf"] = &Value{Type: "native", Native: func(a2 []*Value) *Value { return val }}
+				obj["toString"] = &Value{Type: "native", Native: func(a2 []*Value) *Value { return val }}
+				obj["length"] = &Value{Type: "number", Num: float64(len(val.Str))}
+				for i, ch := range val.Str {
+					idx := strconv.Itoa(i)
+					char := string(ch)
+					obj[idx] = &Value{Type: "string", Str: char}
+				}
+				return &Value{Type: "object", Obj: obj, BuiltInConstructor: "String"}
+			case "number", "bool", "bigint":
 				obj := make(map[string]*Value)
 				obj["valueOf"] = &Value{Type: "native", Native: func(a2 []*Value) *Value { return val }}
 				obj["toString"] = &Value{Type: "native", Native: func(a2 []*Value) *Value { return &Value{Type: "string", Str: valueToString(val)} }}
+				return &Value{Type: "object", Obj: obj, BuiltInConstructor: "Object"}
+			default:
+				// Per ECMAScript spec, Object(value) returns value for objects.
+				// However, returning the same pointer for constructor objects
+				// (Number, RegExp, Array, etc.) causes core-js polyfill to loop
+				// endlessly (it iterates over the object's properties and re-processes).
+				// Return val directly for: functions, native functions without
+				// BuiltInConstructor (these are regular closures, not constructors),
+				// and primitive wrappers (Object/Number/String/Boolean).
+				// Do NOT return constructors like Number, RegExp, Array directly.
+				if val.Type == "function" {
+					return val
+				}
+				if val.Type == "native" && val.BuiltInConstructor == "" {
+					return val
+				}
+				if val.BuiltInConstructor == "Object" || val.BuiltInConstructor == "String" || val.BuiltInConstructor == "Number" || val.BuiltInConstructor == "Boolean" {
+					return val
+				}
+				obj := make(map[string]*Value)
 				return &Value{Type: "object", Obj: obj, BuiltInConstructor: "Object"}
 			}
 		}

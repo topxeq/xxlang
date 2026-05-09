@@ -371,6 +371,24 @@ func TestObjectCall(t *testing.T) {
 	if valStr(result) != "object" {
 		t.Errorf("typeof Object(): expected 'object', got %v", valStr(result))
 	}
+
+	// Object("z") creates a String wrapper with indexed characters
+	result, err = vm.Run(`Object("z")[0]`)
+	if err != nil {
+		t.Fatalf("Object(\"z\")[0]: unexpected error: %v", err)
+	}
+	if valStr(result) != "z" {
+		t.Errorf("Object(\"z\")[0]: expected 'z', got %v", valStr(result))
+	}
+
+	// Object("hello").length should be 5
+	result, err = vm.Run(`Object("hello").length`)
+	if err != nil {
+		t.Fatalf("Object(\"hello\").length: unexpected error: %v", err)
+	}
+	if valNum(result) != 5 {
+		t.Errorf("Object(\"hello\").length: expected 5, got %v", valNum(result))
+	}
 }
 
 func TestDateConstructor(t *testing.T) {
