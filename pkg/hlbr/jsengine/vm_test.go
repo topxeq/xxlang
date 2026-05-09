@@ -312,3 +312,106 @@ func TestLocationMethods(t *testing.T) {
 		}
 	}
 }
+
+func TestAbstractEquality(t *testing.T) {
+	vm := newTestVM()
+	tests := []struct {
+		expr     string
+		expected bool
+	}{
+		{`1 == "1"`, true},
+		{`1 === "1"`, false},
+		{`0 == false`, true},
+		{`"" == false`, true},
+		{`null == undefined`, true},
+		{`1 == true`, true},
+		{`"1" == 1`, true},
+		{`null == 0`, false},
+		{`undefined == 0`, false},
+		{`null == false`, false},
+		{`2 == "2"`, true},
+		{`"hello" == "hello"`, true},
+		{`42 === 42`, true},
+		{`42 == 42`, true},
+	}
+	for _, tt := range tests {
+		result, err := vm.Run(tt.expr)
+		if err != nil {
+			t.Errorf("%s: unexpected error: %v", tt.expr, err)
+			continue
+		}
+		if valBool(result) != tt.expected {
+			t.Errorf("%s: expected %v, got %v", tt.expr, tt.expected, valBool(result))
+		}
+	}
+}
+
+func TestObjectCall(t *testing.T) {
+	vm := newTestVM()
+	result, err := vm.Run(`var fn = function() { return 42; }; Object(fn)()`)
+	if err != nil {
+		t.Fatalf("Object(fn)(): unexpected error: %v", err)
+	}
+	if valNum(result) != 42 {
+		t.Errorf("Object(fn)(): expected 42, got %v", valNum(result))
+	}
+
+	result, err = vm.Run(`var obj = {a: 1}; Object(obj) === obj`)
+	if err != nil {
+		t.Fatalf("Object(obj) === obj: unexpected error: %v", err)
+	}
+	if !valBool(result) {
+		t.Errorf("Object(obj) === obj: expected true, got %v", valBool(result))
+	}
+
+	result, err = vm.Run(`typeof Object()`)
+	if err != nil {
+		t.Fatalf("typeof Object(): unexpected error: %v", err)
+	}
+	if valStr(result) != "object" {
+		t.Errorf("typeof Object(): expected 'object', got %v", valStr(result))
+	}
+}
+
+func TestDateConstructor(t *testing.T) {
+	vm := newTestVM()
+	result, err := vm.Run(`typeof new Date().getTime()`)
+	if err != nil {
+		t.Fatalf("Date.getTime: unexpected error: %v", err)
+	}
+	if valStr(result) != "number" {
+		t.Errorf("Date.getTime: expected 'number', got %v", valStr(result))
+	}
+
+	result, err = vm.Run(`typeof Date.now()`)
+	if err != nil {
+		t.Fatalf("Date.now: unexpected error: %v", err)
+	}
+	if valStr(result) != "number" {
+		t.Errorf("Date.now: expected 'number', got %v", valStr(result))
+	}
+
+	result, err = vm.Run(`new Date().getTime() > 0`)
+	if err != nil {
+		t.Fatalf("Date.getTime > 0: unexpected error: %v", err)
+	}
+	if !valBool(result) {
+		t.Errorf("Date.getTime > 0: expected true, got %v", valBool(result))
+	}
+
+	result, err = vm.Run(`Date.now() > 0`)
+	if err != nil {
+		t.Fatalf("Date.now > 0: unexpected error: %v", err)
+	}
+	if !valBool(result) {
+		t.Errorf("Date.now > 0: expected true, got %v", valBool(result))
+	}
+
+	result, err = vm.Run(`typeof new Date().toISOString`)
+	if err != nil {
+		t.Fatalf("Date.toISOString: unexpected error: %v", err)
+	}
+	if valStr(result) != "function" {
+		t.Errorf("Date.toISOString: expected 'function', got %v", valStr(result))
+	}
+}
