@@ -5650,8 +5650,9 @@ func (vm *VM) setupPromise() {
 			OnReject:  make([]*Function, 0),
 			Env:       vm.env,
 		}
-		if len(args) > 0 {
-			p.Value = args[0]
+		offset := nativeThisOffset(args)
+		if len(args) > offset {
+			p.Value = args[offset]
 		}
 		return &Value{Type: "promise", Promise: p}
 	}}
@@ -5664,15 +5665,17 @@ func (vm *VM) setupPromise() {
 			OnFulfill: make([]*Function, 0),
 			Env:       vm.env,
 		}
-		if len(args) > 0 {
-			p.Rejection = args[0]
+		offset := nativeThisOffset(args)
+		if len(args) > offset {
+			p.Rejection = args[offset]
 		}
 		return &Value{Type: "promise", Promise: p}
 	}}
 
 	// Promise.all static method
 	promiseAll := &Value{Type: "native", Native: func(args []*Value) *Value {
-		if len(args) == 0 {
+		offset := nativeThisOffset(args)
+		if len(args) <= offset {
 			return &Value{Type: "promise", Promise: &Promise{
 				State:     "fulfilled",
 				Value:     &Value{Type: "object", Arr: []*Value{}},
@@ -5681,7 +5684,7 @@ func (vm *VM) setupPromise() {
 				Env:       vm.env,
 			}}
 		}
-		promises := args[0]
+		promises := args[offset]
 		if promises.Type != "object" || promises.Arr == nil {
 			return &Value{Type: "promise", Promise: &Promise{
 				State:     "rejected",
@@ -5712,7 +5715,8 @@ func (vm *VM) setupPromise() {
 
 	// Promise.race static method
 	promiseRace := &Value{Type: "native", Native: func(args []*Value) *Value {
-		if len(args) == 0 {
+		offset := nativeThisOffset(args)
+		if len(args) <= offset {
 			return &Value{Type: "promise", Promise: &Promise{
 				State:     "pending",
 				OnFulfill: make([]*Function, 0),
@@ -5720,7 +5724,7 @@ func (vm *VM) setupPromise() {
 				Env:       vm.env,
 			}}
 		}
-		promises := args[0]
+		promises := args[offset]
 		if promises.Type != "object" || promises.Arr == nil {
 			return &Value{Type: "promise", Promise: &Promise{
 				State:     "rejected",

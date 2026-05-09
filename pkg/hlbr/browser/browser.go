@@ -1021,12 +1021,59 @@ func (b *Browser) Fill(selector, value string) error {
 }
 
 // Click clicks the first element matching the CSS selector.
+// In addition to the DOM click event, it also attempts to trigger
+// Vue component event handlers by walking the VNode tree and calling
+// both v-on handlers (vnode.data.on) and component listeners
+// (vnode.componentOptions.listeners) for the clicked element.
+// Since DOM node identity may not match between querySelector and
+// VNode.elm in the headless VM, it also tries matching by element
+// tag name and position as a fallback.
 func (b *Browser) Click(selector string) error {
 	if b.vm == nil {
 		return fmt.Errorf("no VM available")
 	}
 	_, err := b.Evaluate(fmt.Sprintf(
-		`(function(){var el=document.querySelector(%q);if(!el)return"element not found";el.click();return"ok"})()`,
+		`(function(){
+			var sel=%q;
+			var el=document.querySelector(sel);
+			if(!el)return"element not found";
+			el.click();
+			if(typeof Vue!=="function"||!window.__spaRouter||!window.__spaRouter.apps)return"ok";
+			var apps=window.__spaRouter.apps;
+			var tag=el.tagName;
+			var found=false;
+			function tryHandler(h,comp){
+				if(found)return;
+				if(typeof h==="function"){h.call(comp,{type:"click",target:el});found=true}
+				else if(h&&typeof h.fns==="function"){h.fns.call(comp,{type:"click",target:el});found=true}
+			}
+			function walk(v,comp,parentComp){
+				if(found||!v)return;
+				var matches=v.elm===el;
+				if(!matches&&v.elm&&v.elm.tagName===tag){
+					if(v.componentOptions&&v.componentOptions.listeners&&v.componentOptions.listeners.click)matches=true;
+					else if(v.data&&v.data.on&&v.data.on.click)matches=true;
+				}
+				if(matches){
+					var listenerComp=v.componentOptions&&v.componentOptions.listeners?parentComp:comp;
+					if(v.componentOptions&&v.componentOptions.listeners&&v.componentOptions.listeners.click)tryHandler(v.componentOptions.listeners.click,listenerComp);
+					if(!found&&v.data&&v.data.on&&v.data.on.click)tryHandler(v.data.on.click,comp);
+					if(found)return;
+				}
+				if(v.children)for(var i=0;i<v.children.length;i++)walk(v.children[i],comp,comp);
+				if(v.componentInstance&&v.componentInstance._vnode)walk(v.componentInstance._vnode,v.componentInstance,comp)
+			}
+			for(var a=0;a<apps.length;a++){
+				walk(apps[a]._vnode,apps[a],apps[a]);
+				if(!found&&apps[a].$children){
+					for(var c=0;c<apps[a].$children.length;c++){
+						walk(apps[a].$children[c]._vnode,apps[a].$children[c],apps[a].$children[c])
+					}
+				}
+				if(found)break
+			}
+			return"ok"
+		})()`,
 		selector,
 	))
 	return err
