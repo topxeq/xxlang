@@ -389,6 +389,15 @@ func TestObjectCall(t *testing.T) {
 	if valNum(result) != 5 {
 		t.Errorf("Object(\"hello\").length: expected 5, got %v", valNum(result))
 	}
+
+	// Object("z").propertyIsEnumerable(0) — core-js detection pattern
+	result, err = vm.Run(`Object("z").propertyIsEnumerable(0)`)
+	if err != nil {
+		t.Fatalf("Object(\"z\").propertyIsEnumerable(0): unexpected error: %v", err)
+	}
+	if !valBool(result) {
+		t.Errorf("Object(\"z\").propertyIsEnumerable(0): expected true, got %v", valBool(result))
+	}
 }
 
 func TestDateConstructor(t *testing.T) {

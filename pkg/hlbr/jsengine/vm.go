@@ -1413,23 +1413,26 @@ func (vm *VM) setupBuiltins() {
 	// localStorage - simple key-value storage
 	vm.env.Define("localStorage", &Value{Type: "object", Obj: map[string]*Value{
 		"setItem": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) >= 2 {
-				vm.LocalStorage[args[0].Str] = args[1].Str
+			offset := NativeThisOffset(args)
+			if len(args) >= offset+2 {
+				vm.LocalStorage[args[offset].Str] = args[offset+1].Str
 			}
 			return &Value{Type: "undefined"}
 		}},
 		"getItem": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 {
+			offset := NativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "null"}
 			}
-			if v, ok := vm.LocalStorage[args[0].Str]; ok {
+			if v, ok := vm.LocalStorage[args[offset].Str]; ok {
 				return &Value{Type: "string", Str: v}
 			}
 			return &Value{Type: "null"}
 		}},
 		"removeItem": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) > 0 {
-				delete(vm.LocalStorage, args[0].Str)
+			offset := NativeThisOffset(args)
+			if len(args) > offset {
+				delete(vm.LocalStorage, args[offset].Str)
 			}
 			return &Value{Type: "undefined"}
 		}},
@@ -1437,29 +1440,46 @@ func (vm *VM) setupBuiltins() {
 			vm.LocalStorage = make(map[string]string)
 			return &Value{Type: "undefined"}
 		}},
-		"length": {Type: "number", Num: 0}, // dynamic length not supported in simple impl
+		"key": {Type: "native", Native: func(args []*Value) *Value {
+			offset := NativeThisOffset(args)
+			if len(args) <= offset {
+				return &Value{Type: "null"}
+			}
+			idx := int(args[offset].Num)
+			i := 0
+			for k := range vm.LocalStorage {
+				if i == idx {
+					return &Value{Type: "string", Str: k}
+				}
+				i++
+			}
+			return &Value{Type: "null"}
+		}},
 	}})
 
 	// sessionStorage - simple key-value storage (per-session)
 	vm.env.Define("sessionStorage", &Value{Type: "object", Obj: map[string]*Value{
 		"setItem": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) >= 2 {
-				vm.SessionStorage[args[0].Str] = args[1].Str
+			offset := NativeThisOffset(args)
+			if len(args) >= offset+2 {
+				vm.SessionStorage[args[offset].Str] = args[offset+1].Str
 			}
 			return &Value{Type: "undefined"}
 		}},
 		"getItem": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 {
+			offset := NativeThisOffset(args)
+			if len(args) <= offset {
 				return &Value{Type: "null"}
 			}
-			if v, ok := vm.SessionStorage[args[0].Str]; ok {
+			if v, ok := vm.SessionStorage[args[offset].Str]; ok {
 				return &Value{Type: "string", Str: v}
 			}
 			return &Value{Type: "null"}
 		}},
 		"removeItem": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) > 0 {
-				delete(vm.SessionStorage, args[0].Str)
+			offset := NativeThisOffset(args)
+			if len(args) > offset {
+				delete(vm.SessionStorage, args[offset].Str)
 			}
 			return &Value{Type: "undefined"}
 		}},
@@ -1467,7 +1487,21 @@ func (vm *VM) setupBuiltins() {
 			vm.SessionStorage = make(map[string]string)
 			return &Value{Type: "undefined"}
 		}},
-		"length": {Type: "number", Num: 0},
+		"key": {Type: "native", Native: func(args []*Value) *Value {
+			offset := NativeThisOffset(args)
+			if len(args) <= offset {
+				return &Value{Type: "null"}
+			}
+			idx := int(args[offset].Num)
+			i := 0
+			for k := range vm.SessionStorage {
+				if i == idx {
+					return &Value{Type: "string", Str: k}
+				}
+				i++
+			}
+			return &Value{Type: "null"}
+		}},
 	}})
 
 	// Wire up direct references from window to builtins (not native functions)
@@ -3876,6 +3910,15 @@ func (vm *VM) evalCall(e *CallExpr) *Value {
 					idx := strconv.Itoa(i)
 					char := string(ch)
 					obj[idx] = &Value{Type: "string", Str: char}
+				}
+				// Copy Object.prototype methods so propertyIsEnumerable, hasOwnProperty
+				// etc. are accessible on the wrapper (core-js uses these).
+				if objProto := vm.env.Get("ObjectPrototype"); objProto.Type == "object" && objProto.Obj != nil {
+					for k, v := range objProto.Obj {
+						if _, exists := obj[k]; !exists {
+							obj[k] = v
+						}
+					}
 				}
 				return &Value{Type: "object", Obj: obj, BuiltInConstructor: "String"}
 			case "number", "bool", "bigint":
