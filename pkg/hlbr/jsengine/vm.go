@@ -1217,18 +1217,32 @@ func (vm *VM) setupBuiltins() {
 	}
 	vm.env.Define("Array", arrayConstructor)
 
-	// Make Array static methods non-writable and non-configurable to prevent
+	// Make specific Array static methods non-writable and non-configurable to prevent
 	// polyfills from replacing them with broken JS implementations.
+	// Only protect methods with native Go implementations that polyfills break.
+	protectedArrayMethods := map[string]bool{
+		"isArray":  true,
+		"from":     true,
+		"of":       true,
+	}
 	if arrayConstructor.Obj != nil {
 		if arrayConstructor.Descriptors == nil {
 			arrayConstructor.Descriptors = make(map[string]*PropertyDescriptor)
 		}
 		for k := range arrayConstructor.Obj {
 			if _, exists := arrayConstructor.Descriptors[k]; !exists {
-				arrayConstructor.Descriptors[k] = &PropertyDescriptor{
-					Writable:     false,
-					Configurable: false,
-					Enumerable:   false,
+				if protectedArrayMethods[k] {
+					arrayConstructor.Descriptors[k] = &PropertyDescriptor{
+						Writable:     false,
+						Configurable: false,
+						Enumerable:   false,
+					}
+				} else {
+					arrayConstructor.Descriptors[k] = &PropertyDescriptor{
+						Writable:     true,
+						Configurable: true,
+						Enumerable:   false,
+					}
 				}
 			}
 		}
@@ -1236,15 +1250,36 @@ func (vm *VM) setupBuiltins() {
 
 	objectMethods := GetObjectMethods(vm)
 	objectVal := &Value{Type: "native", BuiltInConstructor: "Object", Obj: objectMethods}
-	// Make Object static methods non-writable and non-configurable to prevent
-	// polyfills (e.g. core-js) from replacing them with broken JS implementations.
-	// Our native Go implementations work correctly; polyfill JS ones do not.
+	// Protect specific Object static methods from polyfill overwrites.
+	// We only protect methods that have native Go implementations which
+	// cannot be correctly replaced by JS polyfills (e.g. Object.assign
+	// because it handles Symbols, Object.getOwnPropertyNames because
+	// our VM stores properties differently from JS). Other methods like
+	// Object.defineProperty should remain writable/configurable so that
+	// user code and libraries can override them when needed (e.g. Vue
+	// Router calls Object.defineProperty inside its constructor).
+	protectedObjectMethods := map[string]bool{
+		"assign":             true,
+		"getOwnPropertyNames": true,
+		"keys":               true,
+		"getPrototypeOf":     true,
+		"create":             true,
+		"is":                 true,
+	}
 	objectDescs := make(map[string]*PropertyDescriptor)
 	for k := range objectMethods {
-		objectDescs[k] = &PropertyDescriptor{
-			Writable:     false,
-			Configurable: false,
-			Enumerable:   false,
+		if protectedObjectMethods[k] {
+			objectDescs[k] = &PropertyDescriptor{
+				Writable:     false,
+				Configurable: false,
+				Enumerable:   false,
+			}
+		} else {
+			objectDescs[k] = &PropertyDescriptor{
+				Writable:     true,
+				Configurable: true,
+				Enumerable:   false,
+			}
 		}
 	}
 	objectVal.Descriptors = objectDescs
