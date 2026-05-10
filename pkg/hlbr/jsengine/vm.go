@@ -524,49 +524,55 @@ func (vm *VM) ResetSteps() {
 func (vm *VM) setupBuiltins() {
 	vm.env.Define("console", &Value{Type: "object", Obj: map[string]*Value{
 		"log": {Type: "native", Native: func(args []*Value) *Value {
-			parts := make([]string, len(args))
-			for i, a := range args {
-				parts[i] = valueToString(a)
+			offset := NativeThisOffset(args)
+			parts := make([]string, 0, len(args))
+			for i := offset; i < len(args); i++ {
+				parts = append(parts, valueToString(args[i]))
 			}
 			vm.output = append(vm.output, strings.Join(parts, " "))
 			return &Value{Type: "undefined"}
 		}},
 		"warn": {Type: "native", Native: func(args []*Value) *Value {
-			parts := make([]string, len(args))
-			for i, a := range args {
-				parts[i] = valueToString(a)
+			offset := NativeThisOffset(args)
+			parts := make([]string, 0, len(args))
+			for i := offset; i < len(args); i++ {
+				parts = append(parts, valueToString(args[i]))
 			}
 			vm.output = append(vm.output, "[warn] "+strings.Join(parts, " "))
 			return &Value{Type: "undefined"}
 		}},
 		"error": {Type: "native", Native: func(args []*Value) *Value {
-			parts := make([]string, len(args))
-			for i, a := range args {
-				parts[i] = valueToString(a)
+			offset := NativeThisOffset(args)
+			parts := make([]string, 0, len(args))
+			for i := offset; i < len(args); i++ {
+				parts = append(parts, valueToString(args[i]))
 			}
 			vm.output = append(vm.output, "[error] "+strings.Join(parts, " "))
 			return &Value{Type: "undefined"}
 		}},
 		"info": {Type: "native", Native: func(args []*Value) *Value {
-			parts := make([]string, len(args))
-			for i, a := range args {
-				parts[i] = valueToString(a)
+			offset := NativeThisOffset(args)
+			parts := make([]string, 0, len(args))
+			for i := offset; i < len(args); i++ {
+				parts = append(parts, valueToString(args[i]))
 			}
 			vm.output = append(vm.output, "[info] "+strings.Join(parts, " "))
 			return &Value{Type: "undefined"}
 		}},
 		"debug": {Type: "native", Native: func(args []*Value) *Value {
-			parts := make([]string, len(args))
-			for i, a := range args {
-				parts[i] = valueToString(a)
+			offset := NativeThisOffset(args)
+			parts := make([]string, 0, len(args))
+			for i := offset; i < len(args); i++ {
+				parts = append(parts, valueToString(args[i]))
 			}
 			vm.output = append(vm.output, "[debug] "+strings.Join(parts, " "))
 			return &Value{Type: "undefined"}
 		}},
 		"trace": {Type: "native", Native: func(args []*Value) *Value {
-			parts := make([]string, len(args))
-			for i, a := range args {
-				parts[i] = valueToString(a)
+			offset := NativeThisOffset(args)
+			parts := make([]string, 0, len(args))
+			for i := offset; i < len(args); i++ {
+				parts = append(parts, valueToString(args[i]))
 			}
 			vm.output = append(vm.output, "[trace] "+strings.Join(parts, " "))
 			return &Value{Type: "undefined"}
@@ -1025,10 +1031,11 @@ func (vm *VM) setupBuiltins() {
 			return &Value{Type: "number", Num: float64(time.Now().UnixNano() / 1e6)}
 		}}
 		dateObj.Obj["parse"] = &Value{Type: "native", Native: func(args []*Value) *Value {
-			if len(args) == 0 || args[0].Type != "string" {
+			off := NativeThisOffset(args)
+			if len(args) <= off || args[off].Type != "string" {
 				return &Value{Type: "number", Num: math.NaN()}
 			}
-			if t, err := time.Parse(time.RFC3339, args[0].Str); err == nil {
+			if t, err := time.Parse(time.RFC3339, args[off].Str); err == nil {
 				return &Value{Type: "number", Num: float64(t.UnixNano() / 1e6)}
 			}
 			return &Value{Type: "number", Num: math.NaN()}
@@ -1138,17 +1145,17 @@ func (vm *VM) setupBuiltins() {
 			return &Value{Type: "bool", Bool: args[offset].Type == "object" && args[offset].Arr != nil}
 		}},
 		"from": {Type: "native", Native: func(args []*Value) *Value {
-			if len(args) < 1 {
+			off := NativeThisOffset(args)
+			if len(args) <= off {
 				return &Value{Type: "object", Arr: []*Value{}}
 			}
-			src := args[0]
+			src := args[off]
 			// Direct array
 			if src.Type == "object" && src.Arr != nil {
-				// Apply map function if provided
-				if len(args) > 1 && args[1].Type == "native" {
+				if len(args) > off+1 && args[off+1].Type == "native" {
 					result := make([]*Value, len(src.Arr))
 					for i, v := range src.Arr {
-						result[i] = args[1].Native([]*Value{v, {Type: "number", Num: float64(i)}})
+						result[i] = args[off+1].Native([]*Value{v, {Type: "number", Num: float64(i)}})
 					}
 					return &Value{Type: "object", Arr: result}
 				}
@@ -1185,10 +1192,9 @@ func (vm *VM) setupBuiltins() {
 									break
 								}
 							}
-							// Apply map function if provided
-							if len(args) > 1 && args[1].Type == "native" {
+							if len(args) > off+1 && args[off+1].Type == "native" {
 								for i, v := range arr {
-									arr[i] = args[1].Native([]*Value{v, {Type: "number", Num: float64(i)}})
+									arr[i] = args[off+1].Native([]*Value{v, {Type: "number", Num: float64(i)}})
 								}
 							}
 							return &Value{Type: "object", Arr: arr}
@@ -1205,7 +1211,8 @@ func (vm *VM) setupBuiltins() {
 			return &Value{Type: "object", Arr: []*Value{}}
 		}},
 		"of": {Type: "native", Native: func(args []*Value) *Value {
-			return &Value{Type: "object", Arr: args}
+			off := NativeThisOffset(args)
+			return &Value{Type: "object", Arr: args[off:]}
 		}},
 	}
 	vm.env.Define("Array", arrayConstructor)
@@ -1906,14 +1913,15 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 		}},
 		"classList": {Type: "object", Obj: map[string]*Value{
 			"add": {Type: "native", Native: func(args []*Value) *Value {
-				if len(args) > 0 {
+				off := NativeThisOffset(args)
+				if len(args) > off {
 					classes := strings.Fields(n.GetAttribute("class"))
 					classSet := make(map[string]bool)
 					for _, c := range classes {
 						classSet[c] = true
 					}
-					for _, a := range args {
-						cls := a.Str
+					for i := off; i < len(args); i++ {
+						cls := args[i].Str
 						if cls != "" && !classSet[cls] {
 							classes = append(classes, cls)
 							classSet[cls] = true
@@ -1924,11 +1932,12 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 				return &Value{Type: "undefined"}
 			}},
 			"remove": {Type: "native", Native: func(args []*Value) *Value {
-				if len(args) > 0 {
+				off := NativeThisOffset(args)
+				if len(args) > off {
 					classes := strings.Fields(n.GetAttribute("class"))
 					removeSet := make(map[string]bool)
-					for _, a := range args {
-						removeSet[a.Str] = true
+					for i := off; i < len(args); i++ {
+						removeSet[args[i].Str] = true
 					}
 					var kept []string
 					for _, c := range classes {
@@ -1941,8 +1950,9 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 				return &Value{Type: "undefined"}
 			}},
 			"toggle": {Type: "native", Native: func(args []*Value) *Value {
-				if len(args) > 0 {
-					cls := args[0].Str
+				off := NativeThisOffset(args)
+				if len(args) > off {
+					cls := args[off].Str
 					classes := strings.Fields(n.GetAttribute("class"))
 					found := false
 					var kept []string
@@ -1964,10 +1974,11 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 				return &Value{Type: "bool", Bool: false}
 			}},
 			"contains": {Type: "native", Native: func(args []*Value) *Value {
-				if len(args) > 0 {
+				off := NativeThisOffset(args)
+				if len(args) > off {
 					classes := strings.Fields(n.GetAttribute("class"))
 					for _, c := range classes {
-						if c == args[0].Str {
+						if c == args[off].Str {
 							return &Value{Type: "bool", Bool: true}
 						}
 					}
@@ -6143,15 +6154,17 @@ func (vm *VM) setupMapSet() {
 		}
 		// Add methods
 		m.Obj["set"] = &Value{Type: "native", Native: func(args []*Value) *Value {
-			if len(args) >= 2 && m.MapData != nil {
-				key := valueToString(args[0])
-				m.MapData[key] = args[1]
+			off := NativeThisOffset(args)
+			if len(args) >= off+2 && m.MapData != nil {
+				key := valueToString(args[off])
+				m.MapData[key] = args[off+1]
 			}
 			return m
 		}}
 		m.Obj["get"] = &Value{Type: "native", Native: func(args []*Value) *Value {
-			if len(args) >= 1 && m.MapData != nil {
-				key := valueToString(args[0])
+			off := NativeThisOffset(args)
+			if len(args) > off && m.MapData != nil {
+				key := valueToString(args[off])
 				if val, ok := m.MapData[key]; ok {
 					return val
 				}
@@ -6159,16 +6172,18 @@ func (vm *VM) setupMapSet() {
 			return &Value{Type: "undefined"}
 		}}
 		m.Obj["has"] = &Value{Type: "native", Native: func(args []*Value) *Value {
-			if len(args) >= 1 && m.MapData != nil {
-				key := valueToString(args[0])
+			off := NativeThisOffset(args)
+			if len(args) > off && m.MapData != nil {
+				key := valueToString(args[off])
 				_, ok := m.MapData[key]
 				return &Value{Type: "bool", Bool: ok}
 			}
 			return &Value{Type: "bool", Bool: false}
 		}}
 		m.Obj["delete"] = &Value{Type: "native", Native: func(args []*Value) *Value {
-			if len(args) >= 1 && m.MapData != nil {
-				key := valueToString(args[0])
+			off := NativeThisOffset(args)
+			if len(args) > off && m.MapData != nil {
+				key := valueToString(args[off])
 				delete(m.MapData, key)
 			}
 			return &Value{Type: "undefined"}
@@ -6193,23 +6208,26 @@ func (vm *VM) setupMapSet() {
 		}
 		// Add methods
 		s.Obj["add"] = &Value{Type: "native", Native: func(args []*Value) *Value {
-			if len(args) >= 1 && s.SetData != nil {
-				key := valueToString(args[0])
+			off := NativeThisOffset(args)
+			if len(args) > off && s.SetData != nil {
+				key := valueToString(args[off])
 				s.SetData[key] = true
 			}
 			return s
 		}}
 		s.Obj["has"] = &Value{Type: "native", Native: func(args []*Value) *Value {
-			if len(args) >= 1 && s.SetData != nil {
-				key := valueToString(args[0])
+			off := NativeThisOffset(args)
+			if len(args) > off && s.SetData != nil {
+				key := valueToString(args[off])
 				_, ok := s.SetData[key]
 				return &Value{Type: "bool", Bool: ok}
 			}
 			return &Value{Type: "bool", Bool: false}
 		}}
 		s.Obj["delete"] = &Value{Type: "native", Native: func(args []*Value) *Value {
-			if len(args) >= 1 && s.SetData != nil {
-				key := valueToString(args[0])
+			off := NativeThisOffset(args)
+			if len(args) > off && s.SetData != nil {
+				key := valueToString(args[off])
 				delete(s.SetData, key)
 			}
 			return &Value{Type: "undefined"}
@@ -6233,15 +6251,17 @@ func (vm *VM) setupMapSet() {
 			Obj:     make(map[string]*Value),
 		}
 		wm.Obj["set"] = &Value{Type: "native", Native: func(args []*Value) *Value {
-			if len(args) >= 2 && wm.MapData != nil {
-				key := valueToString(args[0])
-				wm.MapData[key] = args[1]
+			off := NativeThisOffset(args)
+			if len(args) >= off+2 && wm.MapData != nil {
+				key := valueToString(args[off])
+				wm.MapData[key] = args[off+1]
 			}
 			return wm
 		}}
 		wm.Obj["get"] = &Value{Type: "native", Native: func(args []*Value) *Value {
-			if len(args) >= 1 && wm.MapData != nil {
-				key := valueToString(args[0])
+			off := NativeThisOffset(args)
+			if len(args) > off && wm.MapData != nil {
+				key := valueToString(args[off])
 				if val, ok := wm.MapData[key]; ok {
 					return val
 				}
@@ -6249,16 +6269,18 @@ func (vm *VM) setupMapSet() {
 			return &Value{Type: "undefined"}
 		}}
 		wm.Obj["has"] = &Value{Type: "native", Native: func(args []*Value) *Value {
-			if len(args) >= 1 && wm.MapData != nil {
-				key := valueToString(args[0])
+			off := NativeThisOffset(args)
+			if len(args) > off && wm.MapData != nil {
+				key := valueToString(args[off])
 				_, ok := wm.MapData[key]
 				return &Value{Type: "bool", Bool: ok}
 			}
 			return &Value{Type: "bool", Bool: false}
 		}}
 		wm.Obj["delete"] = &Value{Type: "native", Native: func(args []*Value) *Value {
-			if len(args) >= 1 && wm.MapData != nil {
-				key := valueToString(args[0])
+			off := NativeThisOffset(args)
+			if len(args) > off && wm.MapData != nil {
+				key := valueToString(args[off])
 				delete(wm.MapData, key)
 			}
 			return &Value{Type: "undefined"}
@@ -6275,23 +6297,26 @@ func (vm *VM) setupMapSet() {
 			Obj:     make(map[string]*Value),
 		}
 		ws.Obj["add"] = &Value{Type: "native", Native: func(args []*Value) *Value {
-			if len(args) >= 1 && ws.SetData != nil {
-				key := valueToString(args[0])
+			off := NativeThisOffset(args)
+			if len(args) > off && ws.SetData != nil {
+				key := valueToString(args[off])
 				ws.SetData[key] = true
 			}
 			return ws
 		}}
 		ws.Obj["has"] = &Value{Type: "native", Native: func(args []*Value) *Value {
-			if len(args) >= 1 && ws.SetData != nil {
-				key := valueToString(args[0])
+			off := NativeThisOffset(args)
+			if len(args) > off && ws.SetData != nil {
+				key := valueToString(args[off])
 				_, ok := ws.SetData[key]
 				return &Value{Type: "bool", Bool: ok}
 			}
 			return &Value{Type: "bool", Bool: false}
 		}}
 		ws.Obj["delete"] = &Value{Type: "native", Native: func(args []*Value) *Value {
-			if len(args) >= 1 && ws.SetData != nil {
-				key := valueToString(args[0])
+			off := NativeThisOffset(args)
+			if len(args) > off && ws.SetData != nil {
+				key := valueToString(args[off])
 				delete(ws.SetData, key)
 			}
 			return &Value{Type: "undefined"}
@@ -6423,9 +6448,10 @@ func (vm *VM) setupReflect() {
 	reflectObj := make(map[string]*Value)
 
 	reflectObj["get"] = &Value{Type: "native", Native: func(args []*Value) *Value {
-		if len(args) >= 2 {
-			target := args[0]
-			key := valueToString(args[1])
+		off := NativeThisOffset(args)
+		if len(args) >= off+2 {
+			target := args[off]
+			key := valueToString(args[off+1])
 			if target.Type == "object" && target.Obj != nil {
 				if val, ok := target.Obj[key]; ok {
 					return val
@@ -6436,10 +6462,11 @@ func (vm *VM) setupReflect() {
 	}}
 
 	reflectObj["set"] = &Value{Type: "native", Native: func(args []*Value) *Value {
-		if len(args) >= 3 {
-			target := args[0]
-			key := valueToString(args[1])
-			value := args[2]
+		off := NativeThisOffset(args)
+		if len(args) >= off+3 {
+			target := args[off]
+			key := valueToString(args[off+1])
+			value := args[off+2]
 			if target.Type == "object" && target.Obj != nil {
 				target.Obj[key] = value
 				return &Value{Type: "bool", Bool: true}
@@ -6449,9 +6476,10 @@ func (vm *VM) setupReflect() {
 	}}
 
 	reflectObj["has"] = &Value{Type: "native", Native: func(args []*Value) *Value {
-		if len(args) >= 2 {
-			target := args[0]
-			key := valueToString(args[1])
+		off := NativeThisOffset(args)
+		if len(args) >= off+2 {
+			target := args[off]
+			key := valueToString(args[off+1])
 			if target.Type == "object" && target.Obj != nil {
 				_, ok := target.Obj[key]
 				return &Value{Type: "bool", Bool: ok}
@@ -6461,9 +6489,10 @@ func (vm *VM) setupReflect() {
 	}}
 
 	reflectObj["deleteProperty"] = &Value{Type: "native", Native: func(args []*Value) *Value {
-		if len(args) >= 2 {
-			target := args[0]
-			key := valueToString(args[1])
+		off := NativeThisOffset(args)
+		if len(args) >= off+2 {
+			target := args[off]
+			key := valueToString(args[off+1])
 			if target.Type == "object" && target.Obj != nil {
 				delete(target.Obj, key)
 				return &Value{Type: "bool", Bool: true}
@@ -6473,8 +6502,9 @@ func (vm *VM) setupReflect() {
 	}}
 
 	reflectObj["ownKeys"] = &Value{Type: "native", Native: func(args []*Value) *Value {
-		if len(args) >= 1 {
-			target := args[0]
+		off := NativeThisOffset(args)
+		if len(args) > off {
+			target := args[off]
 			if target.Type == "object" && target.Obj != nil {
 				keys := make([]*Value, 0, len(target.Obj))
 				for k := range target.Obj {
