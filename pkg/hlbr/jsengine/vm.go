@@ -3605,15 +3605,20 @@ func (vm *VM) evalExpr(expr Expression) *Value {
 		// await extracts the value from a Promise
 		promise := vm.evalExpr(e.Expr)
 		if promise.Type == "promise" && promise.Promise != nil {
-			// If promise is fulfilled, return the value
 			if promise.Promise.State == "fulfilled" {
 				return promise.Promise.Value
 			}
-			// If promise is pending, we need to wait for it
-			// For now, we'll process any pending promises synchronously
-			vm.processPendingPromises()
-			if promise.Promise.State == "fulfilled" {
-				return promise.Promise.Value
+			if promise.Promise.State == "pending" {
+				vm.DrainMicrotasks()
+				if promise.Promise.State == "fulfilled" {
+					return promise.Promise.Value
+				}
+				if promise.Promise.State == "rejected" {
+					return promise.Promise.Rejection
+				}
+			}
+			if promise.Promise.State == "rejected" {
+				return promise.Promise.Rejection
 			}
 		}
 		return promise

@@ -1096,7 +1096,7 @@ func (b *Browser) Click(selector string) error {
 				var apps2=window.__spaRouter.apps;
 				function findSubmitFormVM(vm){
 					if(!vm)return null;
-					if(vm.submitForm!==undefined&&vm.$refs)return vm;
+					if(vm.submitForm!==undefined)return vm;
 					if(vm.$children){for(var i=0;i<vm.$children.length;i++){var r=findSubmitFormVM(vm.$children[i]);if(r)return r}}
 					return null;
 				}
@@ -1109,12 +1109,14 @@ func (b *Browser) Click(selector string) error {
 						}
 					}
 					if(vm){
-						var refNames=Object.keys(vm.$refs);
+						var validated=false;
+						var refNames=Object.keys(vm.$refs||{});
 						for(var r=0;r<refNames.length;r++){
 							var ref=vm.$refs[refNames[r]];
 							if(ref&&typeof ref.validate==="function"){
 								ref.validate(function(valid){
 									if(!valid)return;
+									validated=true;
 									vm.loading=true;
 									if(typeof axios!=="undefined"&&vm.ruleForm){
 										var apiBase=(window.ajaxBaseUrl||"")+(window.ajaxUrl||"/sl/");
@@ -1138,6 +1140,27 @@ func (b *Browser) Click(selector string) error {
 								});
 								found=true;break
 							}
+						}
+						if(!found&&vm.ruleForm&&typeof axios!=="undefined"){
+							vm.loading=true;
+							var apiBase2=(window.ajaxBaseUrl||"")+(window.ajaxUrl||"/sl/");
+							axios({url:apiBase2+"v2/rsapub",method:"get",headers:{}}).then(function(resp){
+								if(resp.data&&resp.data.data){
+									return axios({url:apiBase2+"v2/login",method:"post",data:{account:vm.ruleForm.username,password:vm.ruleForm.password,rsa_id:resp.data.data.rsa_id},headers:{}});
+								}
+								return Promise.reject(new Error("rsapub failed"));
+							}).then(function(resp){
+								vm.loading=false;
+								if(resp.data&&resp.data.data){
+									var tok=resp.data.data.token;
+									localStorage.setItem("token",tok);
+									localStorage.setItem("authorized","true");
+									if(vm.$router)vm.$router.push("/");
+								}
+							}).catch(function(e){
+								vm.loading=false;
+							});
+							found=true;break;
 						}
 					}
 					if(found)break;
