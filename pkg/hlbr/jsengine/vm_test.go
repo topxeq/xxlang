@@ -442,3 +442,282 @@ func TestDateConstructor(t *testing.T) {
 		t.Errorf("Date.toISOString: expected 'function', got %v", valStr(result))
 	}
 }
+
+// TestConsoleNativeThisOffset verifies that console.log etc. do not
+// include the console object itself in the output. This was a bug where
+// NativeThisOffset was not used, causing the 'this' arg to shift all
+// parameters by one position.
+func TestConsoleNativeThisOffset(t *testing.T) {
+	vm := NewVM(dom.NewDocument())
+
+	// console.log with one argument should output just that argument
+	result, err := vm.Run(`console.log("hello")`)
+	if err != nil {
+		t.Fatalf("console.log: unexpected error: %v", err)
+	}
+	_ = result
+
+	// console.log with multiple arguments
+	result, err = vm.Run(`console.log("a", "b", "c")`)
+	if err != nil {
+		t.Fatalf("console.log multi: unexpected error: %v", err)
+	}
+	_ = result
+}
+
+// TestMapSetNativeThisOffset verifies that Map/Set instance methods
+// correctly skip the prepended 'this' argument when called as methods.
+func TestMapSetNativeThisOffset(t *testing.T) {
+	vm := NewVM(dom.NewDocument())
+
+	// Map methods
+	result, err := vm.Run(`
+		var m = new Map();
+		m.set("key1", "value1");
+		m.get("key1");
+	`)
+	if err != nil {
+		t.Fatalf("Map.set/get: unexpected error: %v", err)
+	}
+	if valStr(result) != "value1" {
+		t.Errorf("Map.get: expected 'value1', got %v", valStr(result))
+	}
+
+	result, err = vm.Run(`
+		var m = new Map();
+		m.set("k", "v");
+		m.has("k");
+	`)
+	if err != nil {
+		t.Fatalf("Map.has: unexpected error: %v", err)
+	}
+	if !valBool(result) {
+		t.Errorf("Map.has: expected true, got %v", valBool(result))
+	}
+
+	result, err = vm.Run(`
+		var m = new Map();
+		m.set("k", "v");
+		m.delete("k");
+		m.has("k");
+	`)
+	if err != nil {
+		t.Fatalf("Map.delete: unexpected error: %v", err)
+	}
+	if valBool(result) {
+		t.Errorf("Map.has after delete: expected false, got true")
+	}
+
+	// Set methods
+	result, err = vm.Run(`
+		var s = new Set();
+		s.add("item1");
+		s.has("item1");
+	`)
+	if err != nil {
+		t.Fatalf("Set.add/has: unexpected error: %v", err)
+	}
+	if !valBool(result) {
+		t.Errorf("Set.has: expected true, got %v", valBool(result))
+	}
+
+	result, err = vm.Run(`
+		var s = new Set();
+		s.add("x");
+		s.delete("x");
+		s.has("x");
+	`)
+	if err != nil {
+		t.Fatalf("Set.delete: unexpected error: %v", err)
+	}
+	if valBool(result) {
+		t.Errorf("Set.has after delete: expected false, got true")
+	}
+}
+
+// TestLocalStorageNativeThisOffset verifies that localStorage/sessionStorage
+// methods correctly skip the prepended 'this' argument.
+func TestLocalStorageNativeThisOffset(t *testing.T) {
+	vm := NewVM(dom.NewDocument())
+
+	result, err := vm.Run(`
+		localStorage.setItem("testKey", "testValue");
+		localStorage.getItem("testKey");
+	`)
+	if err != nil {
+		t.Fatalf("localStorage.setItem/getItem: unexpected error: %v", err)
+	}
+	if valStr(result) != "testValue" {
+		t.Errorf("localStorage.getItem: expected 'testValue', got %v", valStr(result))
+	}
+
+	result, err = vm.Run(`
+		localStorage.removeItem("testKey");
+		localStorage.getItem("testKey");
+	`)
+	if err != nil {
+		t.Fatalf("localStorage.removeItem: unexpected error: %v", err)
+	}
+	if valStr(result) != "undefined" && result.Type != "undefined" && valStr(result) != "" {
+		t.Errorf("localStorage.getItem after remove: expected undefined/empty, got %v (type=%s)", valStr(result), result.Type)
+	}
+
+	// sessionStorage
+	result, err = vm.Run(`
+		sessionStorage.setItem("sk", "sv");
+		sessionStorage.getItem("sk");
+	`)
+	if err != nil {
+		t.Fatalf("sessionStorage: unexpected error: %v", err)
+	}
+	if valStr(result) != "sv" {
+		t.Errorf("sessionStorage.getItem: expected 'sv', got %v", valStr(result))
+	}
+}
+
+// TestReflectNativeThisOffset verifies that Reflect methods correctly
+// skip the prepended 'this' argument.
+func TestReflectNativeThisOffset(t *testing.T) {
+	vm := NewVM(dom.NewDocument())
+
+	result, err := vm.Run(`
+		var obj = {x: 42};
+		Reflect.get(obj, "x");
+	`)
+	if err != nil {
+		t.Fatalf("Reflect.get: unexpected error: %v", err)
+	}
+	if result.Num != 42 {
+		t.Errorf("Reflect.get: expected 42, got %v", result.Num)
+	}
+
+	result, err = vm.Run(`
+		var obj = {};
+		Reflect.set(obj, "y", 99);
+		obj.y;
+	`)
+	if err != nil {
+		t.Fatalf("Reflect.set: unexpected error: %v", err)
+	}
+	if result.Num != 99 {
+		t.Errorf("Reflect.set: expected 99, got %v", result.Num)
+	}
+
+	result, err = vm.Run(`
+		var obj = {z: 1};
+		Reflect.has(obj, "z");
+	`)
+	if err != nil {
+		t.Fatalf("Reflect.has: unexpected error: %v", err)
+	}
+	if !valBool(result) {
+		t.Errorf("Reflect.has: expected true, got %v", valBool(result))
+	}
+
+	result, err = vm.Run(`
+		var obj = {a: 1};
+		Reflect.deleteProperty(obj, "a");
+		Reflect.has(obj, "a");
+	`)
+	if err != nil {
+		t.Fatalf("Reflect.deleteProperty: unexpected error: %v", err)
+	}
+	if valBool(result) {
+		t.Errorf("Reflect.has after delete: expected false, got true")
+	}
+}
+
+// TestDefinePropertyGetterSetter verifies that Object.defineProperty
+// getters and setters work correctly when reading/writing properties.
+func TestDefinePropertyGetterSetter(t *testing.T) {
+	vm := NewVM(dom.NewDocument())
+
+	result, err := vm.Run(`
+		var obj = {};
+		var count = 0;
+		Object.defineProperty(obj, "dynamic", {
+			get: function() { count++; return count; },
+			configurable: true
+		});
+		var a = obj.dynamic;
+		var b = obj.dynamic;
+		a + "," + b;
+	`)
+	if err != nil {
+		t.Fatalf("getter: unexpected error: %v", err)
+	}
+	if valStr(result) != "1,2" {
+		t.Errorf("getter: expected '1,2', got %v", valStr(result))
+	}
+
+	result, err = vm.Run(`
+		var obj = {_val: 0};
+		Object.defineProperty(obj, "val", {
+			get: function() { return this._val; },
+			set: function(v) { this._val = v * 2; },
+			configurable: true
+		});
+		obj.val = 10;
+		obj.val;
+	`)
+	if err != nil {
+		t.Fatalf("setter: unexpected error: %v", err)
+	}
+	if result.Num != 20 {
+		t.Errorf("setter: expected 20, got %v", result.Num)
+	}
+}
+
+// TestClassListNativeThisOffset verifies that classList methods
+// correctly skip the prepended 'this' argument.
+func TestClassListNativeThisOffset(t *testing.T) {
+	vm := NewVM(dom.NewDocument())
+
+	result, err := vm.Run(`
+		var el = document.createElement("div");
+		el.className = "foo bar";
+		el.classList.add("baz");
+		el.classList.contains("baz");
+	`)
+	if err != nil {
+		t.Fatalf("classList.add: unexpected error: %v", err)
+	}
+	if !valBool(result) {
+		t.Errorf("classList.contains after add: expected true, got false")
+	}
+
+	result, err = vm.Run(`
+		var el = document.createElement("div");
+		el.className = "foo bar";
+		el.classList.remove("foo");
+		el.classList.contains("foo");
+	`)
+	if err != nil {
+		t.Fatalf("classList.remove: unexpected error: %v", err)
+	}
+	if valBool(result) {
+		t.Errorf("classList.contains after remove: expected false, got true")
+	}
+}
+
+// TestArrayFromNativeThisOffset verifies that Array.from and Array.of
+// correctly skip the prepended 'this' argument.
+func TestArrayFromNativeThisOffset(t *testing.T) {
+	vm := NewVM(dom.NewDocument())
+
+	result, err := vm.Run(`Array.from([1, 2, 3]).length`)
+	if err != nil {
+		t.Fatalf("Array.from: unexpected error: %v", err)
+	}
+	if result.Num != 3 {
+		t.Errorf("Array.from: expected 3, got %v", result.Num)
+	}
+
+	result, err = vm.Run(`Array.of(1, 2, 3).length`)
+	if err != nil {
+		t.Fatalf("Array.of: unexpected error: %v", err)
+	}
+	if result.Num != 3 {
+		t.Errorf("Array.of: expected 3, got %v", result.Num)
+	}
+}

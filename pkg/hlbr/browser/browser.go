@@ -499,6 +499,11 @@ func (b *Browser) executeScripts() {
 		// window so that users can find and interact with Vue components
 		// directly (e.g., setting data via vm._data, calling methods).
 		b.vm.Run(`try{if(typeof Vue==="function"&&window.__spaRouter&&window.__spaRouter.apps){window.__vueInstances__=window.__spaRouter.apps}}catch(e){}`)
+		// Fix VueRouter.currentRoute getter. In our headless VM, Object.defineProperty
+		// called during VueRouter construction may not properly register the getter
+		// for currentRoute, causing router.currentRoute to be undefined. We re-define
+		// it to delegate to router.history.current (which is correctly set).
+		b.vm.Run(`try{if(window.__spaRouter&&window.__spaRouter.history){Object.defineProperty(window.__spaRouter,"currentRoute",{get:function(){return this.history.current},configurable:true})}}catch(e){}`)
 		// Bind v-model: sync DOM input events → Vue data, and Vue data → DOM values.
 		// In our headless VM, Vue's reactivity system does not run properly, so
 		// v-model two-way binding is broken. We install global helper functions
