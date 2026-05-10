@@ -779,3 +779,128 @@ func TestPromiseChaining(t *testing.T) {
 		t.Errorf("deep chaining: expected 3, got %v", result.Num)
 	}
 }
+
+func TestStringRepeatPadTrim(t *testing.T) {
+	vm := NewVM(dom.NewDocument())
+
+	r, _ := vm.Run(`"ab".repeat(3)`)
+	if r.Str != "ababab" {
+		t.Errorf("repeat: expected ababab, got %s", r.Str)
+	}
+
+	r, _ = vm.Run(`"hi".padStart(5, "x")`)
+	if r.Str != "xxxhi" {
+		t.Errorf("padStart: expected xxxhi, got %s", r.Str)
+	}
+
+	r, _ = vm.Run(`"hi".padEnd(5, "x")`)
+	if r.Str != "hixxx" {
+		t.Errorf("padEnd: expected hixxx, got %s", r.Str)
+	}
+
+	r, _ = vm.Run(`"  hi  ".trimStart()`)
+	if r.Str != "hi  " {
+		t.Errorf("trimStart: expected 'hi  ', got '%s'", r.Str)
+	}
+
+	r, _ = vm.Run(`"  hi  ".trimEnd()`)
+	if r.Str != "  hi" {
+		t.Errorf("trimEnd: expected '  hi', got '%s'", r.Str)
+	}
+}
+
+func TestArrayFlatFill(t *testing.T) {
+	vm := NewVM(dom.NewDocument())
+
+	r, _ := vm.Run(`[1, [2, [3]]].flat()`)
+	if r.Type != "object" || r.Arr == nil || len(r.Arr) != 3 {
+		t.Errorf("flat: expected 3 elements, got type=%s len=%v", r.Type, len(r.Arr))
+	}
+
+	r, _ = vm.Run(`[1, 2, 3].fill(0, 1, 2)`)
+	if r.Arr == nil || r.Arr[0].Num != 1 || r.Arr[1].Num != 0 || r.Arr[2].Num != 3 {
+		t.Errorf("fill: expected [1,0,3], got %v", r.Arr)
+	}
+
+	r, _ = vm.Run(`[1, [2, [3]]].flat(2)`)
+	if r.Type != "object" || r.Arr == nil || len(r.Arr) != 3 {
+		t.Errorf("flat(2): expected 3 elements, got type=%s len=%v", r.Type, len(r.Arr))
+	}
+}
+
+func TestObjectIs(t *testing.T) {
+	vm := NewVM(dom.NewDocument())
+
+	r, _ := vm.Run(`Object.is(NaN, NaN)`)
+	if !r.Bool {
+		t.Error("Object.is(NaN, NaN) should be true")
+	}
+
+	r, _ = vm.Run(`Object.is(0, -0)`)
+	if r.Bool {
+		t.Error("Object.is(0, -0) should be false")
+	}
+
+	r, _ = vm.Run(`Object.is(-0, -0)`)
+	if !r.Bool {
+		t.Error("Object.is(-0, -0) should be true")
+	}
+
+	r, _ = vm.Run(`Object.is("a", "a")`)
+	if !r.Bool {
+		t.Error("Object.is('a', 'a') should be true")
+	}
+}
+
+func TestPromiseAll(t *testing.T) {
+	vm := NewVM(dom.NewDocument())
+
+	vm.Run(`
+		var allResult = -1;
+		Promise.all([Promise.resolve(1), Promise.resolve(2), Promise.resolve(3)]).then(function(vals) {
+			allResult = vals.length;
+		});
+	`)
+	r, _ := vm.Run(`allResult`)
+	if r.Num != 3 {
+		t.Errorf("Promise.all resolved: expected 3, got %v", r.Num)
+	}
+
+	vm.Run(`
+		var allResult2 = -1;
+		Promise.all([1, 2, 3]).then(function(vals) {
+			allResult2 = vals.length;
+		});
+	`)
+	r, _ = vm.Run(`allResult2`)
+	if r.Num != 3 {
+		t.Errorf("Promise.all non-promise: expected 3, got %v", r.Num)
+	}
+}
+
+func TestPromiseExecutorResolve(t *testing.T) {
+	vm := NewVM(dom.NewDocument())
+
+	vm.Run(`
+		var execResult = "pending";
+		new Promise(function(r) { r("hello"); }).then(function(v) { execResult = v; });
+	`)
+	r, _ := vm.Run(`execResult`)
+	if r.Str != "hello" {
+		t.Errorf("Promise executor resolve: expected hello, got %s", r.Str)
+	}
+}
+
+func TestMutationObserverStub(t *testing.T) {
+	vm := NewVM(dom.NewDocument())
+
+	r, _ := vm.Run(`typeof MutationObserver`)
+	if r.Str != "function" {
+		t.Errorf("MutationObserver typeof: expected function, got %s", r.Str)
+	}
+
+	r, _ = vm.Run(`var obs = new MutationObserver(function(){}); typeof obs.observe`)
+	if r.Str != "function" {
+		t.Errorf("MutationObserver.observe typeof: expected function, got %s", r.Str)
+	}
+}

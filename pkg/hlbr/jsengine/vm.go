@@ -1614,6 +1614,47 @@ func (vm *VM) setupBuiltins() {
 		windowObj.Obj["frames"] = windowObj
 		windowObj.Obj["window"] = windowObj
 	}
+
+	// MutationObserver stub — accepts construction and observe/disconnect calls
+	// but does not actually observe DOM mutations in the headless VM.
+	vm.env.Define("MutationObserver", &Value{Type: "native", Native: func(args []*Value) *Value {
+		callback := &Value{Type: "undefined"}
+		if len(args) > 0 {
+			callback = args[0]
+		}
+		_ = callback
+		return &Value{Type: "object", Obj: map[string]*Value{
+			"observe":   {Type: "native", Native: func(args []*Value) *Value { return &Value{Type: "undefined"} }},
+			"disconnect": {Type: "native", Native: func(args []*Value) *Value { return &Value{Type: "undefined"} }},
+			"takeRecords": {Type: "native", Native: func(args []*Value) *Value { return &Value{Type: "object", Arr: []*Value{}} }},
+		}}
+	}})
+
+	// ResizeObserver stub
+	vm.env.Define("ResizeObserver", &Value{Type: "native", Native: func(args []*Value) *Value {
+		return &Value{Type: "object", Obj: map[string]*Value{
+			"observe":   {Type: "native", Native: func(args []*Value) *Value { return &Value{Type: "undefined"} }},
+			"unobserve": {Type: "native", Native: func(args []*Value) *Value { return &Value{Type: "undefined"} }},
+			"disconnect": {Type: "native", Native: func(args []*Value) *Value { return &Value{Type: "undefined"} }},
+		}}
+	}})
+
+	// IntersectionObserver stub
+	vm.env.Define("IntersectionObserver", &Value{Type: "native", Native: func(args []*Value) *Value {
+		return &Value{Type: "object", Obj: map[string]*Value{
+			"observe":   {Type: "native", Native: func(args []*Value) *Value { return &Value{Type: "undefined"} }},
+			"unobserve": {Type: "native", Native: func(args []*Value) *Value { return &Value{Type: "undefined"} }},
+			"disconnect": {Type: "native", Native: func(args []*Value) *Value { return &Value{Type: "undefined"} }},
+			"takeRecords": {Type: "native", Native: func(args []*Value) *Value { return &Value{Type: "object", Arr: []*Value{}} }},
+		}}
+	}})
+
+	// Also add observers to window object
+	if windowObj != nil && windowObj.Obj != nil {
+		windowObj.Obj["MutationObserver"] = vm.env.Get("MutationObserver")
+		windowObj.Obj["ResizeObserver"] = vm.env.Get("ResizeObserver")
+		windowObj.Obj["IntersectionObserver"] = vm.env.Get("IntersectionObserver")
+	}
 }
 
 func (vm *VM) wrapNode(n *dom.Node) *Value {
@@ -5983,7 +6024,6 @@ func (vm *VM) setupPromise() {
 				if len(args) > 0 {
 					p.Value = args[0]
 				}
-				// Call all onFulfill callbacks
 				for _, entry := range p.OnFulfill {
 					vm.microtaskQueue = append(vm.microtaskQueue, microtask{
 						callback:       entry.Callback,
@@ -6013,17 +6053,9 @@ func (vm *VM) setupPromise() {
 			return &Value{Type: "undefined"}
 		}}
 
-		// Execute the executor function
+		// Execute the executor function with (resolve, reject) as arguments
 		if executor.Type == "function" && executor.Func != nil {
-			childEnv := NewEnvironment(executor.Func.Env)
-			childEnv.Define("resolve", resolve)
-			childEnv.Define("reject", reject)
-			oldEnv := vm.env
-			vm.env = childEnv
-			for _, stmt := range executor.Func.Body {
-				vm.execStmt(stmt)
-			}
-			vm.env = oldEnv
+			vm.callFunction(executor, []*Value{resolve, reject})
 		} else if executor.Type == "native" && executor.Native != nil {
 			executor.Native([]*Value{resolve, reject})
 		}
@@ -6064,42 +6096,88 @@ func (vm *VM) setupPromise() {
 	// Promise.all static method
 	promiseAll := &Value{Type: "native", Native: func(args []*Value) *Value {
 		offset := nativeThisOffset(args)
-		if len(args) <= offset {
-			return &Value{Type: "promise", Promise: &Promise{
-				State:     "fulfilled",
-				Value:     &Value{Type: "object", Arr: []*Value{}},
-				OnFulfill: make([]PromiseThenEntry, 0),
-				OnReject:  make([]PromiseThenEntry, 0),
-				Env:       vm.env,
-			}}
-		}
-		promises := args[offset]
-		if promises.Type != "object" || promises.Arr == nil {
-			return &Value{Type: "promise", Promise: &Promise{
-				State:     "rejected",
-				Rejection: &Value{Type: "string", Str: "Promise.all requires an array"},
-				OnFulfill: make([]PromiseThenEntry, 0),
-				OnReject:  make([]PromiseThenEntry, 0),
-				Env:       vm.env,
-			}}
-		}
-		results := make([]*Value, len(promises.Arr))
-		for i, p := range promises.Arr {
-			if p.Type == "promise" && p.Promise != nil && p.Promise.State == "fulfilled" {
-				results[i] = p.Promise.Value
-			} else if p.Type != "promise" {
-				results[i] = p
-			} else {
-				results[i] = &Value{Type: "undefined"}
-			}
-		}
-		return &Value{Type: "promise", Promise: &Promise{
-			State:     "fulfilled",
-			Value:     &Value{Type: "object", Arr: results},
+		rp := &Value{Type: "promise", Promise: &Promise{
+			State:     "pending",
 			OnFulfill: make([]PromiseThenEntry, 0),
 			OnReject:  make([]PromiseThenEntry, 0),
 			Env:       vm.env,
 		}}
+		if len(args) <= offset {
+			rp.Promise.State = "fulfilled"
+			rp.Promise.Value = &Value{Type: "object", Arr: []*Value{}}
+			return rp
+		}
+		promises := args[offset]
+		if promises.Type != "object" || promises.Arr == nil {
+			rp.Promise.State = "rejected"
+			rp.Promise.Rejection = &Value{Type: "string", Str: "Promise.all requires an array"}
+			return rp
+		}
+		arr := promises.Arr
+		if len(arr) == 0 {
+			rp.Promise.State = "fulfilled"
+			rp.Promise.Value = &Value{Type: "object", Arr: []*Value{}}
+			return rp
+		}
+		results := make([]*Value, len(arr))
+		remaining := &struct{ n int }{n: len(arr)}
+		rejected := false
+		for i, p := range arr {
+			idx := i
+			if p.Type == "promise" && p.Promise != nil {
+				if p.Promise.State == "fulfilled" {
+					results[idx] = p.Promise.Value
+					remaining.n--
+				} else if p.Promise.State == "rejected" {
+					if !rejected {
+						rejected = true
+						rp.Promise.State = "rejected"
+						rp.Promise.Rejection = p.Promise.Rejection
+					}
+				} else {
+					// Pending: attach then/catch
+					resolveCB := &Value{Type: "native", Native: func(cbArgs []*Value) *Value {
+						if rejected {
+							return &Value{Type: "undefined"}
+						}
+						val := &Value{Type: "undefined"}
+						if len(cbArgs) > 0 {
+							val = cbArgs[0]
+						}
+						results[idx] = val
+						remaining.n--
+						if remaining.n == 0 {
+							rp.Promise.State = "fulfilled"
+							rp.Promise.Value = &Value{Type: "object", Arr: results}
+							vm.resolvePromise(rp, rp.Promise.Value)
+						}
+						return &Value{Type: "undefined"}
+					}}
+					rejectCB := &Value{Type: "native", Native: func(cbArgs []*Value) *Value {
+						if !rejected {
+							rejected = true
+							rp.Promise.State = "rejected"
+							if len(cbArgs) > 0 {
+								rp.Promise.Rejection = cbArgs[0]
+							} else {
+								rp.Promise.Rejection = &Value{Type: "undefined"}
+							}
+						}
+						return &Value{Type: "undefined"}
+					}}
+					p.Promise.OnFulfill = append(p.Promise.OnFulfill, PromiseThenEntry{Callback: resolveCB})
+					p.Promise.OnReject = append(p.Promise.OnReject, PromiseThenEntry{Callback: rejectCB})
+				}
+			} else {
+				results[idx] = p
+				remaining.n--
+			}
+		}
+		if !rejected && remaining.n == 0 {
+			rp.Promise.State = "fulfilled"
+			rp.Promise.Value = &Value{Type: "object", Arr: results}
+		}
+		return rp
 	}}
 
 	// Promise.race static method

@@ -8,6 +8,24 @@ import (
 	"strings"
 )
 
+// sameValue implements ECMAScript SameValue comparison (Object.is semantics).
+// Differs from === in two ways: NaN === NaN is true, and -0 !== +0.
+func sameValue(a, b *Value) bool {
+	if a.Type != b.Type {
+		return false
+	}
+	if a.Type == "number" {
+		if math.IsNaN(a.Num) && math.IsNaN(b.Num) {
+			return true
+		}
+		if a.Num == 0 && b.Num == 0 {
+			return math.Signbit(a.Num) == math.Signbit(b.Num)
+		}
+		return a.Num == b.Num
+	}
+	return valuesStrictEqualSameType(a, b)
+}
+
 // PropertyDescriptor represents a JavaScript property descriptor.
 type PropertyDescriptor struct {
 	Value          *Value
@@ -1150,7 +1168,7 @@ func GetObjectMethods(vm *VM) map[string]*Value {
 			if len(args) <= offset+1 {
 				return &Value{Type: "bool", Bool: false}
 			}
-			return &Value{Type: "bool", Bool: valuesStrictEqual(args[offset], args[offset+1])}
+			return &Value{Type: "bool", Bool: sameValue(args[offset], args[offset+1])}
 		}},
 		// Object.getOwnPropertyNames(obj) — returns all own property names
 		// (enumerable and non-enumerable), but not Symbol-keyed properties.
@@ -1684,7 +1702,9 @@ func isStringMethod(name string) bool {
 	case "charAt", "charCodeAt", "concat", "includes", "endsWith",
 		"indexOf", "lastIndexOf", "match", "replace", "search",
 		"slice", "split", "startsWith", "substr", "substring",
-		"toLowerCase", "toUpperCase", "trim", "length":
+		"toLowerCase", "toUpperCase", "trim", "trimStart", "trimEnd",
+		"repeat", "padStart", "padEnd", "codePointAt",
+		"normalize", "localeCompare", "toString", "valueOf":
 		return true
 	}
 	return false
@@ -2008,6 +2028,53 @@ func callStringMethod(name string, str string, args []*Value, vm *VM) *Value {
 			return &Value{Type: "number", Num: -1}
 		}
 		return &Value{Type: "number", Num: float64(loc[0])}
+	case "repeat":
+		count := 0
+		if len(args) >= 1 && args[0].Type == "number" {
+			count = int(args[0].Num)
+		}
+		if count < 0 {
+			return &Value{Type: "undefined"}
+		}
+		return &Value{Type: "string", Str: strings.Repeat(str, count)}
+	case "trimStart":
+		return &Value{Type: "string", Str: strings.TrimLeft(str, " \t\n\r")}
+	case "trimEnd":
+		return &Value{Type: "string", Str: strings.TrimRight(str, " \t\n\r")}
+	case "padStart":
+		targetLen := 0
+		if len(args) >= 1 && args[0].Type == "number" {
+			targetLen = int(args[0].Num)
+		}
+		padStr := " "
+		if len(args) >= 2 && args[1].Type == "string" {
+			padStr = args[1].Str
+		}
+		if targetLen <= len(str) {
+			return &Value{Type: "string", Str: str}
+		}
+		padCount := targetLen - len(str)
+		pad := strings.Repeat(padStr, padCount/len(padStr)+1)
+		return &Value{Type: "string", Str: pad[:padCount] + str}
+	case "padEnd":
+		targetLen := 0
+		if len(args) >= 1 && args[0].Type == "number" {
+			targetLen = int(args[0].Num)
+		}
+		padStr := " "
+		if len(args) >= 2 && args[1].Type == "string" {
+			padStr = args[1].Str
+		}
+		if targetLen <= len(str) {
+			return &Value{Type: "string", Str: str}
+		}
+		padCount := targetLen - len(str)
+		pad := strings.Repeat(padStr, padCount/len(padStr)+1)
+		return &Value{Type: "string", Str: str + pad[:padCount]}
+	case "toString":
+		return &Value{Type: "string", Str: str}
+	case "valueOf":
+		return &Value{Type: "string", Str: str}
 	default:
 		return &Value{Type: "undefined"}
 	}
@@ -2279,6 +2346,165 @@ func callArrayMethod(name string, obj *Value, args []*Value, vm *VM) *Value {
 		return acc
 	case "length":
 		return &Value{Type: "number", Num: float64(len(arr))}
+	case "flat":
+		depth := 1
+		if len(args) >= 1 && args[0].Type == "number" {
+			depth = int(args[0].Num)
+		}
+		var flatten func([]*Value, int) []*Value
+		flatten = func(a []*Value, d int) []*Value {
+			result := make([]*Value, 0)
+			for _, v := range a {
+				if v.Type == "object" && v.Arr != nil && d > 0 {
+					result = append(result, flatten(v.Arr, d-1)...)
+				} else {
+					result = append(result, v)
+				}
+			}
+			return result
+		}
+		return &Value{Type: "object", Arr: flatten(arr, depth)}
+	case "flatMap":
+		mapped := callArrayMethod("map", obj, args, vm)
+		if mapped.Type == "object" && mapped.Arr != nil {
+			return &Value{Type: "object", Arr: mapped.Arr}
+		}
+		return &Value{Type: "object", Arr: []*Value{}}
+	case "fill":
+		if len(args) < 1 {
+			return obj
+		}
+		val := args[0]
+		start, end := 0, len(arr)
+		if len(args) >= 2 && args[1].Type == "number" {
+			start = int(args[1].Num)
+			if start < 0 {
+				start = len(arr) + start
+			}
+			if start < 0 {
+				start = 0
+			}
+		}
+		if len(args) >= 3 && args[2].Type == "number" {
+			end = int(args[2].Num)
+			if end < 0 {
+				end = len(arr) + end
+			}
+			if end > len(arr) {
+				end = len(arr)
+			}
+		}
+		if start > len(arr) {
+			start = len(arr)
+		}
+		for i := start; i < end; i++ {
+			arr[i] = val
+		}
+		return obj
+	case "copyWithin":
+		if len(args) < 1 {
+			return obj
+		}
+		tgt := int(args[0].Num)
+		srcStart := 0
+		srcEnd := len(arr)
+		if len(args) >= 2 && args[1].Type == "number" {
+			srcStart = int(args[1].Num)
+		}
+		if len(args) >= 3 && args[2].Type == "number" {
+			srcEnd = int(args[2].Num)
+		}
+		if tgt < 0 {
+			tgt = len(arr) + tgt
+		}
+		if srcStart < 0 {
+			srcStart = len(arr) + srcStart
+		}
+		if srcEnd < 0 {
+			srcEnd = len(arr) + srcEnd
+		}
+		if tgt > len(arr) || srcStart >= srcEnd {
+			return obj
+		}
+		newArr := make([]*Value, len(arr))
+		copy(newArr, arr)
+		for i := 0; tgt+i < len(arr) && srcStart+i < srcEnd; i++ {
+			newArr[tgt+i] = arr[srcStart+i]
+		}
+		obj.Arr = newArr
+		return obj
+	case "at":
+		if len(args) < 1 {
+			return &Value{Type: "undefined"}
+		}
+		idx := int(args[0].Num)
+		if idx < 0 {
+			idx = len(arr) + idx
+		}
+		if idx < 0 || idx >= len(arr) {
+			return &Value{Type: "undefined"}
+		}
+		return arr[idx]
+	case "toReversed":
+		newArr := make([]*Value, len(arr))
+		copy(newArr, arr)
+		for i, j := 0, len(newArr)-1; i < j; i, j = i+1, j-1 {
+			newArr[i], newArr[j] = newArr[j], newArr[i]
+		}
+		return &Value{Type: "object", Arr: newArr}
+	case "toSorted":
+		newArr := make([]*Value, len(arr))
+		copy(newArr, arr)
+		if len(args) >= 1 && (args[0].Type == "function" || args[0].Type == "native") {
+			sort.SliceStable(newArr, func(i, j int) bool {
+				result := vm.callFunction(args[0], []*Value{newArr[i], newArr[j], &Value{Type: "number", Num: float64(i)}, &Value{Type: "number", Num: float64(j)}})
+				return result.Num < 0
+			})
+		} else {
+			sort.SliceStable(newArr, func(i, j int) bool {
+				return valueToString(newArr[i]) < valueToString(newArr[j])
+			})
+		}
+		return &Value{Type: "object", Arr: newArr}
+	case "toSpliced":
+		start2 := 0
+		if len(args) >= 1 && args[0].Type == "number" {
+			start2 = int(args[0].Num)
+			if start2 < 0 {
+				start2 = len(arr) + start2
+			}
+		}
+		deleteCount := len(arr) - start2
+		if len(args) >= 2 && args[1].Type == "number" {
+			deleteCount = int(args[1].Num)
+		}
+		if start2 > len(arr) {
+			start2 = len(arr)
+		}
+		if start2+deleteCount > len(arr) {
+			deleteCount = len(arr) - start2
+		}
+		items := args[2:]
+		newArr := make([]*Value, 0, len(arr)-deleteCount+len(items))
+		newArr = append(newArr, arr[:start2]...)
+		newArr = append(newArr, items...)
+		newArr = append(newArr, arr[start2+deleteCount:]...)
+		return &Value{Type: "object", Arr: newArr}
+	case "with":
+		if len(args) < 2 {
+			return &Value{Type: "undefined"}
+		}
+		idx := int(args[0].Num)
+		if idx < 0 {
+			idx = len(arr) + idx
+		}
+		if idx < 0 || idx >= len(arr) {
+			return &Value{Type: "undefined"}
+		}
+		newArr := make([]*Value, len(arr))
+		copy(newArr, arr)
+		newArr[idx] = args[1]
+		return &Value{Type: "object", Arr: newArr}
 	default:
 		return &Value{Type: "undefined"}
 	}
