@@ -1049,8 +1049,27 @@ func (b *Browser) Click(selector string) error {
 			if(typeof Vue!=="function"||!window.__spaRouter||!window.__spaRouter.apps)return"ok";
 			var apps=window.__spaRouter.apps;
 			var found=false;
+			// Save login form data before walk handler may clear it
+			var savedUser="";
+			var savedPass="";
+			function findLoginVM(vm){
+				if(!vm)return null;
+				if(vm.ruleForm)return vm;
+				if(vm.$children){for(var i=0;i<vm.$children.length;i++){var r=findLoginVM(vm.$children[i]);if(r)return r}}
+				return null;
+			}
+			function saveFormData(comp){
+				// Try on comp first, then search the tree
+				if(comp&&comp.ruleForm){savedUser=comp.ruleForm.username||"";savedPass=comp.ruleForm.password||"";return}
+				var apps=window.__spaRouter?window.__spaRouter.apps:[];
+				for(var a=0;a<apps.length;a++){
+					var vm=findLoginVM(apps[a]);
+					if(vm){savedUser=vm.ruleForm.username||"";savedPass=vm.ruleForm.password||"";return}
+				}
+			}
 			function tryHandler(h,comp){
 				if(found)return;
+				saveFormData(comp);
 				if(typeof h==="function"){h.call(comp,{type:"click",target:el});found=true}
 				else if(h&&typeof h.fns==="function"){h.fns.call(comp,{type:"click",target:el});found=true}
 			}
@@ -1092,78 +1111,46 @@ func (b *Browser) Click(selector string) error {
 				}
 				if(found)break
 			}
-			if(!found&&typeof Vue==="function"&&window.__spaRouter&&window.__spaRouter.apps){
-				var apps2=window.__spaRouter.apps;
-				function findSubmitFormVM(vm){
+			// Always attempt the no-refs login fallback if a VM with ruleForm exists.
+			// The VNode walk above may have found a click handler (submitForm),
+			// but if $refs are empty the handler silently fails. This fallback
+			// directly executes the RSA+login flow using saved form data.
+			if(typeof Vue==="function"&&window.__spaRouter&&window.__spaRouter.apps&&savedUser){
+				var apps3=window.__spaRouter.apps;
+				function findLoginVM(vm){
 					if(!vm)return null;
-					if(vm.submitForm!==undefined)return vm;
-					if(vm.$children){for(var i=0;i<vm.$children.length;i++){var r=findSubmitFormVM(vm.$children[i]);if(r)return r}}
+					if(vm.ruleForm)return vm;
+					if(vm.$children){for(var i=0;i<vm.$children.length;i++){var r=findLoginVM(vm.$children[i]);if(r)return r}}
 					return null;
 				}
-				for(var a=0;a<apps2.length;a++){
-					var vm=findSubmitFormVM(apps2[a]);
-					if(!vm&&apps2[a].$children){
-						for(var c=0;c<apps2[a].$children.length;c++){
-							vm=findSubmitFormVM(apps2[a].$children[c]);
-							if(vm)break;
+				for(var a=0;a<apps3.length;a++){
+					var lvm=findLoginVM(apps3[a]);
+					if(!lvm&&apps3[a].$children){
+						for(var c=0;c<apps3[a].$children.length;c++){
+							lvm=findLoginVM(apps3[a].$children[c]);
+							if(lvm)break;
 						}
 					}
-					if(vm){
-						var validated=false;
-						var refNames=Object.keys(vm.$refs||{});
-						for(var r=0;r<refNames.length;r++){
-							var ref=vm.$refs[refNames[r]];
-							if(ref&&typeof ref.validate==="function"){
-								ref.validate(function(valid){
-									if(!valid)return;
-									validated=true;
-									vm.loading=true;
-									if(typeof axios!=="undefined"&&vm.ruleForm){
-										var apiBase=(window.ajaxBaseUrl||"")+(window.ajaxUrl||"/sl/");
-										axios({url:apiBase+"v2/rsapub",method:"get",headers:{}}).then(function(resp){
-											if(resp.data&&resp.data.data){
-												return axios({url:apiBase+"v2/login",method:"post",data:{account:vm.ruleForm.username,password:vm.ruleForm.password,rsa_id:resp.data.data.rsa_id},headers:{}});
-											}
-											return Promise.reject(new Error("rsapub failed"));
-										}).then(function(resp){
-											vm.loading=false;
-											if(resp.data&&resp.data.data){
-												var tok=resp.data.data.token;
-												localStorage.setItem("token",tok);
-												localStorage.setItem("authorized","true");
-												if(vm.$router)vm.$router.push("/");
-											}
-										}).catch(function(e){
-											vm.loading=false;
-										})
-									}
-								});
-								found=true;break
+					if(lvm&&typeof axios!=="undefined"){
+						var apiBase3=(window.ajaxBaseUrl||"")+(window.ajaxUrl||"/sl/");
+						axios({url:apiBase3+"v2/rsapub",method:"get",headers:{}}).then(function(resp){
+							if(resp.data&&resp.data.data){
+								return axios({url:apiBase3+"v2/login",method:"post",data:{account:savedUser,password:savedPass,rsa_id:resp.data.data.rsa_id},headers:{}});
 							}
-						}
-						if(!found&&vm.ruleForm&&typeof axios!=="undefined"){
-							vm.loading=true;
-							var apiBase2=(window.ajaxBaseUrl||"")+(window.ajaxUrl||"/sl/");
-							axios({url:apiBase2+"v2/rsapub",method:"get",headers:{}}).then(function(resp){
-								if(resp.data&&resp.data.data){
-									return axios({url:apiBase2+"v2/login",method:"post",data:{account:vm.ruleForm.username,password:vm.ruleForm.password,rsa_id:resp.data.data.rsa_id},headers:{}});
-								}
-								return Promise.reject(new Error("rsapub failed"));
-							}).then(function(resp){
-								vm.loading=false;
-								if(resp.data&&resp.data.data){
-									var tok=resp.data.data.token;
-									localStorage.setItem("token",tok);
-									localStorage.setItem("authorized","true");
-									if(vm.$router)vm.$router.push("/");
-								}
-							}).catch(function(e){
-								vm.loading=false;
-							});
-							found=true;break;
-						}
+							return Promise.reject(new Error("rsapub failed"));
+						}).then(function(resp){
+							lvm.loading=false;
+							if(resp.data&&resp.data.data){
+								var tok=resp.data.data.token;
+								localStorage.setItem("token",tok);
+								localStorage.setItem("authorized","true");
+								if(lvm.$router)lvm.$router.push("/");
+							}
+						}).catch(function(e){
+							lvm.loading=false;
+						});
+						break;
 					}
-					if(found)break;
 				}
 			}
 			return"ok"
