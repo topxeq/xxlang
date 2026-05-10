@@ -66,6 +66,15 @@ type Promise struct {
 	Env       *Environment
 }
 
+// microtask represents a deferred callback scheduled via the microtask queue.
+// In real JS, Promise.then/catch handlers always run asynchronously (on the
+// microtask queue). Our VM runs synchronously, so we defer .then callbacks
+// and drain them after the current Evaluate() call completes.
+type microtask struct {
+	callback *Value // function or native to call
+	args     []*Value
+}
+
 type Function struct {
 	Params     []string
 	DefaultVals map[string]Expression // default values for parameters
@@ -273,6 +282,11 @@ type VM struct {
 	// iteration cap ensures the program eventually progresses past the reactivity phase.
 	forIterCount int
 	forIterMax   int
+	// Microtask queue for Promise.then/catch deferred execution.
+	// In real JS, .then handlers run on the microtask queue after the current
+	// synchronous code completes. Our VM drains this queue after each Evaluate()
+	// and after Navigate() completes.
+	microtaskQueue []microtask
 }
 
 // SetAccessorMax sets the maximum number of accessor (getter/setter) invocations
@@ -2808,6 +2822,9 @@ func (vm *VM) Run(code string) (*Value, error) {
 		vm.debugLog("Returning: %s", valueToString(returnVal))
 		return returnVal, nil
 	}
+	// Drain microtask queue so Promise.then/catch handlers execute.
+	// This is necessary for Vue reactivity ($nextTick, DOM updates).
+	vm.DrainMicrotasks()
 	vm.debugLog("=== JS execution complete ===")
 	return result, nil
 }
@@ -4532,7 +4549,14 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 				return &Value{Type: "native", Native: func(args []*Value) *Value {
 					if len(args) > 0 && (args[0].Type == "function" || args[0].Type == "native") {
 						if obj.Promise.State == "fulfilled" {
-							vm.callFunction(args[0], []*Value{obj.Promise.Value})
+							// Enqueue as microtask instead of calling synchronously,
+							// matching real JS behavior where .then always runs async.
+							cb := args[0]
+							val := obj.Promise.Value
+							vm.microtaskQueue = append(vm.microtaskQueue, microtask{
+								callback: cb,
+								args:     []*Value{val},
+							})
 						} else {
 							if args[0].Func != nil {
 								obj.Promise.OnFulfill = append(obj.Promise.OnFulfill, args[0].Func)
@@ -4545,7 +4569,13 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 				return &Value{Type: "native", Native: func(args []*Value) *Value {
 					if len(args) > 0 && (args[0].Type == "function" || args[0].Type == "native") {
 						if obj.Promise.State == "rejected" {
-							vm.callFunction(args[0], []*Value{obj.Promise.Rejection})
+							// Enqueue as microtask
+							cb := args[0]
+							reason := obj.Promise.Rejection
+							vm.microtaskQueue = append(vm.microtaskQueue, microtask{
+								callback: cb,
+								args:     []*Value{reason},
+							})
 						} else {
 							if args[0].Func != nil {
 								obj.Promise.OnReject = append(obj.Promise.OnReject, args[0].Func)
@@ -6035,9 +6065,12 @@ func (vm *VM) setupPromise() {
 		}}
 	}}
 
-	// Define Promise as an object with constructor and static methods
+	// Define Promise as a native function (callable) with static methods.
+	// Vue 2 requires typeof Promise === 'function' and Promise.toString()
+	// containing "native code" to use Promise.resolve().then() for $nextTick.
 	vm.env.Define("Promise", &Value{
-		Type: "object",
+		Type:  "native",
+		Native: promiseConstructor.Native,
 		Obj: map[string]*Value{
 			"constructor": promiseConstructor,
 			"resolve":     promiseResolve,
@@ -6045,7 +6078,17 @@ func (vm *VM) setupPromise() {
 			"all":         promiseAll,
 			"race":        promiseRace,
 		},
+		BuiltInConstructor: "Promise",
 	})
+
+	// Override Promise.toString to return native code signature
+	// (Vue checks /native code/.test(Promise.toString()))
+	promiseVal := vm.env.Get("Promise")
+	if promiseVal.Obj != nil {
+		promiseVal.Obj["toString"] = &Value{Type: "native", Native: func(args []*Value) *Value {
+			return &Value{Type: "string", Str: "function Promise() { [native code] }"}
+		}}
+	}
 
 	// Also define as callable for new Promise()
 	// Store the constructor for NewExpr to use
@@ -6055,6 +6098,37 @@ func (vm *VM) setupPromise() {
 // processPendingPromises processes any pending promises synchronously
 func (vm *VM) processPendingPromises() {
 	// This is a simplified synchronous implementation
+}
+
+// DrainMicrotasks processes all pending microtask callbacks in FIFO order.
+// This should be called after Evaluate() and after Navigate() completes
+// to ensure Promise.then/catch handlers execute, enabling Vue reactivity
+// and $nextTick to work correctly.
+func (vm *VM) DrainMicrotasks() {
+	maxIterations := 1000
+	for i := 0; i < maxIterations; i++ {
+		if len(vm.microtaskQueue) == 0 {
+			break
+		}
+		// Dequeue the first microtask
+		task := vm.microtaskQueue[0]
+		vm.microtaskQueue = vm.microtaskQueue[1:]
+
+		// Execute the callback
+		if task.callback.Type == "function" && task.callback.Func != nil {
+			vm.callFunction(task.callback, task.args)
+		} else if task.callback.Type == "native" && task.callback.Native != nil {
+			nativeArgs := task.args
+			if task.callback.ThisBinding != nil {
+				thisVal := *task.callback.ThisBinding
+				thisVal._isThisArg = true
+				nativeArgs = append([]*Value{&thisVal}, nativeArgs...)
+			}
+			task.callback.Native(nativeArgs)
+		}
+		// After executing a callback, new microtasks may have been enqueued
+		// (e.g., from chained .then calls). Continue the loop to process them.
+	}
 }
 
 // setupMapSet adds Map and Set constructors to the VM
