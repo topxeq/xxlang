@@ -2036,7 +2036,14 @@ func (c *RegCompiler) compileFunctionLiteral(n *parser.FunctionLiteral) (int, er
 	// The VM will store the variadic args array at this symbol's index
 	if n.VariadicParam != nil {
 		c.symbolTable.Define(n.VariadicParam.Value)
-		// No instruction needed - VM will set the local directly
+	}
+
+	// Ensure spill slots start after parameter local slots to avoid
+	// overwriting parameter values when spilling call arguments.
+	// Parameters occupy Locals[0..NumParameters-1], so spill slots
+	// must start at NumDefinitions (which equals NumParameters at this point).
+	if c.nextSpillSlot < c.symbolTable.NumDefinitions {
+		c.nextSpillSlot = c.symbolTable.NumDefinitions
 	}
 
 	// Compile body
@@ -4078,6 +4085,11 @@ func (c *RegCompiler) compileMethod(n *parser.FunctionLiteral) (*CompiledFunctio
 		// Copy from argument register to local slot
 		// R1-R7 -> Locals[1..n] (slot 0 is 'this')
 		c.emitRegStoreLocal(i+1, symbol.Index)
+	}
+
+	// Ensure spill slots start after all parameter local slots
+	if c.nextSpillSlot < c.symbolTable.NumDefinitions {
+		c.nextSpillSlot = c.symbolTable.NumDefinitions
 	}
 
 	// Compile body
