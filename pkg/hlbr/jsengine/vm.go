@@ -2984,7 +2984,16 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 			}
 			ret, brk, retVal := vm.execBlock(s.Body)
 			if brk {
-				return ret, true, retVal
+				if retVal == continueSentinel {
+					if s.Post != nil {
+						vm.execStmt(s.Post)
+					}
+					continue
+				}
+				if retVal != nil {
+					return ret, true, retVal
+				}
+				break
 			}
 			if s.Post != nil {
 				vm.execStmt(s.Post)
@@ -3055,7 +3064,13 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 				ret, brk, retVal := vm.execBlock(s.Body)
 				vm.env = oldEnv
 				if brk {
-					return ret, true, retVal
+					if retVal == continueSentinel {
+						continue
+					}
+					if retVal != nil {
+						return ret, true, retVal
+					}
+					break
 				}
 			}
 		}
@@ -3088,7 +3103,13 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 								ret, brk, retVal := vm.execBlock(s.Body)
 								vm.env = oldEnv
 								if brk {
-									return ret, true, retVal
+									if retVal == continueSentinel {
+										continue
+									}
+									if retVal != nil {
+										return ret, true, retVal
+									}
+									break
 								}
 							} else {
 								break
@@ -3102,7 +3123,7 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 		// Fallback to array iteration
 		if obj.Type == "object" && obj.Arr != nil {
 			for _, val := range obj.Arr {
-				vm.checkSteps() // Check for infinite loop in for-of-statement
+				vm.checkSteps()
 				childEnv := NewEnvironment(vm.env)
 				childEnv.Define(s.VarName, val)
 				oldEnv := vm.env
@@ -3110,12 +3131,18 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 				ret, brk, retVal := vm.execBlock(s.Body)
 				vm.env = oldEnv
 				if brk {
-					return ret, true, retVal
+					if retVal == continueSentinel {
+						continue
+					}
+					if retVal != nil {
+						return ret, true, retVal
+					}
+					break
 				}
 			}
 		} else if obj.Type == "object" && obj.Obj != nil {
 			for _, val := range obj.Obj {
-				vm.checkSteps() // Check for infinite loop in for-of-statement
+				vm.checkSteps()
 				childEnv := NewEnvironment(vm.env)
 				childEnv.Define(s.VarName, val)
 				oldEnv := vm.env
@@ -3123,11 +3150,16 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 				ret, brk, retVal := vm.execBlock(s.Body)
 				vm.env = oldEnv
 				if brk {
-					return ret, true, retVal
+					if retVal == continueSentinel {
+						continue
+					}
+					if retVal != nil {
+						return ret, true, retVal
+					}
+					break
 				}
 			}
 		} else if obj.Type == "string" {
-			// String iteration
 			for _, ch := range obj.Str {
 				vm.checkSteps()
 				childEnv := NewEnvironment(vm.env)
@@ -3137,7 +3169,13 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 				ret, brk, retVal := vm.execBlock(s.Body)
 				vm.env = oldEnv
 				if brk {
-					return ret, true, retVal
+					if retVal == continueSentinel {
+						continue
+					}
+					if retVal != nil {
+						return ret, true, retVal
+					}
+					break
 				}
 			}
 		}
@@ -3155,7 +3193,13 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 			}
 			ret, brk, retVal := vm.execBlock(s.Body)
 			if brk {
-				return ret, true, retVal
+				if retVal == continueSentinel {
+					continue
+				}
+				if retVal != nil {
+					return ret, true, retVal
+				}
+				break
 			}
 		}
 		return &Value{Type: "undefined"}, false, nil
@@ -3168,7 +3212,7 @@ func (vm *VM) execStmt(stmt Statement) (*Value, bool, *Value) {
 	case *BreakStmt:
 		return &Value{Type: "undefined"}, true, nil
 	case *ContinueStmt:
-		return &Value{Type: "undefined"}, false, nil
+		return &Value{Type: "undefined"}, true, continueSentinel
 	case *SwitchStmt:
 		disc := vm.evalExpr(s.Discriminant)
 		matched := false
@@ -5261,6 +5305,11 @@ func toUint32(v *Value) uint32 {
 // isBuiltinPrototypeProperty returns true for built-in Object.prototype and
 // Array.prototype property names that should be non-enumerable and thus
 // excluded from for-in loops when found on the prototype chain (depth > 0).
+// continueSentinel is a special *Value used to signal a continue statement
+// in the (value, brk, retVal) triple returned by execStmt/execBlock.
+// Loops check retVal == continueSentinel to distinguish continue from break.
+var continueSentinel = &Value{Type: "number", Num: -999999.999999}
+
 var builtinNonEnumerableProps = map[string]bool{
 	"hasOwnProperty":          true,
 	"isPrototypeOf":           true,

@@ -904,3 +904,46 @@ func TestMutationObserverStub(t *testing.T) {
 		t.Errorf("MutationObserver.observe typeof: expected function, got %s", r.Str)
 	}
 }
+
+func TestBreakInForLoop(t *testing.T) {
+	vm := NewVM(dom.NewDocument())
+
+	r, _ := vm.Run(`(function(){ var x=""; for(var i=0;i<5;i++){if(i===3){x="found";break}} return x; })()`)
+	if r.Str != "found" {
+		t.Errorf("break in for loop: expected found, got %v", r)
+	}
+
+	r, _ = vm.Run(`(function(){ var sum=0; for(var i=0;i<10;i++){if(i>=5){break}sum+=i} return sum; })()`)
+	if r.Num != 10 {
+		t.Errorf("break in for loop sum: expected 10, got %v", r.Num)
+	}
+
+	r, _ = vm.Run(`(function(){ var x=""; var i=0; while(i<5){if(i===3){x="found";break}i++} return x; })()`)
+	if r.Str != "found" {
+		t.Errorf("break in while loop: expected found, got %v", r)
+	}
+
+	r, _ = vm.Run(`(function(){ var result=[]; for(var k in {a:1,b:2,c:3}){result.push(k);if(result.length===2){break}} return result.length; })()`)
+	if r.Num != 2 {
+		t.Errorf("break in for-in loop: expected 2 items, got %v", r.Num)
+	}
+
+	r, _ = vm.Run(`(function(){ var result=[]; var arr=[10,20,30,40]; for(var v of arr){result.push(v);if(v===30){break}} return result.join(","); })()`)
+	if r.Str != "10,20,30" {
+		t.Errorf("break in for-of loop: expected 10,20,30, got %v", r.Str)
+	}
+}
+
+func TestContinueInForLoop(t *testing.T) {
+	vm := NewVM(dom.NewDocument())
+
+	r, _ := vm.Run(`(function(){ var sum=0; for(var i=0;i<5;i++){if(i===3){continue}sum+=i} return sum; })()`)
+	if r.Num != 7 {
+		t.Errorf("continue in for loop: expected 7, got %v", r.Num)
+	}
+
+	r, _ = vm.Run(`(function(){ var result=[]; for(var i=0;i<5;i++){if(i%2===0){continue}result.push(i)} return result.join(","); })()`)
+	if r.Str != "1,3" {
+		t.Errorf("continue skip even: expected 1,3, got %v", r.Str)
+	}
+}
