@@ -721,3 +721,61 @@ func TestArrayFromNativeThisOffset(t *testing.T) {
 		t.Errorf("Array.of: expected 3, got %v", result.Num)
 	}
 }
+
+// TestPromiseChaining verifies that Promise.then() returns a new Promise
+// (per ECMAScript spec) and that chained .then() callbacks receive the
+// return value of the previous callback. This is critical for patterns
+// like: axios.get(url1).then(() => axios.post(url2)).then(...)
+func TestPromiseChaining(t *testing.T) {
+	vm := NewVM(dom.NewDocument())
+
+	// Test: basic chaining with Promise.resolve return
+	vm.Run(`
+		Promise.resolve({data: "first"}).then(function(r1) {
+			return Promise.resolve({data: "second"});
+		}).then(function(r2) {
+			window.__chainResult = r2.data;
+		});
+	`)
+	result, err := vm.Run(`window.__chainResult`)
+	if err != nil {
+		t.Fatalf("chaining: unexpected error: %v", err)
+	}
+	if valStr(result) != "second" {
+		t.Errorf("chaining: expected 'second', got %v", valStr(result))
+	}
+
+	// Test: chaining with non-Promise return value
+	vm.Run(`
+		Promise.resolve(10).then(function(v) {
+			return v * 2;
+		}).then(function(v2) {
+			window.__chainResult2 = v2 + 5;
+		});
+	`)
+	result, err = vm.Run(`window.__chainResult2`)
+	if err != nil {
+		t.Fatalf("chaining non-promise: unexpected error: %v", err)
+	}
+	if result.Num != 25 {
+		t.Errorf("chaining non-promise: expected 25, got %v", result.Num)
+	}
+
+	// Test: deep chaining (3 levels)
+	vm.Run(`
+		Promise.resolve(1).then(function(v) {
+			return Promise.resolve(v + 1);
+		}).then(function(v) {
+			return Promise.resolve(v + 1);
+		}).then(function(v) {
+			window.__chainResult3 = v;
+		});
+	`)
+	result, err = vm.Run(`window.__chainResult3`)
+	if err != nil {
+		t.Fatalf("deep chaining: unexpected error: %v", err)
+	}
+	if result.Num != 3 {
+		t.Errorf("deep chaining: expected 3, got %v", result.Num)
+	}
+}

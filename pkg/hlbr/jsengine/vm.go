@@ -56,13 +56,20 @@ type Proxy struct {
 	Env       *Environment
 }
 
+// PromiseThenEntry stores a .then() callback along with the chaining
+// promise that should be resolved with the callback's return value.
+type PromiseThenEntry struct {
+	Callback       *Value  // the onFulfilled callback
+	ResolvePromise *Value  // the chaining promise to resolve
+}
+
 // Promise represents a JavaScript Promise
 type Promise struct {
-	State     string        // "pending", "fulfilled", "rejected"
-	Value     *Value        // resolved value
-	Rejection *Value        // rejection reason
-	OnFulfill []*Function   // then callbacks
-	OnReject  []*Function   // catch callbacks
+	State     string             // "pending", "fulfilled", "rejected"
+	Value     *Value             // resolved value
+	Rejection *Value             // rejection reason
+	OnFulfill []PromiseThenEntry // then callbacks with their chaining promises
+	OnReject  []PromiseThenEntry // catch callbacks with their chaining promises
 	Env       *Environment
 }
 
@@ -4238,8 +4245,8 @@ func (vm *VM) evalCall(e *CallExpr) *Value {
 		if callee.IsAsync {
 			p := &Promise{
 				State:     "pending",
-				OnFulfill: make([]*Function, 0),
-				OnReject:  make([]*Function, 0),
+				OnFulfill: make([]PromiseThenEntry, 0),
+				OnReject:  make([]PromiseThenEntry, 0),
 				Env:       vm.env,
 			}
 
@@ -4594,9 +4601,6 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 			switch ident.Name {
 			case "then":
 				return &Value{Type: "native", Native: func(args []*Value) *Value {
-					// Create a new Promise for chaining (per ECMAScript spec,
-					// .then() returns a new Promise that resolves with the
-					// callback's return value).
 					nextPromise := &Value{
 						Type: "promise",
 						Promise: &Promise{
@@ -4608,20 +4612,18 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 						if obj.Promise.State == "fulfilled" {
 							cb := args[0]
 							val := obj.Promise.Value
-							// Enqueue as microtask. The callback's return value
-							// resolves the chaining promise (nextPromise).
 							vm.microtaskQueue = append(vm.microtaskQueue, microtask{
-								callback: cb,
-								args:     []*Value{val},
+								callback:       cb,
+								args:           []*Value{val},
 								resolvePromise: nextPromise,
 							})
 						} else {
-							if args[0].Func != nil {
-								obj.Promise.OnFulfill = append(obj.Promise.OnFulfill, args[0].Func)
-							}
+							obj.Promise.OnFulfill = append(obj.Promise.OnFulfill, PromiseThenEntry{
+								Callback:       args[0],
+								ResolvePromise: nextPromise,
+							})
 						}
 					} else {
-						// No callback or non-function callback: pass through
 						if obj.Promise.State == "fulfilled" {
 							nextPromise.Promise.State = "fulfilled"
 							nextPromise.Promise.Value = obj.Promise.Value
@@ -4631,22 +4633,27 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 				}}
 			case "catch":
 				return &Value{Type: "native", Native: func(args []*Value) *Value {
+					nextPromise := &Value{
+						Type: "promise",
+						Promise: &Promise{State: "pending"},
+					}
 					if len(args) > 0 && (args[0].Type == "function" || args[0].Type == "native") {
 						if obj.Promise.State == "rejected" {
-							// Enqueue as microtask
 							cb := args[0]
 							reason := obj.Promise.Rejection
 							vm.microtaskQueue = append(vm.microtaskQueue, microtask{
-								callback: cb,
-								args:     []*Value{reason},
+								callback:       cb,
+								args:           []*Value{reason},
+								resolvePromise: nextPromise,
 							})
 						} else {
-							if args[0].Func != nil {
-								obj.Promise.OnReject = append(obj.Promise.OnReject, args[0].Func)
-							}
+							obj.Promise.OnReject = append(obj.Promise.OnReject, PromiseThenEntry{
+								Callback:       args[0],
+								ResolvePromise: nextPromise,
+							})
 						}
 					}
-					return obj
+					return nextPromise
 				}}
 			}
 		}
@@ -5964,8 +5971,8 @@ func (vm *VM) setupPromise() {
 
 		p := &Promise{
 			State:     "pending",
-			OnFulfill: make([]*Function, 0),
-			OnReject:  make([]*Function, 0),
+			OnFulfill: make([]PromiseThenEntry, 0),
+			OnReject:  make([]PromiseThenEntry, 0),
 			Env:       vm.env,
 		}
 
@@ -5977,8 +5984,12 @@ func (vm *VM) setupPromise() {
 					p.Value = args[0]
 				}
 				// Call all onFulfill callbacks
-				for _, fn := range p.OnFulfill {
-					vm.callFunction(&Value{Type: "function", Func: fn}, []*Value{p.Value})
+				for _, entry := range p.OnFulfill {
+					vm.microtaskQueue = append(vm.microtaskQueue, microtask{
+						callback:       entry.Callback,
+						args:           []*Value{p.Value},
+						resolvePromise: entry.ResolvePromise,
+					})
 				}
 			}
 			return &Value{Type: "undefined"}
@@ -5991,8 +6002,12 @@ func (vm *VM) setupPromise() {
 					p.Rejection = args[0]
 				}
 				// Call all onReject callbacks
-				for _, fn := range p.OnReject {
-					vm.callFunction(&Value{Type: "function", Func: fn}, []*Value{p.Rejection})
+				for _, entry := range p.OnReject {
+					vm.microtaskQueue = append(vm.microtaskQueue, microtask{
+						callback:       entry.Callback,
+						args:           []*Value{p.Rejection},
+						resolvePromise: entry.ResolvePromise,
+					})
 				}
 			}
 			return &Value{Type: "undefined"}
@@ -6020,8 +6035,8 @@ func (vm *VM) setupPromise() {
 	promiseResolve := &Value{Type: "native", Native: func(args []*Value) *Value {
 		p := &Promise{
 			State:     "fulfilled",
-			OnFulfill: make([]*Function, 0),
-			OnReject:  make([]*Function, 0),
+			OnFulfill: make([]PromiseThenEntry, 0),
+			OnReject:  make([]PromiseThenEntry, 0),
 			Env:       vm.env,
 		}
 		offset := nativeThisOffset(args)
@@ -6035,8 +6050,8 @@ func (vm *VM) setupPromise() {
 	promiseReject := &Value{Type: "native", Native: func(args []*Value) *Value {
 		p := &Promise{
 			State:     "rejected",
-			OnReject:  make([]*Function, 0),
-			OnFulfill: make([]*Function, 0),
+			OnReject:  make([]PromiseThenEntry, 0),
+			OnFulfill: make([]PromiseThenEntry, 0),
 			Env:       vm.env,
 		}
 		offset := nativeThisOffset(args)
@@ -6053,8 +6068,8 @@ func (vm *VM) setupPromise() {
 			return &Value{Type: "promise", Promise: &Promise{
 				State:     "fulfilled",
 				Value:     &Value{Type: "object", Arr: []*Value{}},
-				OnFulfill: make([]*Function, 0),
-				OnReject:  make([]*Function, 0),
+				OnFulfill: make([]PromiseThenEntry, 0),
+				OnReject:  make([]PromiseThenEntry, 0),
 				Env:       vm.env,
 			}}
 		}
@@ -6063,8 +6078,8 @@ func (vm *VM) setupPromise() {
 			return &Value{Type: "promise", Promise: &Promise{
 				State:     "rejected",
 				Rejection: &Value{Type: "string", Str: "Promise.all requires an array"},
-				OnFulfill: make([]*Function, 0),
-				OnReject:  make([]*Function, 0),
+				OnFulfill: make([]PromiseThenEntry, 0),
+				OnReject:  make([]PromiseThenEntry, 0),
 				Env:       vm.env,
 			}}
 		}
@@ -6081,8 +6096,8 @@ func (vm *VM) setupPromise() {
 		return &Value{Type: "promise", Promise: &Promise{
 			State:     "fulfilled",
 			Value:     &Value{Type: "object", Arr: results},
-			OnFulfill: make([]*Function, 0),
-			OnReject:  make([]*Function, 0),
+			OnFulfill: make([]PromiseThenEntry, 0),
+			OnReject:  make([]PromiseThenEntry, 0),
 			Env:       vm.env,
 		}}
 	}}
@@ -6093,8 +6108,8 @@ func (vm *VM) setupPromise() {
 		if len(args) <= offset {
 			return &Value{Type: "promise", Promise: &Promise{
 				State:     "pending",
-				OnFulfill: make([]*Function, 0),
-				OnReject:  make([]*Function, 0),
+				OnFulfill: make([]PromiseThenEntry, 0),
+				OnReject:  make([]PromiseThenEntry, 0),
 				Env:       vm.env,
 			}}
 		}
@@ -6103,8 +6118,8 @@ func (vm *VM) setupPromise() {
 			return &Value{Type: "promise", Promise: &Promise{
 				State:     "rejected",
 				Rejection: &Value{Type: "string", Str: "Promise.race requires an array"},
-				OnFulfill: make([]*Function, 0),
-				OnReject:  make([]*Function, 0),
+				OnFulfill: make([]PromiseThenEntry, 0),
+				OnReject:  make([]PromiseThenEntry, 0),
 				Env:       vm.env,
 			}}
 		}
@@ -6115,16 +6130,16 @@ func (vm *VM) setupPromise() {
 				return &Value{Type: "promise", Promise: &Promise{
 					State:     "fulfilled",
 					Value:     p,
-					OnFulfill: make([]*Function, 0),
-					OnReject:  make([]*Function, 0),
+					OnFulfill: make([]PromiseThenEntry, 0),
+					OnReject:  make([]PromiseThenEntry, 0),
 					Env:       vm.env,
 				}}
 			}
 		}
 		return &Value{Type: "promise", Promise: &Promise{
 			State:     "pending",
-			OnFulfill: make([]*Function, 0),
-			OnReject:  make([]*Function, 0),
+			OnFulfill: make([]PromiseThenEntry, 0),
+			OnReject:  make([]PromiseThenEntry, 0),
 			Env:       vm.env,
 		}}
 	}}
@@ -6224,13 +6239,11 @@ func (vm *VM) resolvePromise(p *Value, value *Value) {
 	}
 	p.Promise.State = "fulfilled"
 	p.Promise.Value = value
-	// Process any OnFulfill callbacks that were attached while pending.
-	// These need to be enqueued as microtasks for the next drain cycle.
-	for _, fn := range p.Promise.OnFulfill {
-		fnCopy := fn
+	for _, entry := range p.Promise.OnFulfill {
 		vm.microtaskQueue = append(vm.microtaskQueue, microtask{
-			callback: &Value{Type: "function", Func: fnCopy},
-			args:     []*Value{value},
+			callback:       entry.Callback,
+			args:           []*Value{value},
+			resolvePromise: entry.ResolvePromise,
 		})
 	}
 	p.Promise.OnFulfill = nil
