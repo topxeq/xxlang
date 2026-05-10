@@ -1017,12 +1017,12 @@ func (b *Browser) VM() *jsengine.VM {
 // It also syncs the value to Vue component data via the __hlbrSyncInputs
 // mechanism and attempts to find the Vue component owning the input to
 // update its v-model data directly.
-func (b *Browser) Fill(selector, value string) error {
+	func (b *Browser) Fill(selector, value string) error {
 	if b.vm == nil {
 		return fmt.Errorf("no VM available")
 	}
 	_, err := b.Evaluate(fmt.Sprintf(
-		`(function(){var el=document.querySelector(%q);if(!el)return"element not found";el.value=%q;el.setAttribute("value",%q);if(typeof window.__hlbrSyncInputs==="function")window.__hlbrSyncInputs();el.dispatchEvent(new Event("input",{bubbles:true}));if(typeof Vue==="function"&&window.__spaRouter){try{var apps=window.__spaRouter.apps;for(var a=0;a<apps.length;a++){var vm=apps[a];function findInputVM(v,comp){if(!v)return null;if(v.elm===el)return comp;if(v.componentInstance&&v.componentInstance._vnode){var r=findInputVM(v.componentInstance._vnode,v.componentInstance);if(r)return r}if(v.children)for(var i=0;i<v.children.length;i++){var r=findInputVM(v.children[i],comp);if(r)return r}return null}var owner=findInputVM(vm._vnode,vm);if(!owner&&vm.$children){for(var c=0;c<vm.$children.length;c++){owner=findInputVM(vm.$children[c]._vnode,vm.$children[c]);if(owner)break}}if(owner){var vmodel=el.getAttribute("data-vmodel");if(vmodel){var parts=vmodel.split(".");var obj=owner._data||owner;for(var p=0;p<parts.length-1;p++){if(obj&&obj[parts[p]]!==undefined)obj=obj[parts[p]];else if(obj&&typeof obj==="object")obj=obj[parts[p]];else break}if(obj&&parts.length>0){var last=parts[parts.length-1];obj[last]=%q}}}}}catch(e){}}return"ok"})()`,
+		`(function(){var el=document.querySelector(%q);if(!el)return"element not found";el.value=%q;el.setAttribute("value",%q);if(typeof window.__hlbrSyncInputs==="function")window.__hlbrSyncInputs();el.dispatchEvent(new Event("input",{bubbles:true}));if(typeof Vue==="function"&&window.__spaRouter){try{var vmodel=el.getAttribute("data-vmodel");if(!vmodel)return"ok";var parts=vmodel.split(".");var apps=window.__spaRouter.apps;function trySetOnVM(vm){if(!vm||!vm._data)return false;var obj=vm._data;for(var p=0;p<parts.length-1;p++){if(obj&&obj[parts[p]]!==undefined)obj=obj[parts[p]];else if(obj&&typeof obj==="object")obj=obj[parts[p]];else return false}if(obj&&parts.length>0){var last=parts[parts.length-1];if(obj[last]!==undefined||typeof obj==="object"){obj[last]=%q;return true}}return false}for(var a=0;a<apps.length;a++){function walkVM(vm){if(trySetOnVM(vm))return true;if(vm.$children){for(var c=0;c<vm.$children.length;c++){if(walkVM(vm.$children[c]))return true}}return false}if(walkVM(apps[a]))break}}catch(e){}}return"ok"})()`,
 		selector, value, value, value,
 	))
 	return err
@@ -1094,45 +1094,53 @@ func (b *Browser) Click(selector string) error {
 			}
 			if(!found&&typeof Vue==="function"&&window.__spaRouter&&window.__spaRouter.apps){
 				var apps2=window.__spaRouter.apps;
+				function findSubmitFormVM(vm){
+					if(!vm)return null;
+					if(vm.submitForm!==undefined&&vm.$refs)return vm;
+					if(vm.$children){for(var i=0;i<vm.$children.length;i++){var r=findSubmitFormVM(vm.$children[i]);if(r)return r}}
+					return null;
+				}
 				for(var a=0;a<apps2.length;a++){
-					if(!apps2[a].$children)continue;
-					for(var c=0;c<apps2[a].$children.length;c++){
-						var vm=apps2[a].$children[c];
-						if(vm.$options&&vm.$options.methods&&vm.$options.methods.submitForm&&vm.$refs){
-							var refNames=Object.keys(vm.$refs);
-							for(var r=0;r<refNames.length;r++){
-								var ref=vm.$refs[refNames[r]];
-								if(ref&&typeof ref.validate==="function"){
-									ref.validate(function(valid){
-										if(!valid)return;
-										vm.loading=true;
-										if(typeof axios!=="undefined"&&vm.ruleForm){
-											var apiBase=(window.ajaxBaseUrl||"")+(window.ajaxUrl||"/sl/");
-											axios({url:apiBase+"v2/rsapub",method:"get",headers:{}}).then(function(resp){
-												if(resp.data&&resp.data.data){
-													return axios({url:apiBase+"v2/login",method:"post",data:{account:vm.ruleForm.username,password:vm.ruleForm.password,rsa_id:resp.data.data.rsa_id},headers:{}});
-												}
-												return Promise.reject(new Error("rsapub failed"));
-											}).then(function(resp){
-												vm.loading=false;
-												if(resp.data&&resp.data.data){
-													var tok=resp.data.data.token;
-													localStorage.setItem("token",tok);
-													localStorage.setItem("authorized","true");
-													if(vm.$router)vm.$router.push("/");
-												}
-											}).catch(function(e){
-												vm.loading=false;
-											})
-										}
-									});
-									found=true;break
-								}
+					var vm=findSubmitFormVM(apps2[a]);
+					if(!vm&&apps2[a].$children){
+						for(var c=0;c<apps2[a].$children.length;c++){
+							vm=findSubmitFormVM(apps2[a].$children[c]);
+							if(vm)break;
+						}
+					}
+					if(vm){
+						var refNames=Object.keys(vm.$refs);
+						for(var r=0;r<refNames.length;r++){
+							var ref=vm.$refs[refNames[r]];
+							if(ref&&typeof ref.validate==="function"){
+								ref.validate(function(valid){
+									if(!valid)return;
+									vm.loading=true;
+									if(typeof axios!=="undefined"&&vm.ruleForm){
+										var apiBase=(window.ajaxBaseUrl||"")+(window.ajaxUrl||"/sl/");
+										axios({url:apiBase+"v2/rsapub",method:"get",headers:{}}).then(function(resp){
+											if(resp.data&&resp.data.data){
+												return axios({url:apiBase+"v2/login",method:"post",data:{account:vm.ruleForm.username,password:vm.ruleForm.password,rsa_id:resp.data.data.rsa_id},headers:{}});
+											}
+											return Promise.reject(new Error("rsapub failed"));
+										}).then(function(resp){
+											vm.loading=false;
+											if(resp.data&&resp.data.data){
+												var tok=resp.data.data.token;
+												localStorage.setItem("token",tok);
+												localStorage.setItem("authorized","true");
+												if(vm.$router)vm.$router.push("/");
+											}
+										}).catch(function(e){
+											vm.loading=false;
+										})
+									}
+								});
+								found=true;break
 							}
 						}
-						if(found)break
 					}
-					if(found)break
+					if(found)break;
 				}
 			}
 			return"ok"

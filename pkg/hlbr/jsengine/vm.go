@@ -71,8 +71,9 @@ type Promise struct {
 // microtask queue). Our VM runs synchronously, so we defer .then callbacks
 // and drain them after the current Evaluate() call completes.
 type microtask struct {
-	callback *Value // function or native to call
-	args     []*Value
+	callback       *Value  // function or native to call
+	args           []*Value
+	resolvePromise *Value // if set, resolve this promise with the callback's return value
 }
 
 type Function struct {
@@ -4593,23 +4594,40 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 			switch ident.Name {
 			case "then":
 				return &Value{Type: "native", Native: func(args []*Value) *Value {
+					// Create a new Promise for chaining (per ECMAScript spec,
+					// .then() returns a new Promise that resolves with the
+					// callback's return value).
+					nextPromise := &Value{
+						Type: "promise",
+						Promise: &Promise{
+							State: "pending",
+						},
+					}
+
 					if len(args) > 0 && (args[0].Type == "function" || args[0].Type == "native") {
 						if obj.Promise.State == "fulfilled" {
-							// Enqueue as microtask instead of calling synchronously,
-							// matching real JS behavior where .then always runs async.
 							cb := args[0]
 							val := obj.Promise.Value
+							// Enqueue as microtask. The callback's return value
+							// resolves the chaining promise (nextPromise).
 							vm.microtaskQueue = append(vm.microtaskQueue, microtask{
 								callback: cb,
 								args:     []*Value{val},
+								resolvePromise: nextPromise,
 							})
 						} else {
 							if args[0].Func != nil {
 								obj.Promise.OnFulfill = append(obj.Promise.OnFulfill, args[0].Func)
 							}
 						}
+					} else {
+						// No callback or non-function callback: pass through
+						if obj.Promise.State == "fulfilled" {
+							nextPromise.Promise.State = "fulfilled"
+							nextPromise.Promise.Value = obj.Promise.Value
+						}
 					}
-					return obj
+					return nextPromise
 				}}
 			case "catch":
 				return &Value{Type: "native", Native: func(args []*Value) *Value {
@@ -6161,8 +6179,9 @@ func (vm *VM) DrainMicrotasks() {
 		vm.microtaskQueue = vm.microtaskQueue[1:]
 
 		// Execute the callback
+		var result *Value
 		if task.callback.Type == "function" && task.callback.Func != nil {
-			vm.callFunction(task.callback, task.args)
+			result = vm.callFunction(task.callback, task.args)
 		} else if task.callback.Type == "native" && task.callback.Native != nil {
 			nativeArgs := task.args
 			if task.callback.ThisBinding != nil {
@@ -6170,11 +6189,51 @@ func (vm *VM) DrainMicrotasks() {
 				thisVal._isThisArg = true
 				nativeArgs = append([]*Value{&thisVal}, nativeArgs...)
 			}
-			task.callback.Native(nativeArgs)
+			result = task.callback.Native(nativeArgs)
+		}
+
+		// If this microtask is part of a .then() chain, resolve the
+		// chaining promise with the callback's return value. If the
+		// callback returned a Promise, adopt its state (per ECMAScript
+		// Promise Resolution Procedure).
+		if task.resolvePromise != nil && task.resolvePromise.Promise != nil {
+			if result != nil && result.Type == "promise" && result.Promise != nil {
+				if result.Promise.State == "fulfilled" {
+					vm.resolvePromise(task.resolvePromise, result.Promise.Value)
+				} else if result.Promise.State == "rejected" {
+					task.resolvePromise.Promise.State = "rejected"
+					task.resolvePromise.Promise.Rejection = result.Promise.Rejection
+				} else {
+					task.resolvePromise.Promise.State = "fulfilled"
+					task.resolvePromise.Promise.Value = result
+				}
+			} else {
+				vm.resolvePromise(task.resolvePromise, result)
+			}
 		}
 		// After executing a callback, new microtasks may have been enqueued
 		// (e.g., from chained .then calls). Continue the loop to process them.
 	}
+}
+
+// resolvePromise transitions a promise to fulfilled state and enqueues
+// any .then() callbacks that were attached while the promise was pending.
+func (vm *VM) resolvePromise(p *Value, value *Value) {
+	if p == nil || p.Promise == nil {
+		return
+	}
+	p.Promise.State = "fulfilled"
+	p.Promise.Value = value
+	// Process any OnFulfill callbacks that were attached while pending.
+	// These need to be enqueued as microtasks for the next drain cycle.
+	for _, fn := range p.Promise.OnFulfill {
+		fnCopy := fn
+		vm.microtaskQueue = append(vm.microtaskQueue, microtask{
+			callback: &Value{Type: "function", Func: fnCopy},
+			args:     []*Value{value},
+		})
+	}
+	p.Promise.OnFulfill = nil
 }
 
 // setupMapSet adds Map and Set constructors to the VM
