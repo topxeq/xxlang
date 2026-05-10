@@ -1689,8 +1689,12 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 		// The value is always the last argument.
 		valIdx := len(args) - 1
 		if valIdx >= 0 {
-			n.Children = []*dom.Node{
-				{Type: dom.TextNode, Data: args[valIdx].Str, Parent: n},
+			if n.Type == dom.TextNode {
+				n.Data = args[valIdx].Str
+			} else {
+				n.Children = []*dom.Node{
+					{Type: dom.TextNode, Data: args[valIdx].Str, Parent: n},
+				}
 			}
 		}
 		return &Value{Type: "undefined"}
@@ -2193,8 +2197,12 @@ func (vm *VM) wrapNode(n *dom.Node) *Value {
 		}}, Set: &Value{Type: "native", Native: func(args []*Value) *Value {
 			valIdx := len(args) - 1
 			if valIdx >= 0 {
-				n.Children = []*dom.Node{
-					{Type: dom.TextNode, Data: args[valIdx].Str, Parent: n},
+				if n.Type == dom.TextNode {
+					n.Data = args[valIdx].Str
+				} else {
+					n.Children = []*dom.Node{
+						{Type: dom.TextNode, Data: args[valIdx].Str, Parent: n},
+					}
 				}
 			}
 			return &Value{Type: "undefined"}
@@ -2375,8 +2383,12 @@ func (vm *VM) wrapNodeShallow(n *dom.Node) *Value {
 		// When called via callSetter: args = [obj, val]
 		valIdx := len(args) - 1
 		if valIdx >= 0 {
-			n.Children = []*dom.Node{
-				{Type: dom.TextNode, Data: args[valIdx].Str, Parent: n},
+			if n.Type == dom.TextNode {
+				n.Data = args[valIdx].Str
+			} else {
+				n.Children = []*dom.Node{
+					{Type: dom.TextNode, Data: args[valIdx].Str, Parent: n},
+				}
 			}
 		}
 		return &Value{Type: "undefined"}
@@ -2595,8 +2607,12 @@ func (vm *VM) wrapNodeShallow(n *dom.Node) *Value {
 		}}, Set: &Value{Type: "native", Native: func(args []*Value) *Value {
 			valIdx := len(args) - 1
 			if valIdx >= 0 {
-				n.Children = []*dom.Node{
-					{Type: dom.TextNode, Data: args[valIdx].Str, Parent: n},
+				if n.Type == dom.TextNode {
+					n.Data = args[valIdx].Str
+				} else {
+					n.Children = []*dom.Node{
+						{Type: dom.TextNode, Data: args[valIdx].Str, Parent: n},
+					}
 				}
 			}
 			return &Value{Type: "undefined"}

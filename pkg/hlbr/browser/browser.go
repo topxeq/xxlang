@@ -335,6 +335,94 @@ func (b *Browser) Navigate(rawURL string) error {
 		} catch(e) { window.__vueRenderResult = 'ERR: ' + e.message; }`)
 		b.debugLog("Post-navigate Vue mount result: %v", result)
 		b.vm.Run("delete window.__vueMountPending")
+
+		// Patch VueI18n's $t method if the i18n messages are loaded
+		// but $t returns the key instead of the resolved value.
+		// This happens because VueI18n's internal path resolution
+		// uses JS features our VM doesn't fully support.
+		b.Evaluate(`(function(){
+			if(typeof Vue!=="function"||!window.__spaRouter||!window.__spaRouter.apps)return;
+			function patchI18n(i18n){
+				if(!i18n||i18n.__hlbrPatched)return;
+				i18n.t=function(key,locale){
+					var msg=i18n.messages[locale||i18n.locale];
+					if(!msg)return key;
+					var parts=key.split(".");
+					var val=msg;
+					for(var i=0;i<parts.length;i++){
+						if(val==null)return key;
+						val=val[parts[i]];
+					}
+					return val!=null?String(val):key;
+				};
+				i18n._t=i18n.t;
+				i18n.__hlbrPatched=true;
+			}
+			var apps=window.__spaRouter.apps;
+			for(var a=0;a<apps.length;a++){
+				patchI18n(apps[a].$i18n);
+				if(apps[a].$children){
+					for(var c=0;c<apps[a].$children.length;c++){
+						patchI18n(apps[a].$children[c].$i18n);
+					}
+				}
+			}
+			// Fix DOM text that was rendered with unresolved i18n keys.
+			// Walk all text nodes and replace dot-separated keys with
+			// their resolved translations.
+			var rootI18n=null;
+			for(var a=0;a<apps.length;a++){
+				if(apps[a].$i18n){rootI18n=apps[a].$i18n;break}
+			}
+			if(rootI18n){
+				function resolveKey(key){
+					var msg=rootI18n.messages[rootI18n.locale];
+					if(!msg)return key;
+					var parts=key.split(".");
+					var val=msg;
+					for(var i=0;i<parts.length;i++){
+						if(val==null)return key;
+						val=val[parts[i]];
+					}
+					return val!=null?String(val):key;
+				}
+				function fixTextNodes(el){
+					if(!el)return;
+					if(el.nodeType===3){
+						var text=el.textContent||"";
+						var trimmed=text.trim();
+						if(trimmed&&trimmed.indexOf(".")>0&&trimmed.indexOf(" ")<0){
+							var resolved=resolveKey(trimmed);
+							if(resolved!==trimmed){
+								el.textContent=resolved;
+							}
+						}
+					}
+					if(el.childNodes){
+						for(var i=0;i<el.childNodes.length;i++){
+							fixTextNodes(el.childNodes[i]);
+						}
+					}
+				}
+				function fixPlaceholders(el){
+					if(!el||!el.getAttribute)return;
+					var ph=el.getAttribute("placeholder");
+					if(ph&&ph.indexOf(".")>0&&ph.indexOf(" ")<0){
+						var resolved=resolveKey(ph);
+						if(resolved!==ph){
+							el.setAttribute("placeholder",resolved);
+						}
+					}
+				}
+				var mountTarget=document.querySelector("app")||document.body;
+				if(mountTarget)fixTextNodes(mountTarget);
+				// Fix placeholder attributes on input elements
+				var inputs=document.querySelectorAll("input[placeholder],textarea[placeholder]");
+				for(var i=0;i<inputs.length;i++){
+					fixPlaceholders(inputs[i]);
+				}
+			}
+		})()`)
 	}
 
 	return nil
