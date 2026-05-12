@@ -815,7 +815,7 @@ func TestAdditionalBuiltinSprintf(t *testing.T) {
 }
 
 func TestAdditionalBuiltinCoalesce(t *testing.T) {
-	coalesce := getBuiltin(402) // coalesce is at index 402
+	coalesce := getBuiltin(403) // coalesce is at index 403
 	if coalesce == nil {
 		t.Skip("coalesce builtin not available")
 	}

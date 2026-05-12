@@ -11004,6 +11004,375 @@ var hlbrBrowserMethods = map[string]*Builtin{
 		}
 		return &Bool{Value: self.browser.IsAborted()}
 	}},
+
+	// get is an alias for navigate (compatible with rod-style API).
+	// Usage: br.get(url)
+	"get": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for get. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for get must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		url, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for get must be STRING, got %s", args[1].Type())
+		}
+		if err := self.browser.Navigate(url.Value); err != nil {
+			return newError("get failed: %s", err.Error())
+		}
+		return self
+	}},
+
+	// fill fills a form input identified by CSS selector with the given value.
+	// This handles Vue/React reactivity by setting the value through the JS VM.
+	// Usage: br.fill(selector, value)
+	"fill": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for fill. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for fill must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		sel, ok := args[1].(*String)
+		if !ok {
+			return newError("selector argument for fill must be STRING, got %s", args[1].Type())
+		}
+		val, ok := args[2].(*String)
+		if !ok {
+			return newError("value argument for fill must be STRING, got %s", args[2].Type())
+		}
+		if err := self.browser.Fill(sel.Value, val.Value); err != nil {
+			return newError("fill failed: %s", err.Error())
+		}
+		return self
+	}},
+
+	// click clicks an element identified by CSS selector, handling Vue SPA
+	// reactivity and triggering login flows if the element is a login button.
+	// Usage: br.click(selector)
+	"click": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for click. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for click must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		sel, ok := args[1].(*String)
+		if !ok {
+			return newError("selector argument for click must be STRING, got %s", args[1].Type())
+		}
+		if err := self.browser.Click(sel.Value); err != nil {
+			return newError("click failed: %s", err.Error())
+		}
+		return self
+	}},
+
+	// eval is an alias for evaluate (compatible with rod-style API).
+	// Usage: br.eval(jsCode) -> result
+	"eval": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for eval. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for eval must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		code, ok := args[1].(*String)
+		if !ok {
+			return newError("argument for eval must be STRING, got %s", args[1].Type())
+		}
+		result, err := self.browser.Evaluate(code.Value)
+		if err != nil {
+			return newError("eval failed: %s", err.Error())
+		}
+		return hlbrGoValueToObject(result)
+	}},
+
+	// close is a no-op for headless browser (no visible window to close).
+	// Provided for API compatibility with rod-style browser scripts.
+	// Usage: br.close()
+	"close": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for close. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for close must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		self.browser.Abort()
+		return NULL
+	}},
+
+	// fullscreen is a no-op for headless browser (no visible window).
+	// Provided for API compatibility with rod-style browser scripts.
+	// Usage: br.fullscreen()
+	"fullscreen": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for fullscreen. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for fullscreen must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		return self
+	}},
+
+	// exists checks if an element matching the selector exists.
+	// Usage: br.exists(selector) -> bool
+	"exists": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for exists. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for exists must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		sel, ok := args[1].(*String)
+		if !ok {
+			return newError("selector argument for exists must be STRING, got %s", args[1].Type())
+		}
+		return &Bool{Value: self.browser.Exists(sel.Value)}
+	}},
+
+	// waitForSelector waits until an element matching the selector appears.
+	// Usage: br.waitForSelector(selector, timeoutMs) -> bool
+	"waitForSelector": {Fn: func(args ...Object) Object {
+		if len(args) < 2 || len(args) > 3 {
+			return newError("wrong number of arguments for waitForSelector. got=%d, want=2-3", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for waitForSelector must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		sel, ok := args[1].(*String)
+		if !ok {
+			return newError("selector argument for waitForSelector must be STRING, got %s", args[1].Type())
+		}
+		timeoutMs := 5000
+		if len(args) == 3 {
+			if t, ok := args[2].(*Int); ok {
+				timeoutMs = int(t.Value)
+			} else if t, ok := args[2].(*Float); ok {
+				timeoutMs = int(t.Value)
+			}
+		}
+		return &Bool{Value: self.browser.WaitForSelector(sel.Value, timeoutMs)}
+	}},
+
+	// getElementText returns the text content of an element.
+	// Usage: br.getElementText(selector) -> string
+	"getElementText": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for getElementText. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for getElementText must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		sel, ok := args[1].(*String)
+		if !ok {
+			return newError("selector argument for getElementText must be STRING, got %s", args[1].Type())
+		}
+		text, err := self.browser.GetElementText(sel.Value)
+		if err != nil {
+			return newError("getElementText failed: %s", err.Error())
+		}
+		return NewString(text)
+	}},
+
+	// getElementAttribute returns an attribute value of an element.
+	// Usage: br.getElementAttribute(selector, attribute) -> string
+	"getElementAttribute": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for getElementAttribute. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for getElementAttribute must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		sel, ok := args[1].(*String)
+		if !ok {
+			return newError("selector argument for getElementAttribute must be STRING, got %s", args[1].Type())
+		}
+		attr, ok := args[2].(*String)
+		if !ok {
+			return newError("attribute argument for getElementAttribute must be STRING, got %s", args[2].Type())
+		}
+		val, err := self.browser.GetElementAttribute(sel.Value, attr.Value)
+		if err != nil {
+			return newError("getElementAttribute failed: %s", err.Error())
+		}
+		return NewString(val)
+	}},
+
+	// setElementAttribute sets an attribute value on an element.
+	// Usage: br.setElementAttribute(selector, attribute, value)
+	"setElementAttribute": {Fn: func(args ...Object) Object {
+		if len(args) != 4 {
+			return newError("wrong number of arguments for setElementAttribute. got=%d, want=4", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for setElementAttribute must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		sel, ok := args[1].(*String)
+		if !ok {
+			return newError("selector argument for setElementAttribute must be STRING, got %s", args[1].Type())
+		}
+		attr, ok := args[2].(*String)
+		if !ok {
+			return newError("attribute argument for setElementAttribute must be STRING, got %s", args[2].Type())
+		}
+		val, ok := args[3].(*String)
+		if !ok {
+			return newError("value argument for setElementAttribute must be STRING, got %s", args[3].Type())
+		}
+		if err := self.browser.SetElementAttribute(sel.Value, attr.Value, val.Value); err != nil {
+			return newError("setElementAttribute failed: %s", err.Error())
+		}
+		return self
+	}},
+
+	// setXHRResponse sets a mock XHR response for matching requests.
+	// Usage: br.setXHRResponse(method, urlPattern, statusCode, responseBody)
+	"setXHRResponse": {Fn: func(args ...Object) Object {
+		if len(args) != 5 {
+			return newError("wrong number of arguments for setXHRResponse. got=%d, want=5", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for setXHRResponse must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		method, ok := args[1].(*String)
+		if !ok {
+			return newError("method argument for setXHRResponse must be STRING, got %s", args[1].Type())
+		}
+		urlPattern, ok := args[2].(*String)
+		if !ok {
+			return newError("urlPattern argument for setXHRResponse must be STRING, got %s", args[2].Type())
+		}
+		statusCode, ok := args[3].(*Int)
+		if !ok {
+			return newError("statusCode argument for setXHRResponse must be INT, got %s", args[3].Type())
+		}
+		responseBody, ok := args[4].(*String)
+		if !ok {
+			return newError("responseBody argument for setXHRResponse must be STRING, got %s", args[4].Type())
+		}
+		self.browser.SetXHRResponse(method.Value, urlPattern.Value, int(statusCode.Value), responseBody.Value)
+		return self
+	}},
+
+	// getXHRLog returns the log of XHR requests made by the page.
+	// Usage: br.getXHRLog() -> array of maps
+	"getXHRLog": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for getXHRLog. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for getXHRLog must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		log := self.browser.GetXHRLog()
+		elems := make([]Object, len(log))
+		for i, entry := range log {
+			pairs := make(map[HashKey]MapPair)
+			for k, v := range entry {
+				keyObj := NewString(k)
+				var valObj Object
+				switch vv := v.(type) {
+				case string:
+					valObj = NewString(vv)
+				case float64:
+					valObj = NewInt(int64(vv))
+				case int:
+					valObj = NewInt(int64(vv))
+				default:
+					valObj = NewString(fmt.Sprintf("%v", vv))
+				}
+				pairs[keyObj.HashKey()] = MapPair{Key: keyObj, Value: valObj}
+			}
+			elems[i] = &Map{Pairs: pairs}
+		}
+		return &Array{Elements: elems}
+	}},
+
+	// setJsDebug enables or disables JavaScript debug logging.
+	// Usage: br.setJsDebug(enabled)
+	"setJsDebug": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for setJsDebug. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for setJsDebug must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		enabled, ok := args[1].(*Bool)
+		if !ok {
+			return newError("argument for setJsDebug must be BOOL, got %s", args[1].Type())
+		}
+		self.browser.SetJsDebug(enabled.Value)
+		return self
+	}},
+
+	// find is an alias for querySelector (compatible with rod-style API).
+	// Usage: br.find(selector) -> HlbrNode or NULL
+	"find": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for find. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for find must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		sel, ok := args[1].(*String)
+		if !ok {
+			return newError("selector argument for find must be STRING, got %s", args[1].Type())
+		}
+		node := self.browser.QuerySelector(sel.Value)
+		if node == nil {
+			return NULL
+		}
+		return NewHlbrNode(node)
+	}},
+
+	// findAll is an alias for querySelectorAll (compatible with rod-style API).
+	// Usage: br.findAll(selector) -> array of HlbrNode
+	"findAll": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for findAll. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for findAll must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		sel, ok := args[1].(*String)
+		if !ok {
+			return newError("selector argument for findAll must be STRING, got %s", args[1].Type())
+		}
+		nodes := self.browser.QuerySelectorAll(sel.Value)
+		return hlbrNodesToXxArray(nodes)
+	}},
+
+	// refresh reloads the current page.
+	// Usage: br.refresh()
+	"refresh": {Fn: func(args ...Object) Object {
+		if len(args) != 1 {
+			return newError("wrong number of arguments for refresh. got=%d, want=1", len(args))
+		}
+		self, ok := args[0].(*HlbrBrowser)
+		if !ok {
+			return newError("receiver for refresh must be HLBR_BROWSER, got %s", args[0].Type())
+		}
+		if err := self.browser.Navigate(self.browser.GetURL()); err != nil {
+			return newError("refresh failed: %s", err.Error())
+		}
+		return self
+	}},
 }
 
 // ============================================================
@@ -11117,6 +11486,44 @@ var hlbrNodeMethods = map[string]*Builtin{
 			return newError("name argument for hasAttribute must be STRING, got %s", args[1].Type())
 		}
 		return &Bool{Value: self.node.HasAttribute(name.Value)}
+	}},
+
+	// getAttr is an alias for getAttribute (shorter name for convenience).
+	"getAttr": {Fn: func(args ...Object) Object {
+		if len(args) != 2 {
+			return newError("wrong number of arguments for getAttr. got=%d, want=2", len(args))
+		}
+		self, ok := args[0].(*HlbrNode)
+		if !ok {
+			return newError("receiver for getAttr must be HLBR_NODE, got %s", args[0].Type())
+		}
+		name, ok := args[1].(*String)
+		if !ok {
+			return newError("name argument for getAttr must be STRING, got %s", args[1].Type())
+		}
+		val := self.node.GetAttribute(name.Value)
+		return NewString(val)
+	}},
+
+	// setAttr is an alias for setAttribute (shorter name for convenience).
+	"setAttr": {Fn: func(args ...Object) Object {
+		if len(args) != 3 {
+			return newError("wrong number of arguments for setAttr. got=%d, want=3", len(args))
+		}
+		self, ok := args[0].(*HlbrNode)
+		if !ok {
+			return newError("receiver for setAttr must be HLBR_NODE, got %s", args[0].Type())
+		}
+		name, ok := args[1].(*String)
+		if !ok {
+			return newError("name argument for setAttr must be STRING, got %s", args[1].Type())
+		}
+		val, ok := args[2].(*String)
+		if !ok {
+			return newError("value argument for setAttr must be STRING, got %s", args[2].Type())
+		}
+		self.node.SetAttribute(name.Value, val.Value)
+		return NULL
 	}},
 
 	"getID": {Fn: func(args ...Object) Object {

@@ -891,6 +891,256 @@ func TestPromiseExecutorResolve(t *testing.T) {
 	}
 }
 
+// TestPromiseChainingPending verifies the core Promise Resolution Procedure:
+// when a .then() callback returns a Promise that is still pending, the
+// chaining promise must subscribe to it rather than wrapping it. This is
+// the pattern used by axios and other libraries:
+//
+//	Promise.resolve(1).then(function() { return axios(url); }).then(...)
+//
+// where axios() returns a new Promise that resolves later via XHR callback.
+func TestPromiseChainingPending(t *testing.T) {
+	vm := NewVM(dom.NewDocument())
+
+	// Test 1: .then() returning a pending Promise that resolves immediately
+	// via resolvePromiseWith (simulates axios returning a deferred Promise)
+	vm.Run(`
+		var chainResult1 = "not_set";
+		var resolveInner;
+		var innerP = new Promise(function(r) { resolveInner = r; });
+		Promise.resolve("first").then(function(v) {
+			return innerP;
+		}).then(function(v2) {
+			chainResult1 = v2;
+		});
+	`)
+	// Resolve the inner promise in a separate Run() call
+	vm.Run(`
+		resolveInner("inner_value");
+	`)
+	r, _ := vm.Run(`chainResult1`)
+	if valStr(r) != "inner_value" {
+		t.Errorf("chaining pending promise: expected 'inner_value', got %v", valStr(r))
+	}
+
+	// Test 2: Deep chaining with pending promises (3 levels)
+	vm2 := NewVM(dom.NewDocument())
+	vm2.Run(`
+		var chainResult2 = "not_set";
+		var resolveA, resolveB;
+		var pA = new Promise(function(r) { resolveA = r; });
+		var pB = new Promise(function(r) { resolveB = r; });
+		Promise.resolve(1).then(function(v) {
+			return pA;
+		}).then(function(v) {
+			return pB;
+		}).then(function(v) {
+			chainResult2 = v;
+		});
+	`)
+	vm2.Run(`resolveA(10)`)
+	vm2.Run(`resolveB(100)`)
+	r, _ = vm2.Run(`chainResult2`)
+	if r.Num != 100 {
+		t.Errorf("deep chaining pending: expected 100, got %v", r.Num)
+	}
+
+	// Test 3: Promise.resolve(pendingPromise) should follow the inner promise
+	vm3 := NewVM(dom.NewDocument())
+	vm3.Run(`
+		var chainResult3 = "not_set";
+		var resolveC;
+		var pC = new Promise(function(r) { resolveC = r; });
+		Promise.resolve(pC).then(function(v) {
+			chainResult3 = v;
+		});
+	`)
+	vm3.Run(`resolveC("followed")`)
+	r, _ = vm3.Run(`chainResult3`)
+	if valStr(r) != "followed" {
+		t.Errorf("Promise.resolve(thenable): expected 'followed', got %v", valStr(r))
+	}
+}
+
+// TestPromiseCatchPassthrough verifies that .catch() properly passes through
+// fulfilled values (i.e., catch is a no-op when no rejection occurred) and
+// that .then() properly propagates rejections when no onRejected handler is
+// provided.
+func TestPromiseCatchPassthrough(t *testing.T) {
+	vm := NewVM(dom.NewDocument())
+
+	// Test 1: .catch() on a fulfilled promise should pass through the value
+	vm.Run(`
+		var catchResult1 = "not_set";
+		Promise.resolve("success").catch(function(e) {
+			catchResult1 = "caught:" + e;
+		}).then(function(v) {
+			catchResult1 = v;
+		});
+	`)
+	r, _ := vm.Run(`catchResult1`)
+	if valStr(r) != "success" {
+		t.Errorf("catch passthrough fulfilled: expected 'success', got %v", valStr(r))
+	}
+
+	// Test 2: .catch() on a rejected promise should handle the rejection
+	vm2 := NewVM(dom.NewDocument())
+	vm2.Run(`
+		var catchResult2 = "not_set";
+		Promise.reject("error1").catch(function(e) {
+			return "recovered:" + e;
+		}).then(function(v) {
+			catchResult2 = v;
+		});
+	`)
+	r, _ = vm2.Run(`catchResult2`)
+	if valStr(r) != "recovered:error1" {
+		t.Errorf("catch handles rejection: expected 'recovered:error1', got %v", valStr(r))
+	}
+
+	// Test 3: Rejection propagates through .then() without onRejected handler
+	vm3 := NewVM(dom.NewDocument())
+	vm3.Run(`
+		var catchResult3 = "not_set";
+		Promise.reject("err").then(function(v) {
+			return "should not run";
+		}).catch(function(e) {
+			catchResult3 = "caught:" + e;
+		});
+	`)
+	r, _ = vm3.Run(`catchResult3`)
+	if valStr(r) != "caught:err" {
+		t.Errorf("rejection passthrough .then(): expected 'caught:err', got %v", valStr(r))
+	}
+}
+
+// TestPromiseCatchWithPendingReturn verifies that when a .catch() handler
+// returns a pending Promise, the chaining promise subscribes to it.
+func TestPromiseCatchWithPendingReturn(t *testing.T) {
+	vm := NewVM(dom.NewDocument())
+
+	vm.Run(`
+		var catchChainResult = "not_set";
+		var resolveRecovery;
+		var recoveryP = new Promise(function(r) { resolveRecovery = r; });
+		Promise.reject("fail").catch(function(e) {
+			return recoveryP;
+		}).then(function(v) {
+			catchChainResult = v;
+		});
+	`)
+	vm.Run(`resolveRecovery("recovered")`)
+	r, _ := vm.Run(`catchChainResult`)
+	if valStr(r) != "recovered" {
+		t.Errorf("catch returning pending promise: expected 'recovered', got %v", valStr(r))
+	}
+}
+
+// TestPromiseConstructorResolveThenable verifies that when a Promise
+// constructor's resolve function is called with a thenable, the promise
+// follows the thenable's state. Pattern:
+//
+//	new Promise(function(r) { r(anotherPromise); })
+func TestPromiseConstructorResolveThenable(t *testing.T) {
+	vm := NewVM(dom.NewDocument())
+
+	vm.Run(`
+		var ctorResult = "not_set";
+		var resolveInner;
+		var innerP = new Promise(function(r) { resolveInner = r; });
+		new Promise(function(r) { r(innerP); }).then(function(v) {
+			ctorResult = v;
+		});
+	`)
+	vm.Run(`resolveInner("from_inner")`)
+	r, _ := vm.Run(`ctorResult`)
+	if valStr(r) != "from_inner" {
+		t.Errorf("constructor resolve thenable: expected 'from_inner', got %v", valStr(r))
+	}
+}
+
+// TestPromiseAxiosPattern simulates the exact pattern used by axios and
+// similar HTTP libraries: a function that returns a new Promise where the
+// resolve function is captured and called later (e.g., by an XHR callback).
+// This is the core pattern that was broken before the Promise Resolution
+// Procedure fix.
+func TestPromiseAxiosPattern(t *testing.T) {
+	vm := NewVM(dom.NewDocument())
+
+	// Simulate axios.get() returning a deferred Promise
+	vm.Run(`
+		window.__axiosResults = [];
+
+		// Simulated axios that captures resolve
+		function fakeAxios(responseData) {
+			return new Promise(function(resolve) {
+				resolve({data: responseData, status: 200});
+			});
+		}
+
+		// Chain: axios.get().then(() => axios.post()).then(handle)
+		fakeAxios("first_data").then(function(r1) {
+			window.__axiosResults.push(r1.data);
+			return fakeAxios("second_data");
+		}).then(function(r2) {
+			window.__axiosResults.push(r2.data);
+		});
+	`)
+	r, _ := vm.Run(`window.__axiosResults.length`)
+	if r.Num != 2 {
+		t.Fatalf("axios pattern: expected 2 results, got %v", r.Num)
+	}
+	r1, _ := vm.Run(`window.__axiosResults[0]`)
+	if valStr(r1) != "first_data" {
+		t.Errorf("axios pattern first: expected 'first_data', got %v", valStr(r1))
+	}
+	r2, _ := vm.Run(`window.__axiosResults[1]`)
+	if valStr(r2) != "second_data" {
+		t.Errorf("axios pattern second: expected 'second_data', got %v", valStr(r2))
+	}
+
+	// Test with deferred resolve (more realistic axios pattern)
+	vm2 := NewVM(dom.NewDocument())
+	vm2.Run(`
+		window.__deferredResults = [];
+		var __xhrResolve;
+
+		// Simulated axios with truly deferred resolve (like real XHR)
+		function deferredAxios(data) {
+			return new Promise(function(resolve) {
+				__xhrResolve = resolve;
+			});
+		}
+
+		deferredAxios("step1").then(function(r1) {
+			window.__deferredResults.push(r1);
+			return deferredAxios("step2");
+		}).then(function(r2) {
+			window.__deferredResults.push(r2);
+		});
+	`)
+	// First XHR completes
+	vm2.Run(`__xhrResolve("step1_done")`)
+	r, _ = vm2.Run(`window.__deferredResults.length`)
+	if r.Num != 1 {
+		t.Fatalf("deferred axios step1: expected 1 result, got %v", r.Num)
+	}
+	r1, _ = vm2.Run(`window.__deferredResults[0]`)
+	if valStr(r1) != "step1_done" {
+		t.Errorf("deferred axios step1: expected 'step1_done', got %v", valStr(r1))
+	}
+	// Second XHR completes
+	vm2.Run(`__xhrResolve("step2_done")`)
+	r, _ = vm2.Run(`window.__deferredResults.length`)
+	if r.Num != 2 {
+		t.Fatalf("deferred axios step2: expected 2 results, got %v", r.Num)
+	}
+	r2, _ = vm2.Run(`window.__deferredResults[1]`)
+	if valStr(r2) != "step2_done" {
+		t.Errorf("deferred axios step2: expected 'step2_done', got %v", valStr(r2))
+	}
+}
+
 func TestMutationObserverStub(t *testing.T) {
 	vm := NewVM(dom.NewDocument())
 

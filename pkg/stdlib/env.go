@@ -3,7 +3,9 @@
 package stdlib
 
 import (
+	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/topxeq/xxlang/pkg/objects"
@@ -345,6 +347,368 @@ func init() {
 					Bool(os.Stderr != nil),
 				)
 			}),
+
+			// parseFlags parses command-line arguments according to a flag specification.
+			// This is a convenience function that replaces the common pattern of manually
+			// iterating over argsG to extract --key=value and --key value pairs.
+			//
+			// Usage:
+			//   var opts = env.parseFlags([
+			//       {"name": "url", "short": "u", "default": "http://localhost", "desc": "Target URL"},
+			//       {"name": "user", "short": "U", "default": "admin", "desc": "Username"},
+			//       {"name": "verbose", "short": "v", "type": "bool", "desc": "Verbose output"},
+			//       {"name": "timeout", "short": "t", "type": "int", "default": 10000, "desc": "Timeout ms"},
+			//       {"name": "help", "short": "h", "type": "bool", "desc": "Show help"},
+			//   ])
+			//
+			// The returned map contains:
+			//   - Each flag name as a key with its parsed value
+			//   - "_args": array of remaining positional arguments (not consumed by any flag)
+			//   - "_help": pre-formatted help text string (if any flag has a "desc" field)
+			//
+			// Supported flag types: "string" (default), "int", "float", "bool".
+			// Boolean flags are set to true when present (no value needed).
+			// If no args parameter is provided, uses env.scriptArgs().
+			"parseFlags": BuiltinFunc(func(fnArgs ...objects.Object) objects.Object {
+				if len(fnArgs) < 1 {
+					return Error("parseFlags() takes at least 1 argument: specs array")
+				}
+
+				// Extract the specs array
+				specsArr, ok := fnArgs[0].(*objects.Array)
+				if !ok {
+					return Error("parseFlags() first argument must be an array of flag specs")
+				}
+
+				// Determine the args to parse:
+				// - If a second argument is provided (string array), use that
+				// - Otherwise, use scriptArgs (the args after -- separator)
+				var argStrings []string
+				if len(fnArgs) >= 2 {
+					argsArr, ok := fnArgs[1].(*objects.Array)
+					if !ok {
+						return Error("parseFlags() second argument must be a string array")
+					}
+					for _, elem := range argsArr.Elements {
+						if s, ok := elem.(*objects.String); ok {
+							argStrings = append(argStrings, s.Value)
+						}
+					}
+				} else {
+					// Default: use scriptArgs
+					argStrings = scriptArgs
+				}
+
+				// Parse the specs array into flag definitions
+				type flagSpec struct {
+					name       string
+					short      string
+					flagType   string // "string", "int", "float", "bool"
+					defaultVal objects.Object
+					desc       string
+				}
+
+				specs := make([]flagSpec, 0, len(specsArr.Elements))
+				helpLines := make([]string, 0)
+
+				for i, elem := range specsArr.Elements {
+					m, ok := elem.(*objects.Map)
+					if !ok {
+						return Error(fmt.Sprintf("parseFlags() spec[%d] must be a map", i))
+					}
+
+					spec := flagSpec{flagType: "string"}
+
+					// name (required)
+					nameKey := objects.NewString("name")
+					if pair, found := m.Pairs[nameKey.HashKey()]; found {
+						if s, ok := pair.Value.(*objects.String); ok {
+							spec.name = s.Value
+						}
+					}
+					if spec.name == "" {
+						return Error(fmt.Sprintf("parseFlags() spec[%d] missing 'name' field", i))
+					}
+
+					// short (optional)
+					shortKey := objects.NewString("short")
+					if pair, found := m.Pairs[shortKey.HashKey()]; found {
+						if s, ok := pair.Value.(*objects.String); ok {
+							spec.short = s.Value
+						}
+					}
+
+					// type (optional, default "string")
+					typeKey := objects.NewString("type")
+					if pair, found := m.Pairs[typeKey.HashKey()]; found {
+						if s, ok := pair.Value.(*objects.String); ok {
+							spec.flagType = s.Value
+						}
+					}
+
+					// default (optional)
+					defaultKey := objects.NewString("default")
+					if pair, found := m.Pairs[defaultKey.HashKey()]; found {
+						spec.defaultVal = pair.Value
+					} else {
+						// Set type-appropriate zero value
+						switch spec.flagType {
+						case "bool":
+							spec.defaultVal = Bool(false)
+						case "int":
+							spec.defaultVal = Int(0)
+						case "float":
+							spec.defaultVal = Float(0)
+						default:
+							spec.defaultVal = String("")
+						}
+					}
+
+					// desc (optional)
+					descKey := objects.NewString("desc")
+					if pair, found := m.Pairs[descKey.HashKey()]; found {
+						if s, ok := pair.Value.(*objects.String); ok {
+							spec.desc = s.Value
+						}
+					}
+
+					specs = append(specs, spec)
+
+					// Build help line
+					if spec.desc != "" {
+						shortPart := ""
+						if spec.short != "" {
+							shortPart = fmt.Sprintf("-%s, ", spec.short)
+						}
+						typePart := ""
+						if spec.flagType != "bool" {
+							typePart = "=<value>"
+						}
+						defaultPart := ""
+						if spec.defaultVal != nil {
+							switch val := spec.defaultVal.(type) {
+							case *objects.String:
+								if val.Value != "" {
+									defaultPart = fmt.Sprintf(" (default: %s)", val.Value)
+								}
+							case *objects.Int:
+								defaultPart = fmt.Sprintf(" (default: %d)", val.Value)
+							case *objects.Float:
+								defaultPart = fmt.Sprintf(" (default: %v)", val.Value)
+							case *objects.Bool:
+								if val.Value {
+									defaultPart = " (default: true)"
+								}
+							}
+						}
+						helpLines = append(helpLines, fmt.Sprintf("  %s--%s%s  %s%s", shortPart, spec.name, typePart, spec.desc, defaultPart))
+					}
+				}
+
+				// Build lookup maps: long name -> spec index, short name -> spec index
+				longMap := make(map[string]int)
+				shortMap := make(map[string]int)
+				for i, spec := range specs {
+					longMap[spec.name] = i
+					if spec.short != "" {
+						shortMap[spec.short] = i
+					}
+				}
+
+				// Initialize result map with default values
+				resultPairs := make(map[objects.HashKey]objects.MapPair, len(specs)+2)
+				for _, spec := range specs {
+					key := objects.NewString(spec.name)
+					resultPairs[key.HashKey()] = objects.MapPair{Key: key, Value: spec.defaultVal}
+				}
+
+				// Parse the argument strings
+				var posArgs []objects.Object
+				helpRequested := false
+
+				i := 0
+				for i < len(argStrings) {
+					arg := argStrings[i]
+
+					if arg == "--" {
+						// Everything after bare "--" is positional
+						i++
+						for i < len(argStrings) {
+							posArgs = append(posArgs, String(argStrings[i]))
+							i++
+						}
+						break
+					}
+
+					if strings.HasPrefix(arg, "--") {
+						// Long flag: --key=value or --key value
+						afterDash := arg[2:]
+						var flagName, flagValue string
+						hasExplicitValue := false
+
+						if eqIdx := strings.IndexByte(afterDash, '='); eqIdx >= 0 {
+							flagName = afterDash[:eqIdx]
+							flagValue = afterDash[eqIdx+1:]
+							hasExplicitValue = true
+						} else {
+							flagName = afterDash
+						}
+
+						specIdx, found := longMap[flagName]
+						if !found {
+							// Unknown flag: treat as positional argument
+							posArgs = append(posArgs, String(arg))
+							i++
+							continue
+						}
+
+						spec := specs[specIdx]
+
+						// Handle --help
+						if flagName == "help" && spec.flagType == "bool" {
+							helpRequested = true
+						}
+
+						if spec.flagType == "bool" {
+							// Boolean flag: --flag means true
+							if hasExplicitValue {
+								resultPairs[objects.NewString(spec.name).HashKey()] = objects.MapPair{
+									Key:   objects.NewString(spec.name),
+									Value: Bool(strings.ToLower(flagValue) == "true" || flagValue == "1"),
+								}
+							} else {
+								resultPairs[objects.NewString(spec.name).HashKey()] = objects.MapPair{
+									Key:   objects.NewString(spec.name),
+									Value: Bool(true),
+								}
+							}
+						} else {
+							// Value flag: --flag value or --flag=value
+							if !hasExplicitValue {
+								i++
+								if i < len(argStrings) {
+									flagValue = argStrings[i]
+								} else {
+									return Error(fmt.Sprintf("parseFlags() --%s requires a value", flagName))
+								}
+							}
+							val, err := convertFlagValue(flagValue, spec.flagType)
+							if err != nil {
+								return Error(fmt.Sprintf("parseFlags() --%s: %s", flagName, err.Error()))
+							}
+							resultPairs[objects.NewString(spec.name).HashKey()] = objects.MapPair{
+								Key:   objects.NewString(spec.name),
+								Value: val,
+							}
+						}
+
+					} else if strings.HasPrefix(arg, "-") && len(arg) > 1 && arg[1] != '-' {
+						// Short flag: -k value or -k=value or -k (bool)
+						afterDash := arg[1:]
+						var flagKey, flagValue string
+						hasExplicitValue := false
+
+						if eqIdx := strings.IndexByte(afterDash, '='); eqIdx >= 0 {
+							flagKey = afterDash[:eqIdx]
+							flagValue = afterDash[eqIdx+1:]
+							hasExplicitValue = true
+						} else {
+							flagKey = afterDash
+						}
+
+						specIdx, found := shortMap[flagKey]
+						if !found {
+							// Unknown short flag: treat as positional
+							posArgs = append(posArgs, String(arg))
+							i++
+							continue
+						}
+
+						spec := specs[specIdx]
+
+						// Handle -h (help)
+						if spec.name == "help" && spec.flagType == "bool" {
+							helpRequested = true
+						}
+
+						if spec.flagType == "bool" {
+							if hasExplicitValue {
+								resultPairs[objects.NewString(spec.name).HashKey()] = objects.MapPair{
+									Key:   objects.NewString(spec.name),
+									Value: Bool(strings.ToLower(flagValue) == "true" || flagValue == "1"),
+								}
+							} else {
+								resultPairs[objects.NewString(spec.name).HashKey()] = objects.MapPair{
+									Key:   objects.NewString(spec.name),
+									Value: Bool(true),
+								}
+							}
+						} else {
+							if !hasExplicitValue {
+								i++
+								if i < len(argStrings) {
+									flagValue = argStrings[i]
+								} else {
+									return Error(fmt.Sprintf("parseFlags() -%s requires a value", flagKey))
+								}
+							}
+							val, err := convertFlagValue(flagValue, spec.flagType)
+							if err != nil {
+								return Error(fmt.Sprintf("parseFlags() -%s: %s", flagKey, err.Error()))
+							}
+							resultPairs[objects.NewString(spec.name).HashKey()] = objects.MapPair{
+								Key:   objects.NewString(spec.name),
+								Value: val,
+							}
+						}
+
+					} else {
+						// Positional argument
+						posArgs = append(posArgs, String(arg))
+					}
+
+					i++
+				}
+
+				// Add _args (positional arguments)
+				if posArgs == nil {
+					posArgs = []objects.Object{}
+				}
+				argsKey := objects.NewString("_args")
+				resultPairs[argsKey.HashKey()] = objects.MapPair{Key: argsKey, Value: &objects.Array{Elements: posArgs}}
+
+				// Add _help (pre-formatted help text)
+				helpText := strings.Join(helpLines, "\n")
+				if helpRequested {
+					helpText = "Options:\n" + helpText
+				}
+				helpKey := objects.NewString("_help")
+				resultPairs[helpKey.HashKey()] = objects.MapPair{Key: helpKey, Value: String(helpText)}
+
+				return &objects.Map{Pairs: resultPairs}
+			}),
 		},
 	})
+}
+
+// convertFlagValue converts a string value to the appropriate Xxlang object type.
+func convertFlagValue(s string, flagType string) (objects.Object, error) {
+	switch flagType {
+	case "int":
+		n, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid integer value: %s", s)
+		}
+		return Int(n), nil
+	case "float":
+		f, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid float value: %s", s)
+		}
+		return Float(f), nil
+	case "bool":
+		return Bool(strings.ToLower(s) == "true" || s == "1"), nil
+	default:
+		return String(s), nil
+	}
 }

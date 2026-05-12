@@ -124,9 +124,10 @@ var BuiltinRegistry = []string{
 	// Command line argument utilities
 	"getSwitch", // 99
 	"switchExists", // 100
+	"getParam", // 101 - get positional parameter by index from args array
 	// Output utilities
-	"pl", // 101
-	"prf", // 102
+	"pl", // 102
+	"prf", // 103
 	// Validation utilities
 	"checkErr", // 103
 	"checkEmpty", // 104

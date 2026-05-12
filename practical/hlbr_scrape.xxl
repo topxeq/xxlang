@@ -1,0 +1,165 @@
+// hlbr_scrape.xxl
+// Web scraping with Xxlang's built-in headless browser (hlbr module).
+// No external browser required. Supports JavaScript-rendered pages (SPA).
+//
+// Usage:
+//   xxl hlbr_scrape.xxl -- --url=https://example.com
+//   xxl hlbr_scrape.xxl -- --url=https://example.com --selector=h1 --text
+//   xxl hlbr_scrape.xxl -- --url=https://example.com --links
+//   xxl hlbr_scrape.xxl -- --url=https://example.com --screenshot=output.txt
+//
+// Options (--key=value format):
+//   --url=<url>          Page URL to scrape (required)
+//   --selector=<css>     CSS selector for target elements (default: body)
+//   --attr=<name>        Extract attribute value instead of text
+//   --screenshot=<file>  Save text screenshot to file
+//   --width=<cols>       Terminal width for screenshot (default: 100)
+//   --timeout=<ms>       Page stability timeout (default: 10000)
+//   --text               Extract text content (default mode)
+//   --html               Output raw HTML of matched elements
+//   --links              Extract all links (href) from the page
+//   --debug              Enable debug output
+//   --help               Show this help message
+//
+// Tested: working as of 2026-05
+
+import "hlbr"
+import "strings"
+
+// ============================================================
+// Parse command-line arguments using getSwitch / switchExists
+// ============================================================
+
+if (switchExists(argsG, "--help")) {
+    pln("hlbr_scrape.xxl - Web scraping with headless browser")
+    pln("")
+    pln("Usage:")
+    pln("  xxl hlbr_scrape.xxl -- [options]")
+    pln("")
+    pln("Options:")
+    pln("  --url=<url>          Page URL to scrape (required)")
+    pln("  --selector=<css>     CSS selector (default: body)")
+    pln("  --attr=<name>        Extract attribute value")
+    pln("  --screenshot=<file>  Save text screenshot to file")
+    pln("  --width=<cols>       Terminal width (default: 100)")
+    pln("  --timeout=<ms>       Page stability timeout (default: 10000)")
+    pln("  --text               Extract text content (default)")
+    pln("  --html               Output raw HTML")
+    pln("  --links              Extract all links")
+    pln("  --debug              Enable debug output")
+    pln("  --help               Show this help")
+    exit(0)
+}
+
+var targetURL = getSwitch(argsG, "--url=", "")
+var selector = getSwitch(argsG, "--selector=", "body")
+var extractAttr = getSwitch(argsG, "--attr=", "")
+var screenshotFile = getSwitch(argsG, "--screenshot=", "")
+var screenshotWidth = toInt(getSwitch(argsG, "--width=", "100"))
+var timeoutMs = toInt(getSwitch(argsG, "--timeout=", "10000"))
+var debugMode = switchExists(argsG, "--debug")
+
+// Determine extraction mode (mutually exclusive: links > html > attr > text)
+var extractLinks = switchExists(argsG, "--links")
+var extractHTML = switchExists(argsG, "--html")
+var extractText = !extractLinks && !extractHTML && extractAttr == ""
+
+if (targetURL == "") {
+    pln("Error: --url is required")
+    exit(1)
+}
+
+// ============================================================
+// Launch browser and navigate
+// ============================================================
+
+pln("Scraping: " + targetURL)
+
+var br = hlbr.open({"headless": true})
+
+if (typeOf(br) == "STRING" && strings.hasPrefix(br, "[error]")) {
+    pln("ERROR: " + br)
+    exit(1)
+}
+
+if (debugMode) {
+    br.setDebug(true)
+    br.setJsDebug(true)
+}
+
+br.get(targetURL)
+br.waitStable(timeoutMs, 200)
+
+pln("Title: " + br.getTitle())
+pln("")
+
+// ============================================================
+// Extract data based on mode
+// ============================================================
+
+if (extractLinks) {
+    pln("--- Links ---")
+    var links = br.findAll("a[href]")
+    pln("Found " + len(links) + " link(s):")
+    for (var li = 0; li < len(links); li = li + 1) {
+        var link = links[li]
+        var href = link.getAttr("href")
+        var text = link.getText()
+        if (text != "" && len(text) > 50) {
+            text = substr(text, 0, 50) + "..."
+        }
+        pln("  " + href + (text != "" ? " (" + text + ")" : ""))
+    }
+
+} else if (extractHTML) {
+    pln("--- HTML (" + selector + ") ---")
+    var nodes = br.findAll(selector)
+    pln("Found " + len(nodes) + " element(s):")
+    for (var ni = 0; ni < len(nodes); ni = ni + 1) {
+        pln(nodes[ni].getHTML())
+        pln("")
+    }
+
+} else if (extractAttr != "") {
+    pln("--- Attribute '" + extractAttr + "' (" + selector + ") ---")
+    var attrNodes = br.findAll(selector)
+    pln("Found " + len(attrNodes) + " element(s):")
+    for (var ai = 0; ai < len(attrNodes); ai = ai + 1) {
+        var val = attrNodes[ai].getAttr(extractAttr)
+        if (val != "") {
+            pln("  " + val)
+        }
+    }
+
+} else {
+    if (selector == "body") {
+        var pageText = br.getText()
+        pln("--- Page Text ---")
+        pln(pageText)
+    } else {
+        pln("--- Text (" + selector + ") ---")
+        var textNodes = br.findAll(selector)
+        pln("Found " + len(textNodes) + " element(s):")
+        for (var ti = 0; ti < len(textNodes); ti = ti + 1) {
+            pln(textNodes[ti].getText())
+        }
+    }
+}
+
+// ============================================================
+// Screenshot (optional)
+// ============================================================
+
+if (screenshotFile != "") {
+    br.screenshotTextToFile(screenshotFile, screenshotWidth)
+    pln("")
+    pln("Text screenshot saved to: " + screenshotFile)
+}
+
+// ============================================================
+// Cleanup
+// ============================================================
+
+br.close()
+pln("")
+pln("=== Done ===")

@@ -4055,12 +4055,17 @@ func (vm *VM) evalAssign(e *AssignExpr) *Value {
 func (vm *VM) evalCall(e *CallExpr) *Value {
 	var thisBinding *Value = nil
 
-	// Check if this is a method call (obj.method())
+	// Evaluate the callee. For method calls (obj.method()), we must
+	// evaluate the object expression only once to avoid side effects
+	// (e.g., makeP().then(cb) would call makeP() twice if we evaluate
+	// member.Object separately for thisBinding and again for the callee).
+	var callee *Value
 	if member, ok := e.Callee.(*MemberExpr); ok {
 		thisBinding = vm.evalExpr(member.Object)
+		callee = vm.evalMemberWithObj(member, thisBinding)
+	} else {
+		callee = vm.evalExpr(e.Callee)
 	}
-
-	callee := vm.evalExpr(e.Callee)
 
 		var args []*Value
 		for _, arg := range e.Args {
@@ -4458,6 +4463,14 @@ func (vm *VM) evalMemberRaw(expr Expression) *Value {
 
 func (vm *VM) evalMember(e *MemberExpr) *Value {
 	obj := vm.evalExpr(e.Object)
+	return vm.evalMemberWithObj(e, obj)
+}
+
+// evalMemberWithObj evaluates a member expression with a pre-evaluated object.
+// This is used by evalCall to avoid double-evaluating the object expression
+// when the callee is a method call (e.g., makeP().then(cb) would evaluate
+// makeP() twice without this optimization).
+func (vm *VM) evalMemberWithObj(e *MemberExpr, obj *Value) *Value {
 
 	// Precompute the property key for computed member expressions.
 	// This is crucial for prototype chain lookups: re-evaluating e.Property
@@ -4710,29 +4723,111 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 					nextPromise := &Value{
 						Type: "promise",
 						Promise: &Promise{
-							State: "pending",
+							State:     "pending",
+							OnFulfill: make([]PromiseThenEntry, 0),
+							OnReject:  make([]PromiseThenEntry, 0),
 						},
 					}
 
+					onFulfilled := &Value{Type: "undefined"}
+					onRejected := &Value{Type: "undefined"}
 					if len(args) > 0 && (args[0].Type == "function" || args[0].Type == "native") {
+						onFulfilled = args[0]
+					}
+					if len(args) > 1 && (args[1].Type == "function" || args[1].Type == "native") {
+						onRejected = args[1]
+					}
+
+					if onFulfilled.Type == "function" || onFulfilled.Type == "native" {
 						if obj.Promise.State == "fulfilled" {
-							cb := args[0]
-							val := obj.Promise.Value
+							// Already fulfilled: schedule onFulfilled as microtask
 							vm.microtaskQueue = append(vm.microtaskQueue, microtask{
-								callback:       cb,
-								args:           []*Value{val},
+								callback:       onFulfilled,
+								args:           []*Value{obj.Promise.Value},
 								resolvePromise: nextPromise,
 							})
+						} else if obj.Promise.State == "rejected" {
+							// Rejected but onFulfilled won't fire: propagate rejection
+							if onRejected.Type == "function" || onRejected.Type == "native" {
+								vm.microtaskQueue = append(vm.microtaskQueue, microtask{
+									callback:       onRejected,
+									args:           []*Value{obj.Promise.Rejection},
+									resolvePromise: nextPromise,
+								})
+							} else {
+								vm.rejectPromise(nextPromise, obj.Promise.Rejection)
+							}
 						} else {
+							// Still pending: attach both handlers
 							obj.Promise.OnFulfill = append(obj.Promise.OnFulfill, PromiseThenEntry{
-								Callback:       args[0],
+								Callback:       onFulfilled,
 								ResolvePromise: nextPromise,
 							})
+							if onRejected.Type == "function" || onRejected.Type == "native" {
+								obj.Promise.OnReject = append(obj.Promise.OnReject, PromiseThenEntry{
+									Callback:       onRejected,
+									ResolvePromise: nextPromise,
+								})
+							} else {
+								// No onRejected handler: propagate rejection through
+								propagateRejCB := &Value{Type: "native", Native: func(cbArgs []*Value) *Value {
+									reason := &Value{Type: "undefined"}
+									if len(cbArgs) > 0 {
+										reason = cbArgs[0]
+									}
+									vm.rejectPromise(nextPromise, reason)
+									return &Value{Type: "undefined"}
+								}}
+								obj.Promise.OnReject = append(obj.Promise.OnReject, PromiseThenEntry{
+									Callback: propagateRejCB,
+								})
+							}
 						}
 					} else {
+						// No onFulfilled handler: pass through the current state
 						if obj.Promise.State == "fulfilled" {
-							nextPromise.Promise.State = "fulfilled"
-							nextPromise.Promise.Value = obj.Promise.Value
+							vm.resolvePromiseWith(nextPromise, obj.Promise.Value)
+						} else if obj.Promise.State == "rejected" {
+							if onRejected.Type == "function" || onRejected.Type == "native" {
+								vm.microtaskQueue = append(vm.microtaskQueue, microtask{
+									callback:       onRejected,
+									args:           []*Value{obj.Promise.Rejection},
+									resolvePromise: nextPromise,
+								})
+							} else {
+								vm.rejectPromise(nextPromise, obj.Promise.Rejection)
+							}
+						} else {
+							// Pending: attach pass-through handlers
+							passFulfillCB := &Value{Type: "native", Native: func(cbArgs []*Value) *Value {
+								val := &Value{Type: "undefined"}
+								if len(cbArgs) > 0 {
+									val = cbArgs[0]
+								}
+								vm.resolvePromiseWith(nextPromise, val)
+								return &Value{Type: "undefined"}
+							}}
+							obj.Promise.OnFulfill = append(obj.Promise.OnFulfill, PromiseThenEntry{
+								Callback: passFulfillCB,
+							})
+							if onRejected.Type == "function" || onRejected.Type == "native" {
+								obj.Promise.OnReject = append(obj.Promise.OnReject, PromiseThenEntry{
+									Callback:       onRejected,
+									ResolvePromise: nextPromise,
+								})
+							} else {
+								passRejectCB := &Value{Type: "native", Native: func(cbArgs []*Value) *Value {
+									reason := &Value{Type: "undefined"}
+									if len(cbArgs) > 0 {
+										reason = cbArgs[0]
+									}
+									vm.rejectPromise(nextPromise, reason)
+									return &Value{Type: "undefined"}
+								}}
+								obj.Promise.OnReject = append(obj.Promise.OnReject, PromiseThenEntry{
+									Callback: passRejectCB,
+								})
+							}
 						}
 					}
 					return nextPromise
@@ -4741,10 +4836,17 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 				return &Value{Type: "native", Native: func(args []*Value) *Value {
 					nextPromise := &Value{
 						Type: "promise",
-						Promise: &Promise{State: "pending"},
+						Promise: &Promise{
+							State:     "pending",
+							OnFulfill: make([]PromiseThenEntry, 0),
+							OnReject:  make([]PromiseThenEntry, 0),
+						},
 					}
 					if len(args) > 0 && (args[0].Type == "function" || args[0].Type == "native") {
 						if obj.Promise.State == "rejected" {
+							// Already rejected: schedule the catch callback as a microtask.
+							// The catch handler's return value resolves nextPromise
+							// (per ECMAScript, catch is like then(undefined, onRejected)).
 							cb := args[0]
 							reason := obj.Promise.Rejection
 							vm.microtaskQueue = append(vm.microtaskQueue, microtask{
@@ -4752,12 +4854,45 @@ func (vm *VM) evalMember(e *MemberExpr) *Value {
 								args:           []*Value{reason},
 								resolvePromise: nextPromise,
 							})
+						} else if obj.Promise.State == "fulfilled" {
+							// Already fulfilled: catch is skipped, pass through the value.
+							// This is critical for chains like:
+							//   Promise.resolve(1).then(fn).catch(handler).then(nextFn)
+							// where catch should be a no-op if no rejection occurred.
+							vm.resolvePromiseWith(nextPromise, obj.Promise.Value)
 						} else {
+							// Still pending: attach as onReject handler.
+							// Also need to attach an onFulfill handler to pass through
+							// the value if the promise resolves instead of rejecting.
 							obj.Promise.OnReject = append(obj.Promise.OnReject, PromiseThenEntry{
 								Callback:       args[0],
 								ResolvePromise: nextPromise,
 							})
+							// Pass-through: if the promise fulfills, skip the catch
+							// and resolve nextPromise with the fulfilled value.
+							passThroughCB := &Value{Type: "native", Native: func(cbArgs []*Value) *Value {
+								val := &Value{Type: "undefined"}
+								if len(cbArgs) > 0 {
+									val = cbArgs[0]
+								}
+								vm.resolvePromiseWith(nextPromise, val)
+								return &Value{Type: "undefined"}
+							}}
+							obj.Promise.OnFulfill = append(obj.Promise.OnFulfill, PromiseThenEntry{
+								Callback: passThroughCB,
+							})
 						}
+					} else {
+						// No catch handler: propagate the current state through.
+						if obj.Promise.State == "fulfilled" {
+							vm.resolvePromiseWith(nextPromise, obj.Promise.Value)
+						} else if obj.Promise.State == "rejected" {
+							vm.rejectPromise(nextPromise, obj.Promise.Rejection)
+						}
+						// Pending with no handler: if resolved/rejected later, it
+						// won't propagate since there's no OnFulfill/OnReject entry.
+						// This is a simplification; in practice callers always pass
+						// a handler to .catch().
 					}
 					return nextPromise
 				}}
@@ -6090,35 +6225,26 @@ func (vm *VM) setupPromise() {
 		// Create resolve and reject functions
 		resolve := &Value{Type: "native", Native: func(args []*Value) *Value {
 			if p.State == "pending" {
-				p.State = "fulfilled"
+				val := &Value{Type: "undefined"}
 				if len(args) > 0 {
-					p.Value = args[0]
+					val = args[0]
 				}
-				for _, entry := range p.OnFulfill {
-					vm.microtaskQueue = append(vm.microtaskQueue, microtask{
-						callback:       entry.Callback,
-						args:           []*Value{p.Value},
-						resolvePromise: entry.ResolvePromise,
-					})
-				}
+				// Use resolvePromiseWith to implement the Promise Resolution
+				// Procedure: if val is a thenable (Promise), subscribe to it
+				// rather than wrapping it. This handles patterns like:
+				//   new Promise(function(r) { r(axios(url)); })
+				vm.resolvePromiseWith(&Value{Type: "promise", Promise: p}, val)
 			}
 			return &Value{Type: "undefined"}
 		}}
 
 		reject := &Value{Type: "native", Native: func(args []*Value) *Value {
 			if p.State == "pending" {
-				p.State = "rejected"
+				reason := &Value{Type: "undefined"}
 				if len(args) > 0 {
-					p.Rejection = args[0]
+					reason = args[0]
 				}
-				// Call all onReject callbacks
-				for _, entry := range p.OnReject {
-					vm.microtaskQueue = append(vm.microtaskQueue, microtask{
-						callback:       entry.Callback,
-						args:           []*Value{p.Rejection},
-						resolvePromise: entry.ResolvePromise,
-					})
-				}
+				vm.rejectPromise(&Value{Type: "promise", Promise: p}, reason)
 			}
 			return &Value{Type: "undefined"}
 		}}
@@ -6134,18 +6260,28 @@ func (vm *VM) setupPromise() {
 	}}
 
 	// Promise.resolve static method
+	// Per ECMAScript spec, if the argument is a thenable (has a .then method),
+	// the returned Promise follows the thenable's state. Otherwise, the
+	// returned Promise is fulfilled with the argument.
 	promiseResolve := &Value{Type: "native", Native: func(args []*Value) *Value {
 		p := &Promise{
-			State:     "fulfilled",
+			State:     "pending",
 			OnFulfill: make([]PromiseThenEntry, 0),
 			OnReject:  make([]PromiseThenEntry, 0),
 			Env:       vm.env,
 		}
+		pv := &Value{Type: "promise", Promise: p}
 		offset := nativeThisOffset(args)
 		if len(args) > offset {
-			p.Value = args[offset]
+			val := args[offset]
+			// Use resolvePromiseWith to handle thenable values correctly.
+			// This ensures Promise.resolve(anotherPromise) returns a Promise
+			// that follows the other Promise's state, rather than wrapping it.
+			vm.resolvePromiseWith(pv, val)
+		} else {
+			vm.resolvePromise(pv, &Value{Type: "undefined"})
 		}
-		return &Value{Type: "promise", Promise: p}
+		return pv
 	}}
 
 	// Promise.reject static method
@@ -6355,24 +6491,13 @@ func (vm *VM) DrainMicrotasks() {
 			result = task.callback.Native(nativeArgs)
 		}
 
-		// If this microtask is part of a .then() chain, resolve the
-		// chaining promise with the callback's return value. If the
-		// callback returned a Promise, adopt its state (per ECMAScript
-		// Promise Resolution Procedure).
+		// If this microtask is part of a .then()/.catch() chain, resolve the
+		// chaining promise with the callback's return value using the full
+		// ECMAScript Promise Resolution Procedure. This handles the case where
+		// the callback returns a Promise (including a pending one), which must
+		// be subscribed to rather than wrapped.
 		if task.resolvePromise != nil && task.resolvePromise.Promise != nil {
-			if result != nil && result.Type == "promise" && result.Promise != nil {
-				if result.Promise.State == "fulfilled" {
-					vm.resolvePromise(task.resolvePromise, result.Promise.Value)
-				} else if result.Promise.State == "rejected" {
-					task.resolvePromise.Promise.State = "rejected"
-					task.resolvePromise.Promise.Rejection = result.Promise.Rejection
-				} else {
-					task.resolvePromise.Promise.State = "fulfilled"
-					task.resolvePromise.Promise.Value = result
-				}
-			} else {
-				vm.resolvePromise(task.resolvePromise, result)
-			}
+			vm.resolvePromiseWith(task.resolvePromise, result)
 		}
 		// After executing a callback, new microtasks may have been enqueued
 		// (e.g., from chained .then calls). Continue the loop to process them.
@@ -6381,6 +6506,9 @@ func (vm *VM) DrainMicrotasks() {
 
 // resolvePromise transitions a promise to fulfilled state and enqueues
 // any .then() callbacks that were attached while the promise was pending.
+// This is the simple path that assumes value is not a thenable.
+// For the full Promise Resolution Procedure (which handles thenables),
+// use resolvePromiseWith instead.
 func (vm *VM) resolvePromise(p *Value, value *Value) {
 	if p == nil || p.Promise == nil {
 		return
@@ -6395,6 +6523,86 @@ func (vm *VM) resolvePromise(p *Value, value *Value) {
 		})
 	}
 	p.Promise.OnFulfill = nil
+}
+
+// rejectPromise transitions a promise to rejected state and enqueues
+// any .catch() callbacks that were attached while the promise was pending.
+func (vm *VM) rejectPromise(p *Value, reason *Value) {
+	if p == nil || p.Promise == nil {
+		return
+	}
+	p.Promise.State = "rejected"
+	p.Promise.Rejection = reason
+	for _, entry := range p.Promise.OnReject {
+		vm.microtaskQueue = append(vm.microtaskQueue, microtask{
+			callback:       entry.Callback,
+			args:           []*Value{reason},
+			resolvePromise: entry.ResolvePromise,
+		})
+	}
+	p.Promise.OnReject = nil
+}
+
+// resolvePromiseWith implements the ECMAScript Promise Resolution Procedure.
+// When resolving a promise with a value, if the value is itself a Promise
+// (thenable), we must subscribe to the inner promise instead of wrapping it.
+// This is critical for patterns like:
+//
+//	Promise.resolve(1).then(function(v) { return axios(url); }).then(...)
+//
+// where the .then() callback returns a new (pending) Promise that resolves
+// later. Without this, the chaining promise would be incorrectly fulfilled
+// with the pending Promise object as its value, instead of waiting for the
+// inner Promise to resolve and propagating its value.
+func (vm *VM) resolvePromiseWith(p *Value, value *Value) {
+	if p == nil || p.Promise == nil {
+		return
+	}
+
+	// Step 1: If value is the same promise, reject with TypeError
+	if value != nil && value.Type == "promise" && value.Promise == p.Promise {
+		vm.rejectPromise(p, &Value{Type: "string", Str: "TypeError: A promise cannot be resolved with itself"})
+		return
+	}
+
+	// Step 2: If value is a Promise (thenable), subscribe to it
+	if value != nil && value.Type == "promise" && value.Promise != nil {
+		inner := value.Promise
+
+		if inner.State == "fulfilled" {
+			// Inner already fulfilled: resolve outer with inner's value
+			vm.resolvePromise(p, inner.Value)
+		} else if inner.State == "rejected" {
+			// Inner already rejected: reject outer with inner's reason
+			vm.rejectPromise(p, inner.Rejection)
+		} else {
+			// Inner is still pending: subscribe to it.
+			// When the inner promise resolves, resolve the outer promise.
+			// When the inner promise rejects, reject the outer promise.
+			resolveCB := &Value{Type: "native", Native: func(args []*Value) *Value {
+				val := &Value{Type: "undefined"}
+				if len(args) > 0 {
+					val = args[0]
+				}
+				vm.resolvePromiseWith(p, val)
+				return &Value{Type: "undefined"}
+			}}
+			rejectCB := &Value{Type: "native", Native: func(args []*Value) *Value {
+				reason := &Value{Type: "undefined"}
+				if len(args) > 0 {
+					reason = args[0]
+				}
+				vm.rejectPromise(p, reason)
+				return &Value{Type: "undefined"}
+			}}
+			inner.OnFulfill = append(inner.OnFulfill, PromiseThenEntry{Callback: resolveCB})
+			inner.OnReject = append(inner.OnReject, PromiseThenEntry{Callback: rejectCB})
+		}
+		return
+	}
+
+	// Step 3: Value is not a thenable, resolve normally
+	vm.resolvePromise(p, value)
 }
 
 // setupMapSet adds Map and Set constructors to the VM

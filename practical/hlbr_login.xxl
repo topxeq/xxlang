@@ -1,0 +1,262 @@
+// hlbr_login.xxl
+// Headless browser login automation using Xxlang's built-in hlbr module.
+// No external browser (Chrome/Chromium) required.
+//
+// Usage:
+//   xxl hlbr_login.xxl -- --url=http://example.com --user=admin --pass=secret
+//   xxl hlbr_login.xxl -- --debug
+//
+// Options (--key=value format):
+//   --url=<url>       Login page URL (default: http://localhost:8080)
+//   --user=<user>     Username (default: admin)
+//   --pass=<pass>     Password (default: admin123)
+//   --timeout=<ms>    Page stability timeout in ms (default: 10000)
+//   --debug           Enable browser debug output
+//   --help            Show this help message
+//
+// Tested: working as of 2026-05
+
+import "hlbr"
+import "strings"
+import "time"
+
+// ============================================================
+// Parse command-line arguments using getSwitch / switchExists
+// ============================================================
+
+if (switchExists(argsG, "--help")) {
+    pln("hlbr_login.xxl - Headless browser login automation")
+    pln("")
+    pln("Usage:")
+    pln("  xxl hlbr_login.xxl -- [options]")
+    pln("")
+    pln("Options:")
+    pln("  --url=<url>       Login page URL (default: http://localhost:8080)")
+    pln("  --user=<user>     Username (default: admin)")
+    pln("  --pass=<pass>     Password (default: admin123)")
+    pln("  --timeout=<ms>    Page stability timeout in ms (default: 10000)")
+    pln("  --debug           Enable browser debug output")
+    pln("  --help            Show this help")
+    pln("")
+    pln("Examples:")
+    pln("  xxl hlbr_login.xxl")
+    pln("  xxl hlbr_login.xxl -- --url=http://myapp.local --user=admin --pass=s3cret")
+    exit(0)
+}
+
+var loginURL = getSwitch(argsG, "--url=", "http://localhost:8080")
+var username = getSwitch(argsG, "--user=", "admin")
+var password = getSwitch(argsG, "--pass=", "admin123")
+var timeoutMs = toInt(getSwitch(argsG, "--timeout=", "10000"))
+var debugMode = switchExists(argsG, "--debug")
+
+// ============================================================
+// Display configuration
+// ============================================================
+
+pln("=== HLBR Login Automation ===")
+pln("  URL:     " + loginURL)
+pln("  User:    " + username)
+pln("  Pass:    " + "****" + substr(password, max(0, len(password) - 2)))
+pln("  Timeout: " + timeoutMs + " ms")
+pln("  Debug:   " + (debugMode ? "ON" : "OFF"))
+pln("")
+
+// ============================================================
+// Step 1: Launch headless browser
+// ============================================================
+
+pln("[1] Launching headless browser...")
+
+var br = hlbr.open({"headless": true})
+
+if (typeOf(br) == "STRING" && strings.hasPrefix(br, "[error]")) {
+    pln("ERROR: Failed to launch browser: " + br)
+    exit(1)
+}
+
+pln("    Browser launched: " + br)
+
+if (debugMode) {
+    br.setDebug(true)
+    br.setJsDebug(true)
+}
+
+// ============================================================
+// Step 2: Navigate to login page
+// ============================================================
+
+pln("[2] Navigating to: " + loginURL)
+br.get(loginURL)
+pln("    Page title: " + br.getTitle())
+
+// ============================================================
+// Step 3: Wait for page to become stable
+// ============================================================
+
+pln("[3] Waiting for page to stabilize...")
+br.waitStable(timeoutMs, 200)
+pln("    Page stable")
+
+// ============================================================
+// Step 4: Analyze page structure
+// ============================================================
+
+pln("[4] Analyzing page structure...")
+
+var hasUsernameField = br.exists("input[type='text']")
+var hasPasswordField = br.exists("input[type='password']")
+var hasButton = br.exists("button")
+
+pln("    Username field: " + (hasUsernameField ? "FOUND" : "NOT FOUND"))
+pln("    Password field: " + (hasPasswordField ? "FOUND" : "NOT FOUND"))
+pln("    Button:         " + (hasButton ? "FOUND" : "NOT FOUND"))
+
+if (!hasUsernameField || !hasPasswordField) {
+    pln("")
+    pln("WARNING: Login form not detected. Trying Vue template analysis...")
+    var fields = hlbr.analyzeVueTemplates(br)
+    if (len(fields) > 0) {
+        pln("  Vue form fields found: " + len(fields))
+        for (fi in fields) {
+            pln("    - name=" + fi["name"] + " type=" + fi["type"] + " label=" + fi["label"])
+        }
+    } else {
+        pln("  No Vue form fields detected either. Proceeding anyway...")
+    }
+}
+
+// ============================================================
+// Step 5: Fill login form
+// ============================================================
+
+pln("[5] Filling login form...")
+
+var userFilled = false
+var userSelectors = ["input[type='text']", "input[name='username']", "input[placeholder*='user']", "input[placeholder*='account']", "input:first-of-type"]
+for (var ui = 0; ui < len(userSelectors); ui = ui + 1) {
+    if (br.exists(userSelectors[ui])) {
+        br.fill(userSelectors[ui], username)
+        pln("    Username filled via: " + userSelectors[ui])
+        userFilled = true
+        break
+    }
+}
+
+if (!userFilled) {
+    pln("    WARNING: Could not find username field, using JS fallback")
+    br.setValueByJS("input[type='text']", username)
+}
+
+var passFilled = false
+var passSelectors = ["input[type='password']", "input[name='password']", "input[placeholder*='pass']"]
+for (var pi2 = 0; pi2 < len(passSelectors); pi2 = pi2 + 1) {
+    if (br.exists(passSelectors[pi2])) {
+        br.fill(passSelectors[pi2], password)
+        pln("    Password filled via: " + passSelectors[pi2])
+        passFilled = true
+        break
+    }
+}
+
+if (!passFilled) {
+    pln("    WARNING: Could not find password field, using JS fallback")
+    br.setValueByJS("input[type='password']", password)
+}
+
+// ============================================================
+// Step 6: Click login button
+// ============================================================
+
+pln("[6] Clicking login button...")
+
+var btnClicked = false
+var btnSelectors = ["button[type='submit']", "button.login", "button.login-btn", "button"]
+for (var bi = 0; bi < len(btnSelectors); bi = bi + 1) {
+    if (br.exists(btnSelectors[bi])) {
+        br.click(btnSelectors[bi])
+        pln("    Clicked button via: " + btnSelectors[bi])
+        btnClicked = true
+        break
+    }
+}
+
+if (!btnClicked) {
+    pln("    WARNING: Could not find login button, using JS fallback")
+    br.clickByJS("button")
+}
+
+// ============================================================
+// Step 7: Wait for login to complete
+// ============================================================
+
+pln("[7] Waiting for login to complete...")
+sleep(1500)
+br.waitStable(timeoutMs, 300)
+pln("    Page stable after login")
+
+// ============================================================
+// Step 8: Verify login result
+// ============================================================
+
+pln("[8] Verifying login result...")
+
+var token = br.eval("localStorage.getItem('token')")
+var authorized = br.eval("localStorage.getItem('authorized')")
+var currentURL = br.getURL()
+var title = br.getTitle()
+
+pln("    Title:     " + title)
+pln("    URL:       " + currentURL)
+pln("    Token:     " + (token != null && token != "" ? "PRESENT (" + len(toStr(token)) + " chars)" : "NOT FOUND"))
+pln("    Authorized:" + (authorized == "true" ? " YES" : " NO"))
+
+var sessionToken = br.eval("sessionStorage.getItem('token')")
+if (sessionToken != null && sessionToken != "") {
+    pln("    SessToken: PRESENT (" + len(toStr(sessionToken)) + " chars)")
+}
+
+// ============================================================
+// Step 9: Extract useful data after login
+// ============================================================
+
+pln("[9] Post-login data:")
+
+var cookies = br.getCookies()
+pln("    Cookies: " + len(cookies) + " item(s)")
+
+var ls = br.getLocalStorage()
+pln("    LocalStorage: " + len(ls) + " key(s)")
+
+if (len(ls) > 0) {
+    var lsKeys = keys(ls)
+    for (var ki = 0; ki < len(lsKeys); ki = ki + 1) {
+        var k = lsKeys[ki]
+        var v = ls[k]
+        if (typeOf(v) == "STRING" && len(v) > 20) {
+            pln("      " + k + " = " + substr(v, 0, 10) + "..." + substr(v, len(v) - 6))
+        } else {
+            pln("      " + k + " = " + v)
+        }
+    }
+}
+
+// ============================================================
+// Step 10: Close browser
+// ============================================================
+
+pln("[10] Closing browser...")
+br.close()
+
+pln("")
+if (token != null && token != "") {
+    pln("=== Login SUCCESSFUL ===")
+} else if (authorized == "true") {
+    pln("=== Login LIKELY SUCCESSFUL (authorized flag set) ===")
+} else {
+    pln("=== Login STATUS UNCERTAIN (no token found) ===")
+    pln("    The page may use a different auth mechanism.")
+    pln("    Try --debug flag for more details.")
+}
+
+pln("=== Done ===")

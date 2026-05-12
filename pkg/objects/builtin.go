@@ -2609,6 +2609,63 @@ var Builtins = map[string]*Builtin{
 			return FALSE
 		},
 	},
+	"getParam": {
+		Fn: func(args ...Object) Object {
+			if len(args) < 2 {
+				return newError("wrong number of arguments for getParam. got=%d, want>=2", len(args))
+			}
+
+			arr, ok := args[0].(*Array)
+			if !ok {
+				return newError("first argument to 'getParam' must be ARRAY, got %s", args[0].Type())
+			}
+
+			index, ok := args[1].(*Int)
+			if !ok {
+				if f, ok := args[1].(*Float); ok {
+					index = NewInt(int64(f.Value))
+				} else {
+					return newError("second argument to 'getParam' must be INTEGER, got %s", args[1].Type())
+				}
+			}
+
+			// getParam extracts positional (non-flag) arguments from an args array.
+			// Flags are elements starting with "--" are skipped. The index parameter
+			// specifies which positional argument to return (0-based). A third optional
+			// argument provides the default value if the index is out of bounds.
+			//
+			// Example:
+			//   argsG = ["xxl", "script.xxl", "--", "--url=http://x", "file1.txt", "file2.txt"]
+			//   getParam(argsG, 0, "default.txt")  → "file1.txt"
+			//   getParam(argsG, 1, "default.txt")  → "file2.txt"
+			//   getParam(argsG, 2, "default.txt")  → "default.txt"
+			var defaultValue Object = NewString("")
+			if len(args) > 2 {
+				defaultValue = args[2]
+			}
+
+			// Collect positional arguments (skip elements starting with "--")
+			var posArgs []string
+			for _, elem := range arr.Elements {
+				str, ok := elem.(*String)
+				if !ok {
+					continue
+				}
+				// Skip flag arguments (starting with "--")
+				if strings.HasPrefix(str.Value, "--") {
+					continue
+				}
+				posArgs = append(posArgs, str.Value)
+			}
+
+			idx := int(index.Value)
+			if idx < 0 || idx >= len(posArgs) {
+				return defaultValue
+			}
+
+			return NewString(posArgs[idx])
+		},
+	},
 	"toJson": {
 		Fn: func(args ...Object) Object {
 			if len(args) < 1 {

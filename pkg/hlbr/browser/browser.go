@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -26,6 +27,7 @@ type Browser struct {
 	debug               bool
 	noScripts           bool // if true, skip script execution during navigate
 	skipExternalScripts bool // if true, skip loading external scripts
+	autoFetchXHR        bool // if true, XHR requests without stubs will be fetched via real HTTP
 }
 
 type Options struct {
@@ -125,8 +127,83 @@ func (b *Browser) Navigate(rawURL string) error {
 	// Install stubs for commonly used browser APIs that our VM doesn't support.
 	// XHR and fetch stubs capture request details but don't make real network
 	// calls. Users can inject responses via window.__hlbrXHRResponses.
-	b.vm.Run(`window.__hlbrXHRResponses={};window.__hlbrXHRLog=[];if(typeof XMLHttpRequest==="undefined"){window.XMLHttpRequest=function(){var self=this;this.readyState=0;this.status=0;this.statusText="";this.responseText="";this.response=null;this.responseType="";this.timeout=0;this.withCredentials=false;this.onreadystatechange=null;this.onload=null;this.onerror=null;this.onabort=null;this.ontimeout=null;this._method="";this._url="";this._headers={};this._async=true;this._sent=false;this.open=function(m,u,a){self._method=m;self._url=u;self._async=a!==false;self.readyState=1};this.setRequestHeader=function(k,v){self._headers[k]=v};this.send=function(body){self._sent=true;self._body=body;window.__hlbrXHRLog.push({method:self._method,url:self._url,headers:Object.assign({},self._headers),body:body});var key=self._method+" "+self._url;var resp=window.__hlbrXHRResponses[key];if(resp){self.status=resp.status||200;self.statusText=resp.statusText||"OK";self.responseText=resp.responseText||"";self.response=self.responseText;self.readyState=4;if(self.onreadystatechange)self.onreadystatechange();if(self.onload)self.onload()}else{self.status=0;self.readyState=4;if(self.onerror)self.onerror()}};this.abort=function(){self.readyState=0}};window.XMLHttpRequest.UNSENT=0;window.XMLHttpRequest.OPENED=1;window.XMLHttpRequest.HEADERS_RECEIVED=2;window.XMLHttpRequest.LOADING=3;window.XMLHttpRequest.DONE=4}`)
-	b.vm.Run(`if(typeof fetch==="undefined"){window.fetch=function(url,opts){var method=(opts&&opts.method)||"GET";var key=method+" "+url;window.__hlbrXHRLog.push({method:method,url:url,headers:opts&&opts.headers||{},body:opts&&opts.body});var resp=window.__hlbrXHRResponses[key];if(resp){return Promise.resolve({ok:resp.status>=200&&resp.status<300,status:resp.status||200,statusText:resp.statusText||"OK",headers:new Headers(),json:function(){return Promise.resolve(JSON.parse(resp.responseText||"{}"))},text:function(){return Promise.resolve(resp.responseText||"")},blob:function(){return Promise.resolve(null)}})}return Promise.reject(new Error("Network error: no stub response for "+key))}}`)
+	// When autoFetchXHR is enabled, requests without stubs will be fetched
+	// via real HTTP using the __hlbrFetchXHR native function.
+	b.vm.Run(`window.__hlbrXHRResponses={};window.__hlbrXHRLog=[];if(typeof XMLHttpRequest==="undefined"){window.XMLHttpRequest=function(){var self=this;this.readyState=0;this.status=0;this.statusText="";this.responseText="";this.response=null;this.responseType="";this.timeout=0;this.withCredentials=false;this.onreadystatechange=null;this.onload=null;this.onerror=null;this.onabort=null;this.ontimeout=null;this._method="";this._url="";this._headers={};this._async=true;this._sent=false;this.open=function(m,u,a){self._method=m;self._url=u;self._async=a!==false;self.readyState=1};this.setRequestHeader=function(k,v){self._headers[k]=v};this.send=function(body){self._sent=true;self._body=body;window.__hlbrXHRLog.push({method:self._method,url:self._url,headers:Object.assign({},self._headers),body:body});var key=self._method+" "+self._url;var resp=window.__hlbrXHRResponses[key];if(resp){self.status=resp.status||200;self.statusText=resp.statusText||"OK";self.responseText=resp.responseText||"";self.response=self.responseText;self.readyState=4;if(self.onreadystatechange)self.onreadystatechange();if(self.onload)self.onload()}else if(typeof __hlbrFetchXHR==="function"){var fetched=__hlbrFetchXHR(self._method,self._url,body,JSON.stringify(self._headers));if(fetched&&typeof fetched==="object"){self.status=fetched.status||200;self.statusText=fetched.statusText||"OK";self.responseText=fetched.responseText||"";self.response=self.responseText;self.readyState=4;if(self.onreadystatechange)self.onreadystatechange();if(self.onload)self.onload()}else{self.status=0;self.readyState=4;if(self.onerror)self.onerror()}}else{self.status=0;self.readyState=4;if(self.onerror)self.onerror()}};this.abort=function(){self.readyState=0}};window.XMLHttpRequest.UNSENT=0;window.XMLHttpRequest.OPENED=1;window.XMLHttpRequest.HEADERS_RECEIVED=2;window.XMLHttpRequest.LOADING=3;window.XMLHttpRequest.DONE=4}`)
+	b.vm.Run(`if(typeof fetch==="undefined"){window.fetch=function(url,opts){var method=(opts&&opts.method)||"GET";var key=method+" "+url;window.__hlbrXHRLog.push({method:method,url:url,headers:opts&&opts.headers||{},body:opts&&opts.body});var resp=window.__hlbrXHRResponses[key];if(resp){return Promise.resolve({ok:resp.status>=200&&resp.status<300,status:resp.status||200,statusText:resp.statusText||"OK",headers:new Headers(),json:function(){return Promise.resolve(JSON.parse(resp.responseText||"{}"))},text:function(){return Promise.resolve(resp.responseText||"")},blob:function(){return Promise.resolve(null)}})}if(typeof __hlbrFetchXHR==="function"){var fetched=__hlbrFetchXHR(method,url,opts&&opts.body,JSON.stringify(opts&&opts.headers||{}));if(fetched&&typeof fetched==="object"){return Promise.resolve({ok:(fetched.status||200)>=200&&(fetched.status||200)<300,status:fetched.status||200,statusText:fetched.statusText||"OK",headers:new Headers(),json:function(){return Promise.resolve(JSON.parse(fetched.responseText||"{}"))},text:function(){return Promise.resolve(fetched.responseText||"")},blob:function(){return Promise.resolve(null)}})}}	return Promise.reject(new Error("Network error: no stub response for "+key))}}`)
+	// Register the __hlbrFetchXHR native function that makes real HTTP requests
+	// for XHR/fetch calls that don't have stub responses. This enables SPA
+	// login flows (e.g., RSA + login axios chains) to work automatically.
+	baseURL, _ := url.Parse(b.currentURL)
+	{
+		clientRef := b.client
+		baseURLRef := baseURL
+		b.vm.DefineGlobal("__hlbrFetchXHR", &jsengine.Value{
+			Type: "native",
+			Native: func(args []*jsengine.Value) *jsengine.Value {
+				if len(args) < 2 {
+					return &jsengine.Value{Type: "undefined"}
+				}
+				method := jsengine.ValueToString(args[0])
+				reqURL := jsengine.ValueToString(args[1])
+				body := ""
+				if len(args) >= 3 {
+					body = jsengine.ValueToString(args[2])
+				}
+
+				// Resolve relative URLs against the current page URL
+				if !strings.HasPrefix(reqURL, "http://") && !strings.HasPrefix(reqURL, "https://") && baseURLRef != nil {
+					resolved := baseURLRef.ResolveReference(&url.URL{Path: reqURL})
+					reqURL = resolved.String()
+				}
+
+				var resp *httpclient.Response
+				var err error
+				switch strings.ToUpper(method) {
+				case "GET":
+					resp, err = clientRef.Get(reqURL)
+				case "POST":
+					resp, err = clientRef.Post(reqURL, "application/json", body)
+				default:
+					resp, err = clientRef.Get(reqURL)
+				}
+				if err != nil || resp == nil {
+					return &jsengine.Value{Type: "undefined"}
+				}
+				// Return response as an object {status, statusText, responseText}
+				statusVal := &jsengine.Value{Type: "number", Num: float64(resp.StatusCode)}
+				statusTextVal := &jsengine.Value{Type: "string", Str: resp.Status}
+				bodyVal := &jsengine.Value{Type: "string", Str: resp.Body}
+				return &jsengine.Value{
+					Type: "object",
+					Obj: map[string]*jsengine.Value{
+						"status":       statusVal,
+						"statusText":   statusTextVal,
+						"responseText": bodyVal,
+					},
+				}
+			},
+		})
+	}
+	// Register __hlbrRSAEncrypt native function for RSA encryption in the
+	// Click fallback. This uses RSAEncryptHexRaw (NoPadding + reversed bytes)
+	// which matches the JSEncrypt behavior used by Vue SPA login forms.
+	b.vm.DefineGlobal("__hlbrRSAEncrypt", &jsengine.Value{
+		Type: "native",
+		Native: func(args []*jsengine.Value) *jsengine.Value {
+			if len(args) < 3 {
+				return &jsengine.Value{Type: "undefined"}
+			}
+			plaintext := jsengine.ValueToString(args[0])
+			hexModulus := jsengine.ValueToString(args[1])
+			hexExponent := jsengine.ValueToString(args[2])
+			ciphertext, err := rsaEncryptHexRaw(plaintext, hexModulus, hexExponent)
+			if err != nil {
+				return &jsengine.Value{Type: "undefined"}
+			}
+			return &jsengine.Value{Type: "string", Str: ciphertext}
+		},
+	})
 	// Patch axios adapter to use raw XHR synchronously. The default
 	// axios adapter creates XMLHttpRequest objects and sets properties
 	// via prototype methods, but our VM's this-binding for prototype
@@ -1110,7 +1187,7 @@ func (b *Browser) VM() *jsengine.VM {
 		return fmt.Errorf("no VM available")
 	}
 	_, err := b.Evaluate(fmt.Sprintf(
-		`(function(){var el=document.querySelector(%q);if(!el)return"element not found";el.value=%q;el.setAttribute("value",%q);if(typeof window.__hlbrSyncInputs==="function")window.__hlbrSyncInputs();el.dispatchEvent(new Event("input",{bubbles:true}));if(typeof Vue==="function"&&window.__spaRouter){try{var vmodel=el.getAttribute("data-vmodel");if(!vmodel)return"ok";var parts=vmodel.split(".");var apps=window.__spaRouter.apps;function trySetOnVM(vm){if(!vm||!vm._data)return false;var obj=vm._data;for(var p=0;p<parts.length-1;p++){if(obj&&obj[parts[p]]!==undefined)obj=obj[parts[p]];else if(obj&&typeof obj==="object")obj=obj[parts[p]];else return false}if(obj&&parts.length>0){var last=parts[parts.length-1];if(obj[last]!==undefined||typeof obj==="object"){obj[last]=%q;return true}}return false}for(var a=0;a<apps.length;a++){function walkVM(vm){if(trySetOnVM(vm))return true;if(vm.$children){for(var c=0;c<vm.$children.length;c++){if(walkVM(vm.$children[c]))return true}}return false}if(walkVM(apps[a]))break}}catch(e){}}return"ok"})()`,
+		`(function(){var el=document.querySelector(%q);if(!el)return"element not found";el.value=%q;el.setAttribute("value",%q);if(typeof window.__hlbrSyncInputs==="function")window.__hlbrSyncInputs();el.dispatchEvent(new Event("input",{bubbles:true}));if(typeof Vue==="function"&&window.__spaRouter){try{var vmodel=el.getAttribute("data-vmodel");if(!vmodel)return"ok";var apps=window.__spaRouter.apps;function trySetOnVM(vm){if(!vm)return false;var parts=vmodel.split(".");var obj=vm;for(var p=0;p<parts.length-1;p++){if(obj[parts[p]]!==undefined)obj=obj[parts[p]];else return false}if(obj){var last=parts[parts.length-1];try{obj[last]=%q;return true}catch(e){return false}}return false}for(var a=0;a<apps.length;a++){function walkVM(vm){if(trySetOnVM(vm))return true;if(vm.$children){for(var c=0;c<vm.$children.length;c++){if(walkVM(vm.$children[c]))return true}}return false}if(walkVM(apps[a]))break}}catch(e){}}return"ok"})()`,
 		selector, value, value, value,
 	))
 	return err
@@ -1200,7 +1277,11 @@ func (b *Browser) Click(selector string) error {
 
 	// After the click handler runs, check if login was successful.
 	// If not (e.g., because $refs were empty and submitForm silently failed),
-	// directly execute the RSA+login axios chain using saved form data.
+	// directly execute the RSA+login chain using saved form data.
+	// This uses synchronous XHR (which works in our headless VM) instead of
+	// axios promise chains, and performs RSA encryption of the password using
+	// the RSAEncryptHexRaw Go function (same as the JSEncrypt library used by
+	// Vue SPA login forms).
 	if err == nil {
 		b.Evaluate(`(function(){
 			if(localStorage.getItem("token"))return;
@@ -1220,27 +1301,41 @@ func (b *Browser) Click(selector string) error {
 			}
 			if(!savedUser)return;
 			var apiBase=(window.ajaxBaseUrl||"")+(window.ajaxUrl||"/sl/");
-			if(typeof axios==="undefined")return;
-			axios({url:apiBase+"v2/rsapub",method:"get",headers:{}}).then(function(resp){
-				if(resp.data&&resp.data.data){
-					return axios({url:apiBase+"v2/login",method:"post",data:{account:savedUser,password:savedPass,rsa_id:resp.data.data.rsa_id},headers:{}});
+			// Step 1: Get RSA public key via synchronous XHR
+			var xhr1=new XMLHttpRequest();
+			xhr1.open("GET",apiBase+"v2/rsapub",true);
+			xhr1.send();
+			if(xhr1.status<200||xhr1.status>=300)return;
+			var rsaResp=JSON.parse(xhr1.responseText||"{}");
+			if(!rsaResp||!rsaResp.data||!rsaResp.data.rsa_id)return;
+			var rsa_id=rsaResp.data.rsa_id;
+			// Step 2: RSA encrypt the password using Go's RSAEncryptHexRaw
+			// (equivalent to JSEncrypt with NoPadding + reversed bytes)
+			var encryptedPass=savedPass;
+			if(typeof __hlbrRSAEncrypt==="function"){
+				var hexMod=rsaResp.data.module||"";
+				var hexExp=rsaResp.data.empoent||"10001";
+				if(hexMod){
+					var enc=__hlbrRSAEncrypt(savedPass,hexMod,hexExp);
+					if(enc&&typeof enc==="string"&&enc.length>0)encryptedPass=enc;
 				}
-				return Promise.reject(new Error("rsapub failed"));
-			}).then(function(resp){
-				if(resp.data&&resp.data.data){
-					localStorage.setItem("token",resp.data.data.token);
+			}
+			// Step 3: Login via synchronous XHR
+			var xhr2=new XMLHttpRequest();
+			xhr2.open("POST",apiBase+"v2/login",true);
+			xhr2.setRequestHeader("Content-Type","application/json");
+			xhr2.send(JSON.stringify({account:savedUser,password:encryptedPass,rsa_id:rsa_id}));
+			if(xhr2.status>=200&&xhr2.status<300){
+				var loginResp=JSON.parse(xhr2.responseText||"{}");
+				if(loginResp&&loginResp.data&&loginResp.data.token){
+					localStorage.setItem("token",loginResp.data.token);
 					localStorage.setItem("authorized","true");
-					for(var a=0;a<apps.length;a++){
-						var lvm2=findLoginVM(apps[a]);
-						if(lvm2){lvm2.loading=false;break}
-					}
 				}
-			}).catch(function(e){
-				for(var a=0;a<apps.length;a++){
-					var lvm3=findLoginVM(apps[a]);
-					if(lvm3){lvm3.loading=false;break}
-				}
-			});
+			}
+			for(var a=0;a<apps.length;a++){
+				var lvm4=findLoginVM(apps[a]);
+				if(lvm4){lvm4.loading=false;break}
+			}
 		})()`)
 	}
 	return err
@@ -1763,4 +1858,43 @@ func (b *Browser) injectNativeRSAModule() {
 			n["9M3U"] = modObj;
 		}
 	})()`)
+}
+
+// rsaEncryptHexRaw encrypts plaintext using raw RSA (no padding, reversed byte order)
+// with hex-encoded modulus and exponent. This matches the behavior of common
+// JavaScript RSA libraries (e.g. JSEncrypt) that use NoPadding with reversed bytes.
+// This is a local copy to avoid import cycles with the parent hlbr package.
+func rsaEncryptHexRaw(plaintext, hexModulus, hexExponent string) (string, error) {
+	// Pad hex strings to even length
+	padHex := func(s string) string {
+		if len(s)%2 != 0 {
+			return "0" + s
+		}
+		return s
+	}
+	hexModulus = padHex(hexModulus)
+	hexExponent = padHex(hexExponent)
+
+	modulusBytes, err := hex.DecodeString(hexModulus)
+	if err != nil {
+		return "", fmt.Errorf("invalid modulus hex: %v", err)
+	}
+	exponentBytes, err := hex.DecodeString(hexExponent)
+	if err != nil {
+		return "", fmt.Errorf("invalid exponent hex: %v", err)
+	}
+
+	modulus := new(big.Int).SetBytes(modulusBytes)
+	exponent := new(big.Int).SetBytes(exponentBytes)
+
+	// Reverse plaintext bytes to match JS RSA library convention
+	ptBytes := []byte(plaintext)
+	for i, j := 0, len(ptBytes)-1; i < j; i, j = i+1, j-1 {
+		ptBytes[i], ptBytes[j] = ptBytes[j], ptBytes[i]
+	}
+
+	pt := new(big.Int).SetBytes(ptBytes)
+	ct := new(big.Int).Exp(pt, exponent, modulus)
+
+	return hex.EncodeToString(ct.Bytes()), nil
 }

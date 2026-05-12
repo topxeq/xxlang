@@ -1354,6 +1354,24 @@ func TestBuiltinUtilityFunctions(t *testing.T) {
 	result = fn.Fn(switchArr, &String{Value: "quiet"})
 	compareObjectsForTest(t, result, FALSE)
 
+	// getParam - takes array, index, and optional default value
+	fn, ok = Builtins["getParam"]
+	if !ok {
+		t.Fatal("getParam builtin not found")
+	}
+	paramArr := &Array{Elements: []Object{&String{Value: "xxl"}, &String{Value: "script.xxl"}, &String{Value: "--url=http://test.com"}, &String{Value: "file1.txt"}, &String{Value: "file2.txt"}}}
+	// getParam skips "--" flags, so positional args are: "xxl", "script.xxl", "file1.txt", "file2.txt"
+	result = fn.Fn(paramArr, &Int{Value: 2}, &String{Value: "default"})
+	compareObjectsForTest(t, result, &String{Value: "file1.txt"})
+	result = fn.Fn(paramArr, &Int{Value: 3}, &String{Value: "default"})
+	compareObjectsForTest(t, result, &String{Value: "file2.txt"})
+	// Out of bounds returns default
+	result = fn.Fn(paramArr, &Int{Value: 10}, &String{Value: "default"})
+	compareObjectsForTest(t, result, &String{Value: "default"})
+	// No default provided returns empty string
+	result = fn.Fn(paramArr, &Int{Value: 10})
+	compareObjectsForTest(t, result, &String{Value: ""})
+
 	// pr (print)
 	fn, ok = Builtins["pr"]
 	if !ok {

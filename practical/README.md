@@ -14,12 +14,15 @@ All scripts have been verified to run correctly and produce the expected results
 | `backup_local_to_remote.xxl` | Backup / SSH | Local-to-remote incremental backup via SFTP |
 | `backup_remote_to_local.xxl` | Backup / SSH | Remote-to-local incremental backup via SFTP |
 | `backup_remote_to_remote.xxl` | Backup / SSH | Server-to-server incremental sync via SFTP (two SSH connections) |
+| `hlbr_login.xxl` | Headless Browser | Automated login with form filling, SPA (Vue/React) support, token extraction |
+| `hlbr_scrape.xxl` | Headless Browser | Web scraping with JS rendering, link extraction, text/HTML/attribute extraction |
 
 ## Prerequisites
 
 - Xxlang runtime (`xxl` command)
 - For SSH/backup scripts: a reachable SSH server with SFTP subsystem
 - For API scripts: internet access
+- For hlbr scripts: no external browser needed (built-in headless engine)
 - Replace placeholder values (`YOUR_HOST`, `YOUR_USER`, etc.) with real credentials
 
 ## Quick Start
@@ -72,6 +75,37 @@ pln(backup.localToRemote(c, "D:/myproject", "/var/backup/myproject").summary())
 c.close()
 ```
 
+### Headless Browser Login
+
+```xxl
+import "hlbr"
+
+var br = hlbr.open({"headless": true})
+br.get("http://your-app.local")
+br.waitStable()
+br.fill("input[type='text']", "admin")
+br.fill("input[type='password']", "secret")
+br.click("button[type='submit']")
+var token = br.eval("localStorage.getItem('token')")
+pln("Token:", token)
+br.close()
+```
+
+### Web Scraping
+
+```xxl
+import "hlbr"
+
+var br = hlbr.open({"headless": true})
+br.get("https://example.com")
+br.waitStable()
+var links = br.findAll("a[href]")
+for (var i = 0; i < len(links); i = i + 1) {
+    pln(links[i].getAttr("href"))
+}
+br.close()
+```
+
 ## Features Demonstrated
 
 ### Backup Module
@@ -105,9 +139,22 @@ c.close()
 | Directory ops | `c.mkdirAll()`, `c.exists()`, `c.isDir()` |
 | Command exec | `c.exec()` for shell commands (use sparingly, prefer SFTP ops) |
 
+### Headless Browser (hlbr)
+| Feature | Description |
+|---------|-------------|
+| Zero dependency | No Chrome/Chromium needed, built-in JS VM + DOM + CSS engine |
+| SPA support | Renders Vue/React pages, handles reactivity, RSA login flows |
+| Form interaction | `br.fill(selector, value)`, `br.click(selector)`, `br.setValueByJS()` |
+| Data extraction | `br.eval(js)`, `br.find(selector)`, `br.getText()`, `br.getHTML()` |
+| Storage access | `br.getLocalStorage()`, `br.getSessionStorage()`, `br.eval()` |
+| Text screenshot | `br.screenshotText(width)`, `br.screenshotTextToFile(path, width)` |
+| Page stability | `br.waitStable(timeoutMs, stableForMs)` waits for JS to finish |
+| Rod-compatible | `br.get()`, `br.fill()`, `br.click()`, `br.eval()`, `br.close()` aliases |
+
 ## Notes
 
 - All SSH file operations use SFTP binary transfer, ensuring binary-safe copy
 - Paths use forward slashes (`/`) for cross-platform compatibility
 - `sleep(1500)` before modifying files ensures mtime changes are detectable
 - For production, prefer SSH key-based authentication over passwords
+- hlbr scripts work without any external browser — the entire JS/DOM engine is built into Xxlang
