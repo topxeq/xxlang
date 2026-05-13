@@ -3110,10 +3110,22 @@ func (c *RegCompiler) freeTempReg(reg int) {
 }
 
 func (c *RegCompiler) allocSpillSlot() int {
-	if len(c.freeSpillSlots) > 0 {
+	// Ensure spill slots never overlap with local variable slots.
+	// As the function body is compiled, new local variables (var x, etc.)
+	// are defined and occupy Locals[0..NumDefinitions-1]. Spill slots
+	// must be allocated above this range to avoid overwriting variable values.
+	numDefs := c.symbolTable.NumDefinitions
+	if c.nextSpillSlot < numDefs {
+		c.nextSpillSlot = numDefs
+	}
+	// Try to reuse a freed slot, but skip any that overlap with variables
+	for len(c.freeSpillSlots) > 0 {
 		slot := c.freeSpillSlots[len(c.freeSpillSlots)-1]
 		c.freeSpillSlots = c.freeSpillSlots[:len(c.freeSpillSlots)-1]
-		return slot
+		if slot >= numDefs {
+			return slot
+		}
+		// Slot overlaps with a variable definition; discard and try next
 	}
 	slot := c.nextSpillSlot
 	c.nextSpillSlot++
