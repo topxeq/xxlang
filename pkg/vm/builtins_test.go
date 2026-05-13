@@ -9,72 +9,49 @@ import (
 )
 
 // ============================================
-// getBuiltin Tests
+// getBuiltinByName Tests
 // ============================================
 
-func TestGetBuiltinValid(t *testing.T) {
-	// Test valid indices
-	tests := []struct {
-		index int
-		name  string
-	}{
-		{0, "len"},
-		{1, "pr"},
-		{2, "pln"},
-		{3, "typeOf"},
-		{14, "abs"},
-		{36, "range"},
-		{37, "sort"},
+func TestGetBuiltinByNameValid(t *testing.T) {
+	names := []string{
+		"len", "pr", "pln", "typeOf", "abs",
+		"range", "sort", "substr", "split", "join",
+		"trim", "upper", "lower", "floor", "ceil",
+		"sqrt", "pow", "min", "max",
 	}
 
-	for _, tt := range tests {
-		builtin := getBuiltin(tt.index)
+	for _, name := range names {
+		builtin := getBuiltinByName(name)
 		if builtin == nil {
-			t.Errorf("getBuiltin(%d) returned nil for %s", tt.index, tt.name)
+			t.Errorf("getBuiltinByName(%q) returned nil", name)
 		}
 	}
 }
 
-func TestGetBuiltinNegative(t *testing.T) {
-	builtin := getBuiltin(-1)
+func TestGetBuiltinByNameInvalid(t *testing.T) {
+	builtin := getBuiltinByName("")
 	if builtin != nil {
-		t.Error("getBuiltin(-1) should return nil")
+		t.Error("getBuiltinByName('') should return nil")
 	}
-}
 
-func TestGetBuiltinOutOfRange(t *testing.T) {
-	builtin := getBuiltin(10000)
+	builtin = getBuiltinByName("nonExistentBuiltin")
 	if builtin != nil {
-		t.Error("getBuiltin(10000) should return nil")
+		t.Error("getBuiltinByName('nonExistentBuiltin') should return nil")
 	}
 }
 
 // ============================================
-// GetBuiltinByIndex Tests
+// Name-based Builtin Lookup Tests
 // ============================================
 
-func TestGetBuiltinByIndex(t *testing.T) {
-	// Test exported function
-	builtin := GetBuiltinByIndex(0)
+func TestGetBuiltinByNameLen(t *testing.T) {
+	builtin := getBuiltinByName("len")
 	if builtin == nil {
-		t.Error("GetBuiltinByIndex(0) returned nil")
+		t.Error("getBuiltinByName('len') returned nil")
 	}
 
-	// Should be len function
 	if builtin.Fn == nil {
 		t.Error("Builtin function is nil")
-	}
-}
-
-func TestGetBuiltinByIndexInvalid(t *testing.T) {
-	builtin := GetBuiltinByIndex(-1)
-	if builtin != nil {
-		t.Error("GetBuiltinByIndex(-1) should return nil")
-	}
-
-	builtin = GetBuiltinByIndex(100000)
-	if builtin != nil {
-		t.Error("GetBuiltinByIndex(100000) should return nil")
 	}
 }
 
@@ -83,13 +60,11 @@ func TestGetBuiltinByIndexInvalid(t *testing.T) {
 // ============================================
 
 func TestBuiltinLen(t *testing.T) {
-	// Get len builtin (index 0)
-	builtin := getBuiltin(0)
+	builtin := getBuiltinByName("len")
 	if builtin == nil {
 		t.Fatal("len builtin not found")
 	}
 
-	// Test with string
 	strObj := &objects.String{Value: "hello"}
 	result := builtin.Fn(strObj)
 
@@ -101,7 +76,6 @@ func TestBuiltinLen(t *testing.T) {
 		t.Errorf("len('hello') = %d, expected 5", intResult.Value)
 	}
 
-	// Test with array
 	arrObj := &objects.Array{Elements: []objects.Object{
 		&objects.Int{Value: 1},
 		&objects.Int{Value: 2},
@@ -119,8 +93,7 @@ func TestBuiltinLen(t *testing.T) {
 }
 
 func TestBuiltinTypeOf(t *testing.T) {
-	// Get typeOf builtin (index 3)
-	builtin := getBuiltin(3)
+	builtin := getBuiltinByName("typeOf")
 	if builtin == nil {
 		t.Fatal("typeOf builtin not found")
 	}
@@ -153,8 +126,7 @@ func TestBuiltinTypeOf(t *testing.T) {
 }
 
 func TestBuiltinAbs(t *testing.T) {
-	// Get abs builtin (index 14)
-	builtin := getBuiltin(14)
+	builtin := getBuiltinByName("abs")
 	if builtin == nil {
 		t.Fatal("abs builtin not found")
 	}
@@ -184,8 +156,7 @@ func TestBuiltinAbs(t *testing.T) {
 }
 
 func TestBuiltinUpperLower(t *testing.T) {
-	// Get upper builtin (index 8)
-	upperBuiltin := getBuiltin(8)
+	upperBuiltin := getBuiltinByName("upper")
 	if upperBuiltin == nil {
 		t.Fatal("upper builtin not found")
 	}
@@ -196,8 +167,7 @@ func TestBuiltinUpperLower(t *testing.T) {
 		t.Errorf("upper('hello') = %v, expected 'HELLO'", result)
 	}
 
-	// Get lower builtin (index 9)
-	lowerBuiltin := getBuiltin(9)
+	lowerBuiltin := getBuiltinByName("lower")
 	if lowerBuiltin == nil {
 		t.Fatal("lower builtin not found")
 	}
@@ -210,8 +180,7 @@ func TestBuiltinUpperLower(t *testing.T) {
 }
 
 func TestBuiltinPush(t *testing.T) {
-	// Get push builtin (index 24)
-	builtin := getBuiltin(24)
+	builtin := getBuiltinByName("push")
 	if builtin == nil {
 		t.Fatal("push builtin not found")
 	}
@@ -229,8 +198,7 @@ func TestBuiltinPush(t *testing.T) {
 }
 
 func TestBuiltinSort(t *testing.T) {
-	// Get sort builtin (index 37)
-	builtin := getBuiltin(37)
+	builtin := getBuiltinByName("sort")
 	if builtin == nil {
 		t.Fatal("sort builtin not found")
 	}
@@ -261,7 +229,7 @@ func TestBuiltinSort(t *testing.T) {
 // ============================================
 
 func TestAdditionalBuiltinSubstr(t *testing.T) {
-	builtin := getBuiltin(4) // substr
+	builtin := getBuiltinByName("substr")
 	if builtin == nil {
 		t.Skip("substr builtin not available")
 	}
@@ -278,8 +246,7 @@ func TestAdditionalBuiltinSubstr(t *testing.T) {
 }
 
 func TestAdditionalBuiltinSplitJoin(t *testing.T) {
-	// split (5)
-	split := getBuiltin(5)
+	split := getBuiltinByName("split")
 	if split != nil {
 		str := &objects.String{Value: "a,b,c"}
 		sep := &objects.String{Value: ","}
@@ -291,8 +258,7 @@ func TestAdditionalBuiltinSplitJoin(t *testing.T) {
 		}
 	}
 
-	// join (6)
-	join := getBuiltin(6)
+	join := getBuiltinByName("join")
 	if join != nil {
 		arr := &objects.Array{Elements: []objects.Object{
 			&objects.String{Value: "a"},
@@ -310,7 +276,7 @@ func TestAdditionalBuiltinSplitJoin(t *testing.T) {
 }
 
 func TestAdditionalBuiltinTrim(t *testing.T) {
-	builtin := getBuiltin(7) // trim
+	builtin := getBuiltinByName("trim")
 	if builtin == nil {
 		t.Skip("trim builtin not available")
 	}
@@ -327,8 +293,7 @@ func TestAdditionalBuiltinTrim(t *testing.T) {
 }
 
 func TestAdditionalBuiltinArrayUtilities(t *testing.T) {
-	// first (26)
-	first := getBuiltin(26)
+	first := getBuiltinByName("first")
 	if first != nil {
 		arr := &objects.Array{Elements: []objects.Object{
 			objects.NewInt(1),
@@ -343,8 +308,7 @@ func TestAdditionalBuiltinArrayUtilities(t *testing.T) {
 		}
 	}
 
-	// last (27)
-	last := getBuiltin(27)
+	last := getBuiltinByName("last")
 	if last != nil {
 		arr := &objects.Array{Elements: []objects.Object{
 			objects.NewInt(1),
@@ -359,8 +323,7 @@ func TestAdditionalBuiltinArrayUtilities(t *testing.T) {
 		}
 	}
 
-	// rest (28)
-	rest := getBuiltin(28)
+	rest := getBuiltinByName("rest")
 	if rest != nil {
 		arr := &objects.Array{Elements: []objects.Object{
 			objects.NewInt(1),
@@ -375,8 +338,7 @@ func TestAdditionalBuiltinArrayUtilities(t *testing.T) {
 		}
 	}
 
-	// pop (25)
-	pop := getBuiltin(25)
+	pop := getBuiltinByName("pop")
 	if pop != nil {
 		arr := &objects.Array{Elements: []objects.Object{
 			objects.NewInt(1),
@@ -391,8 +353,7 @@ func TestAdditionalBuiltinArrayUtilities(t *testing.T) {
 		}
 	}
 
-	// range (36)
-	rangeFn := getBuiltin(36)
+	rangeFn := getBuiltinByName("range")
 	if rangeFn != nil {
 		result := rangeFn.Fn(objects.NewInt(5))
 		if arrResult, ok := result.(*objects.Array); ok {
@@ -402,8 +363,7 @@ func TestAdditionalBuiltinArrayUtilities(t *testing.T) {
 		}
 	}
 
-	// sum (38)
-	sum := getBuiltin(38)
+	sum := getBuiltinByName("sum")
 	if sum != nil {
 		arr := &objects.Array{Elements: []objects.Object{
 			objects.NewInt(1),
@@ -418,8 +378,7 @@ func TestAdditionalBuiltinArrayUtilities(t *testing.T) {
 		}
 	}
 
-	// avg (39)
-	avg := getBuiltin(39)
+	avg := getBuiltinByName("avg")
 	if avg != nil {
 		arr := &objects.Array{Elements: []objects.Object{
 			objects.NewInt(1),
@@ -436,12 +395,10 @@ func TestAdditionalBuiltinArrayUtilities(t *testing.T) {
 }
 
 func TestAdditionalBuiltinMapUtilities(t *testing.T) {
-	// keys (32)
-	keys := getBuiltin(32)
+	keys := getBuiltinByName("keys")
 	if keys == nil {
 		t.Skip("keys builtin not available")
 	}
-	// Create map using proper HashKey from key objects
 	keyA := &objects.String{Value: "a"}
 	keyB := &objects.String{Value: "b"}
 	m := &objects.Map{Pairs: map[objects.HashKey]objects.MapPair{
@@ -455,8 +412,7 @@ func TestAdditionalBuiltinMapUtilities(t *testing.T) {
 		}
 	}
 
-	// values (33)
-	values := getBuiltin(33)
+	values := getBuiltinByName("values")
 	if values != nil {
 		result = values.Fn(m)
 		if arr, ok := result.(*objects.Array); ok {
@@ -466,8 +422,7 @@ func TestAdditionalBuiltinMapUtilities(t *testing.T) {
 		}
 	}
 
-	// hasKey (34)
-	hasKey := getBuiltin(34)
+	hasKey := getBuiltinByName("hasKey")
 	if hasKey != nil {
 		result = hasKey.Fn(m, keyA)
 		if boolResult, ok := result.(*objects.Bool); ok {
@@ -477,8 +432,7 @@ func TestAdditionalBuiltinMapUtilities(t *testing.T) {
 		}
 	}
 
-	// delete (35)
-	deleteFn := getBuiltin(35)
+	deleteFn := getBuiltinByName("delete")
 	if deleteFn != nil {
 		m2 := &objects.Map{Pairs: map[objects.HashKey]objects.MapPair{
 			keyA.HashKey(): {Key: keyA, Value: objects.NewInt(1)},
@@ -493,8 +447,7 @@ func TestAdditionalBuiltinMapUtilities(t *testing.T) {
 }
 
 func TestAdditionalBuiltinTypeChecking(t *testing.T) {
-	// isEmpty (49)
-	isEmpty := getBuiltin(49)
+	isEmpty := getBuiltinByName("isEmpty")
 	if isEmpty != nil {
 		str := &objects.String{Value: ""}
 		result := isEmpty.Fn(str)
@@ -505,8 +458,7 @@ func TestAdditionalBuiltinTypeChecking(t *testing.T) {
 		}
 	}
 
-	// isString (50)
-	isString := getBuiltin(50)
+	isString := getBuiltinByName("isString")
 	if isString != nil {
 		result := isString.Fn(&objects.String{Value: "test"})
 		if boolResult, ok := result.(*objects.Bool); ok {
@@ -516,8 +468,7 @@ func TestAdditionalBuiltinTypeChecking(t *testing.T) {
 		}
 	}
 
-	// isNumber (51)
-	isNumber := getBuiltin(51)
+	isNumber := getBuiltinByName("isNumber")
 	if isNumber != nil {
 		result := isNumber.Fn(objects.NewInt(42))
 		if boolResult, ok := result.(*objects.Bool); ok {
@@ -527,8 +478,7 @@ func TestAdditionalBuiltinTypeChecking(t *testing.T) {
 		}
 	}
 
-	// isInt (52)
-	isInt := getBuiltin(52)
+	isInt := getBuiltinByName("isInt")
 	if isInt != nil {
 		result := isInt.Fn(objects.NewInt(42))
 		if boolResult, ok := result.(*objects.Bool); ok {
@@ -538,8 +488,7 @@ func TestAdditionalBuiltinTypeChecking(t *testing.T) {
 		}
 	}
 
-	// isFloat (53)
-	isFloat := getBuiltin(53)
+	isFloat := getBuiltinByName("isFloat")
 	if isFloat != nil {
 		result := isFloat.Fn(objects.NewFloat(3.14))
 		if boolResult, ok := result.(*objects.Bool); ok {
@@ -549,8 +498,7 @@ func TestAdditionalBuiltinTypeChecking(t *testing.T) {
 		}
 	}
 
-	// isArray (54)
-	isArray := getBuiltin(54)
+	isArray := getBuiltinByName("isArray")
 	if isArray != nil {
 		result := isArray.Fn(&objects.Array{Elements: []objects.Object{}})
 		if boolResult, ok := result.(*objects.Bool); ok {
@@ -560,8 +508,7 @@ func TestAdditionalBuiltinTypeChecking(t *testing.T) {
 		}
 	}
 
-	// isMap (55)
-	isMap := getBuiltin(55)
+	isMap := getBuiltinByName("isMap")
 	if isMap != nil {
 		result := isMap.Fn(&objects.Map{Pairs: map[objects.HashKey]objects.MapPair{}})
 		if boolResult, ok := result.(*objects.Bool); ok {
@@ -571,8 +518,7 @@ func TestAdditionalBuiltinTypeChecking(t *testing.T) {
 		}
 	}
 
-	// isBool (56)
-	isBool := getBuiltin(56)
+	isBool := getBuiltinByName("isBool")
 	if isBool != nil {
 		result := isBool.Fn(objects.TRUE)
 		if boolResult, ok := result.(*objects.Bool); ok {
@@ -582,19 +528,9 @@ func TestAdditionalBuiltinTypeChecking(t *testing.T) {
 		}
 	}
 
-	// isFunction (57) - requires compiler import, skipping for now
-	// isFunction := getBuiltin(57)
-	// if isFunction != nil {
-	// 	fn := &compiler.CompiledFunction{Instructions: []byte{}, NumLocals: 0, NumParameters: 0}
-	// 	closure := &Closure{Fn: fn}
-	// 	result := isFunction.Fn(closure)
-	// 	if boolResult, ok := result.(*objects.Bool); ok && !boolResult.Value {
-	// 		t.Error("isFunction(fn) = false, expected true")
-	// 	}
-	// }
+	// isFunction requires compiler import, skipping for now
 
-	// isNull (58)
-	isNull := getBuiltin(58)
+	isNull := getBuiltinByName("isNull")
 	if isNull != nil {
 		result := isNull.Fn(objects.NULL)
 		if boolResult, ok := result.(*objects.Bool); ok {
@@ -606,8 +542,7 @@ func TestAdditionalBuiltinTypeChecking(t *testing.T) {
 }
 
 func TestAdditionalBuiltinEncoding(t *testing.T) {
-	// base64Encode (76)
-	base64Encode := getBuiltin(76)
+	base64Encode := getBuiltinByName("base64Encode")
 	if base64Encode != nil {
 		data := &objects.String{Value: "hello"}
 		result := base64Encode.Fn(data)
@@ -618,8 +553,7 @@ func TestAdditionalBuiltinEncoding(t *testing.T) {
 		}
 	}
 
-	// base64Decode (77)
-	base64Decode := getBuiltin(77)
+	base64Decode := getBuiltinByName("base64Decode")
 	if base64Decode != nil {
 		encoded := &objects.String{Value: "aGVsbG8="}
 		result := base64Decode.Fn(encoded)
@@ -630,8 +564,7 @@ func TestAdditionalBuiltinEncoding(t *testing.T) {
 		}
 	}
 
-	// hexEncode (78)
-	hexEncode := getBuiltin(78)
+	hexEncode := getBuiltinByName("hexEncode")
 	if hexEncode != nil {
 		data := &objects.String{Value: "hello"}
 		result := hexEncode.Fn(data)
@@ -642,8 +575,7 @@ func TestAdditionalBuiltinEncoding(t *testing.T) {
 		}
 	}
 
-	// hexDecode (79)
-	hexDecode := getBuiltin(79)
+	hexDecode := getBuiltinByName("hexDecode")
 	if hexDecode != nil {
 		hex := &objects.String{Value: "68656c6c6f"}
 		result := hexDecode.Fn(hex)
@@ -656,8 +588,7 @@ func TestAdditionalBuiltinEncoding(t *testing.T) {
 }
 
 func TestAdditionalBuiltinMath(t *testing.T) {
-	// floor (15)
-	floor := getBuiltin(15)
+	floor := getBuiltinByName("floor")
 	if floor != nil {
 		result := floor.Fn(objects.NewFloat(3.7))
 		if intResult, ok := result.(*objects.Int); ok {
@@ -667,8 +598,7 @@ func TestAdditionalBuiltinMath(t *testing.T) {
 		}
 	}
 
-	// ceil (16)
-	ceil := getBuiltin(16)
+	ceil := getBuiltinByName("ceil")
 	if ceil != nil {
 		result := ceil.Fn(objects.NewFloat(3.2))
 		if intResult, ok := result.(*objects.Int); ok {
@@ -678,8 +608,7 @@ func TestAdditionalBuiltinMath(t *testing.T) {
 		}
 	}
 
-	// sqrt (17)
-	sqrt := getBuiltin(17)
+	sqrt := getBuiltinByName("sqrt")
 	if sqrt != nil {
 		result := sqrt.Fn(objects.NewInt(16))
 		if floatResult, ok := result.(*objects.Float); ok {
@@ -689,8 +618,7 @@ func TestAdditionalBuiltinMath(t *testing.T) {
 		}
 	}
 
-	// pow (18)
-	pow := getBuiltin(18)
+	pow := getBuiltinByName("pow")
 	if pow != nil {
 		base := objects.NewInt(2)
 		exp := objects.NewInt(3)
@@ -702,8 +630,7 @@ func TestAdditionalBuiltinMath(t *testing.T) {
 		}
 	}
 
-	// min (19)
-	min := getBuiltin(19)
+	min := getBuiltinByName("min")
 	if min != nil {
 		result := min.Fn(objects.NewInt(3), objects.NewInt(5))
 		if intResult, ok := result.(*objects.Int); ok {
@@ -713,8 +640,7 @@ func TestAdditionalBuiltinMath(t *testing.T) {
 		}
 	}
 
-	// max (20)
-	max := getBuiltin(20)
+	max := getBuiltinByName("max")
 	if max != nil {
 		result := max.Fn(objects.NewInt(3), objects.NewInt(5))
 		if intResult, ok := result.(*objects.Int); ok {
@@ -724,8 +650,7 @@ func TestAdditionalBuiltinMath(t *testing.T) {
 		}
 	}
 
-	// clamp (60)
-	clamp := getBuiltin(60)
+	clamp := getBuiltinByName("clamp")
 	if clamp != nil {
 		val := objects.NewInt(15)
 		minVal := objects.NewInt(0)
@@ -738,8 +663,7 @@ func TestAdditionalBuiltinMath(t *testing.T) {
 		}
 	}
 
-	// sign (61)
-	sign := getBuiltin(61)
+	sign := getBuiltinByName("sign")
 	if sign != nil {
 		result := sign.Fn(objects.NewInt(-5))
 		if intResult, ok := result.(*objects.Int); ok {
@@ -763,8 +687,7 @@ func TestAdditionalBuiltinMath(t *testing.T) {
 }
 
 func TestAdditionalBuiltinTypeConversion(t *testing.T) {
-	// int (21)
-	intFn := getBuiltin(21)
+	intFn := getBuiltinByName("int")
 	if intFn != nil {
 		result := intFn.Fn(objects.NewFloat(3.7))
 		if intResult, ok := result.(*objects.Int); ok {
@@ -774,8 +697,7 @@ func TestAdditionalBuiltinTypeConversion(t *testing.T) {
 		}
 	}
 
-	// float (22)
-	floatFn := getBuiltin(22)
+	floatFn := getBuiltinByName("float")
 	if floatFn != nil {
 		result := floatFn.Fn(objects.NewInt(42))
 		if floatResult, ok := result.(*objects.Float); ok {
@@ -785,8 +707,7 @@ func TestAdditionalBuiltinTypeConversion(t *testing.T) {
 		}
 	}
 
-	// string (23)
-	stringFn := getBuiltin(23)
+	stringFn := getBuiltinByName("string")
 	if stringFn != nil {
 		result := stringFn.Fn(objects.NewInt(42))
 		if strResult, ok := result.(*objects.String); ok {
@@ -798,7 +719,7 @@ func TestAdditionalBuiltinTypeConversion(t *testing.T) {
 }
 
 func TestAdditionalBuiltinSprintf(t *testing.T) {
-	sprintf := getBuiltin(388)
+	sprintf := getBuiltinByName("sprintf")
 	if sprintf == nil {
 		t.Skip("sprintf builtin not available")
 	}
@@ -815,11 +736,10 @@ func TestAdditionalBuiltinSprintf(t *testing.T) {
 }
 
 func TestAdditionalBuiltinCoalesce(t *testing.T) {
-	coalesce := getBuiltin(403) // coalesce is at index 403
+	coalesce := getBuiltinByName("coalesce")
 	if coalesce == nil {
 		t.Skip("coalesce builtin not available")
 	}
-	// coalesce with NULL first
 	result := coalesce.Fn(objects.NULL, objects.NewInt(42))
 	if intResult, ok := result.(*objects.Int); ok {
 		if intResult.Value != 42 {
@@ -829,7 +749,6 @@ func TestAdditionalBuiltinCoalesce(t *testing.T) {
 		t.Fatalf("coalesce returned %T: %v, expected *Int", result, result)
 	}
 
-	// coalesce with both non-null
 	result = coalesce.Fn(objects.NewInt(10), objects.NewInt(20))
 	if intResult, ok := result.(*objects.Int); ok {
 		if intResult.Value != 10 {
@@ -841,8 +760,7 @@ func TestAdditionalBuiltinCoalesce(t *testing.T) {
 }
 
 func TestAdditionalBuiltinJson(t *testing.T) {
-	// toJson (106)
-	toJson := getBuiltin(106)
+	toJson := getBuiltinByName("toJson")
 	if toJson == nil {
 		t.Skip("toJson builtin not available")
 	}
@@ -857,8 +775,7 @@ func TestAdditionalBuiltinJson(t *testing.T) {
 		}
 	}
 
-	// fromJson (107)
-	fromJson := getBuiltin(107)
+	fromJson := getBuiltinByName("fromJson")
 	if fromJson != nil {
 		jsonStr := &objects.String{Value: `[1,2,3]`}
 		result := fromJson.Fn(jsonStr)
@@ -869,8 +786,7 @@ func TestAdditionalBuiltinJson(t *testing.T) {
 		}
 	}
 
-	// jsonValid (326)
-	jsonValid := getBuiltin(326)
+	jsonValid := getBuiltinByName("jsonValid")
 	if jsonValid != nil {
 		validJson := &objects.String{Value: `{"a":1}`}
 		result := jsonValid.Fn(validJson)

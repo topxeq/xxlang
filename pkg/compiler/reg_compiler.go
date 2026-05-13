@@ -1750,10 +1750,10 @@ func (c *RegCompiler) compileForInStatement(n *parser.ForInStatement) (int, erro
 		c.emitRegLoadLocal(iterReg, iterSymbol.Index)
 	}
 
-	// Load iterable length using len builtin (index 0)
+	// Load iterable length using len builtin
 	// Put iterable in R0 for builtin call
 	c.emitRegMove(0, iterReg)
-	c.emitRegBuiltin(0, 1) // 0 = len builtin index
+	c.emitRegBuiltin(objects.BuiltinIndex("len"), 1)
 	lenReg := c.allocTempReg()
 	c.emitRegMove(lenReg, ReturnRegister)
 

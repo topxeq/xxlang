@@ -140,9 +140,10 @@ func DecodeField(code []byte, ip int) (reg byte, objReg byte, nameIdx int) {
 	return code[ip+1], code[ip+2], int(code[ip+3])<<8 | int(code[ip+4])
 }
 
-// DecodeBuiltin decodes a builtin call instruction
-func DecodeBuiltin(code []byte, ip int) (builtinIdx byte, numArgs byte) {
-	return code[ip+1], code[ip+2]
+// DecodeBuiltin decodes a builtin call instruction.
+// Returns the auto-assigned builtin index and the number of arguments.
+func DecodeBuiltin(code []byte, ip int) (builtinIdx int, numArgs byte) {
+	return int(code[ip+1])<<8 | int(code[ip+2]), code[ip+3]
 }
 
 // InstructionLen returns the length of an instruction in bytes

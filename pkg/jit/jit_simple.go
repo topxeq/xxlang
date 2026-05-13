@@ -474,7 +474,7 @@ func (cg *SimpleCodeGenerator) compileInstruction(op compiler.Opcode, code []byt
 
 	// Builtin calls - require callback to Go runtime
 	case compiler.OpRegBuiltin:
-		// builtin_idx(2), num_args(1)
+		// builtin_idx(2, auto-assigned), num_args(1)
 		builtinIdx := int(code[*ip+1])<<8 | int(code[*ip+2])
 		numArgs := int(code[*ip+3])
 		cg.compileBuiltinCall(builtinIdx, numArgs)
@@ -482,7 +482,7 @@ func (cg *SimpleCodeGenerator) compileInstruction(op compiler.Opcode, code []byt
 
 	case compiler.OpRegLoadBuiltin:
 		dst := int(code[*ip+1])
-		_ = code[*ip+2]     // builtin_idx (16-bit)
+		_ = code[*ip+2]     // builtin_idx (16-bit, auto-assigned)
 		cg.compileNull(dst) // Builtin objects cannot be represented in JIT
 		*ip += 4
 
@@ -1379,6 +1379,7 @@ func (cg *SimpleCodeGenerator) compileSetIndex(objReg, keyReg, valReg int) {
 // ============================================================================
 
 // compileBuiltinCall compiles a builtin function call
+// builtinIdx is the auto-assigned index from objects.BuiltinIndexMap.
 // This uses a callback mechanism to call the Go builtin implementation
 func (cg *SimpleCodeGenerator) compileBuiltinCall(builtinIdx, numArgs int) {
 	// For JIT, we need to call back to the Go runtime for builtin functions

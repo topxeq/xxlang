@@ -380,11 +380,11 @@ func (cg *NativeCodeGenerator) compileInstruction(op compiler.Opcode, code []byt
 		*ip += 3
 
 	case compiler.OpRegBuiltin:
-		// Builtin call: call builtin by index with args in R0-R7
-		builtinIdx := int(code[*ip+1])
-		numArgs := int(code[*ip+2])
+		// Builtin call: call builtin by auto-assigned index with args in R0-R7
+		builtinIdx := int(code[*ip+1])<<8 | int(code[*ip+2])
+		numArgs := int(code[*ip+3])
 		cg.compileBuiltin(builtinIdx, numArgs)
-		*ip += 3
+		*ip += 4
 
 	case compiler.OpRegArray:
 		// Create array: R[dst] = Array from R[start..start+count-1]
@@ -869,14 +869,15 @@ func (cg *NativeCodeGenerator) compileCall(funcReg, numArgs int) {
 }
 
 // compileBuiltin generates code to call a builtin function via callback
-// The builtin callback signature: callback(builtinIdx, numArgs, argsPtr) int64
+// The callback signature: callback(builtinIdx, numArgs, argsPtr) int64
+// builtinIdx is the auto-assigned index from objects.BuiltinIndexMap.
 // Arguments are in VM registers R0-R7 (which map to RAX, RBX, RCX, RDX, R8-R11)
 func (cg *NativeCodeGenerator) compileBuiltin(builtinIdx, numArgs int) {
 	// Save callee-saved registers we need to preserve
 	// We need to save RAX, RBX, RCX, RDX, R8, R9, R10, R11 (args) temporarily
 
 	// For the callback, we use System V AMD64 ABI:
-	//   rdi = builtinIdx
+	//   rdi = nameConstIdx (constant pool index for builtin name)
 	//   rsi = numArgs
 	//   rdx = pointer to args array (on stack)
 
@@ -934,7 +935,7 @@ func (cg *NativeCodeGenerator) compileBuiltin(builtinIdx, numArgs int) {
 	}
 
 	// Set up callback arguments (System V AMD64 ABI):
-	//   rdi = builtinIdx
+	//   rdi = builtinIdx (auto-assigned index)
 	//   rsi = numArgs
 	//   rdx = args pointer (address of [rbp - baseOffset])
 

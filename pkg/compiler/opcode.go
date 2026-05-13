@@ -474,7 +474,7 @@ var definitions = map[Opcode]*Definition{
 	OpCallMethod: {"OpCallMethod", []int{1}}, // 1-byte argument count
 
 	// Built-in operations
-	OpBuiltin: {"OpBuiltin", []int{2}}, // 2-byte built-in index
+	OpBuiltin: {"OpBuiltin", []int{2}}, // 2-byte auto-assigned builtin index
 
 	// Literal operations
 	OpNull:  {"OpNull", []int{}},
@@ -646,8 +646,8 @@ var definitions = map[Opcode]*Definition{
 	OpRegSuper: {"OpRegSuper", []int{2, 1}},          // method_idx, num_args
 
 	// Register built-in call
-	OpRegBuiltin:     {"OpRegBuiltin", []int{2, 1}},     // builtin_idx (2 bytes), num_args (1 byte)
-	OpRegLoadBuiltin: {"OpRegLoadBuiltin", []int{1, 2}}, // dst (1 byte), builtin_idx (2 bytes)
+	OpRegBuiltin:     {"OpRegBuiltin", []int{2, 1}},     // builtin_idx (2 bytes, auto-assigned), num_args (1 byte)
+	OpRegLoadBuiltin: {"OpRegLoadBuiltin", []int{1, 2}}, // dst (1 byte), builtin_idx (2 bytes, auto-assigned)
 
 	// Register literals
 	OpRegNull:  {"OpRegNull", []int{1}},  // dst

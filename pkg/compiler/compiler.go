@@ -22,9 +22,10 @@ const (
 
 // Symbol represents a named variable in a scope
 type Symbol struct {
-	Name  string
-	Scope SymbolScope
-	Index int
+	Name        string
+	Scope       SymbolScope
+	Index       int
+	BuiltinName string // For BuiltinScope: the builtin function name (used for name-based dispatch)
 }
 
 // SymbolTable manages symbol definitions and resolution
@@ -42,10 +43,8 @@ func NewSymbolTable() *SymbolTable {
 		FreeSymbols: []Symbol{},
 	}
 	// Define built-in functions from central registry (pkg/objects/builtin_list.go)
-	for i, name := range objects.BuiltinRegistry {
-		if name != "" {
-			s.DefineBuiltin(i, name)
-		}
+	for _, name := range objects.BuiltinRegistry {
+		s.DefineBuiltin(name)
 	}
 	return s
 }
@@ -112,9 +111,10 @@ func (s *SymbolTable) Resolve(name string) (Symbol, bool) {
 	return symbol, ok
 }
 
-// DefineBuiltin adds a built-in function symbol
-func (s *SymbolTable) DefineBuiltin(index int, name string) Symbol {
-	symbol := Symbol{Name: name, Scope: BuiltinScope, Index: index}
+// DefineBuiltin adds a built-in function symbol with auto-assigned index
+func (s *SymbolTable) DefineBuiltin(name string) Symbol {
+	idx := objects.BuiltinIndex(name)
+	symbol := Symbol{Name: name, Scope: BuiltinScope, Index: idx, BuiltinName: name}
 	s.Store[name] = symbol
 	return symbol
 }

@@ -802,58 +802,27 @@ func SetCurrentRegisters(regs []vm.Value) {
 	globalJITContext.registers = regs
 }
 
-// BuiltinNameRegistry maps builtin indices between bytecode and current runtime.
+// BuiltinNameRegistry is deprecated. Indices are now auto-assigned at init time.
 type BuiltinNameRegistry struct{}
 
-// GetBuiltinIndexForBytecode returns the current runtime index for a bytecode builtin index.
+// GetBuiltinIndexForBytecode is deprecated.
 func (r *BuiltinNameRegistry) GetBuiltinIndexForBytecode(bytecodeIdx int) int {
-	// Stub: identity mapping for now
 	return bytecodeIdx
 }
 
-// GetBuiltinNameRegistry returns the global builtin name registry.
+// GetBuiltinNameRegistry is deprecated.
 func GetBuiltinNameRegistry() *BuiltinNameRegistry {
 	return &BuiltinNameRegistry{}
 }
 
-// CallBuiltinFromNative is called from native code to execute a builtin function
-// This is exported for use by the JIT callback mechanism
-// Uses BuiltinNameRegistry to handle index alignment issues from builtin reordering
+// CallBuiltinFromNative is called from native code to execute a builtin function.
+// builtinIdx is the auto-assigned index from objects.BuiltinIndexMap.
 func CallBuiltinFromNative(builtinIdx, numArgs int, argsPtr *int64) int64 {
-	// Use name registry to convert bytecode index to current valid index
-	registry := GetBuiltinNameRegistry()
-	currentIdx := registry.GetBuiltinIndexForBytecode(builtinIdx)
-	if currentIdx < 0 {
-		// Builtin was removed or invalid index
-		return 0
-	}
-
-	globalJITContext.mu.Lock()
-
-	// Lazy initialize builtins array (support up to 600 builtins)
-	const maxBuiltins = 600
-	if globalJITContext.builtins == nil {
-		globalJITContext.builtins = make([]*objects.Builtin, maxBuiltins)
-	}
-
-	// Ensure array is large enough
-	if currentIdx >= len(globalJITContext.builtins) {
-		globalJITContext.mu.Unlock()
-		return 0
-	}
-
-	builtin := globalJITContext.builtins[currentIdx]
+	// Look up builtin by auto-assigned index (O(1) array lookup)
+	builtin := objects.GetBuiltinByIndex(builtinIdx)
 	if builtin == nil {
-		// Lazy load builtin using current valid index
-		builtin = getBuiltin(currentIdx)
-		if builtin == nil {
-			globalJITContext.mu.Unlock()
-			return 0
-		}
-		globalJITContext.builtins[currentIdx] = builtin
+		return 0
 	}
-
-	globalJITContext.mu.Unlock()
 
 	// Convert args from int64 array to objects
 	args := make([]objects.Object, numArgs)
@@ -877,11 +846,6 @@ func CallBuiltinFromNative(builtinIdx, numArgs int, argsPtr *int64) int64 {
 	default:
 		return 0
 	}
-}
-
-// getBuiltin returns a builtin by current valid index (implemented in vm/builtins.go)
-func getBuiltin(idx int) *objects.Builtin {
-	return vm.GetBuiltinByIndex(idx)
 }
 
 // GetBuiltinCallbackPtr returns the function pointer for builtin callbacks

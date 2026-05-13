@@ -1532,3 +1532,37 @@ func TestBuiltinIsErr(t *testing.T) {
 	result = fnIsErrStr.Fn(&String{Value: "normal string"})
 	compareObjectsForTest(t, result, FALSE)
 }
+
+func TestGetBuiltinByName(t *testing.T) {
+	tests := []struct {
+		name   string
+		exists bool
+	}{
+		{"len", true},
+		{"pr", true},
+		{"typeOf", true},
+		{"abs", true},
+		{"sprintf", true},
+		{"coalesce", true},
+		{"nonExistentBuiltin", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		b := GetBuiltinByName(tt.name)
+		if tt.exists && b == nil {
+			t.Errorf("GetBuiltinByName(%q) returned nil, expected non-nil", tt.name)
+		}
+		if !tt.exists && b != nil {
+			t.Errorf("GetBuiltinByName(%q) returned non-nil, expected nil", tt.name)
+		}
+	}
+}
+
+func TestBuiltinNameExists(t *testing.T) {
+	if !BuiltinNameExists("len") {
+		t.Error("BuiltinNameExists(\"len\") should be true")
+	}
+	if BuiltinNameExists("nonExistentBuiltin") {
+		t.Error("BuiltinNameExists(\"nonExistentBuiltin\") should be false")
+	}
+}

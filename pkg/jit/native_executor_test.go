@@ -32,7 +32,7 @@ func TestCanExecuteNatively(t *testing.T) {
 			name: "with builtin call",
 			bytecode: []byte{
 				byte(compiler.OpRegLoadConst), 0, 0, 0,
-				byte(compiler.OpRegBuiltin), 1, 1, // builtin 1 with 1 arg
+				byte(compiler.OpRegBuiltin), 0, 1, 1, // builtin name const idx=1 with 1 arg
 				byte(compiler.OpRegMove), 255, 0,
 			},
 			expected: false,
@@ -139,7 +139,7 @@ func TestAnalyzeNativeSupport(t *testing.T) {
 			name: "with builtin",
 			bytecode: []byte{
 				byte(compiler.OpRegLoadConst), 0, 0, 0,
-				byte(compiler.OpRegBuiltin), 0, 1, 1, // builtin_idx=1 (2 bytes), num_args=1
+				byte(compiler.OpRegBuiltin), 0, 1, 1, // name_const_idx=1 (2 bytes), num_args=1
 				byte(compiler.OpRegMove), 255, 0,
 			},
 			expected: SupportWithBuiltins,
@@ -336,11 +336,11 @@ func TestCallBuiltinFromNative(t *testing.T) {
 	// Initialize context
 	InitJITCallbackContext(nil, nil)
 
-	// Test with invalid builtin index
+	// Test with invalid constant pool index (no constants set up)
 	args := []int64{1, 2}
 	result := CallBuiltinFromNative(999, 2, &args[0])
 	if result != 0 {
-		t.Error("Invalid builtin index should return 0")
+		t.Error("Invalid builtin name const index should return 0")
 	}
 
 	// Test abs builtin (index 14)
@@ -368,7 +368,7 @@ func TestCanExecuteNativelyWithBuiltins(t *testing.T) {
 		{
 			name: "with builtin - should pass",
 			bytecode: []byte{
-				byte(compiler.OpRegBuiltin), 1, 0,
+				byte(compiler.OpRegBuiltin), 0, 1, 0, // name_const_idx=1, num_args=0
 			},
 			// This has SupportWithBuiltins level
 			expected: true, // Has builtin but no closure - can execute with builtin callback

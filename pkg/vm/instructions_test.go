@@ -231,11 +231,11 @@ func TestDecodeField(t *testing.T) {
 // ============================================
 
 func TestDecodeBuiltin(t *testing.T) {
-	code := []byte{byte(compiler.OpRegBuiltin), 10, 3} // builtinIdx=10, numArgs=3
+	code := []byte{byte(compiler.OpRegBuiltin), 0, 10, 3} // nameConstIdx=10, numArgs=3
 
-	builtinIdx, numArgs := DecodeBuiltin(code, 0)
-	if builtinIdx != 10 {
-		t.Errorf("DecodeBuiltin() builtinIdx = %d, expected 10", builtinIdx)
+	nameConstIdx, numArgs := DecodeBuiltin(code, 0)
+	if nameConstIdx != 10 {
+		t.Errorf("DecodeBuiltin() nameConstIdx = %d, expected 10", nameConstIdx)
 	}
 	if numArgs != 3 {
 		t.Errorf("DecodeBuiltin() numArgs = %d, expected 3", numArgs)

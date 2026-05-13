@@ -629,9 +629,9 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 
 	case compiler.OpRegBuiltin:
 		builtinIdx := int(code[frame.IP+1])<<8 | int(code[frame.IP+2])
-		numArgs := code[frame.IP+3]
+		numArgs := int(code[frame.IP+3])
 		frame.IP += 4
-		return vm.handleRegBuiltin(builtinIdx, int(numArgs), frame)
+		return vm.handleRegBuiltin(builtinIdx, numArgs, frame)
 
 	case compiler.OpRegLoadBuiltin:
 		dst := code[frame.IP+1]
@@ -3251,9 +3251,9 @@ func (vm *RegVM) runClosureSync(closure *Closure, numArgs int, callerFrame *RegF
 	return nil
 }
 
-// handleRegBuiltin handles OpRegBuiltin - direct builtin call
+// handleRegBuiltin handles OpRegBuiltin - direct builtin call by auto-assigned index
 func (vm *RegVM) handleRegBuiltin(builtinIdx, numArgs int, frame *RegFrame) error {
-	// Get the builtin function
+	// Get the builtin function by auto-assigned index (O(1) array lookup)
 	builtin := getBuiltin(builtinIdx)
 	if builtin == nil {
 		return fmt.Errorf("builtin function not found: %d", builtinIdx)

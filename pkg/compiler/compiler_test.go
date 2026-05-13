@@ -627,15 +627,15 @@ func TestSymbolTable(t *testing.T) {
 	t.Run("define builtin", func(t *testing.T) {
 		global := NewSymbolTable()
 
-		symbol := global.DefineBuiltin(0, "customBuiltin")
+		symbol := global.DefineBuiltin("customBuiltin")
 		if symbol.Name != "customBuiltin" {
 			t.Errorf("expected name 'customBuiltin', got=%s", symbol.Name)
 		}
 		if symbol.Scope != BuiltinScope {
 			t.Errorf("expected scope BuiltinScope, got=%s", symbol.Scope)
 		}
-		if symbol.Index != 0 {
-			t.Errorf("expected index 0, got=%d", symbol.Index)
+		if symbol.BuiltinName != "customBuiltin" {
+			t.Errorf("expected BuiltinName 'customBuiltin', got=%s", symbol.BuiltinName)
 		}
 	})
 
