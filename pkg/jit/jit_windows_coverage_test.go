@@ -6,6 +6,8 @@
 package jit
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"unsafe"
 
@@ -3686,9 +3688,185 @@ func TestNativeLoopIncCheckWithBody(t *testing.T) {
 	}
 }
 
+// TestDebugBothBytecode dumps the bytecode of the both function to diagnose the logical result bug.
+func TestDebugBothBytecode(t *testing.T) {
+	code := `
+		func both(a, b) {
+			return a && b
+		}
+	`
 
+	l := lexer.New(code)
+	p := parser.New(l)
+	program := p.ParseProgram()
 
+	c := compiler.NewRegCompiler()
+	_, err := c.Compile(program)
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
 
+	bytecode := c.Bytecode()
 
+	for i, cnst := range bytecode.Constants {
+		if fn, ok := cnst.(*compiler.CompiledFunction); ok {
+			t.Logf("Function %d: NumLocals=%d, NumParams=%d, NumRegs=%d, Instructions=%d bytes", i, fn.NumLocals, fn.NumParameters, fn.NumRegs, len(fn.Instructions))
+			for ip := 0; ip < len(fn.Instructions); {
+				op := compiler.Opcode(fn.Instructions[ip])
+				def, err := compiler.Lookup(byte(op))
+				if err != nil {
+					t.Logf("  [%d] unknown opcode %d", ip, op)
+					break
+				}
+				operands := make([]string, len(def.OperandWidths))
+				offset := ip + 1
+				for j, w := range def.OperandWidths {
+					if offset+w <= len(fn.Instructions) {
+						operands[j] = fmt.Sprintf("%d", fn.Instructions[offset])
+						offset += w
+					}
+				}
+				t.Logf("  [%d] %s %s", ip, def.Name, strings.Join(operands, ","))
+				width := 1
+				for _, w := range def.OperandWidths {
+					width += w
+				}
+				ip += width
+			}
 
+			retType := analyzeReturnType(fn.Instructions)
+			t.Logf("  analyzeReturnType = %v (0=Unknown, 1=Int, 2=Bool, 3=Null)", retType)
+		}
+	}
+}
 
+// TestJITVMHybridCallChain tests native function called through interpreter hybrid path.
+// Verifies that OpRegCall in the main code triggers the native call hook correctly.
+func TestJITVMHybridCallChain(t *testing.T) {
+	tests := []struct {
+		name     string
+		code     string
+		expected string
+	}{
+		{
+			name:     "logical and returns bool",
+			code:     "func both(a, b) { return a && b } both(true, false)",
+			expected: "false",
+		},
+		{
+			name:     "logical or returns bool",
+			code:     "func either(a, b) { return a || b } either(false, true)",
+			expected: "true",
+		},
+		{
+			name:     "arithmetic function",
+			code:     "func add(a, b) { return a + b } add(10, 20)",
+			expected: "30",
+		},
+		{
+			name:     "comparison returns bool",
+			code:     "func isGreater(a, b) { return a > b } isGreater(5, 3)",
+			expected: "true",
+		},
+		{
+			name:     "nested arithmetic",
+			code:     "func compute(x) { return x * x + 1 } compute(7)",
+			expected: "50",
+		},
+		{
+			name:     "iterative loop function",
+			code:     "func sumTo(n) {\nvar sum = 0\nfor (var i = 0; i <= n; i = i + 1) {\nsum = sum + i\n}\nreturn sum\n}\nsumTo(10)",
+			expected: "55",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := lexer.New(tt.code)
+			p := parser.New(l)
+			program := p.ParseProgram()
+
+			c := compiler.NewRegCompiler()
+			_, err := c.Compile(program)
+			if err != nil {
+				t.Fatalf("Compile error: %v", err)
+			}
+
+			bytecode := c.Bytecode()
+			jitVM := NewJITVM(bytecode, JITConfig{HotThreshold: 1, MaxCodeSize: 16384, Debug: false})
+			defer jitVM.Cleanup()
+
+			if err := jitVM.Run(); err != nil {
+				t.Fatalf("Run failed: %v", err)
+			}
+
+			obj := jitVM.LastPoppedObject()
+			if obj == nil {
+				t.Fatal("expected result object")
+			}
+			if got := obj.Inspect(); got != tt.expected {
+				t.Fatalf("expected %s, got %s", tt.expected, got)
+			}
+
+			nativeExecs, _ := jitVM.GetNativeStats()
+			if nativeExecs == 0 {
+				t.Error("expected at least one native execution")
+			}
+		})
+	}
+}
+
+// TestAnalyzeReturnTypeUnreachableReturn tests that analyzeReturnType correctly
+// ignores unreachable OpRegReturn instructions (compiler-appended default returns).
+func TestAnalyzeReturnTypeUnreachableReturn(t *testing.T) {
+	tests := []struct {
+		name     string
+		code     []byte
+		expected NativeReturnType
+	}{
+		{
+			name: "and before return, then unreachable return",
+			code: []byte{
+				byte(compiler.OpRegAnd), 10, 8, 9,
+				byte(compiler.OpRegReturn), 10,
+				byte(compiler.OpRegReturn), 0,
+			},
+			expected: ReturnTypeBool,
+		},
+		{
+			name: "comparison before return, then unreachable return",
+			code: []byte{
+				byte(compiler.OpRegLess), 10, 8, 9,
+				byte(compiler.OpRegReturn), 10,
+				byte(compiler.OpRegReturn), 0,
+			},
+			expected: ReturnTypeBool,
+		},
+		{
+			name: "add before return, then unreachable return",
+			code: []byte{
+				byte(compiler.OpRegAdd), 10, 8, 9,
+				byte(compiler.OpRegReturn), 10,
+				byte(compiler.OpRegReturn), 0,
+			},
+			expected: ReturnTypeInt,
+		},
+		{
+			name: "single return with and",
+			code: []byte{
+				byte(compiler.OpRegAnd), 10, 8, 9,
+				byte(compiler.OpRegReturn), 10,
+			},
+			expected: ReturnTypeBool,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := analyzeReturnType(tt.code)
+			if result != tt.expected {
+				t.Errorf("analyzeReturnType() = %v, expected %v", result, tt.expected)
+			}
+		})
+	}
+}

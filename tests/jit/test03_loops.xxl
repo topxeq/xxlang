@@ -1,0 +1,28 @@
+// test03_loops.xxl
+// Loop constructs - for and while
+
+var sum = 0
+for (var i = 1; i <= 10; i++) {
+    sum = sum + i
+}
+pln("Sum 1..10 = ", sum)
+
+var product = 1
+for (var i = 1; i <= 5; i++) {
+    product = product * i
+}
+pln("5! = ", product)
+
+var n = 10
+var sum2 = 0
+while (n > 0) {
+    sum2 = sum2 + n
+    n--
+}
+pln("Sum via while = ", sum2)
+
+var count = 0
+for (var i = 0; i < 100; i += 3) {
+    count++
+}
+pln("Count by 3 up to 100: ", count)

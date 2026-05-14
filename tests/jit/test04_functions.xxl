@@ -1,0 +1,38 @@
+// test04_functions.xxl
+// Pure arithmetic functions - candidates for native JIT compilation
+
+func add(a, b) {
+    return a + b
+}
+
+func mul(a, b) {
+    return a * b
+}
+
+func abs(x) {
+    if (x < 0) {
+        return -x
+    }
+    return x
+}
+
+func max(a, b) {
+    if (a >= b) {
+        return a
+    }
+    return b
+}
+
+func min(a, b) {
+    if (a <= b) {
+        return a
+    }
+    return b
+}
+
+pln("add(3, 4) = ", add(3, 4))
+pln("mul(5, 6) = ", mul(5, 6))
+pln("abs(-7) = ", abs(-7))
+pln("abs(7) = ", abs(7))
+pln("max(10, 20) = ", max(10, 20))
+pln("min(10, 20) = ", min(10, 20))

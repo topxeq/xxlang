@@ -1,0 +1,28 @@
+import { unixMs } from "time"
+
+func fibIter(n) {
+    if (n <= 0) { return 0 }
+    if (n == 1) { return 1 }
+    var a = 0
+    var b = 1
+    for (var i = 2; i <= n; i++) {
+        var temp = a + b
+        a = b
+        b = temp
+    }
+    return b
+}
+
+var N = 1000000
+var start = unixMs()
+var result = fibIter(N)
+var elapsed = unixMs() - start
+pln("fibIter(" + N.toStr() + ") time: " + elapsed.toStr() + " ms, result mod 1000 = " + (result % 1000).toStr())
+
+var total = 0
+for (var r = 0; r < 5; r++) {
+    var s = unixMs()
+    var r = fibIter(N)
+    total = total + (unixMs() - s)
+}
+pln("5 runs avg: " + (total / 5).toStr() + " ms")

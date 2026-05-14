@@ -246,6 +246,7 @@ func NewJITVM(bytecode *compiler.Bytecode, config JITConfig) *JITVM {
 	j.compileNativeFunctions()
 	j.updateCachedGlobals()
 	j.setupNativeCallHook()
+	j.initWindowsCallback()
 	return j
 }
 
@@ -264,6 +265,7 @@ func NewJITVMWithGlobals(bytecode *compiler.Bytecode, globals []vm.Value, config
 	j.compileNativeFunctions()
 	j.updateCachedGlobals()
 	j.setupNativeCallHook()
+	j.initWindowsCallback()
 	return j
 }
 

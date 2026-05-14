@@ -1,0 +1,34 @@
+// test07_locals_globals.xxl
+// Test local variables and global variable interactions
+
+var globalX = 100
+
+func useGlobal() {
+    return globalX + 1
+}
+
+func modifyGlobal() {
+    globalX = globalX + 50
+    return globalX
+}
+
+func localShadow() {
+    var globalX = 999
+    return globalX
+}
+
+pln("globalX = ", globalX)
+pln("useGlobal() = ", useGlobal())
+pln("localShadow() = ", localShadow())
+pln("globalX after localShadow = ", globalX)
+pln("modifyGlobal() = ", modifyGlobal())
+pln("globalX after modify = ", globalX)
+
+func multiLocal(a, b, c) {
+    var d = a + b
+    var e = b + c
+    var f = d + e
+    return f
+}
+
+pln("multiLocal(1,2,3) = ", multiLocal(1, 2, 3))

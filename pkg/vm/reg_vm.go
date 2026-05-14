@@ -277,6 +277,11 @@ func (vm *RegVM) SetNativeCallHook(hook func(fn *compiler.CompiledFunction, args
 	vm.nativeCallHook = hook
 }
 
+// GetNativeCallHook returns the current native call hook function.
+func (vm *RegVM) GetNativeCallHook() func(fn *compiler.CompiledFunction, args []Value, frame *RegFrame) (Value, bool) {
+	return vm.nativeCallHook
+}
+
 // HasNativeHook returns true if a native call hook is set
 // This is a fast check that can be used to skip hook overhead
 func (vm *RegVM) HasNativeHook() bool {

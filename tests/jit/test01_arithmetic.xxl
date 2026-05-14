@@ -1,0 +1,25 @@
+// test01_arithmetic.xxl
+// Pure arithmetic - should be fully native-executable
+
+var a = 10
+var b = 20
+var c = a + b
+pln("10 + 20 = ", c)
+
+var d = b - a
+pln("20 - 10 = ", d)
+
+var e = a * b
+pln("10 * 20 = ", e)
+
+var f = b / a
+pln("20 / 10 = ", f)
+
+var g = b % 7
+pln("20 % 7 = ", g)
+
+var h = -a
+pln("-10 = ", h)
+
+var i = (a + b) * (b - a)
+pln("(10+20)*(20-10) = ", i)

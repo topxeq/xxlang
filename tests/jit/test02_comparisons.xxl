@@ -1,0 +1,23 @@
+// test02_comparisons.xxl
+// Comparison and logical operations
+
+pln("10 == 10: ", 10 == 10)
+pln("10 != 20: ", 10 != 20)
+pln("10 < 20: ", 10 < 20)
+pln("20 > 10: ", 20 > 10)
+pln("10 <= 10: ", 10 <= 10)
+pln("10 >= 10: ", 10 >= 10)
+
+var a = 5
+var b = 10
+if (a < b) {
+    pln("5 < 10: true")
+} else {
+    pln("5 < 10: false")
+}
+
+if (a > b) {
+    pln("5 > 10: true")
+} else {
+    pln("5 > 10: false")
+}

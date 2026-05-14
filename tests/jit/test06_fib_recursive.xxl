@@ -1,0 +1,15 @@
+// test06_fib_recursive.xxl
+// Recursive Fibonacci - tests JIT recursive function handling
+
+func fib(n) {
+    if (n <= 1) {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+pln("fib(0) = ", fib(0))
+pln("fib(1) = ", fib(1))
+pln("fib(5) = ", fib(5))
+pln("fib(10) = ", fib(10))
+pln("fib(20) = ", fib(20))

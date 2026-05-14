@@ -1,0 +1,27 @@
+// test05_fib_iterative.xxl
+// Iterative Fibonacci - should benefit from JIT
+
+func fibIterative(n) {
+    if (n <= 0) {
+        return 0
+    }
+    if (n == 1) {
+        return 1
+    }
+    var a = 0
+    var b = 1
+    for (var i = 2; i <= n; i++) {
+        var temp = a + b
+        a = b
+        b = temp
+    }
+    return b
+}
+
+pln("fib(0) = ", fibIterative(0))
+pln("fib(1) = ", fibIterative(1))
+pln("fib(5) = ", fibIterative(5))
+pln("fib(10) = ", fibIterative(10))
+pln("fib(20) = ", fibIterative(20))
+pln("fib(30) = ", fibIterative(30))
+pln("fib(35) = ", fibIterative(35))

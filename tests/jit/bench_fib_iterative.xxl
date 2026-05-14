@@ -1,0 +1,27 @@
+import { unixMs } from "time"
+
+func fib(n) {
+    if (n <= 0) { return 0 }
+    if (n == 1) { return 1 }
+    var a = 0
+    var b = 1
+    for (var i = 2; i <= n; i++) {
+        var temp = a + b
+        a = b
+        b = temp
+    }
+    return b
+}
+
+var start = unixMs()
+var result = fib(35)
+var elapsed = unixMs() - start
+pln("Xxlang iterative fib(35) = " + result.toStr() + "  time: " + elapsed.toStr() + " ms")
+
+var total = 0
+for (var i = 0; i < 5; i++) {
+    var s = unixMs()
+    var r = fib(35)
+    total = total + (unixMs() - s)
+}
+pln("5 runs avg: " + (total / 5).toStr() + " ms")

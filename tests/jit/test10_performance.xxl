@@ -1,0 +1,31 @@
+// test10_performance.xxl
+// Performance comparison: heavy computation
+
+func sumTo(n) {
+    var sum = 0
+    var i = 1
+    while (i <= n) {
+        sum = sum + i
+        i++
+    }
+    return sum
+}
+
+func collatzSteps(n) {
+    var steps = 0
+    while (n != 1) {
+        if (n % 2 == 0) {
+            n = n / 2
+        } else {
+            n = 3 * n + 1
+        }
+        steps++
+    }
+    return steps
+}
+
+pln("sumTo(1000) = ", sumTo(1000))
+pln("sumTo(10000) = ", sumTo(10000))
+pln("collatzSteps(27) = ", collatzSteps(27))
+pln("collatzSteps(1000) = ", collatzSteps(1000))
+pln("collatzSteps(1000000) = ", collatzSteps(1000000))

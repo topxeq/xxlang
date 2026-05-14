@@ -1,0 +1,50 @@
+// test08_nested_logic.xxl
+// Nested conditionals and more complex control flow
+
+func classify(n) {
+    if (n > 0) {
+        if (n > 100) {
+            return 3
+        }
+        if (n > 10) {
+            return 2
+        }
+        return 1
+    }
+    if (n < 0) {
+        return -1
+    }
+    return 0
+}
+
+pln("classify(200) = ", classify(200))
+pln("classify(50) = ", classify(50))
+pln("classify(5) = ", classify(5))
+pln("classify(0) = ", classify(0))
+pln("classify(-1) = ", classify(-1))
+
+func isPrime(n) {
+    if (n < 2) {
+        return false
+    }
+    if (n == 2) {
+        return true
+    }
+    if (n % 2 == 0) {
+        return false
+    }
+    var i = 3
+    while (i * i <= n) {
+        if (n % i == 0) {
+            return false
+        }
+        i = i + 2
+    }
+    return true
+}
+
+pln("isPrime(2) = ", isPrime(2))
+pln("isPrime(7) = ", isPrime(7))
+pln("isPrime(15) = ", isPrime(15))
+pln("isPrime(17) = ", isPrime(17))
+pln("isPrime(100) = ", isPrime(100))

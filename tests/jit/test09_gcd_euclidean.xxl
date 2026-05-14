@@ -1,0 +1,21 @@
+// test09_gcd_euclidean.xxl
+// Euclidean GCD algorithm - classic JIT test
+
+func gcd(a, b) {
+    while (b != 0) {
+        var temp = b
+        b = a % b
+        a = temp
+    }
+    return a
+}
+
+func lcm(a, b) {
+    return (a / gcd(a, b)) * b
+}
+
+pln("gcd(12, 8) = ", gcd(12, 8))
+pln("gcd(100, 75) = ", gcd(100, 75))
+pln("gcd(35, 14) = ", gcd(35, 14))
+pln("lcm(12, 8) = ", lcm(12, 8))
+pln("lcm(4, 6) = ", lcm(4, 6))
