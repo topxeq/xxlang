@@ -284,6 +284,11 @@ func (j *JITVM) Run() error {
 		return j.RegVM.Run()
 	}
 
+	// Always compile native functions and set up hooks before any execution path,
+	// because the main bytecode may contain OpRegCall that calls into functions.
+	j.compileNativeFunctions()
+	j.setupNativeCallHook()
+
 	// Check if we can execute the main code natively
 	mainFn := &compiler.CompiledFunction{
 		Instructions:  j.bytecode.Instructions,
@@ -297,6 +302,8 @@ func (j *JITVM) Run() error {
 	}
 
 	if canNative {
+		j.updateCachedGlobals()
+
 		vmGlobals := j.GetGlobals()
 		globals := make([]int64, len(vmGlobals))
 		for i, g := range vmGlobals {
@@ -309,6 +316,7 @@ func (j *JITVM) Run() error {
 			if j.config.Debug {
 				fmt.Printf("[JIT] Native execution succeeded, result=%d\n", result)
 			}
+			j.syncGlobalsToVM()
 			j.RegVM.SetLastResult(nativeResultToValue(result, analyzeReturnType(mainFn.Instructions)))
 			return nil
 		}
@@ -316,9 +324,6 @@ func (j *JITVM) Run() error {
 			fmt.Printf("[JIT] Native execution failed: %v, falling back to interpreter\n", err)
 		}
 	}
-
-	// Re-compile native functions (in case they weren't compiled yet)
-	j.compileNativeFunctions()
 
 	// Check if we have native functions compiled
 	if j.config.Debug {

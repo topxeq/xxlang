@@ -31,6 +31,15 @@ type NativeCodeGenerator struct {
 	// Function entry point (after prologue) for tail calls
 	funcEntry int
 
+	// Compile-time tracking: maps VM register to the constant pool index
+	// that was last loaded into it via OpRegLoadConst. Used by OpRegCall
+	// to resolve the function's constant index at compile time.
+	regConstMap map[int]int
+
+	// Compile-time tracking: maps global index to the constant pool index
+	// that was last stored into it. Propagated through StoreGlobal/LoadGlobal.
+	globalConstMap map[int]int
+
 	// Callback pointer for builtin/function dispatch
 	builtinCallbackPtr    uintptr
 	functionCallbackPtr   uintptr
@@ -114,6 +123,8 @@ func (cg *NativeCodeGenerator) Generate(fn *compiler.CompiledFunction, constants
 	cg.numParams = fn.NumParameters
 	cg.numLocals = fn.NumLocals
 	cg.numRegs = fn.NumRegs
+	cg.regConstMap = make(map[int]int)
+	cg.globalConstMap = make(map[int]int)
 
 	// Generate prologue
 	cg.emitPrologue(fn.NumLocals, fn.NumRegs)
@@ -715,6 +726,7 @@ func (cg *NativeCodeGenerator) storeRaxToReg(r int) {
 // ============================================================================
 
 func (cg *NativeCodeGenerator) compileLoadConst(dst, constIdx int) {
+	cg.regConstMap[dst] = constIdx
 	if constIdx < len(cg.constants) {
 		cg.compileLoadImm(dst, cg.constants[constIdx])
 	} else {
@@ -735,6 +747,11 @@ func (cg *NativeCodeGenerator) compileLoadImm(dst int, val int64) {
 // Globals pointer is in rdi (first argument per x86-64 calling convention)
 // Global variables are int64, so offset = globalIdx * 8
 func (cg *NativeCodeGenerator) compileLoadGlobal(dst, globalIdx int) {
+	// Track constant propagation from globals
+	if constIdx, ok := cg.globalConstMap[globalIdx]; ok {
+		cg.regConstMap[dst] = constIdx
+	}
+
 	// mov rax, [rdi + globalIdx*8]
 	// Using SIB addressing: [rdi + disp32] or [rdi + idx*8]
 	offset := globalIdx * 8
@@ -756,6 +773,11 @@ func (cg *NativeCodeGenerator) compileLoadGlobal(dst, globalIdx int) {
 // compileStoreGlobal stores a value to a global variable
 // Globals pointer is in rdi
 func (cg *NativeCodeGenerator) compileStoreGlobal(src, globalIdx int) {
+	// Track constant propagation through globals
+	if constIdx, ok := cg.regConstMap[src]; ok {
+		cg.globalConstMap[globalIdx] = constIdx
+	}
+
 	// Load source to rax
 	cg.loadRegToRax(src)
 
@@ -908,102 +930,104 @@ func (cg *NativeCodeGenerator) compileTailCall(funcReg, numArgs int) {
 	}
 }
 
-// compileCall handles function calls by calling back to Go
-// This allows native code to call functions (including natively-compiled ones)
-// The function callback signature: callback(funcReg, numArgs, argsPtr) int64
-// Arguments are in VM registers R0-R7 (which map to RAX, RBX, RCX, RDX, R8-R11)
+// compileCall handles function calls by calling back to Go via the Windows
+// x64 ABI callback. The callback resolves the function from the constant
+// pool using constIdx and executes it (natively if compiled, or via interpreter).
+//
+// On Windows x64 ABI: rcx = constIdx, rdx = numArgs, r8 = argsPtr.
+// The callback pointer is obtained from getWindowsCallbackPtr() (syscall.NewCallback).
 func (cg *NativeCodeGenerator) compileCall(funcReg, numArgs int) {
-	// For the callback, we use System V AMD64 ABI:
-	//   rdi = funcReg
-	//   rsi = numArgs
-	//   rdx = pointer to args array (on stack)
+	callbackPtr := getWindowsCallbackPtr()
 
-	// But rdi currently holds globals pointer! We need to save it.
-	// Push globals pointer (rdi) to stack
-	cg.emitBytes([]byte{0x57}) // push rdi
+	constIdx, known := cg.regConstMap[funcReg]
+	if !known || callbackPtr == 0 {
+		// Cannot resolve function — emit return-0 stub
+		cg.emitBytes([]byte{0x48, 0x31, 0xC0}) // xor rax, rax
+		cg.storeRaxToReg(255)
+		return
+	}
 
-	// Store args to stack for args pointer
-	// We'll spill R0-R7 to [rbp - 320 - argNum*8] (below the existing spilled regs space)
-	// This creates a contiguous array of int64 values
-	baseOffset := int32(400) // Start after builtin callback space
+	// Save callee-saved registers that will be clobbered by the callback
+	// Windows x64 ABI requires: push rbp, then sub rsp for shadow space + alignment
+	cg.emitBytes([]byte{0x57})       // push rdi (globals pointer)
+	cg.emitBytes([]byte{0x41, 0x54}) // push r12
+	cg.emitBytes([]byte{0x41, 0x55}) // push r13
+	cg.emitBytes([]byte{0x41, 0x56}) // push r14
+	cg.emitBytes([]byte{0x41, 0x57}) // push r15
 
-	// Spill R0 (RAX) to [rbp - baseOffset]
-	cg.emitBytes([]byte{0x48, 0x89, 0x85}) // mov [rbp + disp32], rax
+	// Spill argument registers (R0-R7) to the stack area below locals.
+	baseOffset := int32(cg.localsBaseOffset() + cg.numLocals*8 + 8)
+
+	// Spill R0 ([rbp-8]) to args array
+	cg.emitBytes([]byte{0x48, 0x8B, 0x85}) // mov rax, [rbp-8] (R0)
+	cg.emitUint32(r0StackDisp)
+	cg.emitBytes([]byte{0x48, 0x89, 0x85}) // mov [rbp-baseOffset], rax
 	cg.emitUint32(uint32(-baseOffset))
 
 	if numArgs >= 2 {
-		// Spill R1 (RBX)
-		cg.emitBytes([]byte{0x48, 0x89, 0x9D}) // mov [rbp + disp32], rbx
+		cg.emitBytes([]byte{0x48, 0x89, 0x9D}) // mov [rbp-baseOffset-8], rbx
 		cg.emitUint32(uint32(-(baseOffset + 8)))
 	}
 	if numArgs >= 3 {
-		// Spill R2 (RCX)
-		cg.emitBytes([]byte{0x48, 0x89, 0x8D}) // mov [rbp + disp32], rcx
+		cg.emitBytes([]byte{0x48, 0x89, 0x8D}) // mov [rbp-baseOffset-16], rcx
 		cg.emitUint32(uint32(-(baseOffset + 16)))
 	}
 	if numArgs >= 4 {
-		// Spill R3 (RDX)
-		cg.emitBytes([]byte{0x48, 0x89, 0x95}) // mov [rbp + disp32], rdx
+		cg.emitBytes([]byte{0x48, 0x89, 0x95}) // mov [rbp-baseOffset-24], rdx
 		cg.emitUint32(uint32(-(baseOffset + 24)))
 	}
 	if numArgs >= 5 {
-		// Spill R4 (R8)
-		cg.emitBytes([]byte{0x4C, 0x89, 0x85}) // mov [rbp + disp32], r8
+		cg.emitBytes([]byte{0x4C, 0x89, 0x85}) // mov [rbp-baseOffset-32], r8
 		cg.emitUint32(uint32(-(baseOffset + 32)))
 	}
 	if numArgs >= 6 {
-		// Spill R5 (R9)
-		cg.emitBytes([]byte{0x4C, 0x89, 0x8D}) // mov [rbp + disp32], r9
+		cg.emitBytes([]byte{0x4C, 0x89, 0x8D}) // mov [rbp-baseOffset-40], r9
 		cg.emitUint32(uint32(-(baseOffset + 40)))
 	}
 	if numArgs >= 7 {
-		// Spill R6 (R10)
-		cg.emitBytes([]byte{0x4C, 0x89, 0x95}) // mov [rbp + disp32], r10
+		cg.emitBytes([]byte{0x4C, 0x89, 0x95}) // mov [rbp-baseOffset-48], r10
 		cg.emitUint32(uint32(-(baseOffset + 48)))
 	}
 	if numArgs >= 8 {
-		// Spill R7 (R11)
-		cg.emitBytes([]byte{0x4C, 0x89, 0x9D}) // mov [rbp + disp32], r11
+		cg.emitBytes([]byte{0x4C, 0x89, 0x9D}) // mov [rbp-baseOffset-56], r11
 		cg.emitUint32(uint32(-(baseOffset + 56)))
 	}
 
-	// Set up callback arguments (System V AMD64 ABI):
-	//   rdi = funcReg
-	//   rsi = numArgs
-	//   rdx = args pointer (address of [rbp - baseOffset])
+	// Allocate shadow space (32 bytes) + ensure 16-byte stack alignment
+	// After 4 pushes (32 bytes), RSP is misaligned. sub rsp, 40 fixes alignment + shadow.
+	cg.emitBytes([]byte{0x48, 0x83, 0xEC, 0x28}) // sub rsp, 40
 
-	// mov rdi, funcReg
-	cg.emitBytes([]byte{0x48, 0xC7, 0xC7}) // mov rdi, imm32
-	cg.emitUint32(uint32(funcReg))
+	// Set up Windows x64 ABI callback arguments:
+	//   rcx = constIdx (function index in constant pool)
+	//   rdx = numArgs
+	//   r8  = argsPtr (lea r8, [rbp-baseOffset])
+	cg.emitBytes([]byte{0x48, 0xC7, 0xC1}) // mov rcx, imm32
+	cg.emitUint32(uint32(constIdx))
 
-	// mov rsi, numArgs
-	cg.emitBytes([]byte{0x48, 0xC7, 0xC6}) // mov rsi, imm32
+	cg.emitBytes([]byte{0x48, 0xC7, 0xC2}) // mov rdx, imm32
 	cg.emitUint32(uint32(numArgs))
 
-	// lea rdx, [rbp - baseOffset] (args pointer)
-	cg.emitBytes([]byte{0x48, 0x8D, 0x95}) // lea rdx, [rbp + disp32]
+	// lea r8, [rbp-baseOffset]
+	cg.emitBytes([]byte{0x4C, 0x8D, 0x85}) // lea r8, [rbp + disp32]
 	cg.emitUint32(uint32(-baseOffset))
 
-	// Call the function callback
-	if cg.functionCallbackPtr != 0 {
-		// Direct call to callback pointer
-		// mov rax, callback_ptr
-		cg.emitBytes([]byte{0x48, 0xB8}) // mov rax, imm64
-		cg.emitUint64(uint64(cg.functionCallbackPtr))
-		// call rax
-		cg.emitBytes([]byte{0xFF, 0xD0}) // call rax
-	} else {
-		// Fallback: use indirect call through global
-		// For now, emit a call with placeholder that will be patched
-		cg.emitBytes([]byte{0xFF, 0x15, 0x00, 0x00, 0x00, 0x00}) // call [rip+0]
-	}
+	// Call the callback function pointer
+	cg.emitBytes([]byte{0x48, 0xB8}) // mov rax, imm64
+	cg.emitUint64(uint64(callbackPtr))
+	cg.emitBytes([]byte{0xFF, 0xD0}) // call rax
 
-	// Result is in RAX
-	// Store to return register (R255)
+	// Restore shadow space
+	cg.emitBytes([]byte{0x48, 0x83, 0xC4, 0x28}) // add rsp, 40
+
+	// Result is in rax, store to R255
 	cg.storeRaxToReg(255)
 
-	// Restore globals pointer
-	cg.emitBytes([]byte{0x5F}) // pop rdi
+	// Restore callee-saved registers
+	cg.emitBytes([]byte{0x41, 0x5F}) // pop r15
+	cg.emitBytes([]byte{0x41, 0x5E}) // pop r14
+	cg.emitBytes([]byte{0x41, 0x5D}) // pop r13
+	cg.emitBytes([]byte{0x41, 0x5C}) // pop r12
+	cg.emitBytes([]byte{0x5F})       // pop rdi
 }
 
 // compileBuiltin generates code to call a builtin function via callback
@@ -1309,6 +1333,11 @@ func (cg *NativeCodeGenerator) compileObjectOp(opKind ObjectOpKind, dstReg int, 
 func (cg *NativeCodeGenerator) compileMove(dst, src int) {
 	if dst == src {
 		return
+	}
+
+	// Propagate constant tracking from src to dst
+	if constIdx, ok := cg.regConstMap[src]; ok {
+		cg.regConstMap[dst] = constIdx
 	}
 
 	// Special case: dst = 255 (ReturnRegister) means put value in rax for return

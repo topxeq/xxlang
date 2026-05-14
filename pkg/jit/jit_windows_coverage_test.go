@@ -3688,7 +3688,56 @@ func TestNativeLoopIncCheckWithBody(t *testing.T) {
 	}
 }
 
-// TestDebugBothBytecode dumps the bytecode of the both function to diagnose the logical result bug.
+// TestDebugMainBytecode dumps the main bytecode for the logical result test.
+func TestDebugMainBytecode(t *testing.T) {
+	code := `
+		func both(a, b) {
+			return a && b
+		}
+		both(true, false)
+	`
+
+	l := lexer.New(code)
+	p := parser.New(l)
+	program := p.ParseProgram()
+
+	c := compiler.NewRegCompiler()
+	_, err := c.Compile(program)
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	bytecode := c.Bytecode()
+
+	t.Logf("Main bytecode: %d bytes", len(bytecode.Instructions))
+	for ip := 0; ip < len(bytecode.Instructions); {
+		op := compiler.Opcode(bytecode.Instructions[ip])
+		def, err := compiler.Lookup(byte(op))
+		if err != nil {
+			t.Logf("  [%d] unknown opcode %d", ip, op)
+			break
+		}
+		operands := make([]string, len(def.OperandWidths))
+		offset := ip + 1
+		for j, w := range def.OperandWidths {
+			if offset+w <= len(bytecode.Instructions) {
+				operands[j] = fmt.Sprintf("%d", bytecode.Instructions[offset])
+				offset += w
+			}
+		}
+		t.Logf("  [%d] %s %s", ip, def.Name, strings.Join(operands, ","))
+		width := 1
+		for _, w := range def.OperandWidths {
+			width += w
+		}
+		ip += width
+	}
+
+	t.Logf("Constants: %d entries", len(bytecode.Constants))
+	for i, cnst := range bytecode.Constants {
+		t.Logf("  [%d] %T: %v", i, cnst, cnst)
+	}
+}
 func TestDebugBothBytecode(t *testing.T) {
 	code := `
 		func both(a, b) {
