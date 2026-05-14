@@ -1,4 +1,4 @@
-//go:build windows && amd64
+﻿//go:build windows && amd64
 // +build windows,amd64
 
 // pkg/jit/jit_windows_coverage_test.go
@@ -25,7 +25,8 @@ func TestNativeExecutorExecuteFunction(t *testing.T) {
 
 	fn := &compiler.CompiledFunction{
 		Instructions: []byte{
-			byte(compiler.OpRegNull), 0,
+			byte(compiler.OpRegLoadConst), 0, 0, 0,
+			byte(compiler.OpRegReturn), 0,
 		},
 		NumLocals:     8,
 		NumParameters: 0,
@@ -36,10 +37,11 @@ func TestNativeExecutorExecuteFunction(t *testing.T) {
 
 	result, err := exec.ExecuteFunction(fn, constants, globals)
 	if err != nil {
-		t.Logf("ExecuteFunction error (expected for some code): %v", err)
-		return
+		t.Fatalf("ExecuteFunction failed: %v", err)
 	}
-	t.Logf("Native execution result: %d", result)
+	if result != 42 {
+		t.Fatalf("expected 42, got %d", result)
+	}
 }
 
 // TestGenerateNativeCode tests native code generation
@@ -127,15 +129,17 @@ func TestNativeFunctionRegistryCompile(t *testing.T) {
 
 	t.Run("compile simple function", func(t *testing.T) {
 		fn := &compiler.CompiledFunction{
-			Instructions:  []byte{byte(compiler.OpRegNull), 0},
+			Instructions: []byte{
+				byte(compiler.OpRegLoadConst), 0, 0, 0,
+				byte(compiler.OpRegReturn), 0,
+			},
 			NumLocals:     8,
 			NumParameters: 0,
 		}
 
-		err := registry.CompileFunction(fn, 0, nil)
+		err := registry.CompileFunction(fn, 0, []int64{7})
 		if err != nil {
-			t.Logf("CompileFunction error: %v", err)
-			return
+			t.Fatalf("CompileFunction error: %v", err)
 		}
 
 		nf := registry.Get(0)
@@ -146,24 +150,35 @@ func TestNativeFunctionRegistryCompile(t *testing.T) {
 		if nf.NumParams != 0 {
 			t.Errorf("Expected 0 params, got %d", nf.NumParams)
 		}
+		if got := nf.Execute(nil); got != 7 {
+			t.Fatalf("expected 7, got %d", got)
+		}
 	})
 
 	t.Run("compile function with params", func(t *testing.T) {
 		fn := &compiler.CompiledFunction{
-			Instructions:  []byte{byte(compiler.OpRegNull), 0},
+			Instructions: []byte{
+				byte(compiler.OpRegAdd), 2, 0, 1,
+				byte(compiler.OpRegReturn), 2,
+			},
 			NumLocals:     8,
 			NumParameters: 2,
 		}
 
 		err := registry.CompileFunction(fn, 1, nil)
 		if err != nil {
-			t.Logf("CompileFunction error: %v", err)
-			return
+			t.Fatalf("CompileFunction error: %v", err)
 		}
 
 		nf := registry.Get(1)
-		if nf != nil && nf.NumParams != 2 {
+		if nf == nil {
+			t.Fatal("Get returned nil after CompileFunction")
+		}
+		if nf.NumParams != 2 {
 			t.Errorf("Expected 2 params, got %d", nf.NumParams)
+		}
+		if got := nf.Execute(nil, 10, 20); got != 30 {
+			t.Fatalf("expected 30, got %d", got)
 		}
 	})
 }
@@ -1045,7 +1060,20 @@ func TestJITVMRunEnabled(t *testing.T) {
 	}
 
 	obj := jitVM.LastPoppedObject()
-	t.Logf("Result: %v", obj)
+	if obj == nil {
+		t.Fatal("expected result object")
+	}
+	if got := obj.Inspect(); got != "30" {
+		t.Fatalf("expected 30, got %s", got)
+	}
+
+	nativeExecs, interpExecs := jitVM.GetNativeStats()
+	if nativeExecs == 0 {
+		t.Fatal("expected pure native execution to be used")
+	}
+	if interpExecs != 0 {
+		t.Fatalf("expected no interpreter fallback, got %d interpreter executions", interpExecs)
+	}
 }
 
 // TestJITVMCompileNativeFunctions tests compileNativeFunctions
@@ -1123,21 +1151,27 @@ func TestNativeFunctionRegistryGetMultiple(t *testing.T) {
 	// Compile multiple functions
 	for i := 0; i < 3; i++ {
 		fn := &compiler.CompiledFunction{
-			Instructions:  []byte{byte(compiler.OpRegNull), 0},
+			Instructions: []byte{
+				byte(compiler.OpRegLoadConst), 0, 0, 0,
+				byte(compiler.OpRegReturn), 0,
+			},
 			NumLocals:     8,
 			NumParameters: i,
 		}
-		registry.CompileFunction(fn, i, nil)
+		if err := registry.CompileFunction(fn, i, []int64{int64(i)}); err != nil {
+			t.Fatalf("CompileFunction(%d) failed: %v", i, err)
+		}
 	}
 
 	// Get all functions
 	for i := 0; i < 3; i++ {
 		nf := registry.Get(i)
 		if nf == nil {
-			t.Errorf("Get(%d) returned nil", i)
-			continue
+			t.Fatalf("Get(%d) returned nil", i)
 		}
-		t.Logf("Function %d: NumParams=%d", i, nf.NumParams)
+		if got := nf.Execute(nil); got != int64(i) {
+			t.Fatalf("Get(%d) executed to %d, expected %d", i, got, i)
+		}
 	}
 }
 
@@ -1147,15 +1181,17 @@ func TestNativeFunctionExecuteWithArgs(t *testing.T) {
 	defer registry.Cleanup()
 
 	fn := &compiler.CompiledFunction{
-		Instructions:  []byte{byte(compiler.OpRegNull), 0},
+		Instructions: []byte{
+			byte(compiler.OpRegAdd), 2, 0, 1,
+			byte(compiler.OpRegReturn), 2,
+		},
 		NumLocals:     8,
 		NumParameters: 2,
 	}
 
 	err := registry.CompileFunction(fn, 0, nil)
 	if err != nil {
-		t.Skipf("CompileFunction error: %v", err)
-		return
+		t.Fatalf("CompileFunction error: %v", err)
 	}
 
 	nf := registry.Get(0)
@@ -1168,23 +1204,196 @@ func TestNativeFunctionExecuteWithArgs(t *testing.T) {
 
 	t.Run("0 args", func(t *testing.T) {
 		result := nf.Execute(globals)
-		t.Logf("Execute with 0 args: %d", result)
+		if result != 0 {
+			t.Fatalf("expected 0, got %d", result)
+		}
 	})
 
 	t.Run("1 arg", func(t *testing.T) {
 		result := nf.Execute(globals, 42)
-		t.Logf("Execute with 1 arg: %d", result)
+		if result != 42 {
+			t.Fatalf("expected 42, got %d", result)
+		}
 	})
 
 	t.Run("2 args", func(t *testing.T) {
 		result := nf.Execute(globals, 10, 20)
-		t.Logf("Execute with 2 args: %d", result)
+		if result != 30 {
+			t.Fatalf("expected 30, got %d", result)
+		}
 	})
 
 	t.Run("3 args", func(t *testing.T) {
 		result := nf.Execute(globals, 1, 2, 3)
-		t.Logf("Execute with 3 args: %d", result)
+		if result != 3 {
+			t.Fatalf("expected 3, got %d", result)
+		}
 	})
+}
+
+// TestNativeFunctionRegistryCompileConstArithmetic ensures constant arithmetic opcodes run natively.
+func TestNativeFunctionRegistryCompileConstArithmetic(t *testing.T) {
+	registry := NewNativeFunctionRegistry(DefaultJITConfig())
+	defer registry.Cleanup()
+
+	fn := &compiler.CompiledFunction{
+		Instructions: []byte{
+			byte(compiler.OpRegLoadConst), 0, 0, 0,
+			byte(compiler.OpRegAddConst), 0, 0, 0, 1,
+			byte(compiler.OpRegMulConst), 0, 0, 0, 2,
+			byte(compiler.OpRegSubConst), 0, 0, 0, 3,
+			byte(compiler.OpRegReturn), 0,
+		},
+		NumLocals:     8,
+		NumParameters: 0,
+	}
+
+	constants := []int64{20, 3, 2, 1}
+	if err := registry.CompileFunction(fn, 0, constants); err != nil {
+		t.Fatalf("CompileFunction failed: %v", err)
+	}
+
+	nf := registry.Get(0)
+	if nf == nil {
+		t.Fatal("Get returned nil after CompileFunction")
+	}
+
+	if got := nf.Execute(nil); got != 45 {
+		t.Fatalf("expected 45, got %d", got)
+	}
+}
+
+// TestNativeFunctionRegistryCompileAddLocalCheck ensures loop-check bytecode can run natively.
+func TestNativeFunctionRegistryCompileAddLocalCheck(t *testing.T) {
+	registry := NewNativeFunctionRegistry(DefaultJITConfig())
+	defer registry.Cleanup()
+
+	fn := &compiler.CompiledFunction{
+		Instructions: []byte{
+			byte(compiler.OpRegLoadConst), 0, 0, 0,
+			byte(compiler.OpRegLoadConst), 1, 0, 1,
+			byte(compiler.OpRegAddLocalCheck), 0, 1, 0, 2, 0, 0,
+			byte(compiler.OpRegReturn), 0,
+		},
+		NumLocals:     8,
+		NumParameters: 0,
+	}
+
+	constants := []int64{0, 0, 5}
+	if err := registry.CompileFunction(fn, 0, constants); err != nil {
+		t.Fatalf("CompileFunction failed: %v", err)
+	}
+
+	nf := registry.Get(0)
+	if nf == nil {
+		t.Fatal("Get returned nil after CompileFunction")
+	}
+
+	if got := nf.Execute(nil); got != 10 {
+		t.Fatalf("expected 10, got %d", got)
+	}
+}
+
+// TestNativeFunctionRegistryCompileLogicalOps ensures logical opcodes run natively and box back to booleans.
+func TestNativeFunctionRegistryCompileLogicalOps(t *testing.T) {
+	registry := NewNativeFunctionRegistry(DefaultJITConfig())
+	defer registry.Cleanup()
+
+	tests := []struct {
+		name        string
+		instructions []byte
+		constants   []int64
+		expected    int64
+	}{
+		{
+			name: "and",
+			instructions: []byte{
+				byte(compiler.OpRegLoadConst), 0, 0, 0,
+				byte(compiler.OpRegLoadConst), 1, 0, 1,
+				byte(compiler.OpRegAnd), 2, 0, 1,
+				byte(compiler.OpRegReturn), 2,
+			},
+			constants: []int64{1, 1},
+			expected: 1,
+		},
+		{
+			name: "or",
+			instructions: []byte{
+				byte(compiler.OpRegLoadConst), 0, 0, 0,
+				byte(compiler.OpRegLoadConst), 1, 0, 1,
+				byte(compiler.OpRegOr), 2, 0, 1,
+				byte(compiler.OpRegReturn), 2,
+			},
+			constants: []int64{0, 5},
+			expected: 1,
+		},
+		{
+			name: "not",
+			instructions: []byte{
+				byte(compiler.OpRegLoadConst), 0, 0, 0,
+				byte(compiler.OpRegNot), 1, 0,
+				byte(compiler.OpRegReturn), 1,
+			},
+			constants: []int64{0},
+			expected: 1,
+		},
+	}
+
+	for idx, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fn := &compiler.CompiledFunction{Instructions: tt.instructions, NumLocals: 8}
+			if err := registry.CompileFunction(fn, idx, tt.constants); err != nil {
+				t.Fatalf("CompileFunction failed: %v", err)
+			}
+
+			nf := registry.Get(idx)
+			if nf == nil {
+				t.Fatal("Get returned nil after CompileFunction")
+			}
+			if nf.ReturnType != ReturnTypeBool {
+				t.Fatalf("expected bool return type, got %v", nf.ReturnType)
+			}
+			if got := nf.Execute(nil); got != tt.expected {
+				t.Fatalf("expected %d, got %d", tt.expected, got)
+			}
+		})
+	}
+}
+
+// TestJITVMRunWithLogicalResult ensures logical native results round-trip as booleans.
+func TestJITVMRunWithLogicalResult(t *testing.T) {
+	code := `
+		func both(a, b) {
+			return a && b
+		}
+		both(true, false)
+	`
+
+	l := lexer.New(code)
+	p := parser.New(l)
+	program := p.ParseProgram()
+
+	c := compiler.NewRegCompiler()
+	_, err := c.Compile(program)
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	bytecode := c.Bytecode()
+	jitVM := NewJITVM(bytecode, JITConfig{HotThreshold: 1, MaxCodeSize: 16384, Debug: true})
+	defer jitVM.Cleanup()
+
+	if err := jitVM.Run(); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	obj := jitVM.LastPoppedObject()
+	if obj == nil {
+		t.Fatal("expected result object")
+	}
+	if got := obj.Inspect(); got != "false" {
+		t.Fatalf("expected false, got %s", got)
+	}
 }
 
 // TestNativeFunctionRegistryCleanup tests registry cleanup
@@ -1272,10 +1481,15 @@ func TestFibJITCompilerIsFibPattern(t *testing.T) {
 		expected bool
 	}{
 		{
-			name: "with call - fib pattern",
+			name: "two calls with fib-like structure",
 			fn: &compiler.CompiledFunction{
 				Instructions: []byte{
-					byte(compiler.OpRegCall), 0, 0,
+					byte(compiler.OpRegLessEqual), 0, 0, 0,
+					byte(compiler.OpRegSub), 0, 0, 0,
+					byte(compiler.OpRegSub), 0, 0, 0,
+					byte(compiler.OpRegCall), 0, 1,
+					byte(compiler.OpRegCall), 0, 1,
+					byte(compiler.OpRegAdd), 0, 0, 1,
 				},
 				NumLocals:     8,
 				NumParameters: 1,
@@ -1283,7 +1497,7 @@ func TestFibJITCompilerIsFibPattern(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "with tail call - fib pattern",
+			name: "tail call without compare is not fib pattern",
 			fn: &compiler.CompiledFunction{
 				Instructions: []byte{
 					byte(compiler.OpRegTailCall), 0, 0,
@@ -1291,7 +1505,19 @@ func TestFibJITCompilerIsFibPattern(t *testing.T) {
 				NumLocals:     8,
 				NumParameters: 1,
 			},
-			expected: true,
+			expected: false,
+		},
+		{
+			name: "higher-order call is not fib pattern",
+			fn: &compiler.CompiledFunction{
+				Instructions: []byte{
+					byte(compiler.OpRegCall), 0, 1,
+					byte(compiler.OpRegReturn), 0,
+				},
+				NumLocals:     8,
+				NumParameters: 2,
+			},
+			expected: false,
 		},
 		{
 			name: "no call - not fib pattern",
@@ -1313,6 +1539,103 @@ func TestFibJITCompilerIsFibPattern(t *testing.T) {
 				t.Errorf("isFibPattern() = %v, expected %v", result, tt.expected)
 			}
 		})
+	}
+}
+
+// TestJITVMRunWithHigherOrderFunction ensures higher-order calls are not miscompiled as Fibonacci.
+func TestJITVMRunWithHigherOrderFunction(t *testing.T) {
+	code := `
+		func apply(f, x) {
+			return f(x)
+		}
+		func double(n) {
+			return n * 2
+		}
+		apply(double, 21)
+	`
+
+	l := lexer.New(code)
+	p := parser.New(l)
+	program := p.ParseProgram()
+
+	c := compiler.NewRegCompiler()
+	_, err := c.Compile(program)
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	bytecode := c.Bytecode()
+	jitVM := NewJITVM(bytecode, JITConfig{HotThreshold: 1, MaxCodeSize: 16384, Debug: true})
+	defer jitVM.Cleanup()
+
+	if err := jitVM.Run(); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	obj := jitVM.LastPoppedObject()
+	if obj == nil {
+		t.Fatal("expected result object")
+	}
+	if got := obj.Inspect(); got != "42" {
+		t.Fatalf("expected 42, got %s", got)
+	}
+
+	nativeExecs, interpExecs := jitVM.GetNativeStats()
+	if nativeExecs != 0 {
+		t.Fatalf("expected higher-order call to stay on interpreter path, got %d native executions", nativeExecs)
+	}
+	if interpExecs == 0 {
+		t.Fatal("expected interpreter execution for higher-order call")
+	}
+}
+
+// TestJITVMRunWithIterativeLoopFunction ensures arithmetic loop functions can run natively.
+func TestJITVMRunWithIterativeLoopFunction(t *testing.T) {
+	code := `
+		func sumTo(n) {
+			var sum = 0
+			for (var i = 0; i <= n; i = i + 1) {
+				sum = sum + i
+			}
+			return sum
+		}
+		sumTo(10)
+	`
+
+	l := lexer.New(code)
+	p := parser.New(l)
+	program := p.ParseProgram()
+
+	c := compiler.NewRegCompiler()
+	_, err := c.Compile(program)
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	bytecode := c.Bytecode()
+	jitVM := NewJITVM(bytecode, JITConfig{HotThreshold: 1, MaxCodeSize: 16384, Debug: true})
+	defer jitVM.Cleanup()
+
+	if err := jitVM.Run(); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	obj := jitVM.LastPoppedObject()
+	if obj == nil {
+		t.Fatal("expected result object")
+	}
+	if got := obj.Inspect(); got != "55" {
+		t.Fatalf("expected 55, got %s", got)
+	}
+
+	nativeExecs, _ := jitVM.GetNativeStats()
+	if nativeExecs == 0 {
+		t.Fatal("expected iterative loop function to use native execution")
+	}
+
+	stats := jitVM.GetJITStats()
+	if stats.CompiledFunctions == 0 {
+		t.Fatal("expected JIT stats to report compiled functions")
 	}
 }
 
@@ -2724,8 +3047,8 @@ func TestNativeExecutorExecuteFunctionWithError(t *testing.T) {
 
 	globals := make([]int64, 256)
 	_, err := exec.ExecuteFunction(fn, nil, globals)
-	if err != nil {
-		t.Logf("Expected error for large code: %v", err)
+	if err == nil {
+		t.Fatal("expected error for oversized native code")
 	}
 }
 
@@ -2743,8 +3066,8 @@ func TestNativeFunctionRegistryCompileFunctionError(t *testing.T) {
 	}
 
 	err := registry.CompileFunction(fn, 0, nil)
-	if err != nil {
-		t.Logf("Expected error for large function: %v", err)
+	if err == nil {
+		t.Fatal("expected error for oversized compiled function")
 	}
 }
 
@@ -2884,6 +3207,7 @@ func TestJITVMCompileNativeFunctionsRecursiveButNotFib(t *testing.T) {
 			if (n <= 0) { return 0 }
 			return recurse(n - 1) + recurse(n - 2) + 1
 		}
+		recurse(5)
 	`
 
 	l := lexer.New(code)
@@ -2907,10 +3231,26 @@ func TestJITVMCompileNativeFunctionsRecursiveButNotFib(t *testing.T) {
 	jitVM := NewJITVM(bytecode, config)
 	defer jitVM.Cleanup()
 
-	jitVM.SetJITEnabled(false)
+	jitVM.SetJITEnabled(true)
 	err = jitVM.Run()
 	if err != nil {
 		t.Errorf("Run failed: %v", err)
+	}
+
+	obj := jitVM.LastPoppedObject()
+	if obj == nil {
+		t.Fatal("expected result object")
+	}
+	if got := obj.Inspect(); got != "12" {
+		t.Fatalf("expected 12, got %s", got)
+	}
+
+	nativeExecs, interpExecs := jitVM.GetNativeStats()
+	if nativeExecs != 0 {
+		t.Fatalf("expected non-fibonacci recursion to stay on interpreter path, got %d native executions", nativeExecs)
+	}
+	if interpExecs == 0 {
+		t.Fatal("expected interpreter fallback for non-fibonacci recursion")
 	}
 }
 
@@ -2951,7 +3291,20 @@ func TestJITVMRunWithPureArithmeticFunction(t *testing.T) {
 	}
 
 	obj := jitVM.LastPoppedObject()
-	t.Logf("Result: %v", obj)
+	if obj == nil {
+		t.Fatal("expected result object")
+	}
+	if got := obj.Inspect(); got != "30" {
+		t.Fatalf("expected 30, got %s", got)
+	}
+
+	nativeExecs, interpExecs := jitVM.GetNativeStats()
+	if nativeExecs == 0 {
+		t.Fatal("expected native execution for pure arithmetic function")
+	}
+	if interpExecs == 0 {
+		t.Fatal("expected hybrid mode to record interpreter execution")
+	}
 }
 
 // TestJITVMCompileNativeFunctionsNoDebug tests without debug output
@@ -3130,3 +3483,212 @@ func TestGenerateNativeCodeZeroLocal(t *testing.T) {
 	}
 	t.Logf("Generated %d bytes for zero locals", len(code))
 }
+// TestNativeLoopIncCheck verifies OpRegLoopIncCheck:
+// counter++; if counter < limit, jump back to loop label.
+func TestNativeLoopIncCheck(t *testing.T) {
+	registry := NewNativeFunctionRegistry(DefaultJITConfig())
+	defer registry.Cleanup()
+
+	jumpOffset := int16(0)
+	hi := byte(jumpOffset >> 8)
+	lo := byte(jumpOffset)
+
+	fn := &compiler.CompiledFunction{
+		Instructions: []byte{
+			byte(compiler.OpRegLoadConst), 1, 0, 0,
+			byte(compiler.OpRegLoopIncCheck), 1, 0, 1, hi, lo,
+			byte(compiler.OpRegReturn), 1,
+		},
+		NumLocals:     8,
+		NumParameters: 0,
+	}
+
+	constants := []int64{0, 5}
+	if err := registry.CompileFunction(fn, 100, constants); err != nil {
+		t.Fatalf("CompileFunction failed: %v", err)
+	}
+
+	nf := registry.Get(100)
+	if nf == nil {
+		t.Fatal("Get returned nil")
+	}
+
+	result := nf.Execute(nil)
+	if result != 5 {
+		t.Fatalf("expected 5, got %d", result)
+	}
+}
+
+// TestNativeLoopBodyAdd verifies OpRegLoopBodyAdd:
+// acc += counter; counter++; if counter < limit, jump back.
+// R0 is now stored on the stack, so it works correctly as a loop accumulator.
+func TestNativeLoopBodyAdd(t *testing.T) {
+	registry := NewNativeFunctionRegistry(DefaultJITConfig())
+	defer registry.Cleanup()
+
+	jumpOffset := int16(0)
+	hi := byte(jumpOffset >> 8)
+	lo := byte(jumpOffset)
+
+	fn := &compiler.CompiledFunction{
+		Instructions: []byte{
+			byte(compiler.OpRegLoadConst), 0, 0, 0, // R0 = 0 (accumulator)
+			byte(compiler.OpRegLoadConst), 1, 0, 1, // R1 = 1 (counter)
+			byte(compiler.OpRegLoopBodyAdd), 0, 1, 0, 2, hi, lo, // R0+=R1; R1++; if R1<5, jump
+			byte(compiler.OpRegReturn), 0,
+		},
+		NumLocals:     8,
+		NumParameters: 0,
+	}
+
+	constants := []int64{0, 1, 5}
+	if err := registry.CompileFunction(fn, 101, constants); err != nil {
+		t.Fatalf("CompileFunction failed: %v", err)
+	}
+
+	nf := registry.Get(101)
+	if nf == nil {
+		t.Fatal("Get returned nil")
+	}
+
+	result := nf.Execute(nil)
+	if result != 10 {
+		t.Fatalf("expected 10, got %d", result)
+	}
+}
+
+// TestNativeLoopMulCheck verifies OpRegLoopMulCheck:
+// if i*i > n, jump to target (exit loop).
+// Uses R2/R3 instead of R0 to avoid rax clobbering issues.
+func TestNativeLoopMulCheck(t *testing.T) {
+	registry := NewNativeFunctionRegistry(DefaultJITConfig())
+	defer registry.Cleanup()
+
+	// IP layout:
+	// 0-3:  OpRegLoadConst R2, const_0 (i=2)
+	// 4-7:  OpRegLoadConst R3, const_1 (n=10)
+	// 8-12: OpRegLoopMulCheck R2, R3, jump_offset
+	// 13-16: OpRegLoadConst R1, const_2 (0, not jumped)
+	// 17-18: OpRegReturn R1
+	// 19-22: OpRegLoadConst R1, const_3 (1, jumped)
+	// 23-24: OpRegReturn R1
+	//
+	// jump from IP=8 to IP=19: offset = 19 - 8 = 11
+	jumpOffset := int16(11)
+	hi := byte(jumpOffset >> 8)
+	lo := byte(jumpOffset)
+
+	fn := &compiler.CompiledFunction{
+		Instructions: []byte{
+			byte(compiler.OpRegLoadConst), 2, 0, 0, // R2 = i
+			byte(compiler.OpRegLoadConst), 3, 0, 1, // R3 = n
+			byte(compiler.OpRegLoopMulCheck), 2, 3, hi, lo,
+			byte(compiler.OpRegLoadConst), 1, 0, 2, // R1 = 0 (not jumped)
+			byte(compiler.OpRegReturn), 1,
+			byte(compiler.OpRegLoadConst), 1, 0, 3, // R1 = 1 (jumped)
+			byte(compiler.OpRegReturn), 1,
+		},
+		NumLocals:     8,
+		NumParameters: 0,
+	}
+
+	constants := []int64{2, 10, 0, 1}
+	if err := registry.CompileFunction(fn, 200, constants); err != nil {
+		t.Fatalf("CompileFunction failed: %v", err)
+	}
+
+	nf := registry.Get(200)
+	if nf == nil {
+		t.Fatal("Get returned nil")
+	}
+
+	result := nf.Execute(nil)
+	if result != 0 {
+		t.Fatalf("i=2,n=10: expected 0 (no jump), got %d", result)
+	}
+}
+
+// TestNativeLoopMulCheckJump verifies OpRegLoopMulCheck jumps when i*i > n.
+func TestNativeLoopMulCheckJump(t *testing.T) {
+	registry := NewNativeFunctionRegistry(DefaultJITConfig())
+	defer registry.Cleanup()
+
+	jumpOffset := int16(11)
+	hi := byte(jumpOffset >> 8)
+	lo := byte(jumpOffset)
+
+	fn := &compiler.CompiledFunction{
+		Instructions: []byte{
+			byte(compiler.OpRegLoadConst), 2, 0, 0, // R2 = i
+			byte(compiler.OpRegLoadConst), 3, 0, 1, // R3 = n
+			byte(compiler.OpRegLoopMulCheck), 2, 3, hi, lo,
+			byte(compiler.OpRegLoadConst), 1, 0, 2, // R1 = 0 (not jumped)
+			byte(compiler.OpRegReturn), 1,
+			byte(compiler.OpRegLoadConst), 1, 0, 3, // R1 = 1 (jumped)
+			byte(compiler.OpRegReturn), 1,
+		},
+		NumLocals:     8,
+		NumParameters: 0,
+	}
+
+	constants := []int64{4, 10, 0, 1}
+	if err := registry.CompileFunction(fn, 201, constants); err != nil {
+		t.Fatalf("CompileFunction failed: %v", err)
+	}
+
+	nf := registry.Get(201)
+	if nf == nil {
+		t.Fatal("Get returned nil")
+	}
+
+	result := nf.Execute(nil)
+	if result != 1 {
+		t.Fatalf("i=4,n=10: expected 1 (jumped), got %d", result)
+	}
+}
+
+// TestNativeLoopIncCheckWithBody tests OpRegLoopIncCheck with a loop body
+// that includes an add instruction before the check.
+// R0 is now stored on the stack, so it works correctly as a loop accumulator.
+func TestNativeLoopIncCheckWithBody(t *testing.T) {
+	registry := NewNativeFunctionRegistry(DefaultJITConfig())
+	defer registry.Cleanup()
+
+	jumpOffset := int16(-4)
+	hi := byte(jumpOffset >> 8)
+	lo := byte(jumpOffset)
+
+	fn := &compiler.CompiledFunction{
+		Instructions: []byte{
+			byte(compiler.OpRegLoadConst), 0, 0, 0, // R0 = 0 (accumulator)
+			byte(compiler.OpRegLoadConst), 1, 0, 1, // R1 = 1 (counter)
+			byte(compiler.OpRegAdd), 0, 0, 1,       // R0 += R1
+			byte(compiler.OpRegLoopIncCheck), 1, 0, 2, hi, lo,
+			byte(compiler.OpRegReturn), 0,
+		},
+		NumLocals:     8,
+		NumParameters: 0,
+	}
+
+	constants := []int64{0, 1, 5}
+	if err := registry.CompileFunction(fn, 102, constants); err != nil {
+		t.Fatalf("CompileFunction failed: %v", err)
+	}
+
+	nf := registry.Get(102)
+	if nf == nil {
+		t.Fatal("Get returned nil")
+	}
+
+	result := nf.Execute(nil)
+	if result != 10 {
+		t.Fatalf("expected 10, got %d", result)
+	}
+}
+
+
+
+
+
+
+

@@ -208,8 +208,45 @@ func (c *FibJITCompiler) isFibPattern(fn *compiler.CompiledFunction) bool {
 	if len(fn.Instructions) == 0 && fn.NumParameters == 1 {
 		return true
 	}
-	// Simple heuristic: function has recursive calls
-	return containsCall(fn.Instructions)
+
+	if fn.NumParameters != 1 {
+		return false
+	}
+
+	var callCount int
+	var tailCallCount int
+	var addCount int
+	var subCount int
+	var compareCount int
+
+	for i := 0; i < len(fn.Instructions); {
+		op := compiler.Opcode(fn.Instructions[i])
+
+		switch op {
+		case compiler.OpRegCall:
+			callCount++
+		case compiler.OpRegTailCall:
+			tailCallCount++
+		case compiler.OpRegAdd:
+			addCount++
+		case compiler.OpRegSub, compiler.OpRegSubConst:
+			subCount++
+		case compiler.OpRegLess, compiler.OpRegLessEqual, compiler.OpRegEqual,
+			compiler.OpRegGreater, compiler.OpRegGreaterEqual:
+			compareCount++
+		case compiler.OpRegClosure, compiler.OpRegBuiltin, compiler.OpRegCallMethod,
+			compiler.OpRegGetMethod, compiler.OpRegArray, compiler.OpRegMap:
+			return false
+		}
+
+		i += 1 + operandWidthCodeGen(op)
+	}
+
+	if tailCallCount == 1 && callCount == 0 {
+		return compareCount >= 1
+	}
+
+	return callCount == 2 && tailCallCount == 0 && addCount == 1 && subCount >= 2 && compareCount >= 1
 }
 
 // containsCall checks if bytecode contains call instructions

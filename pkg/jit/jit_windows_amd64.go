@@ -16,6 +16,8 @@ import (
 	"github.com/topxeq/xxlang/pkg/vm"
 )
 
+const windowsJITCodePageSize = 256 * 1024
+
 // JITCompiler handles JIT compilation of VM bytecode
 type JITCompiler struct {
 	config JITConfig
@@ -66,7 +68,7 @@ func NewJITCompiler(config JITConfig) *JITCompiler {
 // allocCodePageLocked allocates a new executable code page
 // Must be called with pageLock held
 func (j *JITCompiler) allocCodePageLocked() (*CodePage, error) {
-	size := 256 * 1024 // 256KB pages (larger pages reduce allocation overhead)
+	size := windowsJITCodePageSize // 256KB pages (larger pages reduce allocation overhead)
 
 	// Use Windows VirtualAlloc for executable memory
 	data, err := bridge.AllocExecMem(size)
@@ -88,6 +90,10 @@ func (j *JITCompiler) allocCodePageLocked() (*CodePage, error) {
 func (j *JITCompiler) AllocCode(size int) ([]byte, *CodePage, error) {
 	j.pageLock.Lock()
 	defer j.pageLock.Unlock()
+
+	if size > windowsJITCodePageSize {
+		return nil, nil, fmt.Errorf("code size %d exceeds page size %d", size, windowsJITCodePageSize)
+	}
 
 	// Find a page with enough space (check most recent page first for locality)
 	for i := len(j.codePages) - 1; i >= 0; i-- {

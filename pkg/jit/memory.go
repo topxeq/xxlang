@@ -286,8 +286,9 @@ func (b *JITBuffer) Write(p []byte) int {
 }
 
 // WriteByte appends a single byte to the buffer
-func (b *JITBuffer) WriteByte(c byte) {
+func (b *JITBuffer) WriteByte(c byte) error {
 	b.data = append(b.data, c)
+	return nil
 }
 
 // Len returns the current length

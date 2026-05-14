@@ -74,6 +74,13 @@ func NewNativeExecutor(config JITConfig) *NativeExecutor {
 //        LoadGlobal, StoreGlobal (with globals pointer passed as argument)
 //        LoadLocal, StoreLocal (local variables)
 func CanExecuteNatively(fn *compiler.CompiledFunction) bool {
+	// Reject functions with too many registers to avoid excessive stack usage.
+	// The native codegen supports up to ~250 registers, but we cap at 64 to keep
+	// stack frames reasonable (48 + (64-12)*8 + locals*8 + 72 ≈ 472 + locals bytes).
+	if fn.NumRegs > 64 {
+		return false
+	}
+
 	code := fn.Instructions
 	ip := 0
 
@@ -84,11 +91,14 @@ func CanExecuteNatively(fn *compiler.CompiledFunction) bool {
 		// Supported operations - pure arithmetic and control flow
 		case compiler.OpRegLoadConst, compiler.OpRegMove,
 			compiler.OpRegAdd, compiler.OpRegSub, compiler.OpRegMul, compiler.OpRegDiv, compiler.OpRegMod,
-			compiler.OpRegNeg,
+			compiler.OpRegAddConst, compiler.OpRegSubConst, compiler.OpRegMulConst,
+			compiler.OpRegNeg, compiler.OpRegAnd, compiler.OpRegOr, compiler.OpRegNot,
 			compiler.OpRegEqual, compiler.OpRegNotEqual,
 			compiler.OpRegLess, compiler.OpRegGreater, compiler.OpRegLessEqual, compiler.OpRegGreaterEqual,
 			compiler.OpRegJump, compiler.OpRegJumpIfTrue, compiler.OpRegJumpIfFalse,
 			compiler.OpRegNull, compiler.OpRegTrue, compiler.OpRegFalse,
+			compiler.OpRegIncLocal, compiler.OpRegDecLocal, compiler.OpRegLoopCountAdd, compiler.OpRegAddLocalCheck,
+			compiler.OpRegLoopIncCheck, compiler.OpRegLoopBodyAdd, compiler.OpRegLoopMulCheck,
 			compiler.OpRegReturn,
 			compiler.OpRegLoadLocal, compiler.OpRegStoreLocal,
 			compiler.OpRegLoadGlobal, compiler.OpRegStoreGlobal,
@@ -108,34 +118,35 @@ func CanExecuteNatively(fn *compiler.CompiledFunction) bool {
 
 // ExecuteFunction executes a compiled function natively
 func (ne *NativeExecutor) ExecuteFunction(fn *compiler.CompiledFunction, constants []vm.Value, globals []int64) (int64, error) {
-	// Generate native code for Windows x64 ABI
-	code, err := generateNativeCode(fn, constants, globals)
-	if err != nil {
-		return 0, err
+	if !CanExecuteNatively(fn) {
+		return 0, fmt.Errorf("function cannot be executed natively")
 	}
 
-	// Allocate executable memory
-	mem, err := bridge.AllocExecMem(len(code))
-	if err != nil {
-		return 0, err
+	intConstants := make([]int64, len(constants))
+	for i, c := range constants {
+		if c.IsInt() {
+			intConstants[i], _ = c.ToInt()
+		}
 	}
-	defer bridge.FreeExecMem(mem)
 
-	// Copy code
+	cg := NewNativeCodeGenerator()
+	code, err := cg.Generate(fn, intConstants)
+	if err != nil {
+		return 0, fmt.Errorf("compilation failed: %w", err)
+	}
+
+	mem, _, err := ne.compiler.AllocCode(len(code))
+	if err != nil {
+		return 0, fmt.Errorf("memory allocation failed: %w", err)
+	}
+
 	copy(mem, code)
-
-	// Execute using Windows calling convention
-	// Safety: check if globals is not empty before accessing
-	var globalsPtr *int64
-	if len(globals) > 0 {
-		globalsPtr = &globals[0]
-	}
-	result := callNativeWindows(uintptr(unsafe.Pointer(&mem[0])), globalsPtr)
-	return result, nil
+	entry := uintptr(unsafe.Pointer(&mem[0]))
+	return callNativeWithGlobals(entry, globals), nil
 }
 
-// Cleanup does nothing for now
-func (ne *NativeExecutor) Cleanup() {}
+// Cleanup releases native executor resources.
+func (ne *NativeExecutor) Cleanup() { ne.compiler.Cleanup() }
 
 // ============================================================
 // Native Code Generator
@@ -189,12 +200,6 @@ func generateNativeCode(fn *compiler.CompiledFunction, constants []vm.Value, glo
 	)
 
 	return code, nil
-}
-
-// callNativeWindows calls native code with Windows x64 ABI
-func callNativeWindows(entry uintptr, globals *int64) int64 {
-	// Use bridge.Call1 for Windows
-	return bridge.Call1((*byte)(unsafe.Pointer(entry)), *globals)
 }
 
 // ============================================================
@@ -293,9 +298,7 @@ func (j *JITVM) Run() error {
 		vmGlobals := j.GetGlobals()
 		globals := make([]int64, len(vmGlobals))
 		for i, g := range vmGlobals {
-			if g.IsInt() {
-				globals[i], _ = g.ToInt()
-			}
+			globals[i] = valueToNativeInt(g)
 		}
 
 		result, err := j.nativeExec.ExecuteFunction(mainFn, j.GetConstants(), globals)
@@ -304,7 +307,7 @@ func (j *JITVM) Run() error {
 			if j.config.Debug {
 				fmt.Printf("[JIT] Native execution succeeded, result=%d\n", result)
 			}
-			j.RegVM.SetLastResult(vm.NewInt(result))
+			j.RegVM.SetLastResult(nativeResultToValue(result, analyzeReturnType(mainFn.Instructions)))
 			return nil
 		}
 		if j.config.Debug {
@@ -373,6 +376,11 @@ func (j *JITVM) compileNativeFunctions() {
 	// Find all functions in constants and compile them
 	for i, c := range j.bytecode.Constants {
 		if fn, ok := c.(*compiler.CompiledFunction); ok {
+			if nativeFn := j.nativeRegistry.Get(i); nativeFn != nil {
+				j.nativeFuncCache[fn] = nativeFn
+				continue
+			}
+
 			// Skip simple functions (they are faster in interpreter)
 			if !j.shouldCompile(fn) {
 				continue
@@ -472,6 +480,35 @@ func (j *JITVM) updateCachedGlobals() {
 	}
 }
 
+// syncGlobalsToVM writes back modified globals from the native int64 cache
+// to the VM's NaN-boxed Value array. This is necessary because native code
+// writes StoreGlobal results to cachedGlobals (int64), but the interpreter
+// reads from its own vm.Value globals, so without syncing, StoreGlobal
+// in native functions would be invisible to the interpreter.
+// Only globals that held integer values before native execution are synced,
+// since native code can only produce int64 results.
+func (j *JITVM) syncGlobalsToVM() {
+	j.cachedGlobalsLock.RLock()
+	cached := j.cachedGlobals
+	j.cachedGlobalsLock.RUnlock()
+
+	vmGlobals := j.GetGlobals()
+	n := len(cached)
+	if n > len(vmGlobals) {
+		n = len(vmGlobals)
+	}
+	for i := 0; i < n; i++ {
+		// Only write back if the VM global was an integer (native code
+		// can't modify non-int globals) and the value differs
+		if vmGlobals[i].IsInt() {
+			oldVal, _ := vmGlobals[i].ToInt()
+			if oldVal != cached[i] {
+				vmGlobals[i] = vm.NewInt(cached[i])
+			}
+		}
+	}
+}
+
 // setupNativeCallHook sets up the VM hook for native function execution
 func (j *JITVM) setupNativeCallHook() {
 	// Only set up hook if we have compiled native functions
@@ -496,12 +533,13 @@ func (j *JITVM) setupNativeCallHook() {
 		// Convert arguments to int64
 		intArgs := make([]int64, len(args))
 		for i, arg := range args {
-			if arg.IsInt() {
-				intArgs[i], _ = arg.ToInt()
-			}
+			intArgs[i] = valueToNativeInt(arg)
 		}
 
-		// Use cached globals
+		// Refresh cached globals from the VM before native execution
+		// so the native code sees the latest values written by the interpreter
+		j.updateCachedGlobals()
+
 		j.cachedGlobalsLock.RLock()
 		globals := j.cachedGlobals
 		j.cachedGlobalsLock.RUnlock()
@@ -518,7 +556,12 @@ func (j *JITVM) setupNativeCallHook() {
 			fmt.Printf("[JIT] Native hook executed, result=%d\n", result)
 		}
 
-		return vm.NewInt(result), true
+		// Write back modified globals from native code to the VM
+		// Native StoreGlobal writes to cachedGlobals but the interpreter
+		// reads from its own vm.Value globals array, so we must sync back.
+		j.syncGlobalsToVM()
+
+		return nativeResultToValue(result, nativeFn.ReturnType), true
 	})
 }
 
@@ -529,7 +572,19 @@ func (j *JITVM) SetJITEnabled(enabled bool) {
 
 // GetJITStats returns JIT compilation statistics
 func (j *JITVM) GetJITStats() JITStats {
-	return j.jit.GetStats()
+	stats := j.jit.GetStats()
+	j.nativeRegistry.functions.Range(func(_, value interface{}) bool {
+		nf, ok := value.(*NativeFunction)
+		if !ok {
+			return true
+		}
+
+		stats.CompiledFunctions++
+		stats.TotalCodeSize += int64(len(nf.Code))
+		return true
+	})
+
+	return stats
 }
 
 // GetNativeStats returns native execution statistics
@@ -580,7 +635,34 @@ func (j *JITVM) GlobalsAsObjects() []objects.Object {
 type NativeFunction struct {
 	Code      []byte
 	NumParams int
+	UseBridgeABI bool
+	ReturnType NativeReturnType
+	entryPtr  *byte
 	entry     uintptr
+}
+
+func nativeResultToValue(result int64, returnType NativeReturnType) vm.Value {
+	switch returnType {
+	case ReturnTypeBool:
+		return vm.NewBool(result != 0)
+	case ReturnTypeNull:
+		return vm.ValueNull
+	default:
+		return vm.NewInt(result)
+	}
+}
+
+func valueToNativeInt(v vm.Value) int64 {
+	if v.IsInt() {
+		return v.GetInt()
+	}
+	if v.IsBool() {
+		if v.GetBool() {
+			return 1
+		}
+		return 0
+	}
+	return 0
 }
 
 // Execute runs the native function
@@ -589,17 +671,52 @@ func (nf *NativeFunction) Execute(globals []int64, args ...int64) int64 {
 		return 0
 	}
 
-	// Call based on number of arguments (Windows x64 ABI uses rcx, rdx, r8, r9)
-	switch len(args) {
-	case 0:
-		return bridge.Call0((*byte)(unsafe.Pointer(nf.entry)))
-	case 1:
-		return bridge.Call1((*byte)(unsafe.Pointer(nf.entry)), args[0])
-	case 2:
-		return bridge.Call2((*byte)(unsafe.Pointer(nf.entry)), args[0], args[1])
-	default:
-		return bridge.Call3((*byte)(unsafe.Pointer(nf.entry)), args[0], args[1], args[2])
+	if nf.UseBridgeABI {
+		switch len(args) {
+		case 0:
+			return bridge.Call0(nf.entryPtr)
+		case 1:
+			return bridge.Call1(nf.entryPtr, args[0])
+		case 2:
+			return bridge.Call2(nf.entryPtr, args[0], args[1])
+		default:
+			return bridge.Call3(nf.entryPtr, args[0], args[1], args[2])
+		}
 	}
+
+	if len(args) <= 3 {
+		var arg0, arg1, arg2 int64
+		if len(args) > 0 {
+			arg0 = args[0]
+		}
+		if len(args) > 1 {
+			arg1 = args[1]
+		}
+		if len(args) > 2 {
+			arg2 = args[2]
+		}
+
+		var globalsPtr *int64
+		if len(globals) > 0 {
+			globalsPtr = &globals[0]
+		}
+
+		return callNativeWithArgs(nf.entry, globalsPtr, arg0, arg1, arg2)
+	}
+
+	if len(args) <= 8 {
+		args8 := make([]int64, 8)
+		copy(args8, args)
+
+		var globalsPtr *int64
+		if len(globals) > 0 {
+			globalsPtr = &globals[0]
+		}
+
+		return callNativeWithArgs8(nf.entry, globalsPtr, &args8[0])
+	}
+
+	return callNativeWithGlobals(nf.entry, globals)
 }
 
 // NativeFunctionRegistry manages compiled native functions
@@ -624,26 +741,30 @@ func (r *NativeFunctionRegistry) Get(idx int) *NativeFunction {
 
 // CompileFunction compiles a function to native code
 func (r *NativeFunctionRegistry) CompileFunction(fn *compiler.CompiledFunction, idx int, constants []int64) error {
-	// Generate native code
-	code, err := generateNativeCode(fn, nil, nil)
-	if err != nil {
-		return err
+	if !CanExecuteNatively(fn) {
+		return fmt.Errorf("function cannot be executed natively")
 	}
 
-	// Allocate executable memory
+	cg := NewNativeCodeGenerator()
+	code, err := cg.Generate(fn, constants)
+	if err != nil {
+		return fmt.Errorf("compilation failed: %w", err)
+	}
+
 	mem, err := bridge.AllocExecMem(len(code))
 	if err != nil {
 		return err
 	}
 
-	// Copy code
 	copy(mem, code)
 
-	// Store function
 	nf := &NativeFunction{
-		Code:      mem,
-		NumParams: fn.NumParameters,
-		entry:     uintptr(unsafe.Pointer(&mem[0])),
+		Code:         mem,
+		NumParams:    fn.NumParameters,
+		ReturnType:   analyzeReturnType(fn.Instructions),
+		UseBridgeABI: false,
+		entryPtr:     &mem[0],
+		entry:        uintptr(unsafe.Pointer(&mem[0])),
 	}
 	r.functions.Store(idx, nf)
 	atomic.AddInt64(&r.count, 1)
@@ -671,9 +792,12 @@ func (r *NativeFunctionRegistry) CompileRecursiveFunction(fn *compiler.CompiledF
 
 	// Store function
 	nf := &NativeFunction{
-		Code:      mem,
-		NumParams: fn.NumParameters,
-		entry:     uintptr(unsafe.Pointer(&mem[0])),
+		Code:         mem,
+		NumParams:    fn.NumParameters,
+		ReturnType:   ReturnTypeInt,
+		UseBridgeABI: true,
+		entryPtr:     &mem[0],
+		entry:        uintptr(unsafe.Pointer(&mem[0])),
 	}
 	r.functions.Store(idx, nf)
 	atomic.AddInt64(&r.count, 1)
@@ -690,6 +814,7 @@ func (r *NativeFunctionRegistry) Cleanup() {
 		return true
 	})
 	r.functions = sync.Map{}
+	atomic.StoreInt64(&r.count, 0)
 }
 
 // AnalyzeNativeSupport returns the support level
