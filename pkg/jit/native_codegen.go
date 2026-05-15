@@ -879,107 +879,107 @@ func (cg *NativeCodeGenerator) compileStoreLocal(src, localIdx int) {
 	cg.emitUint32(uint32(-offset))
 }
 
-// compileTailCall handles tail calls
-// For self-recursive tail calls, we jump back to function entry
-// For cross-function tail calls, we use the callback mechanism
+// compileTailCall handles tail calls via the Windows x64 ABI callback.
+// On Windows x64 ABI: rcx = constIdx, rdx = numArgs, r8 = argsPtr.
+// After the callback returns, the result is in rax and we emit an epilogue+return.
 func (cg *NativeCodeGenerator) compileTailCall(funcReg, numArgs int) {
-	// Tail call optimization: instead of calling and returning,
-	// we jump directly to the target function's entry point.
-	// This saves stack space and enables efficient recursion.
+	callbackPtr := getWindowsCallbackPtr()
+	constIdx, known := cg.regConstMap[funcReg]
 
-	// For self-recursive tail calls (funcReg typically < 8 and points to self):
-	// Jump back to function entry point after moving arguments.
-
-	// For cross-function tail calls:
-	// We need to dispatch via callback since we don't know the target at compile time.
-
-	// Check if we have a function callback pointer
-	if cg.functionCallbackPtr != 0 {
-		// Use callback for tail call dispatch
-		// This is safer and handles both self-recursive and cross-function calls
-
-		// Push globals pointer (rdi) to stack
-		cg.emitBytes([]byte{0x57}) // push rdi
-
-		// Spill args to stack for callback
-		baseOffset := int32(640) // Use different offset than compileCall
-
-		// Spill R0 (RAX) to [rbp - baseOffset]
-		cg.emitBytes([]byte{0x48, 0x89, 0x85}) // mov [rbp + disp32], rax
-		cg.emitUint32(uint32(-baseOffset))
-
-		if numArgs >= 2 {
-			cg.emitBytes([]byte{0x48, 0x89, 0x9D}) // mov [rbp + disp32], rbx
-			cg.emitUint32(uint32(-(baseOffset + 8)))
-		}
-		if numArgs >= 3 {
-			cg.emitBytes([]byte{0x48, 0x89, 0x8D}) // mov [rbp + disp32], rcx
-			cg.emitUint32(uint32(-(baseOffset + 16)))
-		}
-		if numArgs >= 4 {
-			cg.emitBytes([]byte{0x48, 0x89, 0x95}) // mov [rbp + disp32], rdx
-			cg.emitUint32(uint32(-(baseOffset + 24)))
-		}
-		if numArgs >= 5 {
-			cg.emitBytes([]byte{0x4C, 0x89, 0x85}) // mov [rbp + disp32], r8
-			cg.emitUint32(uint32(-(baseOffset + 32)))
-		}
-		if numArgs >= 6 {
-			cg.emitBytes([]byte{0x4C, 0x89, 0x8D}) // mov [rbp + disp32], r9
-			cg.emitUint32(uint32(-(baseOffset + 40)))
-		}
-		if numArgs >= 7 {
-			cg.emitBytes([]byte{0x4C, 0x89, 0x95}) // mov [rbp + disp32], r10
-			cg.emitUint32(uint32(-(baseOffset + 48)))
-		}
-		if numArgs >= 8 {
-			cg.emitBytes([]byte{0x4C, 0x89, 0x9D}) // mov [rbp + disp32], r11
-			cg.emitUint32(uint32(-(baseOffset + 56)))
-		}
-
-		// Set up callback arguments (System V AMD64 ABI):
-		//   rdi = funcReg
-		//   rsi = numArgs
-		//   rdx = args pointer
-		cg.emitBytes([]byte{0x48, 0xC7, 0xC7}) // mov rdi, imm32
-		cg.emitUint32(uint32(funcReg))
-
-		cg.emitBytes([]byte{0x48, 0xC7, 0xC6}) // mov rsi, imm32
-		cg.emitUint32(uint32(numArgs))
-
-		cg.emitBytes([]byte{0x48, 0x8D, 0x95}) // lea rdx, [rbp + disp32]
-		cg.emitUint32(uint32(-baseOffset))
-
-		// Call the function callback
-		cg.emitBytes([]byte{0x48, 0xB8}) // mov rax, imm64
-		cg.emitUint64(uint64(cg.functionCallbackPtr))
-		cg.emitBytes([]byte{0xFF, 0xD0}) // call rax
-
-		// Result is in RAX - this is our return value
-		// Restore globals pointer and return
-		cg.emitBytes([]byte{0x5F}) // pop rdi
-
-		// Emit epilogue and return
-		cg.emitEpilogue()
-	} else {
+	if callbackPtr == 0 || !known {
 		// Fallback: for self-recursive calls, jump to function entry
-		// This assumes the function is self-recursive, which is common for tail calls
-		// WARNING: This will infinite loop for cross-function tail calls!
-
-		// Move arguments to proper registers (they should already be in place)
-		// Then jump to function entry
-
-		// Calculate relative offset to function entry
 		if cg.funcEntry > 0 {
 			// jmp to function entry
 			offset := int32(cg.funcEntry - (len(cg.code) + 5))
 			cg.emitBytes([]byte{0xE9}) // jmp rel32
 			cg.emitUint32(uint32(offset))
 		} else {
-			// No entry point saved, just return
 			cg.emitEpilogue()
 		}
+		return
 	}
+
+	// Save callee-saved registers
+	cg.emitBytes([]byte{0x57})       // push rdi (globals pointer)
+	cg.emitBytes([]byte{0x41, 0x54}) // push r12
+	cg.emitBytes([]byte{0x41, 0x55}) // push r13
+	cg.emitBytes([]byte{0x41, 0x56}) // push r14
+	cg.emitBytes([]byte{0x41, 0x57}) // push r15
+
+	// Spill args to stack below locals
+	baseOffset := int32(cg.localsBaseOffset() + cg.numLocals*8 + 8)
+
+	// Spill R0 ([rbp-8]) to args array
+	cg.emitBytes([]byte{0x48, 0x8B, 0x85}) // mov rax, [rbp-8] (R0)
+	cg.emitUint32(r0StackDisp)
+	cg.emitBytes([]byte{0x48, 0x89, 0x85}) // mov [rbp-baseOffset], rax
+	cg.emitUint32(uint32(-baseOffset))
+
+	if numArgs >= 2 {
+		cg.emitBytes([]byte{0x48, 0x89, 0x9D}) // mov [rbp-baseOffset-8], rbx
+		cg.emitUint32(uint32(-(baseOffset + 8)))
+	}
+	if numArgs >= 3 {
+		cg.emitBytes([]byte{0x48, 0x89, 0x8D}) // mov [rbp-baseOffset-16], rcx
+		cg.emitUint32(uint32(-(baseOffset + 16)))
+	}
+	if numArgs >= 4 {
+		cg.emitBytes([]byte{0x48, 0x89, 0x95}) // mov [rbp-baseOffset-24], rdx
+		cg.emitUint32(uint32(-(baseOffset + 24)))
+	}
+	if numArgs >= 5 {
+		cg.emitBytes([]byte{0x4C, 0x89, 0x85}) // mov [rbp-baseOffset-32], r8
+		cg.emitUint32(uint32(-(baseOffset + 32)))
+	}
+	if numArgs >= 6 {
+		cg.emitBytes([]byte{0x4C, 0x89, 0x8D}) // mov [rbp-baseOffset-40], r9
+		cg.emitUint32(uint32(-(baseOffset + 40)))
+	}
+	if numArgs >= 7 {
+		cg.emitBytes([]byte{0x4C, 0x89, 0x95}) // mov [rbp-baseOffset-48], r10
+		cg.emitUint32(uint32(-(baseOffset + 48)))
+	}
+	if numArgs >= 8 {
+		cg.emitBytes([]byte{0x4C, 0x89, 0x9D}) // mov [rbp-baseOffset-56], r11
+		cg.emitUint32(uint32(-(baseOffset + 56)))
+	}
+
+	// Allocate shadow space + stack alignment
+	cg.emitBytes([]byte{0x48, 0x83, 0xEC, 0x28}) // sub rsp, 40
+
+	// Set up Windows x64 ABI callback arguments:
+	//   rcx = constIdx (function index in constant pool)
+	//   rdx = numArgs
+	//   r8  = argsPtr (lea r8, [rbp-baseOffset])
+	cg.emitBytes([]byte{0x48, 0xC7, 0xC1}) // mov rcx, imm32
+	cg.emitUint32(uint32(constIdx))
+
+	cg.emitBytes([]byte{0x48, 0xC7, 0xC2}) // mov rdx, imm32
+	cg.emitUint32(uint32(numArgs))
+
+	cg.emitBytes([]byte{0x4C, 0x8D, 0x85}) // lea r8, [rbp + disp32]
+	cg.emitUint32(uint32(-baseOffset))
+
+	// Call the callback function pointer
+	cg.emitBytes([]byte{0x48, 0xB8}) // mov rax, imm64
+	cg.emitUint64(uint64(callbackPtr))
+	cg.emitBytes([]byte{0xFF, 0xD0}) // call rax
+
+	// Restore shadow space
+	cg.emitBytes([]byte{0x48, 0x83, 0xC4, 0x28}) // add rsp, 40
+
+	// Result is in rax, store to R255 then emit epilogue+return
+	cg.storeRaxToReg(255)
+
+	// Restore callee-saved registers
+	cg.emitBytes([]byte{0x41, 0x5F}) // pop r15
+	cg.emitBytes([]byte{0x41, 0x5E}) // pop r14
+	cg.emitBytes([]byte{0x41, 0x5D}) // pop r13
+	cg.emitBytes([]byte{0x41, 0x5C}) // pop r12
+	cg.emitBytes([]byte{0x5F})       // pop rdi
+
+	// Emit epilogue and return with the callback result
+	cg.emitEpilogue()
 }
 
 // compileCall handles function calls by calling back to Go via the Windows

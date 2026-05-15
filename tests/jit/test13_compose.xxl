@@ -1,0 +1,15 @@
+// Test function composition with JIT
+func compose(f, g, x) {
+    return f(g(x))
+}
+
+func double(n) {
+    return n * 2
+}
+
+func addOne(n) {
+    return n + 1
+}
+
+var r1 = compose(double, addOne, 5)
+print(r1)

@@ -3359,12 +3359,89 @@ func TestJITVMRunWithPureArithmeticFunction(t *testing.T) {
 		t.Fatalf("expected 30, got %s", got)
 	}
 
-	nativeExecs, interpExecs := jitVM.GetNativeStats()
+nativeExecs, interpExecs := jitVM.GetNativeStats()
 	if nativeExecs == 0 {
-		t.Fatal("expected native execution for pure arithmetic function")
+		t.Fatalf("expected native execution for pure arithmetic function")
 	}
 	if interpExecs == 0 {
 		t.Fatal("expected hybrid mode to record interpreter execution")
+	}
+}
+
+// TestJITVMWithBuiltinCallback tests that builtin functions work correctly
+// when called through the hybrid mode native hook.
+func TestJITVMWithBuiltinCallback(t *testing.T) {
+	code := `
+		func absVal(x) {
+			if (x < 0) { return -x }
+			return x
+		}
+		absVal(-42)
+	`
+
+	l := lexer.New(code)
+	p := parser.New(l)
+	program := p.ParseProgram()
+
+	c := compiler.NewRegCompiler()
+	_, err := c.Compile(program)
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	bytecode := c.Bytecode()
+	config := JITConfig{HotThreshold: 1, MaxCodeSize: 16384, Debug: false}
+	jitVM := NewJITVM(bytecode, config)
+	defer jitVM.Cleanup()
+
+	if err := jitVM.Run(); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	obj := jitVM.LastPoppedObject()
+	if obj == nil {
+		t.Fatal("expected result object")
+	}
+	if got := obj.Inspect(); got != "42" {
+		t.Fatalf("expected 42, got %s", got)
+	}
+}
+
+// TestJITVMWithCollectionCallback tests that collection operations
+// (array index) work correctly through the hybrid mode native hook.
+func TestJITVMWithCollectionCallback(t *testing.T) {
+	code := `
+		func getFirst(arr) {
+			return arr[0]
+		}
+		getFirst([100, 200, 300])
+	`
+
+	l := lexer.New(code)
+	p := parser.New(l)
+	program := p.ParseProgram()
+
+	c := compiler.NewRegCompiler()
+	_, err := c.Compile(program)
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	bytecode := c.Bytecode()
+	config := JITConfig{HotThreshold: 1, MaxCodeSize: 16384, Debug: false}
+	jitVM := NewJITVM(bytecode, config)
+	defer jitVM.Cleanup()
+
+	if err := jitVM.Run(); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	obj := jitVM.LastPoppedObject()
+	if obj == nil {
+		t.Fatal("expected result object")
+	}
+	if got := obj.Inspect(); got != "100" {
+		t.Fatalf("expected 100, got %s", got)
 	}
 }
 

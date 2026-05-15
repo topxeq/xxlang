@@ -1,0 +1,11 @@
+// Test array operations with JIT
+func sumArray(n) {
+    var total = 0
+    for (var i = 1; i <= n; i = i + 1) {
+        total = total + i
+    }
+    return total
+}
+
+var result = sumArray(10)
+print(result)

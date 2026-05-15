@@ -199,11 +199,15 @@ func (ne *NativeExecutor) ExecuteFunction(fn *compiler.CompiledFunction, constan
 }
 
 // ExecuteFunctionWithCalls executes a compiled function natively using syscall.SyscallN.
-// This is used for the outermost main code that may contain OpRegCall/OpRegTailCall.
-// The goroutine enters _Gsyscall state via syscall.SyscallN, which enables
-// syscall.NewCallback callbacks (used by OpRegCall) to properly re-enter Go.
-// Functions called FROM the callback must NOT use this method — they must use
-// bridge ABI or interpreter to avoid nested syscall.SyscallN deadlock.
+// ExecuteFunctionWithCalls executes a compiled function natively using syscall.SyscallN,
+// which enables OpRegCall callbacks via syscall.NewCallback to work.
+//
+// NOTE: This method is no longer used by Run() for the main code path. The main code
+// with OpRegCall now always uses hybrid mode (interpreter + native call hook) because
+// compileCall cannot resolve all function references at code generation time (e.g.,
+// higher-order function parameters). This method is retained for potential future use
+// in specialized scenarios where all call targets are known at compile time.
+//
 func (ne *NativeExecutor) ExecuteFunctionWithCalls(fn *compiler.CompiledFunction, constants []vm.Value, globals []int64) (int64, error) {
 	if !CanExecuteNativelyWithCalls(fn) {
 		return 0, fmt.Errorf("function cannot be executed natively (with calls)")
@@ -574,8 +578,10 @@ func (j *JITVM) compileNativeFunctions() {
 
 // shouldCompile determines if a function is worth JIT compiling
 func (j *JITVM) shouldCompile(fn *compiler.CompiledFunction) bool {
-	// Minimum bytecode size threshold (in bytes)
-	const minCodeSize = 20
+	// Minimum bytecode size threshold (in bytes).
+	// Lowered from 20 to 10 to allow simple arithmetic functions (e.g., add(a,b))
+	// to benefit from JIT compilation when called repeatedly from hot loops.
+	const minCodeSize = 10
 
 	if len(fn.Instructions) < minCodeSize {
 		return false
@@ -599,6 +605,16 @@ func (j *JITVM) shouldCompile(fn *compiler.CompiledFunction) bool {
 		if op == compiler.OpRegCall || op == compiler.OpRegTailCall {
 			complexity += 10
 		}
+		// Builtin calls add moderate complexity
+		if op == compiler.OpRegBuiltin {
+			complexity += 3
+		}
+		// Arithmetic ops add basic complexity (even simple functions benefit from JIT)
+		if op == compiler.OpRegAdd || op == compiler.OpRegSub ||
+			op == compiler.OpRegMul || op == compiler.OpRegDiv || op == compiler.OpRegMod ||
+			op == compiler.OpRegAddConst || op == compiler.OpRegSubConst || op == compiler.OpRegMulConst {
+			complexity += 2
+		}
 		complexity++
 
 		width := 1
@@ -608,7 +624,7 @@ func (j *JITVM) shouldCompile(fn *compiler.CompiledFunction) bool {
 		i += width
 	}
 
-	const minComplexity = 5
+	const minComplexity = 3
 	return complexity >= minComplexity
 }
 

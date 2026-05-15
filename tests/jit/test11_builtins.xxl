@@ -1,0 +1,14 @@
+// Test builtin functions with JIT
+func absTest(x) {
+    if (x < 0) {
+        return -x
+    }
+    return x
+}
+
+var a = absTest(-42)
+var b = absTest(7)
+var c = abs(-99)
+print(a)
+print(b)
+print(c)
