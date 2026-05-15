@@ -46,6 +46,13 @@ type NativeCodeGenerator struct {
 	collectionCallbackPtr uintptr
 	objectCallbackPtr     uintptr
 
+	// syscallABI selects the calling convention for the JIT function entry.
+	// When true: Windows x64 ABI (rcx=globals, rdx=arg0, r8=arg1, r9=arg2),
+	//   invoked via syscall.Syscall6 so the goroutine enters _Gsyscall state.
+	//   This enables syscall.NewCallback to work for OpRegCall callbacks.
+	// When false: Bridge ABI (rdi=globals, rax=arg0), invoked via NOSPLIT assembly.
+	syscallABI bool
+
 	// Register allocation
 	// We use: rax(0), rbx(1), rcx(2), rdx(3), r8(4), r9(5), r10(6), r11(7)
 	// r12-r15 are callee-saved, used for locals 8-11
@@ -74,7 +81,7 @@ func (cg *NativeCodeGenerator) localsBaseOffset() int {
 	return 48 + cg.spillAreaSize()
 }
 
-// NewNativeCodeGenerator creates a new native code generator
+// NewNativeCodeGenerator creates a new native code generator (bridge ABI)
 func NewNativeCodeGenerator() *NativeCodeGenerator {
 	return &NativeCodeGenerator{
 		code:      make([]byte, 0, 4096),
@@ -82,6 +89,19 @@ func NewNativeCodeGenerator() *NativeCodeGenerator {
 		fixups:    make([]fixup, 0),
 		constants: nil,
 	}
+}
+
+// NewNativeCodeGeneratorSyscall creates a native code generator with Windows x64 syscall ABI.
+// This enables OpRegCall callbacks via syscall.NewCallback because the goroutine
+// enters _Gsyscall state when invoked via syscall.Syscall6.
+func NewNativeCodeGeneratorSyscall() *NativeCodeGenerator {
+	cg := NewNativeCodeGenerator()
+	cg.syscallABI = true
+	cg.builtinCallbackPtr = GetBuiltinCallbackPtr()
+	cg.functionCallbackPtr = GetFunctionCallbackPtr()
+	cg.collectionCallbackPtr = GetCollectionCallbackPtr()
+	cg.objectCallbackPtr = GetObjectCallbackPtr()
+	return cg
 }
 
 // NewNativeCodeGeneratorWithCallbacks creates a code generator with callback pointers set up
@@ -158,7 +178,17 @@ func (cg *NativeCodeGenerator) Generate(fn *compiler.CompiledFunction, constants
 	return cg.code, nil
 }
 
-// emitPrologue generates function entry code
+// emitPrologue generates function entry code.
+//
+// When syscallABI is false (bridge ABI, legacy):
+//   - Entry via NOSPLIT bridge assembly: rdi=globals, rax=arg0(R0)
+//   - Prologue stores rax to [rbp-8] for R0
+//
+// When syscallABI is true (Windows x64 ABI for syscall.Syscall6):
+//   - Entry via syscall.Syscall6: rcx=globals, rdx=arg0, r8=arg1, r9=arg2
+//   - Prologue adapts: rcx→rdi (globals), rdx→[rbp-8] (R0), r8→rbx (R1), r9→rcx (R2)
+//   - This enables syscall.NewCallback to work because the goroutine is in _Gsyscall state
+//
 // Stack layout:
 //
 //	[rbp]                        = old rbp
@@ -194,11 +224,20 @@ func (cg *NativeCodeGenerator) emitPrologue(numLocals int, numRegs int) {
 	cg.emitBytes([]byte{0x48, 0x81, 0xEC})
 	cg.emitUint32(uint32(stackSize))
 
-	// Save R0's initial value from rax to its stack slot at [rbp-8].
-	// Parameters are passed in RAX (arg0), RBX (arg1), etc.
-	// Since R0 lives on the stack now, we must store rax to [rbp-8] on entry.
-	cg.emitBytes([]byte{0x48, 0x89, 0x85}) // mov [rbp + disp32], rax
-	cg.emitUint32(r0StackDisp)
+	if cg.syscallABI {
+		// Windows x64 ABI: rcx=globals, rdx=arg0, r8=arg1, r9=arg2
+		// Adapt to VM convention: rdi=globals, [rbp-8]=R0(arg0), rbx=R1(arg1), rcx=R2(arg2)
+		cg.emitBytes([]byte{0x48, 0x89, 0xCF}) // mov rdi, rcx (globals: rcx → rdi)
+		cg.emitBytes([]byte{0x48, 0x89, 0x95}) // mov [rbp + disp32], rdx (arg0 → R0)
+		cg.emitUint32(r0StackDisp)
+		cg.emitBytes([]byte{0x49, 0x89, 0xC3}) // mov rbx, r8 (arg1 → R1)
+		cg.emitBytes([]byte{0x49, 0x89, 0xC1}) // mov rcx, r9 (arg2 → R2, rcx freed by globals move)
+	} else {
+		// Bridge ABI (legacy): rdi=globals, rax=arg0(R0)
+		// Save R0's initial value from rax to its stack slot at [rbp-8].
+		cg.emitBytes([]byte{0x48, 0x89, 0x85}) // mov [rbp + disp32], rax
+		cg.emitUint32(r0StackDisp)
+	}
 }
 
 // emitEpilogue generates function exit code
@@ -628,6 +667,12 @@ const r0StackDisp uint32 = 0xFFFFFFF8 // -8 as signed int32, stored as uint32 fo
 // R0 (VM reg 0) lives on the stack at [rbp-8] so that rax can be used
 // purely as a scratch/temp register without clobbering R0 between operations.
 func (cg *NativeCodeGenerator) loadRegToRax(r int) {
+	if r == 255 {
+		// R255 is the ReturnRegister — value is already in rax (set by OpRegMove dst=255
+		// or by OpRegCall storing result to R255 via storeRaxToReg(255) which leaves it in rax)
+		// No instruction needed.
+		return
+	}
 	if r == 0 {
 		// R0 is stored on the stack at [rbp-8]
 		cg.emitBytes([]byte{0x48, 0x8B, 0x85}) // mov rax, [rbp + disp32]
@@ -679,6 +724,13 @@ func (cg *NativeCodeGenerator) loadRegToRax(r int) {
 // storeRaxToReg stores rax to a register
 // R0 (VM reg 0) lives on the stack at [rbp-8].
 func (cg *NativeCodeGenerator) storeRaxToReg(r int) {
+	if r == 255 {
+		// R255 is the ReturnRegister — leave value in rax.
+		// OpRegReturn 255 will load R255 to rax (which is a no-op since it's already there),
+		// then call emitEpilogue which returns rax.
+		// Do NOT store to stack — R255 is not allocated in the stack frame.
+		return
+	}
 	if r == 0 {
 		// R0 is stored on the stack at [rbp-8]
 		cg.emitBytes([]byte{0x48, 0x89, 0x85}) // mov [rbp + disp32], rax
@@ -1033,109 +1085,99 @@ func (cg *NativeCodeGenerator) compileCall(funcReg, numArgs int) {
 // compileBuiltin generates code to call a builtin function via callback
 // The callback signature: callback(builtinIdx, numArgs, argsPtr) int64
 // builtinIdx is the auto-assigned index from objects.BuiltinIndexMap.
-// Arguments are in VM registers R0-R7 (which map to RAX, RBX, RCX, RDX, R8-R11)
+// Arguments are in VM registers R0-R7 (which map to RAX, RBX, RCX, RDX, R8-R11).
+//
+// On Windows x64 ABI: rcx = builtinIdx, rdx = numArgs, r8 = argsPtr.
+// The callback pointer is obtained from GetBuiltinCallbackPtr() (syscall.NewCallback).
 func (cg *NativeCodeGenerator) compileBuiltin(builtinIdx, numArgs int) {
-	// Save callee-saved registers we need to preserve
-	// We need to save RAX, RBX, RCX, RDX, R8, R9, R10, R11 (args) temporarily
+	callbackPtr := GetBuiltinCallbackPtr()
+	if callbackPtr == 0 {
+		// No callback available — emit return-0 stub
+		cg.emitBytes([]byte{0x48, 0x31, 0xC0}) // xor rax, rax
+		cg.storeRaxToReg(255)
+		return
+	}
 
-	// For the callback, we use System V AMD64 ABI:
-	//   rdi = nameConstIdx (constant pool index for builtin name)
-	//   rsi = numArgs
-	//   rdx = pointer to args array (on stack)
+	// Save callee-saved registers that will be clobbered by the callback
+	cg.emitBytes([]byte{0x57})       // push rdi (globals pointer)
+	cg.emitBytes([]byte{0x41, 0x54}) // push r12
+	cg.emitBytes([]byte{0x41, 0x55}) // push r13
+	cg.emitBytes([]byte{0x41, 0x56}) // push r14
+	cg.emitBytes([]byte{0x41, 0x57}) // push r15
 
-	// But rdi currently holds globals pointer! We need to save it.
-	// Push globals pointer (rdi) to stack
-	cg.emitBytes([]byte{0x57}) // push rdi
+	// Spill argument registers (R0-R7) to the stack area below locals.
+	baseOffset := int32(cg.localsBaseOffset() + cg.numLocals*8 + 8)
 
-	// Store args to stack for args pointer
-	// We'll spill R0-R7 to [rbp - 320 - argNum*8] (below the existing spilled regs space)
-	// This creates a contiguous array of int64 values
-
-	// First, spill the arguments to the stack
-	// Spill the arguments to the stack, below the local variable area.
-	// Stack: [rbp-8]=R0, [rbp-16..-40]=reserved, [rbp-48..]=spilled regs, then locals.
-	// Args go just below the locals area.
-	// Note: we use negative displacement (as uint32 of signed value)
-	// [rbp - baseOffset] = R0, [rbp - baseOffset-8] = R1, etc.
-	baseOffset := int32(cg.localsBaseOffset() + cg.numLocals*8 + 8) // +8 for buffer below locals
-
-	// Spill R0 (RAX) to [rbp - baseOffset]
-	cg.emitBytes([]byte{0x48, 0x89, 0x85}) // mov [rbp + disp32], rax
+	// Spill R0 ([rbp-8]) to args array
+	cg.emitBytes([]byte{0x48, 0x8B, 0x85}) // mov rax, [rbp-8] (R0)
+	cg.emitUint32(r0StackDisp)
+	cg.emitBytes([]byte{0x48, 0x89, 0x85}) // mov [rbp-baseOffset], rax
 	cg.emitUint32(uint32(-baseOffset))
 
 	if numArgs >= 2 {
-		// Spill R1 (RBX)
-		cg.emitBytes([]byte{0x48, 0x89, 0x9D}) // mov [rbp + disp32], rbx
+		cg.emitBytes([]byte{0x48, 0x89, 0x9D}) // mov [rbp-baseOffset-8], rbx
 		cg.emitUint32(uint32(-(baseOffset + 8)))
 	}
 	if numArgs >= 3 {
-		// Spill R2 (RCX)
-		cg.emitBytes([]byte{0x48, 0x89, 0x8D}) // mov [rbp + disp32], rcx
+		cg.emitBytes([]byte{0x48, 0x89, 0x8D}) // mov [rbp-baseOffset-16], rcx
 		cg.emitUint32(uint32(-(baseOffset + 16)))
 	}
 	if numArgs >= 4 {
-		// Spill R3 (RDX)
-		cg.emitBytes([]byte{0x48, 0x89, 0x95}) // mov [rbp + disp32], rdx
+		cg.emitBytes([]byte{0x48, 0x89, 0x95}) // mov [rbp-baseOffset-24], rdx
 		cg.emitUint32(uint32(-(baseOffset + 24)))
 	}
 	if numArgs >= 5 {
-		// Spill R4 (R8)
-		cg.emitBytes([]byte{0x4C, 0x89, 0x85}) // mov [rbp + disp32], r8
+		cg.emitBytes([]byte{0x4C, 0x89, 0x85}) // mov [rbp-baseOffset-32], r8
 		cg.emitUint32(uint32(-(baseOffset + 32)))
 	}
 	if numArgs >= 6 {
-		// Spill R5 (R9)
-		cg.emitBytes([]byte{0x4C, 0x89, 0x8D}) // mov [rbp + disp32], r9
+		cg.emitBytes([]byte{0x4C, 0x89, 0x8D}) // mov [rbp-baseOffset-40], r9
 		cg.emitUint32(uint32(-(baseOffset + 40)))
 	}
 	if numArgs >= 7 {
-		// Spill R6 (R10)
-		cg.emitBytes([]byte{0x4C, 0x89, 0x95}) // mov [rbp + disp32], r10
+		cg.emitBytes([]byte{0x4C, 0x89, 0x95}) // mov [rbp-baseOffset-48], r10
 		cg.emitUint32(uint32(-(baseOffset + 48)))
 	}
 	if numArgs >= 8 {
-		// Spill R7 (R11)
-		cg.emitBytes([]byte{0x4C, 0x89, 0x9D}) // mov [rbp + disp32], r11
+		cg.emitBytes([]byte{0x4C, 0x89, 0x9D}) // mov [rbp-baseOffset-56], r11
 		cg.emitUint32(uint32(-(baseOffset + 56)))
 	}
 
-	// Set up callback arguments (System V AMD64 ABI):
-	//   rdi = builtinIdx (auto-assigned index)
-	//   rsi = numArgs
-	//   rdx = args pointer (address of [rbp - baseOffset])
+	// Allocate shadow space (32 bytes) + ensure 16-byte stack alignment
+	// After 4 pushes (32 bytes), RSP is misaligned. sub rsp, 40 fixes alignment + shadow.
+	cg.emitBytes([]byte{0x48, 0x83, 0xEC, 0x28}) // sub rsp, 40
 
-	// mov rdi, builtinIdx
-	cg.emitBytes([]byte{0x48, 0xC7, 0xC7}) // mov rdi, imm32
+	// Set up Windows x64 ABI callback arguments:
+	//   rcx = builtinIdx (auto-assigned index)
+	//   rdx = numArgs
+	//   r8  = argsPtr (lea r8, [rbp-baseOffset])
+	cg.emitBytes([]byte{0x48, 0xC7, 0xC1}) // mov rcx, imm32
 	cg.emitUint32(uint32(builtinIdx))
 
-	// mov rsi, numArgs
-	cg.emitBytes([]byte{0x48, 0xC7, 0xC6}) // mov rsi, imm32
+	cg.emitBytes([]byte{0x48, 0xC7, 0xC2}) // mov rdx, imm32
 	cg.emitUint32(uint32(numArgs))
 
-	// lea rdx, [rbp - baseOffset] (args pointer)
-	cg.emitBytes([]byte{0x48, 0x8D, 0x95}) // lea rdx, [rbp + disp32]
+	// lea r8, [rbp-baseOffset]
+	cg.emitBytes([]byte{0x4C, 0x8D, 0x85}) // lea r8, [rbp + disp32]
 	cg.emitUint32(uint32(-baseOffset))
 
-	// Call the builtin callback
-	if cg.builtinCallbackPtr != 0 {
-		// Direct call to callback pointer
-		// mov rax, callback_ptr
-		cg.emitBytes([]byte{0x48, 0xB8}) // mov rax, imm64
-		cg.emitUint64(uint64(cg.builtinCallbackPtr))
-		// call rax
-		cg.emitBytes([]byte{0xFF, 0xD0}) // call rax
-	} else {
-		// Fallback: use indirect call through global
-		// For now, emit a call with placeholder that will be patched
-		cg.emitBytes([]byte{0xFF, 0x15, 0x00, 0x00, 0x00, 0x00}) // call [rip+0]
-	}
+	// Call the callback function pointer
+	cg.emitBytes([]byte{0x48, 0xB8}) // mov rax, imm64
+	cg.emitUint64(uint64(callbackPtr))
+	cg.emitBytes([]byte{0xFF, 0xD0}) // call rax
 
-	// Result is in RAX
-	// Store to return register (R255)
+	// Restore shadow space
+	cg.emitBytes([]byte{0x48, 0x83, 0xC4, 0x28}) // add rsp, 40
+
+	// Result is in rax, store to R255
 	cg.storeRaxToReg(255)
 
-	// Restore globals pointer
-	cg.emitBytes([]byte{0x5F}) // pop rdi
+	// Restore callee-saved registers
+	cg.emitBytes([]byte{0x41, 0x5F}) // pop r15
+	cg.emitBytes([]byte{0x41, 0x5E}) // pop r14
+	cg.emitBytes([]byte{0x41, 0x5D}) // pop r13
+	cg.emitBytes([]byte{0x41, 0x5C}) // pop r12
+	cg.emitBytes([]byte{0x5F})       // pop rdi
 }
 
 // CollectionOpKind indicates what collection operation to perform (must match native_executor.go)
@@ -1162,54 +1204,73 @@ const (
 	OpGetMethod
 )
 
-// compileCollectionOp generates code to perform a collection operation via callback
+// compileCollectionOp generates code to perform a collection operation via callback.
+// On Windows x64 ABI: rcx = opKind, rdx = numArgs, r8 = argsPtr.
 func (cg *NativeCodeGenerator) compileCollectionOp(opKind CollectionOpKind, dstReg int, numArgs int, argRegs []int) {
-	// Push globals pointer (rdi) to stack
-	cg.emitBytes([]byte{0x57}) // push rdi
+	callbackPtr := GetCollectionCallbackPtr()
+	if callbackPtr == 0 {
+		// No callback — emit return-0 stub
+		cg.emitBytes([]byte{0x48, 0x31, 0xC0}) // xor rax, rax
+		if dstReg > 0 && dstReg != 255 {
+			cg.storeRaxToReg(dstReg)
+		}
+		return
+	}
 
-	// Spill args to stack
-	baseOffset := int32(480) // After function callback space
+	// Save callee-saved registers
+	cg.emitBytes([]byte{0x57})       // push rdi (globals pointer)
+	cg.emitBytes([]byte{0x41, 0x54}) // push r12
+	cg.emitBytes([]byte{0x41, 0x55}) // push r13
+	cg.emitBytes([]byte{0x41, 0x56}) // push r14
+	cg.emitBytes([]byte{0x41, 0x57}) // push r15
 
-	// Spill argument registers to stack
+	// Spill args to stack below locals
+	baseOffset := int32(cg.localsBaseOffset() + cg.numLocals*8 + 8)
+
 	for i, reg := range argRegs {
 		if i >= 8 {
-			break // Max 8 args
+			break
 		}
 		cg.loadRegToRax(reg)
 		cg.emitBytes([]byte{0x48, 0x89, 0x85}) // mov [rbp + disp32], rax
 		cg.emitUint32(uint32(-(baseOffset + int32(i*8))))
 	}
 
-	// Set up callback arguments:
-	//   rdi = opKind
-	//   rsi = numArgs
-	//   rdx = args pointer
+	// Allocate shadow space + stack alignment
+	cg.emitBytes([]byte{0x48, 0x83, 0xEC, 0x28}) // sub rsp, 40
 
-	cg.emitBytes([]byte{0x48, 0xC7, 0xC7}) // mov rdi, imm32
+	// Set up Windows x64 ABI callback arguments:
+	//   rcx = opKind
+	//   rdx = numArgs
+	//   r8  = argsPtr
+	cg.emitBytes([]byte{0x48, 0xC7, 0xC1}) // mov rcx, imm32
 	cg.emitUint32(uint32(opKind))
 
-	cg.emitBytes([]byte{0x48, 0xC7, 0xC6}) // mov rsi, imm32
+	cg.emitBytes([]byte{0x48, 0xC7, 0xC2}) // mov rdx, imm32
 	cg.emitUint32(uint32(numArgs))
 
-	cg.emitBytes([]byte{0x48, 0x8D, 0x95}) // lea rdx, [rbp + disp32]
+	cg.emitBytes([]byte{0x4C, 0x8D, 0x85}) // lea r8, [rbp + disp32]
 	cg.emitUint32(uint32(-baseOffset))
 
-	// Call the collection callback
-	if cg.collectionCallbackPtr != 0 {
-		cg.emitBytes([]byte{0x48, 0xB8}) // mov rax, imm64
-		cg.emitUint64(uint64(cg.collectionCallbackPtr))
-		cg.emitBytes([]byte{0xFF, 0xD0}) // call rax
-	} else {
-		cg.emitBytes([]byte{0xFF, 0x15, 0x00, 0x00, 0x00, 0x00})
-	}
+	// Call the callback
+	cg.emitBytes([]byte{0x48, 0xB8}) // mov rax, imm64
+	cg.emitUint64(uint64(callbackPtr))
+	cg.emitBytes([]byte{0xFF, 0xD0}) // call rax
+
+	// Restore shadow space
+	cg.emitBytes([]byte{0x48, 0x83, 0xC4, 0x28}) // add rsp, 40
 
 	// Store result to destination register
 	if dstReg > 0 && dstReg != 255 {
 		cg.storeRaxToReg(dstReg)
 	}
 
-	// Restore globals pointer
-	cg.emitBytes([]byte{0x5F}) // pop rdi
+	// Restore callee-saved registers
+	cg.emitBytes([]byte{0x41, 0x5F}) // pop r15
+	cg.emitBytes([]byte{0x41, 0x5E}) // pop r14
+	cg.emitBytes([]byte{0x41, 0x5D}) // pop r13
+	cg.emitBytes([]byte{0x41, 0x5C}) // pop r12
+	cg.emitBytes([]byte{0x5F})       // pop rdi
 }
 
 // compileArrayCreate generates code to create an array from registers
@@ -1237,13 +1298,26 @@ func (cg *NativeCodeGenerator) compileMapCreate(dst, startReg, count int) {
 	cg.compileCollectionOpDirect(OpMapCreate, dst, numArgs, argRegs)
 }
 
-// compileCollectionOpDirect generates code for collection operations with direct arg passing
+// compileCollectionOpDirect generates code for collection operations with direct arg passing.
+// On Windows x64 ABI: rcx = opKind, rdx = numArgs, r8 = argsPtr.
 func (cg *NativeCodeGenerator) compileCollectionOpDirect(opKind CollectionOpKind, dstReg int, numArgs int, argRegs []int) {
-	// Push globals pointer (rdi) to stack
-	cg.emitBytes([]byte{0x57}) // push rdi
+	callbackPtr := GetCollectionCallbackPtr()
+	if callbackPtr == 0 {
+		cg.emitBytes([]byte{0x48, 0x31, 0xC0}) // xor rax, rax
+		if dstReg > 0 && dstReg != 255 {
+			cg.storeRaxToReg(dstReg)
+		}
+		return
+	}
 
-	// Spill args to stack
-	baseOffset := int32(480)
+	// Save callee-saved registers
+	cg.emitBytes([]byte{0x57})       // push rdi
+	cg.emitBytes([]byte{0x41, 0x54}) // push r12
+	cg.emitBytes([]byte{0x41, 0x55}) // push r13
+	cg.emitBytes([]byte{0x41, 0x56}) // push r14
+	cg.emitBytes([]byte{0x41, 0x57}) // push r15
+
+	baseOffset := int32(cg.localsBaseOffset() + cg.numLocals*8 + 8)
 
 	for i, reg := range argRegs {
 		if i >= 8 {
@@ -1254,37 +1328,57 @@ func (cg *NativeCodeGenerator) compileCollectionOpDirect(opKind CollectionOpKind
 		cg.emitUint32(uint32(-(baseOffset + int32(i*8))))
 	}
 
-	cg.emitBytes([]byte{0x48, 0xC7, 0xC7}) // mov rdi, opKind
+	// Allocate shadow space + stack alignment
+	cg.emitBytes([]byte{0x48, 0x83, 0xEC, 0x28}) // sub rsp, 40
+
+	cg.emitBytes([]byte{0x48, 0xC7, 0xC1}) // mov rcx, opKind
 	cg.emitUint32(uint32(opKind))
 
-	cg.emitBytes([]byte{0x48, 0xC7, 0xC6}) // mov rsi, numArgs
+	cg.emitBytes([]byte{0x48, 0xC7, 0xC2}) // mov rdx, numArgs
 	cg.emitUint32(uint32(numArgs))
 
-	cg.emitBytes([]byte{0x48, 0x8D, 0x95}) // lea rdx, [rbp - baseOffset]
+	cg.emitBytes([]byte{0x4C, 0x8D, 0x85}) // lea r8, [rbp + disp32]
 	cg.emitUint32(uint32(-baseOffset))
 
-	if cg.collectionCallbackPtr != 0 {
-		cg.emitBytes([]byte{0x48, 0xB8})
-		cg.emitUint64(uint64(cg.collectionCallbackPtr))
-		cg.emitBytes([]byte{0xFF, 0xD0})
-	} else {
-		cg.emitBytes([]byte{0xFF, 0x15, 0x00, 0x00, 0x00, 0x00})
-	}
+	// Call the callback
+	cg.emitBytes([]byte{0x48, 0xB8}) // mov rax, imm64
+	cg.emitUint64(uint64(callbackPtr))
+	cg.emitBytes([]byte{0xFF, 0xD0}) // call rax
+
+	// Restore shadow space
+	cg.emitBytes([]byte{0x48, 0x83, 0xC4, 0x28}) // add rsp, 40
 
 	if dstReg > 0 && dstReg != 255 {
 		cg.storeRaxToReg(dstReg)
 	}
 
-	cg.emitBytes([]byte{0x5F}) // pop rdi
+	cg.emitBytes([]byte{0x41, 0x5F}) // pop r15
+	cg.emitBytes([]byte{0x41, 0x5E}) // pop r14
+	cg.emitBytes([]byte{0x41, 0x5D}) // pop r13
+	cg.emitBytes([]byte{0x41, 0x5C}) // pop r12
+	cg.emitBytes([]byte{0x5F})       // pop rdi
 }
 
-// compileObjectOp generates code to perform object field operations via callback
+// compileObjectOp generates code to perform object field operations via callback.
+// On Windows x64 ABI: rcx = opKind, rdx = numArgs, r8 = argsPtr, r9 = nameIdx.
 func (cg *NativeCodeGenerator) compileObjectOp(opKind ObjectOpKind, dstReg int, argRegs []int, nameIdx int) {
-	// Push globals pointer (rdi) to stack
-	cg.emitBytes([]byte{0x57}) // push rdi
+	callbackPtr := GetObjectCallbackPtr()
+	if callbackPtr == 0 {
+		cg.emitBytes([]byte{0x48, 0x31, 0xC0}) // xor rax, rax
+		if dstReg > 0 && dstReg != 255 {
+			cg.storeRaxToReg(dstReg)
+		}
+		return
+	}
 
-	// Spill args to stack
-	baseOffset := int32(560) // After collection callback space
+	// Save callee-saved registers
+	cg.emitBytes([]byte{0x57})       // push rdi
+	cg.emitBytes([]byte{0x41, 0x54}) // push r12
+	cg.emitBytes([]byte{0x41, 0x55}) // push r13
+	cg.emitBytes([]byte{0x41, 0x56}) // push r14
+	cg.emitBytes([]byte{0x41, 0x57}) // push r15
+
+	baseOffset := int32(cg.localsBaseOffset() + cg.numLocals*8 + 8)
 
 	for i, reg := range argRegs {
 		if i >= 8 {
@@ -1295,39 +1389,43 @@ func (cg *NativeCodeGenerator) compileObjectOp(opKind ObjectOpKind, dstReg int, 
 		cg.emitUint32(uint32(-(baseOffset + int32(i*8))))
 	}
 
-	// Set up callback arguments:
-	//   rdi = opKind
-	//   rsi = numArgs
-	//   rdx = args pointer
-	//   rcx = nameIdx
+	// Allocate shadow space + stack alignment
+	cg.emitBytes([]byte{0x48, 0x83, 0xEC, 0x28}) // sub rsp, 40
 
-	cg.emitBytes([]byte{0x48, 0xC7, 0xC7}) // mov rdi, opKind
+	// Set up Windows x64 ABI callback arguments:
+	//   rcx = opKind
+	//   rdx = numArgs
+	//   r8  = argsPtr
+	//   r9  = nameIdx
+	cg.emitBytes([]byte{0x48, 0xC7, 0xC1}) // mov rcx, opKind
 	cg.emitUint32(uint32(opKind))
 
-	cg.emitBytes([]byte{0x48, 0xC7, 0xC6}) // mov rsi, numArgs
+	cg.emitBytes([]byte{0x48, 0xC7, 0xC2}) // mov rdx, numArgs
 	cg.emitUint32(uint32(len(argRegs)))
 
-	cg.emitBytes([]byte{0x48, 0x8D, 0x95}) // lea rdx, [rbp - baseOffset]
+	cg.emitBytes([]byte{0x4C, 0x8D, 0x85}) // lea r8, [rbp + disp32]
 	cg.emitUint32(uint32(-baseOffset))
 
-	cg.emitBytes([]byte{0x48, 0xC7, 0xC1}) // mov rcx, nameIdx
+	cg.emitBytes([]byte{0x49, 0xC7, 0xC1}) // mov r9, nameIdx
 	cg.emitUint32(uint32(nameIdx))
 
-	// Call the object callback
-	if cg.objectCallbackPtr != 0 {
-		cg.emitBytes([]byte{0x48, 0xB8})
-		cg.emitUint64(uint64(cg.objectCallbackPtr))
-		cg.emitBytes([]byte{0xFF, 0xD0})
-	} else {
-		cg.emitBytes([]byte{0xFF, 0x15, 0x00, 0x00, 0x00, 0x00})
-	}
+	// Call the callback
+	cg.emitBytes([]byte{0x48, 0xB8}) // mov rax, imm64
+	cg.emitUint64(uint64(callbackPtr))
+	cg.emitBytes([]byte{0xFF, 0xD0}) // call rax
 
-	// Store result to destination register
+	// Restore shadow space
+	cg.emitBytes([]byte{0x48, 0x83, 0xC4, 0x28}) // add rsp, 40
+
 	if dstReg > 0 && dstReg != 255 {
 		cg.storeRaxToReg(dstReg)
 	}
 
-	cg.emitBytes([]byte{0x5F}) // pop rdi
+	cg.emitBytes([]byte{0x41, 0x5F}) // pop r15
+	cg.emitBytes([]byte{0x41, 0x5E}) // pop r14
+	cg.emitBytes([]byte{0x41, 0x5D}) // pop r13
+	cg.emitBytes([]byte{0x41, 0x5C}) // pop r12
+	cg.emitBytes([]byte{0x5F})       // pop rdi
 }
 
 func (cg *NativeCodeGenerator) compileMove(dst, src int) {

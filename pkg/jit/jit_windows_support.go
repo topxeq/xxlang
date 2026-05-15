@@ -12,6 +12,7 @@ import (
 	"hash/fnv"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"unsafe"
 
 	"github.com/topxeq/xxlang/pkg/compiler"
@@ -75,8 +76,6 @@ func NewNativeExecutor(config JITConfig) *NativeExecutor {
 //        LoadLocal, StoreLocal (local variables)
 func CanExecuteNatively(fn *compiler.CompiledFunction) bool {
 	// Reject functions with too many registers to avoid excessive stack usage.
-	// The native codegen supports up to ~250 registers, but we cap at 64 to keep
-	// stack frames reasonable (48 + (64-12)*8 + locals*8 + 72 ≈ 472 + locals bytes).
 	if fn.NumRegs > 64 {
 		return false
 	}
@@ -88,7 +87,7 @@ func CanExecuteNatively(fn *compiler.CompiledFunction) bool {
 		op := compiler.Opcode(code[ip])
 
 		switch op {
-		// Supported operations - pure arithmetic and control flow
+		// Supported operations - pure arithmetic and control flow (no calls)
 		case compiler.OpRegLoadConst, compiler.OpRegMove,
 			compiler.OpRegAdd, compiler.OpRegSub, compiler.OpRegMul, compiler.OpRegDiv, compiler.OpRegMod,
 			compiler.OpRegAddConst, compiler.OpRegSubConst, compiler.OpRegMulConst,
@@ -106,7 +105,7 @@ func CanExecuteNatively(fn *compiler.CompiledFunction) bool {
 			// Supported - continue
 
 		default:
-			// Unsupported operation
+			// Unsupported: OpRegCall, OpRegTailCall, builtin, array, map, closure, etc.
 			return false
 		}
 
@@ -116,7 +115,59 @@ func CanExecuteNatively(fn *compiler.CompiledFunction) bool {
 	return true
 }
 
-// ExecuteFunction executes a compiled function natively
+// CanExecuteNativelyWithCalls checks if a function can be executed natively
+// when invoked via syscall.SyscallN (goroutine in _Gsyscall state).
+// This includes OpRegCall/OpRegTailCall because syscall.NewCallback callbacks
+// can properly re-enter Go via exitsyscall/entersyscall transitions.
+// Only used for the outermost main code execution, NOT for functions called
+// from the callback (nested syscall.SyscallN doesn't work).
+func CanExecuteNativelyWithCalls(fn *compiler.CompiledFunction) bool {
+	if fn.NumRegs > 64 {
+		return false
+	}
+
+	code := fn.Instructions
+	ip := 0
+
+	for ip < len(code) {
+		op := compiler.Opcode(code[ip])
+
+		switch op {
+		case compiler.OpRegLoadConst, compiler.OpRegMove,
+			compiler.OpRegAdd, compiler.OpRegSub, compiler.OpRegMul, compiler.OpRegDiv, compiler.OpRegMod,
+			compiler.OpRegAddConst, compiler.OpRegSubConst, compiler.OpRegMulConst,
+			compiler.OpRegNeg, compiler.OpRegAnd, compiler.OpRegOr, compiler.OpRegNot,
+			compiler.OpRegEqual, compiler.OpRegNotEqual,
+			compiler.OpRegLess, compiler.OpRegGreater, compiler.OpRegLessEqual, compiler.OpRegGreaterEqual,
+			compiler.OpRegJump, compiler.OpRegJumpIfTrue, compiler.OpRegJumpIfFalse,
+			compiler.OpRegNull, compiler.OpRegTrue, compiler.OpRegFalse,
+			compiler.OpRegIncLocal, compiler.OpRegDecLocal, compiler.OpRegLoopCountAdd, compiler.OpRegAddLocalCheck,
+			compiler.OpRegLoopIncCheck, compiler.OpRegLoopBodyAdd, compiler.OpRegLoopMulCheck,
+			compiler.OpRegReturn,
+			compiler.OpRegLoadLocal, compiler.OpRegStoreLocal,
+			compiler.OpRegLoadGlobal, compiler.OpRegStoreGlobal,
+			compiler.OpRegCall, compiler.OpRegTailCall,
+			compiler.OpRegBuiltin,
+			compiler.OpRegArray, compiler.OpRegArrayEmpty, compiler.OpRegArrayAppend,
+			compiler.OpRegIndex, compiler.OpRegSetIndex,
+			compiler.OpRegMap, compiler.OpRegMapEmpty, compiler.OpRegMapSet,
+			compiler.OpRegGetField, compiler.OpRegSetField, compiler.OpRegGetMethod,
+			compiler.OpRegPop:
+			// Supported with callback dispatch - continue
+
+		default:
+			return false
+		}
+
+		ip += 1 + operandWidth(op)
+	}
+
+	return true
+}
+
+// ExecuteFunction executes a compiled function natively.
+// Only supports functions without OpRegCall (checked by CanExecuteNatively).
+// For functions with calls, use ExecuteFunctionWithCalls instead.
 func (ne *NativeExecutor) ExecuteFunction(fn *compiler.CompiledFunction, constants []vm.Value, globals []int64) (int64, error) {
 	if !CanExecuteNatively(fn) {
 		return 0, fmt.Errorf("function cannot be executed natively")
@@ -130,6 +181,7 @@ func (ne *NativeExecutor) ExecuteFunction(fn *compiler.CompiledFunction, constan
 	}
 
 	cg := NewNativeCodeGenerator()
+
 	code, err := cg.Generate(fn, intConstants)
 	if err != nil {
 		return 0, fmt.Errorf("compilation failed: %w", err)
@@ -142,6 +194,65 @@ func (ne *NativeExecutor) ExecuteFunction(fn *compiler.CompiledFunction, constan
 
 	copy(mem, code)
 	entry := uintptr(unsafe.Pointer(&mem[0]))
+
+	return callNativeWithGlobals(entry, globals), nil
+}
+
+// ExecuteFunctionWithCalls executes a compiled function natively using syscall.SyscallN.
+// This is used for the outermost main code that may contain OpRegCall/OpRegTailCall.
+// The goroutine enters _Gsyscall state via syscall.SyscallN, which enables
+// syscall.NewCallback callbacks (used by OpRegCall) to properly re-enter Go.
+// Functions called FROM the callback must NOT use this method — they must use
+// bridge ABI or interpreter to avoid nested syscall.SyscallN deadlock.
+func (ne *NativeExecutor) ExecuteFunctionWithCalls(fn *compiler.CompiledFunction, constants []vm.Value, globals []int64) (int64, error) {
+	if !CanExecuteNativelyWithCalls(fn) {
+		return 0, fmt.Errorf("function cannot be executed natively (with calls)")
+	}
+
+	// Guard against nested syscall.SyscallN — this would deadlock because
+	// the goroutine is already in _Gsyscall state from the outer call.
+	if isInSyscallN() {
+		return 0, fmt.Errorf("cannot execute with calls: already inside syscall.SyscallN (nested deadlock)")
+	}
+
+	intConstants := make([]int64, len(constants))
+	for i, c := range constants {
+		if c.IsInt() {
+			intConstants[i], _ = c.ToInt()
+		}
+	}
+
+	hasCall := containsCall(fn.Instructions)
+
+	cg := NewNativeCodeGenerator()
+	if hasCall {
+		cg.syscallABI = true
+	}
+
+	code, err := cg.Generate(fn, intConstants)
+	if err != nil {
+		return 0, fmt.Errorf("compilation failed: %w", err)
+	}
+
+	mem, _, err := ne.compiler.AllocCode(len(code))
+	if err != nil {
+		return 0, fmt.Errorf("memory allocation failed: %w", err)
+	}
+
+	copy(mem, code)
+	entry := uintptr(unsafe.Pointer(&mem[0]))
+
+	if hasCall {
+		var globalsPtr uintptr
+		if len(globals) > 0 {
+			globalsPtr = uintptr(unsafe.Pointer(&globals[0]))
+		}
+		setInSyscallN(true)
+		r1, _, _ := syscall.SyscallN(entry, globalsPtr, 0, 0, 0)
+		setInSyscallN(false)
+		return int64(r1), nil
+	}
+
 	return callNativeWithGlobals(entry, globals), nil
 }
 
@@ -247,6 +358,9 @@ func NewJITVM(bytecode *compiler.Bytecode, config JITConfig) *JITVM {
 	j.updateCachedGlobals()
 	j.setupNativeCallHook()
 	j.initWindowsCallback()
+	j.InitBuiltinCallback()
+	j.InitCollectionCallback()
+	j.InitObjectCallback()
 	return j
 }
 
@@ -266,6 +380,9 @@ func NewJITVMWithGlobals(bytecode *compiler.Bytecode, globals []vm.Value, config
 	j.updateCachedGlobals()
 	j.setupNativeCallHook()
 	j.initWindowsCallback()
+	j.InitBuiltinCallback()
+	j.InitCollectionCallback()
+	j.InitObjectCallback()
 	return j
 }
 
@@ -289,19 +406,41 @@ func (j *JITVM) Run() error {
 	j.compileNativeFunctions()
 	j.setupNativeCallHook()
 
-	// Check if we can execute the main code natively
+	// Check if we can execute the main code natively (without OpRegCall).
+	// Pure arithmetic/loop code can run entirely natively via bridge ABI.
+	// Code with OpRegCall always uses hybrid mode (interpreter + native hook)
+	// because compileCall cannot resolve all function references at compile time
+	// (e.g., higher-order function parameters).
 	mainFn := &compiler.CompiledFunction{
 		Instructions:  j.bytecode.Instructions,
-		NumLocals:     16,
+		NumLocals:     j.bytecode.MainNumLocals,
 		NumParameters: 0,
+		NumRegs:       j.bytecode.MainNumRegs,
+	}
+
+	// If MainNumRegs is not set (old bytecode or zero), use safe defaults
+	if mainFn.NumRegs == 0 {
+		mainFn.NumRegs = 16
+	}
+	if mainFn.NumLocals == 0 {
+		mainFn.NumLocals = 16
 	}
 
 	canNative := CanExecuteNatively(mainFn)
+	hasCall := containsCall(j.bytecode.Instructions)
+
 	if j.config.Debug {
-		fmt.Printf("[JIT] CanExecuteNatively: %v, bytecode length: %d\n", canNative, len(j.bytecode.Instructions))
+		fmt.Printf("[JIT] CanExecuteNatively: %v, hasCall: %v, NumRegs: %d, NumLocals: %d, bytecode length: %d\n",
+			canNative, hasCall, mainFn.NumRegs, mainFn.NumLocals, len(j.bytecode.Instructions))
 	}
 
-	if canNative {
+	// Execution strategy:
+	// - Pure arithmetic main code (no OpRegCall): execute natively via bridge ABI (fastest)
+	// - Main code with OpRegCall: always use hybrid mode (interpreter + native call hook).
+	//   This is necessary because compileCall may not be able to resolve all function
+	//   references at code generation time (e.g., higher-order functions passed as parameters).
+	//   The hybrid mode correctly handles these cases by falling back to the interpreter.
+	if canNative && !hasCall {
 		j.updateCachedGlobals()
 
 		vmGlobals := j.GetGlobals()
@@ -317,30 +456,34 @@ func (j *JITVM) Run() error {
 				fmt.Printf("[JIT] Native execution succeeded, result=%d\n", result)
 			}
 			j.syncGlobalsToVM()
-			j.RegVM.SetLastResult(nativeResultToValue(result, analyzeReturnType(mainFn.Instructions)))
+			returnType := analyzeReturnTypeWithConstants(mainFn.Instructions, j.bytecode.Constants)
+			resultVal := nativeResultToValue(result, returnType)
+			if j.config.Debug {
+				fmt.Printf("[JIT] returnType=%v, resultVal=%v, resultIsBool=%v\n", returnType, resultVal, resultVal.IsBool())
+			}
+			j.RegVM.SetLastResult(resultVal)
 			return nil
 		}
 		if j.config.Debug {
-			fmt.Printf("[JIT] Native execution failed: %v, falling back to interpreter\n", err)
+			fmt.Printf("[JIT] Native execution failed: %v, falling back to hybrid/interpreter\n", err)
 		}
 	}
 
-	// Check if we have native functions compiled
+	// For main code with calls, or when strict native execution fails,
+	// use hybrid mode (interpreter + native call hook) or pure interpreter.
 	if j.config.Debug {
 		count := atomic.LoadInt64(&j.nativeRegistry.count)
 		fmt.Printf("[JIT] Compiled %d native functions\n", count)
 	}
 
-	// Check if any native functions are available
 	if atomic.LoadInt64(&j.nativeRegistry.count) > 0 {
-		// Use hybrid execution mode that intercepts calls to native functions
 		return j.runHybrid()
 	}
 
 	// Fall back to interpreter
 	j.interpExecs++
 	if j.config.Debug {
-		fmt.Printf("[JIT] Using interpreter (native=%v)\n", canNative)
+		fmt.Printf("[JIT] Using interpreter (canNative=%v, hasCall=%v)\n", canNative, hasCall)
 	}
 	return j.RegVM.Run()
 }
@@ -393,7 +536,7 @@ func (j *JITVM) compileNativeFunctions() {
 				continue
 			}
 
-			// First try: pure native execution (no function calls)
+			// First try: native execution (including OpRegCall via syscall ABI)
 			if CanExecuteNatively(fn) {
 				err := j.nativeRegistry.CompileFunction(fn, i, intConstants)
 				if err != nil && j.config.Debug {
@@ -518,10 +661,10 @@ func (j *JITVM) syncGlobalsToVM() {
 
 // setupNativeCallHook sets up the VM hook for native function execution
 func (j *JITVM) setupNativeCallHook() {
-	// Only set up hook if we have compiled native functions
-	if len(j.nativeFuncCache) == 0 {
-		return
-	}
+	// Set up the native call hook regardless of whether nativeFuncCache is empty.
+	// Even if no functions were compiled natively, the main code may contain
+	// OpRegCall that dispatches through this hook when executed via syscall.SyscallN.
+	// In that case, the hook falls back to interpreter execution.
 
 	// Set up fast check for native functions
 	j.RegVM.SetFastNativeCheck(func(fn *compiler.CompiledFunction) bool {
@@ -644,6 +787,7 @@ type NativeFunction struct {
 	NumParams int
 	UseBridgeABI bool
 	ReturnType NativeReturnType
+	UseSyscallABI bool // When true, use syscall.Syscall6 for execution (enables OpRegCall callbacks)
 	entryPtr  *byte
 	entry     uintptr
 }
@@ -676,6 +820,13 @@ func valueToNativeInt(v vm.Value) int64 {
 func (nf *NativeFunction) Execute(globals []int64, args ...int64) int64 {
 	if len(nf.Code) == 0 || nf.entry == 0 {
 		return 0
+	}
+
+	// Syscall ABI: use syscall.Syscall6 for proper goroutine state transition.
+	// The goroutine enters _Gsyscall state, enabling syscall.NewCallback callbacks
+	// (needed for OpRegCall) to correctly re-enter Go via exitsyscall/entersyscall.
+	if nf.UseSyscallABI {
+		return nf.executeSyscall(globals, args)
 	}
 
 	if nf.UseBridgeABI {
@@ -726,6 +877,31 @@ func (nf *NativeFunction) Execute(globals []int64, args ...int64) int64 {
 	return callNativeWithGlobals(nf.entry, globals)
 }
 
+// executeSyscall calls the JIT function via syscall.SyscallN using Windows x64 ABI.
+// This transitions the goroutine to _Gsyscall state, which is required for
+// syscall.NewCallback to properly re-enter Go for OpRegCall dispatch.
+func (nf *NativeFunction) executeSyscall(globals []int64, args []int64) int64 {
+	var globalsPtr uintptr
+	if len(globals) > 0 {
+		globalsPtr = uintptr(unsafe.Pointer(&globals[0]))
+	}
+
+	callArgs := []uintptr{globalsPtr}
+	for _, a := range args {
+		if len(callArgs) >= 4 {
+			break
+		}
+		callArgs = append(callArgs, uintptr(a))
+	}
+	// Pad to at least 4 args (globals + 3 args) for consistent JIT prologue behavior
+	for len(callArgs) < 4 {
+		callArgs = append(callArgs, 0)
+	}
+
+	r1, _, _ := syscall.SyscallN(nf.entry, callArgs...)
+	return int64(r1)
+}
+
 // NativeFunctionRegistry manages compiled native functions
 type NativeFunctionRegistry struct {
 	config    JITConfig
@@ -752,7 +928,16 @@ func (r *NativeFunctionRegistry) CompileFunction(fn *compiler.CompiledFunction, 
 		return fmt.Errorf("function cannot be executed natively")
 	}
 
+	// Use syscall ABI (Windows x64 + syscall.Syscall6) for functions containing
+	// OpRegCall/OpRegTailCall, so that syscall.NewCallback callbacks can properly
+	// re-enter Go via exitsyscall/entersyscall transitions.
+	hasCall := containsCall(fn.Instructions)
+
 	cg := NewNativeCodeGenerator()
+	if hasCall {
+		cg.syscallABI = true
+	}
+
 	code, err := cg.Generate(fn, constants)
 	if err != nil {
 		return fmt.Errorf("compilation failed: %w", err)
@@ -770,6 +955,7 @@ func (r *NativeFunctionRegistry) CompileFunction(fn *compiler.CompiledFunction, 
 		NumParams:    fn.NumParameters,
 		ReturnType:   analyzeReturnType(fn.Instructions),
 		UseBridgeABI: false,
+		UseSyscallABI: hasCall,
 		entryPtr:     &mem[0],
 		entry:        uintptr(unsafe.Pointer(&mem[0])),
 	}

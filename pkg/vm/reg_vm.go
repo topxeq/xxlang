@@ -172,6 +172,17 @@ func (vm *RegVM) currentFrame() *RegFrame {
 	return vm.frames[vm.frameIndex-1]
 }
 
+// CurrentFrame returns the current frame (public accessor for JIT callbacks)
+func (vm *RegVM) CurrentFrame() *RegFrame {
+	return vm.currentFrame()
+}
+
+// RunFunctionSync runs a compiled function synchronously and returns when it completes.
+// Public accessor for JIT callbacks that need to execute a function via the interpreter.
+func (vm *RegVM) RunFunctionSync(fn *compiler.CompiledFunction, numArgs int, callerFrame *RegFrame) error {
+	return vm.runFunctionSync(fn, numArgs, callerFrame)
+}
+
 // pushFrame pushes a new frame onto the call stack
 func (vm *RegVM) pushFrame(frame *RegFrame) {
 	if vm.frameIndex >= MaxFrames {

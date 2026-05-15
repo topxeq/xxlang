@@ -575,9 +575,16 @@ func TestCanExecuteNativelyExtended(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "unsupported call",
+			name: "unsupported call in strict mode",
 			code: []byte{
 				byte(compiler.OpRegCall), 0, 0,
+			},
+			expected: false,
+		},
+		{
+			name: "unsupported tail call in strict mode",
+			code: []byte{
+				byte(compiler.OpRegTailCall), 0, 0,
 			},
 			expected: false,
 		},
@@ -593,6 +600,58 @@ func TestCanExecuteNativelyExtended(t *testing.T) {
 			result := CanExecuteNatively(fn)
 			if result != tt.expected {
 				t.Errorf("CanExecuteNatively() = %v, expected %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestCanExecuteNativelyWithCallsExtended tests CanExecuteNativelyWithCalls
+func TestCanExecuteNativelyWithCallsExtended(t *testing.T) {
+	tests := []struct {
+		name     string
+		code     []byte
+		expected bool
+	}{
+		{
+			name: "call with syscall ABI",
+			code: []byte{
+				byte(compiler.OpRegCall), 0, 0,
+			},
+			expected: true,
+		},
+		{
+			name: "tail call with syscall ABI",
+			code: []byte{
+				byte(compiler.OpRegTailCall), 0, 0,
+			},
+			expected: true,
+		},
+		{
+			name: "unsupported closure still blocked",
+			code: []byte{
+				byte(compiler.OpRegClosure), 0, 0, 0, 0, 0,
+			},
+			expected: false,
+		},
+		{
+			name: "array now supported with callback",
+			code: []byte{
+				byte(compiler.OpRegArray), 0, 0, 0,
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fn := &compiler.CompiledFunction{
+				Instructions:  tt.code,
+				NumLocals:     8,
+				NumParameters: 0,
+			}
+			result := CanExecuteNativelyWithCalls(fn)
+			if result != tt.expected {
+				t.Errorf("CanExecuteNativelyWithCalls() = %v, expected %v", result, tt.expected)
 			}
 		})
 	}
