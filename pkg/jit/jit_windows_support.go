@@ -952,6 +952,9 @@ func (r *NativeFunctionRegistry) CompileFunction(fn *compiler.CompiledFunction, 
 	// Use syscall ABI (Windows x64 + syscall.Syscall6) for functions containing
 	// OpRegCall/OpRegTailCall, so that syscall.NewCallback callbacks can properly
 	// re-enter Go via exitsyscall/entersyscall transitions.
+	// NOTE: Since CanExecuteNatively rejects OpRegCall, hasCall is currently always
+	// false here. The syscallABI path is preserved for future use when
+	// CanExecuteNativelyWithCalls is integrated into the main compilation pipeline.
 	hasCall := containsCall(fn.Instructions)
 
 	cg := NewNativeCodeGenerator()
