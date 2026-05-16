@@ -89,7 +89,7 @@ func CanExecuteNatively(fn *compiler.CompiledFunction) bool {
 		switch op {
 		// Supported operations - pure arithmetic and control flow (no calls)
 		case compiler.OpRegLoadConst, compiler.OpRegMove,
-			compiler.OpRegAdd, compiler.OpRegSub, compiler.OpRegMul, compiler.OpRegDiv, compiler.OpRegMod,
+			compiler.OpRegAdd, compiler.OpRegSub, compiler.OpRegMul, compiler.OpRegMod,
 			compiler.OpRegAddConst, compiler.OpRegSubConst, compiler.OpRegMulConst,
 			compiler.OpRegNeg, compiler.OpRegAnd, compiler.OpRegOr, compiler.OpRegNot,
 			compiler.OpRegEqual, compiler.OpRegNotEqual,
@@ -105,7 +105,7 @@ func CanExecuteNatively(fn *compiler.CompiledFunction) bool {
 			// Supported - continue
 
 		default:
-			// Unsupported: OpRegCall, OpRegTailCall, builtin, array, map, closure, etc.
+			// Unsupported: OpRegCall, OpRegTailCall, OpRegDiv (float semantics), builtin, array, map, closure, etc.
 			return false
 		}
 
@@ -134,7 +134,7 @@ func CanExecuteNativelyWithCalls(fn *compiler.CompiledFunction) bool {
 
 		switch op {
 		case compiler.OpRegLoadConst, compiler.OpRegMove,
-			compiler.OpRegAdd, compiler.OpRegSub, compiler.OpRegMul, compiler.OpRegDiv, compiler.OpRegMod,
+			compiler.OpRegAdd, compiler.OpRegSub, compiler.OpRegMul, compiler.OpRegMod,
 			compiler.OpRegAddConst, compiler.OpRegSubConst, compiler.OpRegMulConst,
 			compiler.OpRegNeg, compiler.OpRegAnd, compiler.OpRegOr, compiler.OpRegNot,
 			compiler.OpRegEqual, compiler.OpRegNotEqual,

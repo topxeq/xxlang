@@ -47,11 +47,18 @@ func nativeCallFromNative(constIdx int, numArgs int, argsPtr *int64) int64 {
 		return 0
 	}
 
+	// Native code only spills up to 8 registers (R0-R7) to the stack,
+	// so cap the slice length to avoid out-of-bounds reads.
+	maxArgs := numArgs
+	if maxArgs > 8 {
+		maxArgs = 8
+	}
 	args := make([]vm.Value, numArgs)
-	if argsPtr != nil && numArgs > 0 {
-		argsSlice := unsafe.Slice(argsPtr, numArgs)
-		for i := 0; i < numArgs; i++ {
-			args[i] = vm.NewInt(argsSlice[i])
+	if argsPtr != nil && maxArgs > 0 {
+		argsSlice := unsafe.Slice(argsPtr, maxArgs)
+		for i := 0; i < maxArgs; i++ {
+			obj := nativeIntToObject(argsSlice[i])
+			args[i] = vm.NewObject(obj)
 		}
 	}
 
@@ -81,6 +88,9 @@ func nativeCallFromNative(constIdx int, numArgs int, argsPtr *int64) int64 {
 			}
 			if result.IsNull() {
 				return 0
+			}
+			if result.IsObject() {
+				return objectToNativeInt(result.GetObject())
 			}
 			return 0
 		}
@@ -115,6 +125,9 @@ func nativeCallFromNative(constIdx int, numArgs int, argsPtr *int64) int64 {
 			return 1
 		}
 		return 0
+	}
+	if result.IsObject() {
+		return objectToNativeInt(result.GetObject())
 	}
 	return 0
 }

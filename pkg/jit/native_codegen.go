@@ -129,6 +129,13 @@ func (cg *NativeCodeGenerator) Generate(fn *compiler.CompiledFunction, constants
 	return cg.code, nil
 }
 
+// callerSavedSaveSize is the byte size of the dedicated R2-R7 save area on the stack.
+// VM registers R2-R7 are in caller-saved x86 registers (rcx, rdx, r8, r9, r10, r11)
+// that get clobbered by Windows x64 ABI callbacks. They need a dedicated save area
+// separate from the args spill area because compileCollectionOp/compileObjectOp may
+// spill arbitrary argRegs into the args area, overwriting any R2-R7 values stored there.
+const callerSavedSaveSize = 48 // 6 registers * 8 bytes
+
 // emitPrologue generates function entry code.
 //
 // When syscallABI is false (bridge ABI, legacy):
@@ -150,9 +157,10 @@ func (cg *NativeCodeGenerator) Generate(fn *compiler.CompiledFunction, constants
 //	[rbp-48+numSpilled*8]       = local[0]
 //	[rbp-48+numSpilled*8+numLocals*8] = end of locals
 //	[rbp-48+numSpilled*8+numLocals*8+8] = builtin args spill area (up to 8*8=64 bytes)
+//	[rbp-48+numSpilled*8+numLocals*8+72] = R2-R7 save area (48 bytes)
 //
 // numSpilled = max(0, numRegs-12) for VM registers R12+
-// Total stack = 48 (header+R0+reserved) + numSpilled*8 + numLocals*8 + 8 (buffer) + 64 (builtin args)
+// Total stack = 48 (header+R0+reserved) + numSpilled*8 + numLocals*8 + 8 (buffer) + 64 (builtin args) + 48 (R2-R7 save)
 func (cg *NativeCodeGenerator) emitPrologue(numLocals int, numRegs int) {
 	// push rbp
 	cg.emitByte(0x55)
@@ -165,8 +173,8 @@ func (cg *NativeCodeGenerator) emitPrologue(numLocals int, numRegs int) {
 		numSpilled = numRegs - 12
 	}
 
-	// Allocate stack: 48 bytes (rbp+R0+reserved) + spilled regs + locals + builtin args spill (72 bytes)
-	stackSize := 48 + numSpilled*8 + numLocals*8 + 72
+	// Allocate stack: 48 bytes (rbp+R0+reserved) + spilled regs + locals + args spill (72 bytes) + R2-R7 save (48 bytes)
+	stackSize := 48 + numSpilled*8 + numLocals*8 + 72 + callerSavedSaveSize
 	// Round up to 16 bytes for alignment
 	if stackSize%16 != 0 {
 		stackSize += 16 - (stackSize % 16)
@@ -197,7 +205,7 @@ func (cg *NativeCodeGenerator) emitEpilogue() {
 	if cg.numRegs > 12 {
 		numSpilled = cg.numRegs - 12
 	}
-	stackSize := 48 + numSpilled*8 + cg.numLocals*8 + 72
+	stackSize := 48 + numSpilled*8 + cg.numLocals*8 + 72 + callerSavedSaveSize
 	if stackSize%16 != 0 {
 		stackSize += 16 - (stackSize % 16)
 	}
@@ -618,6 +626,87 @@ func (cg *NativeCodeGenerator) compileInstruction(op compiler.Opcode, code []byt
 	return nil
 }
 
+// callerSavedSaveOffset returns the rbp-relative byte offset where the R2-R7
+// dedicated save area begins. This area is located immediately after the args
+// spill area, which ends at [rbp-baseOffset-64] (8 args * 8 bytes = 64).
+// So the save area starts at [rbp-(baseOffset+64)].
+// baseOffset = localsBaseOffset() + numLocals*8 + 8
+func (cg *NativeCodeGenerator) callerSavedSaveOffset(baseOffset int32) int32 {
+	return baseOffset + 64 // skip 8 args slots (64 bytes)
+}
+
+// emitSpillCallerSavedRegs saves VM registers R2-R7 to the dedicated save area
+// before a callback invocation. R0 is at [rbp-8] (not clobbered by callbacks),
+// R1 is rbx (callee-saved by Windows x64 ABI), but R2-R7 are in caller-saved
+// x86 registers (rcx, rdx, r8, r9, r10, r11) that get clobbered by callbacks.
+func (cg *NativeCodeGenerator) emitSpillCallerSavedRegs(baseOffset int32) {
+	saveOffset := cg.callerSavedSaveOffset(baseOffset)
+	maxSave := 7
+	if cg.numRegs-1 < maxSave {
+		maxSave = cg.numRegs - 1
+	}
+	if maxSave >= 2 {
+		cg.emitBytes([]byte{0x48, 0x89, 0x8D}) // mov [rbp-saveOffset], rcx
+		cg.emitUint32(uint32(-saveOffset))
+	}
+	if maxSave >= 3 {
+		cg.emitBytes([]byte{0x48, 0x89, 0x95}) // mov [rbp-saveOffset-8], rdx
+		cg.emitUint32(uint32(-(saveOffset + 8)))
+	}
+	if maxSave >= 4 {
+		cg.emitBytes([]byte{0x4C, 0x89, 0x85}) // mov [rbp-saveOffset-16], r8
+		cg.emitUint32(uint32(-(saveOffset + 16)))
+	}
+	if maxSave >= 5 {
+		cg.emitBytes([]byte{0x4C, 0x89, 0x8D}) // mov [rbp-saveOffset-24], r9
+		cg.emitUint32(uint32(-(saveOffset + 24)))
+	}
+	if maxSave >= 6 {
+		cg.emitBytes([]byte{0x4C, 0x89, 0x95}) // mov [rbp-saveOffset-32], r10
+		cg.emitUint32(uint32(-(saveOffset + 32)))
+	}
+	if maxSave >= 7 {
+		cg.emitBytes([]byte{0x4C, 0x89, 0x9D}) // mov [rbp-saveOffset-40], r11
+		cg.emitUint32(uint32(-(saveOffset + 40)))
+	}
+}
+
+// emitRestoreCallerSavedRegs restores VM registers R2-R7 from the dedicated save area
+// after a callback invocation. R0 is at [rbp-8] (not clobbered), R1 is rbx
+// (callee-saved), but R2-R7 are in caller-saved x86 registers that get
+// clobbered by Windows x64 ABI callbacks. They were saved by emitSpillCallerSavedRegs.
+func (cg *NativeCodeGenerator) emitRestoreCallerSavedRegs(baseOffset int32) {
+	saveOffset := cg.callerSavedSaveOffset(baseOffset)
+	maxRestore := 7
+	if cg.numRegs-1 < maxRestore {
+		maxRestore = cg.numRegs - 1
+	}
+	if maxRestore >= 2 {
+		cg.emitBytes([]byte{0x48, 0x8B, 0x8D}) // mov rcx, [rbp-saveOffset]
+		cg.emitUint32(uint32(-saveOffset))
+	}
+	if maxRestore >= 3 {
+		cg.emitBytes([]byte{0x48, 0x8B, 0x95}) // mov rdx, [rbp-saveOffset-8]
+		cg.emitUint32(uint32(-(saveOffset + 8)))
+	}
+	if maxRestore >= 4 {
+		cg.emitBytes([]byte{0x4C, 0x8B, 0x85}) // mov r8, [rbp-saveOffset-16]
+		cg.emitUint32(uint32(-(saveOffset + 16)))
+	}
+	if maxRestore >= 5 {
+		cg.emitBytes([]byte{0x4C, 0x8B, 0x8D}) // mov r9, [rbp-saveOffset-24]
+		cg.emitUint32(uint32(-(saveOffset + 24)))
+	}
+	if maxRestore >= 6 {
+		cg.emitBytes([]byte{0x4C, 0x8B, 0x95}) // mov r10, [rbp-saveOffset-32]
+		cg.emitUint32(uint32(-(saveOffset + 32)))
+	}
+	if maxRestore >= 7 {
+		cg.emitBytes([]byte{0x4C, 0x8B, 0x9D}) // mov r11, [rbp-saveOffset-40]
+		cg.emitUint32(uint32(-(saveOffset + 40)))
+	}
+}
+
 // ============================================================================
 // Register operations
 // ============================================================================
@@ -877,6 +966,10 @@ func (cg *NativeCodeGenerator) compileTailCall(funcReg, numArgs int) {
 	// Spill args to stack below locals
 	baseOffset := int32(cg.localsBaseOffset() + cg.numLocals*8 + 8)
 
+	// Save caller-saved VM registers (R2-R7) to dedicated save area
+	// before they are clobbered by the callback or overwritten by arg spills.
+	cg.emitSpillCallerSavedRegs(baseOffset)
+
 	// Spill R0 ([rbp-8]) to args array
 	cg.emitBytes([]byte{0x48, 0x8B, 0x85}) // mov rax, [rbp-8] (R0)
 	cg.emitUint32(r0StackDisp)
@@ -936,8 +1029,11 @@ func (cg *NativeCodeGenerator) compileTailCall(funcReg, numArgs int) {
 	// Restore shadow space
 	cg.emitBytes([]byte{0x48, 0x83, 0xC4, 0x28}) // add rsp, 40
 
-	// Result is in rax, store to R255 then emit epilogue+return
+	// Result is in rax, store to R255
 	cg.storeRaxToReg(255)
+
+	// Restore caller-saved VM registers (R2-R7) clobbered by the callback
+	cg.emitRestoreCallerSavedRegs(baseOffset)
 
 	// Restore callee-saved registers
 	cg.emitBytes([]byte{0x41, 0x5F}) // pop r15
@@ -977,6 +1073,10 @@ func (cg *NativeCodeGenerator) compileCall(funcReg, numArgs int) {
 
 	// Spill argument registers (R0-R7) to the stack area below locals.
 	baseOffset := int32(cg.localsBaseOffset() + cg.numLocals*8 + 8)
+
+	// Save caller-saved VM registers (R2-R7) to dedicated save area
+	// before they are clobbered by the callback or overwritten by arg spills.
+	cg.emitSpillCallerSavedRegs(baseOffset)
 
 	// Spill R0 ([rbp-8]) to args array
 	cg.emitBytes([]byte{0x48, 0x8B, 0x85}) // mov rax, [rbp-8] (R0)
@@ -1042,6 +1142,9 @@ func (cg *NativeCodeGenerator) compileCall(funcReg, numArgs int) {
 	// Result is in rax, store to R255
 	cg.storeRaxToReg(255)
 
+	// Restore caller-saved VM registers (R2-R7) clobbered by the callback
+	cg.emitRestoreCallerSavedRegs(baseOffset)
+
 	// Restore callee-saved registers
 	cg.emitBytes([]byte{0x41, 0x5F}) // pop r15
 	cg.emitBytes([]byte{0x41, 0x5E}) // pop r14
@@ -1075,6 +1178,10 @@ func (cg *NativeCodeGenerator) compileBuiltin(builtinIdx, numArgs int) {
 
 	// Spill argument registers (R0-R7) to the stack area below locals.
 	baseOffset := int32(cg.localsBaseOffset() + cg.numLocals*8 + 8)
+
+	// Save caller-saved VM registers (R2-R7) to dedicated save area
+	// before they are clobbered by the callback or overwritten by arg spills.
+	cg.emitSpillCallerSavedRegs(baseOffset)
 
 	// Spill R0 ([rbp-8]) to args array
 	cg.emitBytes([]byte{0x48, 0x8B, 0x85}) // mov rax, [rbp-8] (R0)
@@ -1140,6 +1247,9 @@ func (cg *NativeCodeGenerator) compileBuiltin(builtinIdx, numArgs int) {
 	// Result is in rax, store to R255
 	cg.storeRaxToReg(255)
 
+	// Restore caller-saved VM registers R2-R7 from spill area
+	cg.emitRestoreCallerSavedRegs(baseOffset)
+
 	// Restore callee-saved registers
 	cg.emitBytes([]byte{0x41, 0x5F}) // pop r15
 	cg.emitBytes([]byte{0x41, 0x5E}) // pop r14
@@ -1179,7 +1289,7 @@ func (cg *NativeCodeGenerator) compileCollectionOp(opKind CollectionOpKind, dstR
 	if callbackPtr == 0 {
 		// No callback — emit return-0 stub
 		cg.emitBytes([]byte{0x48, 0x31, 0xC0}) // xor rax, rax
-		if dstReg > 0 && dstReg != 255 {
+		if dstReg != 255 {
 			cg.storeRaxToReg(dstReg)
 		}
 		return
@@ -1194,6 +1304,10 @@ func (cg *NativeCodeGenerator) compileCollectionOp(opKind CollectionOpKind, dstR
 
 	// Spill args to stack below locals
 	baseOffset := int32(cg.localsBaseOffset() + cg.numLocals*8 + 8)
+
+	// Save caller-saved VM registers (R2-R7) to dedicated save area
+	// before they are clobbered by the callback or overwritten by arg spills.
+	cg.emitSpillCallerSavedRegs(baseOffset)
 
 	for i, reg := range argRegs {
 		if i >= 8 {
@@ -1228,8 +1342,13 @@ func (cg *NativeCodeGenerator) compileCollectionOp(opKind CollectionOpKind, dstR
 	// Restore shadow space
 	cg.emitBytes([]byte{0x48, 0x83, 0xC4, 0x28}) // add rsp, 40
 
-	// Store result to destination register
-	if dstReg > 0 && dstReg != 255 {
+	// Restore caller-saved VM registers R2-R7 from spill area
+	// Must happen BEFORE storeRaxToReg so that dstReg in R2-R7
+	// is not clobbered by the restore after being written.
+	cg.emitRestoreCallerSavedRegs(baseOffset)
+
+	// Store result to destination register (rax is preserved by emitRestoreCallerSavedRegs)
+	if dstReg != 255 {
 		cg.storeRaxToReg(dstReg)
 	}
 
@@ -1272,7 +1391,7 @@ func (cg *NativeCodeGenerator) compileCollectionOpDirect(opKind CollectionOpKind
 	callbackPtr := GetCollectionCallbackPtr()
 	if callbackPtr == 0 {
 		cg.emitBytes([]byte{0x48, 0x31, 0xC0}) // xor rax, rax
-		if dstReg > 0 && dstReg != 255 {
+		if dstReg != 255 {
 			cg.storeRaxToReg(dstReg)
 		}
 		return
@@ -1286,6 +1405,10 @@ func (cg *NativeCodeGenerator) compileCollectionOpDirect(opKind CollectionOpKind
 	cg.emitBytes([]byte{0x41, 0x57}) // push r15
 
 	baseOffset := int32(cg.localsBaseOffset() + cg.numLocals*8 + 8)
+
+	// Save caller-saved VM registers (R2-R7) to dedicated save area
+	// before they are clobbered by the callback or overwritten by arg spills.
+	cg.emitSpillCallerSavedRegs(baseOffset)
 
 	for i, reg := range argRegs {
 		if i >= 8 {
@@ -1316,7 +1439,13 @@ func (cg *NativeCodeGenerator) compileCollectionOpDirect(opKind CollectionOpKind
 	// Restore shadow space
 	cg.emitBytes([]byte{0x48, 0x83, 0xC4, 0x28}) // add rsp, 40
 
-	if dstReg > 0 && dstReg != 255 {
+	// Restore caller-saved VM registers R2-R7 from spill area
+	// Must happen BEFORE storeRaxToReg so that dstReg in R2-R7
+	// is not clobbered by the restore after being written.
+	cg.emitRestoreCallerSavedRegs(baseOffset)
+
+	// Store result to destination register (rax is preserved by emitRestoreCallerSavedRegs)
+	if dstReg != 255 {
 		cg.storeRaxToReg(dstReg)
 	}
 
@@ -1333,7 +1462,7 @@ func (cg *NativeCodeGenerator) compileObjectOp(opKind ObjectOpKind, dstReg int, 
 	callbackPtr := GetObjectCallbackPtr()
 	if callbackPtr == 0 {
 		cg.emitBytes([]byte{0x48, 0x31, 0xC0}) // xor rax, rax
-		if dstReg > 0 && dstReg != 255 {
+		if dstReg != 255 {
 			cg.storeRaxToReg(dstReg)
 		}
 		return
@@ -1347,6 +1476,10 @@ func (cg *NativeCodeGenerator) compileObjectOp(opKind ObjectOpKind, dstReg int, 
 	cg.emitBytes([]byte{0x41, 0x57}) // push r15
 
 	baseOffset := int32(cg.localsBaseOffset() + cg.numLocals*8 + 8)
+
+	// Save caller-saved VM registers (R2-R7) to dedicated save area
+	// before they are clobbered by the callback or overwritten by arg spills.
+	cg.emitSpillCallerSavedRegs(baseOffset)
 
 	for i, reg := range argRegs {
 		if i >= 8 {
@@ -1385,7 +1518,13 @@ func (cg *NativeCodeGenerator) compileObjectOp(opKind ObjectOpKind, dstReg int, 
 	// Restore shadow space
 	cg.emitBytes([]byte{0x48, 0x83, 0xC4, 0x28}) // add rsp, 40
 
-	if dstReg > 0 && dstReg != 255 {
+	// Restore caller-saved VM registers R2-R7 from spill area
+	// Must happen BEFORE storeRaxToReg so that dstReg in R2-R7
+	// is not clobbered by the restore after being written.
+	cg.emitRestoreCallerSavedRegs(baseOffset)
+
+	// Store result to destination register (rax is preserved by emitRestoreCallerSavedRegs)
+	if dstReg != 255 {
 		cg.storeRaxToReg(dstReg)
 	}
 
@@ -1593,8 +1732,17 @@ func (cg *NativeCodeGenerator) compileDiv(dst, left, right int) {
 	// Division in x86-64: idiv uses rdx:rax / src
 	// Result: quotient in rax, remainder in rdx
 	// SAFETY: Check for division by zero to avoid hardware exception
+	//
+	// IMPORTANT: We must load the dividend BEFORE loading the divisor into rcx,
+	// because loading the divisor to rcx clobbers rcx (VM reg R2). If left==2,
+	// the dividend in rcx would be lost. We use rsi as a temporary save register
+	// since it's not used by the JIT register allocation.
 
-	// First, load divisor to rcx for zero check
+	// Load dividend to rax first, then save to rsi
+	cg.loadRegToRax(left)
+	cg.emitBytes([]byte{0x48, 0x89, 0xC6}) // mov rsi, rax (save dividend)
+
+	// Load divisor to rcx for zero check and idiv
 	if right < 8 {
 		if right == 2 {
 			// Already in rcx, just test it
@@ -1603,10 +1751,6 @@ func (cg *NativeCodeGenerator) compileDiv(dst, left, right int) {
 			cg.emitBytes([]byte{0x48, 0x89, 0xC1}) // mov rcx, rax
 		}
 	} else if right < 12 {
-		// VM regs 8-11 are in R12-R15
-		// MOV r/m, r: dest in r/m field, source in reg field
-		// For mov rcx, r12: RCX is r/m=1, R12 is reg=4 with R
-		// REX = 0x4C (W=1, R=1, B=0)
 		switch right {
 		case 8:
 			cg.emitBytes([]byte{0x4C, 0x89, 0xE1}) // mov rcx, r12
@@ -1618,8 +1762,6 @@ func (cg *NativeCodeGenerator) compileDiv(dst, left, right int) {
 			cg.emitBytes([]byte{0x4C, 0x89, 0xF9}) // mov rcx, r15
 		}
 	} else {
-		// Load from stack to rcx
-		// Note: displacement is signed, so we emit -offset as uint32 (two's complement)
 		offset := 48 + (right-12)*8
 		cg.emitBytes([]byte{0x48, 0x8B, 0x8D}) // mov rcx, [rbp + disp32]
 		cg.emitUint32(uint32(-offset))
@@ -1632,8 +1774,8 @@ func (cg *NativeCodeGenerator) compileDiv(dst, left, right int) {
 	jzPos := len(cg.code)
 	cg.emitBytes([]byte{0x74, 0x00}) // jz rel8
 
-	// Load dividend
-	cg.loadRegToRax(left)
+	// Restore dividend from rsi
+	cg.emitBytes([]byte{0x48, 0x89, 0xF0}) // mov rax, rsi (restore dividend)
 	cg.emitBytes([]byte{0x48, 0x99}) // cqo: sign-extend rax to rdx:rax
 
 	// idiv rcx (ModRM=F9: mod=11, reg=7 for idiv, r/m=1 for RCX)
@@ -1646,7 +1788,6 @@ func (cg *NativeCodeGenerator) compileDiv(dst, left, right int) {
 
 	// Return zero case
 	returnZeroPos := len(cg.code)
-	// Use safe jump offset with validation
 	divOffset1 := returnZeroPos - (jzPos + 2)
 	if !CanUseShortJump(divOffset1) {
 		fmt.Printf("[JIT WARNING] Jump offset %d exceeds rel8 range in div/mod zero check\n", divOffset1)
@@ -1669,8 +1810,17 @@ func (cg *NativeCodeGenerator) compileDiv(dst, left, right int) {
 func (cg *NativeCodeGenerator) compileMod(dst, left, right int) {
 	// Mod is the remainder after division
 	// SAFETY: Check for division by zero to avoid hardware exception
+	//
+	// IMPORTANT: We must load the dividend BEFORE loading the divisor into rcx,
+	// because loading the divisor to rcx clobbers rcx (VM reg R2). If left==2,
+	// the dividend in rcx would be lost. We use rsi as a temporary save register
+	// since it's not used by the JIT register allocation.
 
-	// First, load divisor to rcx for zero check
+	// Load dividend to rax first, then save to rsi
+	cg.loadRegToRax(left)
+	cg.emitBytes([]byte{0x48, 0x89, 0xC6}) // mov rsi, rax (save dividend)
+
+	// Load divisor to rcx for zero check and idiv
 	if right < 8 {
 		if right == 3 {
 			// Already in rdx, move to rcx
@@ -1680,10 +1830,6 @@ func (cg *NativeCodeGenerator) compileMod(dst, left, right int) {
 			cg.emitBytes([]byte{0x48, 0x89, 0xC1}) // mov rcx, rax
 		}
 	} else if right < 12 {
-		// VM regs 8-11 are in R12-R15
-		// MOV r/m, r: dest in r/m field, source in reg field
-		// For mov rcx, r12: RCX is r/m=1, R12 is reg=4 with R
-		// REX = 0x4C (W=1, R=1, B=0)
 		switch right {
 		case 8:
 			cg.emitBytes([]byte{0x4C, 0x89, 0xE1}) // mov rcx, r12
@@ -1695,8 +1841,6 @@ func (cg *NativeCodeGenerator) compileMod(dst, left, right int) {
 			cg.emitBytes([]byte{0x4C, 0x89, 0xF9}) // mov rcx, r15
 		}
 	} else {
-		// Load from stack to rcx
-		// Note: displacement is signed, so we emit -offset as uint32 (two's complement)
 		offset := 48 + (right-12)*8
 		cg.emitBytes([]byte{0x48, 0x8B, 0x8D}) // mov rcx, [rbp + disp32]
 		cg.emitUint32(uint32(-offset))
@@ -1709,8 +1853,8 @@ func (cg *NativeCodeGenerator) compileMod(dst, left, right int) {
 	jzPos := len(cg.code)
 	cg.emitBytes([]byte{0x74, 0x00}) // jz rel8
 
-	// Load dividend
-	cg.loadRegToRax(left)
+	// Restore dividend from rsi
+	cg.emitBytes([]byte{0x48, 0x89, 0xF0}) // mov rax, rsi (restore dividend)
 	cg.emitBytes([]byte{0x48, 0x99}) // cqo
 
 	// idiv rcx (ModRM=F9: mod=11, reg=7 for idiv, r/m=1 for RCX)
@@ -1726,7 +1870,6 @@ func (cg *NativeCodeGenerator) compileMod(dst, left, right int) {
 
 	// Return zero case
 	returnZeroPos := len(cg.code)
-	// Use safe jump offset with validation
 	divOffset1 := returnZeroPos - (jzPos + 2)
 	if !CanUseShortJump(divOffset1) {
 		fmt.Printf("[JIT WARNING] Jump offset %d exceeds rel8 range in div/mod zero check\n", divOffset1)
@@ -1749,8 +1892,15 @@ func (cg *NativeCodeGenerator) compileMod(dst, left, right int) {
 func (cg *NativeCodeGenerator) compileAddConst(dst, src, constIdx int) {
 	cg.loadRegToRax(src)
 	if constIdx < len(cg.constants) {
-		cg.emitBytes([]byte{0x48, 0x05}) // add rax, imm32
-		cg.emitUint32(uint32(int32(cg.constants[constIdx])))
+		val := cg.constants[constIdx]
+		if val == int64(int32(val)) {
+			cg.emitBytes([]byte{0x48, 0x05}) // add rax, imm32
+			cg.emitUint32(uint32(int32(val)))
+		} else {
+			cg.emitBytes([]byte{0x48, 0xBE}) // mov rsi, imm64
+			cg.emitUint64(uint64(val))
+			cg.emitBytes([]byte{0x48, 0x01, 0xF0}) // add rax, rsi
+		}
 	}
 	cg.storeRaxToReg(dst)
 }
@@ -1758,8 +1908,15 @@ func (cg *NativeCodeGenerator) compileAddConst(dst, src, constIdx int) {
 func (cg *NativeCodeGenerator) compileSubConst(dst, src, constIdx int) {
 	cg.loadRegToRax(src)
 	if constIdx < len(cg.constants) {
-		cg.emitBytes([]byte{0x48, 0x2D}) // sub rax, imm32
-		cg.emitUint32(uint32(int32(cg.constants[constIdx])))
+		val := cg.constants[constIdx]
+		if val == int64(int32(val)) {
+			cg.emitBytes([]byte{0x48, 0x2D}) // sub rax, imm32
+			cg.emitUint32(uint32(int32(val)))
+		} else {
+			cg.emitBytes([]byte{0x48, 0xBE}) // mov rsi, imm64
+			cg.emitUint64(uint64(val))
+			cg.emitBytes([]byte{0x48, 0x29, 0xF0}) // sub rax, rsi
+		}
 	}
 	cg.storeRaxToReg(dst)
 }
@@ -1767,8 +1924,15 @@ func (cg *NativeCodeGenerator) compileSubConst(dst, src, constIdx int) {
 func (cg *NativeCodeGenerator) compileMulConst(dst, src, constIdx int) {
 	cg.loadRegToRax(src)
 	if constIdx < len(cg.constants) {
-		cg.emitBytes([]byte{0x48, 0x69, 0xC0}) // imul rax, rax, imm32
-		cg.emitUint32(uint32(int32(cg.constants[constIdx])))
+		val := cg.constants[constIdx]
+		if val == int64(int32(val)) {
+			cg.emitBytes([]byte{0x48, 0x69, 0xC0}) // imul rax, rax, imm32
+			cg.emitUint32(uint32(int32(val)))
+		} else {
+			cg.emitBytes([]byte{0x48, 0xBE}) // mov rsi, imm64
+			cg.emitUint64(uint64(val))
+			cg.emitBytes([]byte{0x48, 0x0F, 0xAF, 0xC6}) // imul rax, rsi
+		}
 	}
 	cg.storeRaxToReg(dst)
 }
@@ -1779,8 +1943,7 @@ func (cg *NativeCodeGenerator) compileAddLocalCheck(accReg, counterReg, limitIdx
 
 	cg.loadRegToRax(counterReg)
 	if limitIdx < len(cg.constants) {
-		cg.emitBytes([]byte{0x48, 0x3D}) // cmp rax, imm32
-		cg.emitUint32(uint32(int32(cg.constants[limitIdx])))
+		cg.emitCompareRaxImm(cg.constants[limitIdx])
 	} else {
 		cg.emitBytes([]byte{0x48, 0x85, 0xC0}) // test rax, rax
 	}
@@ -1798,8 +1961,7 @@ func (cg *NativeCodeGenerator) compileLoopIncCheck(counterReg, limitIdx, target 
 
 	cg.loadRegToRax(counterReg)
 	if limitIdx < len(cg.constants) {
-		cg.emitBytes([]byte{0x48, 0x3D}) // cmp rax, imm32
-		cg.emitUint32(uint32(int32(cg.constants[limitIdx])))
+		cg.emitCompareRaxImm(cg.constants[limitIdx])
 	} else {
 		cg.emitBytes([]byte{0x48, 0x85, 0xC0}) // test rax, rax
 	}
@@ -1818,8 +1980,7 @@ func (cg *NativeCodeGenerator) compileLoopBodyAdd(accReg, counterReg, limitIdx, 
 
 	cg.loadRegToRax(counterReg)
 	if limitIdx < len(cg.constants) {
-		cg.emitBytes([]byte{0x48, 0x3D}) // cmp rax, imm32
-		cg.emitUint32(uint32(int32(cg.constants[limitIdx])))
+		cg.emitCompareRaxImm(cg.constants[limitIdx])
 	} else {
 		cg.emitBytes([]byte{0x48, 0x85, 0xC0}) // test rax, rax
 	}
@@ -2128,8 +2289,7 @@ func (cg *NativeCodeGenerator) compileLoopCountAdd(accReg, counterReg, startIdx,
 
 	// Compare counter with limit
 	cg.loadRegToRax(counterReg)
-	cg.emitBytes([]byte{0x48, 0x3D}) // cmp rax, imm32
-	cg.emitUint32(uint32(limit))
+	cg.emitCompareRaxImm(limit)
 
 	// jge end
 	endLabel := fmt.Sprintf("loop_end_%d", len(cg.code))
@@ -2172,6 +2332,20 @@ func (cg *NativeCodeGenerator) emitUint64(v uint64) {
 	cg.code = append(cg.code,
 		byte(v), byte(v>>8), byte(v>>16), byte(v>>24),
 		byte(v>>32), byte(v>>40), byte(v>>48), byte(v>>56))
+}
+
+// emitCompareRaxImm compares rax with an immediate value.
+// Uses the short imm32 form when the value fits in a sign-extended 32-bit integer,
+// or loads the value to rsi first for large constants.
+func (cg *NativeCodeGenerator) emitCompareRaxImm(val int64) {
+	if val == int64(int32(val)) {
+		cg.emitBytes([]byte{0x48, 0x3D}) // cmp rax, imm32
+		cg.emitUint32(uint32(int32(val)))
+	} else {
+		cg.emitBytes([]byte{0x48, 0xBE}) // mov rsi, imm64
+		cg.emitUint64(uint64(val))
+		cg.emitBytes([]byte{0x48, 0x39, 0xF0}) // cmp rax, rsi
+	}
 }
 
 func (cg *NativeCodeGenerator) resolveFixups() error {

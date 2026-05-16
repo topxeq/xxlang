@@ -58,11 +58,17 @@ func builtinCallbackFromNative(builtinIdx int, numArgs int, argsPtr *int64) int6
 	}
 
 	// Convert int64 args to objects.Object args
+	// Native code only spills up to 8 registers (R0-R7) to the stack,
+	// so cap the slice length to avoid out-of-bounds reads.
+	maxArgs := numArgs
+	if maxArgs > 8 {
+		maxArgs = 8
+	}
 	args := make([]objects.Object, numArgs)
-	if argsPtr != nil && numArgs > 0 {
-		argsSlice := unsafe.Slice(argsPtr, numArgs)
-		for i := 0; i < numArgs; i++ {
-			args[i] = &objects.Int{Value: argsSlice[i]}
+	if argsPtr != nil && maxArgs > 0 {
+		argsSlice := unsafe.Slice(argsPtr, maxArgs)
+		for i := 0; i < maxArgs; i++ {
+			args[i] = nativeIntToObject(argsSlice[i])
 		}
 	}
 
@@ -86,11 +92,17 @@ func collectionCallbackFromNative(opKind int, numArgs int, argsPtr *int64) int64
 	}
 
 	// Convert int64 args to objects.Object args
+	// Native code only spills up to 8 registers (R0-R7) to the stack,
+	// so cap the slice length to avoid out-of-bounds reads.
+	maxArgs := numArgs
+	if maxArgs > 8 {
+		maxArgs = 8
+	}
 	args := make([]objects.Object, numArgs)
-	if argsPtr != nil && numArgs > 0 {
-		argsSlice := unsafe.Slice(argsPtr, numArgs)
-		for i := 0; i < numArgs; i++ {
-			args[i] = &objects.Int{Value: argsSlice[i]}
+	if argsPtr != nil && maxArgs > 0 {
+		argsSlice := unsafe.Slice(argsPtr, maxArgs)
+		for i := 0; i < maxArgs; i++ {
+			args[i] = nativeIntToObject(argsSlice[i])
 		}
 	}
 
@@ -206,11 +218,17 @@ func objectCallbackFromNative(opKind int, numArgs int, argsPtr *int64, nameIdx i
 	name := nameStr.Value
 
 	// Convert int64 args to objects.Object args
+	// Native code only spills up to 8 registers (R0-R7) to the stack,
+	// so cap the slice length to avoid out-of-bounds reads.
+	maxArgs := numArgs
+	if maxArgs > 8 {
+		maxArgs = 8
+	}
 	args := make([]objects.Object, numArgs)
-	if argsPtr != nil && numArgs > 0 {
-		argsSlice := unsafe.Slice(argsPtr, numArgs)
-		for i := 0; i < numArgs; i++ {
-			args[i] = &objects.Int{Value: argsSlice[i]}
+	if argsPtr != nil && maxArgs > 0 {
+		argsSlice := unsafe.Slice(argsPtr, maxArgs)
+		for i := 0; i < maxArgs; i++ {
+			args[i] = nativeIntToObject(argsSlice[i])
 		}
 	}
 
@@ -250,29 +268,6 @@ func objectCallbackFromNative(opKind int, numArgs int, argsPtr *int64, nameIdx i
 	}
 
 	return objectToNativeInt(result)
-}
-
-// objectToNativeInt converts an objects.Object to an int64 for native code.
-func objectToNativeInt(obj objects.Object) int64 {
-	if obj == nil {
-		return 0
-	}
-	switch v := obj.(type) {
-	case *objects.Int:
-		return v.Value
-	case *objects.Bool:
-		if v.Value {
-			return 1
-		}
-		return 0
-	case *objects.Null:
-		return 0
-	default:
-		// For non-primitive types (Array, Map, etc.), we can't represent
-		// them as int64 natively. Return 0 as a placeholder.
-		// These objects should be handled via the hybrid interpreter path.
-		return 0
-	}
 }
 
 // InitBuiltinCallback initializes the builtin callback and associates it with the JITVM.
