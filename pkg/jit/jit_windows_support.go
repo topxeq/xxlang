@@ -154,7 +154,7 @@ func CanExecuteNativelyWithCalls(fn *compiler.CompiledFunction) bool {
 			compiler.OpRegIndex, compiler.OpRegSetIndex,
 			compiler.OpRegMap, compiler.OpRegMapEmpty, compiler.OpRegMapSet,
 			compiler.OpRegGetField, compiler.OpRegSetField, compiler.OpRegGetMethod,
-			compiler.OpRegPop:
+			compiler.OpRegPush, compiler.OpRegPop:
 			// Supported with callback dispatch - continue
 
 		default:
@@ -229,9 +229,13 @@ func (ne *NativeExecutor) ExecuteFunctionWithCalls(fn *compiler.CompiledFunction
 	}
 
 	hasCall := containsCall(fn.Instructions)
+	hasCallbacks := hasCall || hasBuiltinOps(fn.Instructions) || hasCollectionOps(fn.Instructions)
 
 	cg := NewNativeCodeGenerator()
-	if hasCall {
+	// Always use syscall ABI for functions with callback dispatch.
+	// syscall.NewCallback callbacks require the goroutine to be in _Gsyscall state,
+	// which only happens during syscall.SyscallN execution.
+	if hasCallbacks {
 		cg.syscallABI = true
 	}
 
@@ -248,7 +252,7 @@ func (ne *NativeExecutor) ExecuteFunctionWithCalls(fn *compiler.CompiledFunction
 	copy(mem, code)
 	entry := uintptr(unsafe.Pointer(&mem[0]))
 
-	if hasCall {
+	if hasCallbacks {
 		var globalsPtr uintptr
 		if len(globals) > 0 {
 			globalsPtr = uintptr(unsafe.Pointer(&globals[0]))
@@ -438,19 +442,21 @@ func (j *JITVM) Run() error {
 	}
 
 	canNative := CanExecuteNatively(mainFn)
+	canNativeWithCalls := CanExecuteNativelyWithCalls(mainFn)
 	hasCall := containsCall(j.bytecode.Instructions)
 
 	if j.config.Debug {
-		fmt.Printf("[JIT] CanExecuteNatively: %v, hasCall: %v, NumRegs: %d, NumLocals: %d, bytecode length: %d\n",
-			canNative, hasCall, mainFn.NumRegs, mainFn.NumLocals, len(j.bytecode.Instructions))
+		fmt.Printf("[JIT] CanExecuteNatively: %v, CanExecuteNativelyWithCalls: %v, hasCall: %v, NumRegs: %d, NumLocals: %d, bytecode length: %d\n",
+			canNative, canNativeWithCalls, hasCall, mainFn.NumRegs, mainFn.NumLocals, len(j.bytecode.Instructions))
 	}
 
 	// Execution strategy:
 	// - Pure arithmetic main code (no OpRegCall): execute natively via bridge ABI (fastest)
+	// - Main code with builtins/collections but no OpRegCall: execute via syscall.SyscallN
+	//   so that syscall.NewCallback callbacks can properly re-enter Go.
 	// - Main code with OpRegCall: always use hybrid mode (interpreter + native call hook).
 	//   This is necessary because compileCall may not be able to resolve all function
 	//   references at code generation time (e.g., higher-order functions passed as parameters).
-	//   The hybrid mode correctly handles these cases by falling back to the interpreter.
 	if canNative && !hasCall {
 		j.updateCachedGlobals()
 
@@ -477,6 +483,34 @@ func (j *JITVM) Run() error {
 		}
 		if j.config.Debug {
 			fmt.Printf("[JIT] Native execution failed: %v, falling back to hybrid/interpreter\n", err)
+		}
+	}
+
+	// Try native execution with callback dispatch for builtins/collections.
+	// Uses syscall.SyscallN so that syscall.NewCallback callbacks can re-enter Go.
+	if canNativeWithCalls && !hasCall {
+		j.updateCachedGlobals()
+
+		vmGlobals := j.GetGlobals()
+		globals := make([]int64, len(vmGlobals))
+		for i, g := range vmGlobals {
+			globals[i] = valueToNativeInt(g)
+		}
+
+		result, err := j.nativeExec.ExecuteFunctionWithCalls(mainFn, j.GetConstants(), globals)
+		if err == nil {
+			j.nativeExecs++
+			if j.config.Debug {
+				fmt.Printf("[JIT] Native execution with callbacks succeeded, result=%d\n", result)
+			}
+			j.syncGlobalsToVM()
+			returnType := analyzeReturnTypeWithConstants(mainFn.Instructions, j.bytecode.Constants)
+			resultVal := nativeResultToValue(result, returnType)
+			j.RegVM.SetLastResult(resultVal)
+			return nil
+		}
+		if j.config.Debug {
+			fmt.Printf("[JIT] Native execution with callbacks failed: %v, falling back to hybrid\n", err)
 		}
 	}
 
@@ -559,21 +593,21 @@ func (j *JITVM) compileNativeFunctions() {
 				continue
 			}
 
-			// Second try: native execution with callback-based call dispatch.
-			// DISABLED: Compiling with syscallABI but executing via bridge ABI
-			// (native hook) causes "bad g in cgocallback" crashes.
-			// To enable this, we need either:
-			//   1. Compile two versions (bridge + syscall), or
-			//   2. Execute CanExecuteNativelyWithCalls functions only via Run()
-			//      and NOT register them in the native hook cache.
+			// Second try: native execution with callback-based dispatch.
+			// DISABLED for non-main functions: these functions use syscall ABI
+			// and can only be called via syscall.SyscallN, but the native hook
+			// uses bridge ABI. Enabling this causes "bad g in cgocallback" crashes
+			// when the native hook tries to call them.
+			// The main code path in Run() handles CanExecuteNativelyWithCalls
+			// separately via ExecuteFunctionWithCalls().
 			if false && CanExecuteNativelyWithCalls(fn) {
 				err := j.nativeRegistry.CompileFunctionWithCalls(fn, i, intConstants)
 				if err != nil && j.config.Debug {
 					fmt.Printf("[JIT] Failed to compile function-with-calls at const[%d]: %v\n", i, err)
 				}
-				if nativeFn := j.nativeRegistry.Get(i); nativeFn != nil {
-					j.nativeFuncCache[fn] = nativeFn
-				}
+				// Do NOT add to nativeFuncCache — these functions use syscall ABI
+				// and can only be called from Run() via ExecuteFunctionWithCalls,
+				// not from the interpreter's native hook (bridge ABI).
 				continue
 			}
 
@@ -1003,24 +1037,26 @@ func (r *NativeFunctionRegistry) CompileFunction(fn *compiler.CompiledFunction, 
 	return nil
 }
 
-// CompileFunctionWithCalls compiles a function that contains OpRegCall/OpRegBuiltin
-// for native execution using callback dispatch. The compiled code uses syscall ABI
-// so that syscall.NewCallback callbacks can re-enter Go for call/builtin dispatch.
+// CompileFunctionWithCalls compiles a function that contains OpRegBuiltin,
+// array/map/object operations for native execution using callback dispatch.
+// The compiled code uses syscall ABI (Windows x64 calling convention) so it
+// can be executed via syscall.SyscallN, which puts the goroutine in _Gsyscall
+// state. This is required for syscall.NewCallback callbacks to properly
+// re-enter Go for builtin/collection/object dispatch.
+// NOTE: Functions compiled this way must NOT be called from the native hook
+// (bridge ABI); they can only be executed via ExecuteFunctionWithCalls().
 func (r *NativeFunctionRegistry) CompileFunctionWithCalls(fn *compiler.CompiledFunction, idx int, constants []int64) error {
 	if !CanExecuteNativelyWithCalls(fn) {
 		return fmt.Errorf("function cannot be executed natively with calls")
 	}
 
-	// Ensure callbacks are initialized before compiling
+	// Ensure builtin callback is initialized before compiling
 	if GetBuiltinCallbackPtr() == 0 {
 		return fmt.Errorf("builtin callback not initialized")
 	}
-	if getWindowsCallbackPtr() == 0 {
-		return fmt.Errorf("function callback not initialized")
-	}
 
 	cg := NewNativeCodeGenerator()
-	cg.syscallABI = true
+	cg.syscallABI = true // Windows x64 ABI for syscall.SyscallN entry
 
 	code, err := cg.Generate(fn, constants)
 	if err != nil {

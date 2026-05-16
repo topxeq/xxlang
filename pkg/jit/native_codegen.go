@@ -41,6 +41,10 @@ type NativeCodeGenerator struct {
 	// that was last stored into it. Propagated through StoreGlobal/LoadGlobal.
 	globalConstMap map[int]int
 
+	// tempStackDepth tracks the current depth of the temp stack (for OpRegPush/OpRegPop).
+	// Each push increments, each pop decrements. Used to index into the fixed temp stack area.
+	tempStackDepth int
+
 	// syscallABI selects the calling convention for the JIT function entry.
 	// When true: Windows x64 ABI (rcx=globals, rdx=arg0, r8=arg1, r9=arg2),
 	//   invoked via syscall.Syscall6 so the goroutine enters _Gsyscall state.
@@ -74,6 +78,13 @@ func (cg *NativeCodeGenerator) spillAreaSize() int {
 // So the first local is at [rbp - (48 + spillAreaSize + 8)].
 func (cg *NativeCodeGenerator) localsBaseOffset() int {
 	return 48 + cg.spillAreaSize()
+}
+
+// tempStackBaseOffset returns the rbp-relative byte offset where the temp stack area begins.
+// The temp stack sits after the R2-R7 save area:
+//   locals + 8(buffer) + 64(builtin args) + 48(R2-R7 save) + 128(temp stack)
+func (cg *NativeCodeGenerator) tempStackBaseOffset() int {
+	return cg.localsBaseOffset() + cg.numLocals*8 + 8 + 64 + callerSavedSaveSize
 }
 
 // NewNativeCodeGenerator creates a new native code generator (bridge ABI)
@@ -136,6 +147,12 @@ func (cg *NativeCodeGenerator) Generate(fn *compiler.CompiledFunction, constants
 // spill arbitrary argRegs into the args area, overwriting any R2-R7 values stored there.
 const callerSavedSaveSize = 48 // 6 registers * 8 bytes
 
+// tempStackSize is the byte size of the temp stack area for OpRegPush/OpRegPop.
+// The temp stack holds up to 16 values (128 bytes), which is sufficient for
+// complex expressions like f(a, b+c, d*e). We cannot use x86 push/pop because
+// syscall.SyscallN expects the stack pointer to remain stable across the call.
+const tempStackSize = 128 // 16 slots * 8 bytes
+
 // emitPrologue generates function entry code.
 //
 // When syscallABI is false (bridge ABI, legacy):
@@ -158,9 +175,10 @@ const callerSavedSaveSize = 48 // 6 registers * 8 bytes
 //	[rbp-48+numSpilled*8+numLocals*8] = end of locals
 //	[rbp-48+numSpilled*8+numLocals*8+8] = builtin args spill area (up to 8*8=64 bytes)
 //	[rbp-48+numSpilled*8+numLocals*8+72] = R2-R7 save area (48 bytes)
+//	[rbp-48+numSpilled*8+numLocals*8+120] = temp stack area (128 bytes)
 //
 // numSpilled = max(0, numRegs-12) for VM registers R12+
-// Total stack = 48 (header+R0+reserved) + numSpilled*8 + numLocals*8 + 8 (buffer) + 64 (builtin args) + 48 (R2-R7 save)
+// Total stack = 48 + numSpilled*8 + numLocals*8 + 8 + 64 + 48 + 128
 func (cg *NativeCodeGenerator) emitPrologue(numLocals int, numRegs int) {
 	// push rbp
 	cg.emitByte(0x55)
@@ -173,8 +191,8 @@ func (cg *NativeCodeGenerator) emitPrologue(numLocals int, numRegs int) {
 		numSpilled = numRegs - 12
 	}
 
-	// Allocate stack: 48 bytes (rbp+R0+reserved) + spilled regs + locals + args spill (72 bytes) + R2-R7 save (48 bytes)
-	stackSize := 48 + numSpilled*8 + numLocals*8 + 72 + callerSavedSaveSize
+	// Allocate stack: 48 + spilled regs + locals + args spill (72) + R2-R7 save (48) + temp stack (128)
+	stackSize := 48 + numSpilled*8 + numLocals*8 + 72 + callerSavedSaveSize + tempStackSize
 	// Round up to 16 bytes for alignment
 	if stackSize%16 != 0 {
 		stackSize += 16 - (stackSize % 16)
@@ -205,7 +223,7 @@ func (cg *NativeCodeGenerator) emitEpilogue() {
 	if cg.numRegs > 12 {
 		numSpilled = cg.numRegs - 12
 	}
-	stackSize := 48 + numSpilled*8 + cg.numLocals*8 + 72 + callerSavedSaveSize
+	stackSize := 48 + numSpilled*8 + cg.numLocals*8 + 72 + callerSavedSaveSize + tempStackSize
 	if stackSize%16 != 0 {
 		stackSize += 16 - (stackSize % 16)
 	}
@@ -402,10 +420,27 @@ func (cg *NativeCodeGenerator) compileInstruction(op compiler.Opcode, code []byt
 		cg.compileLoadImm(dst, 0)
 		*ip += 2
 
+	case compiler.OpRegPush:
+		src := int(code[*ip+1])
+		// Store register value into the temp stack area at the current depth.
+		// tempStackBaseOffset points to the start of the temp stack area.
+		// Each slot is 8 bytes; depth is tracked at compile time.
+		offset := int32(cg.tempStackBaseOffset() + cg.tempStackDepth*8)
+		cg.loadRegToRax(src)
+		cg.emitBytes([]byte{0x48, 0x89, 0x85}) // mov [rbp + disp32], rax
+		cg.emitUint32(uint32(-offset))
+		cg.tempStackDepth++
+		*ip += 2
+
 	case compiler.OpRegPop:
-		// Register VM pop only affects stack bookkeeping on the interpreter path.
-		// The native register model does not need to materialize it.
-		*ip += 1
+		dst := int(code[*ip+1])
+		// Load from the temp stack area at (depth-1) and decrement depth.
+		cg.tempStackDepth--
+		offset := int32(cg.tempStackBaseOffset() + cg.tempStackDepth*8)
+		cg.emitBytes([]byte{0x48, 0x8B, 0x85}) // mov rax, [rbp + disp32]
+		cg.emitUint32(uint32(-offset))
+		cg.storeRaxToReg(dst)
+		*ip += 2
 
 	case compiler.OpRegIncLocal:
 		reg := int(code[*ip+1])
@@ -1342,22 +1377,21 @@ func (cg *NativeCodeGenerator) compileCollectionOp(opKind CollectionOpKind, dstR
 	// Restore shadow space
 	cg.emitBytes([]byte{0x48, 0x83, 0xC4, 0x28}) // add rsp, 40
 
-	// Restore caller-saved VM registers R2-R7 from spill area
-	// Must happen BEFORE storeRaxToReg so that dstReg in R2-R7
-	// is not clobbered by the restore after being written.
+	// Restore caller-saved VM registers R2-R7 from spill area.
 	cg.emitRestoreCallerSavedRegs(baseOffset)
 
-	// Store result to destination register (rax is preserved by emitRestoreCallerSavedRegs)
-	if dstReg != 255 {
-		cg.storeRaxToReg(dstReg)
-	}
-
-	// Restore callee-saved registers
+	// Restore callee-saved registers BEFORE storing result to dstReg.
+	// If dstReg is r12-r15 (VM R8-R11), pop would clobber the result.
 	cg.emitBytes([]byte{0x41, 0x5F}) // pop r15
 	cg.emitBytes([]byte{0x41, 0x5E}) // pop r14
 	cg.emitBytes([]byte{0x41, 0x5D}) // pop r13
 	cg.emitBytes([]byte{0x41, 0x5C}) // pop r12
 	cg.emitBytes([]byte{0x5F})       // pop rdi
+
+	// Store result to destination register (rax preserved through all restores).
+	if dstReg != 255 {
+		cg.storeRaxToReg(dstReg)
+	}
 }
 
 // compileArrayCreate generates code to create an array from registers
@@ -1439,21 +1473,23 @@ func (cg *NativeCodeGenerator) compileCollectionOpDirect(opKind CollectionOpKind
 	// Restore shadow space
 	cg.emitBytes([]byte{0x48, 0x83, 0xC4, 0x28}) // add rsp, 40
 
-	// Restore caller-saved VM registers R2-R7 from spill area
-	// Must happen BEFORE storeRaxToReg so that dstReg in R2-R7
-	// is not clobbered by the restore after being written.
+	// Restore caller-saved VM registers R2-R7 from spill area.
 	cg.emitRestoreCallerSavedRegs(baseOffset)
 
-	// Store result to destination register (rax is preserved by emitRestoreCallerSavedRegs)
-	if dstReg != 255 {
-		cg.storeRaxToReg(dstReg)
-	}
-
+	// Restore callee-saved registers BEFORE storing result to dstReg.
+	// If dstReg is r12-r15 (VM R8-R11), pop would clobber the result.
+	// Since emitRestoreCallerSavedRegs doesn't touch rax, the result
+	// in rax is preserved through the callee-saved restore.
 	cg.emitBytes([]byte{0x41, 0x5F}) // pop r15
 	cg.emitBytes([]byte{0x41, 0x5E}) // pop r14
 	cg.emitBytes([]byte{0x41, 0x5D}) // pop r13
 	cg.emitBytes([]byte{0x41, 0x5C}) // pop r12
 	cg.emitBytes([]byte{0x5F})       // pop rdi
+
+	// Store result to destination register (rax preserved through all restores).
+	if dstReg != 255 {
+		cg.storeRaxToReg(dstReg)
+	}
 }
 
 // compileObjectOp generates code to perform object field operations via callback.
@@ -1518,21 +1554,20 @@ func (cg *NativeCodeGenerator) compileObjectOp(opKind ObjectOpKind, dstReg int, 
 	// Restore shadow space
 	cg.emitBytes([]byte{0x48, 0x83, 0xC4, 0x28}) // add rsp, 40
 
-	// Restore caller-saved VM registers R2-R7 from spill area
-	// Must happen BEFORE storeRaxToReg so that dstReg in R2-R7
-	// is not clobbered by the restore after being written.
+	// Restore caller-saved VM registers R2-R7 from spill area.
 	cg.emitRestoreCallerSavedRegs(baseOffset)
 
-	// Store result to destination register (rax is preserved by emitRestoreCallerSavedRegs)
-	if dstReg != 255 {
-		cg.storeRaxToReg(dstReg)
-	}
-
+	// Restore callee-saved registers BEFORE storing result to dstReg.
 	cg.emitBytes([]byte{0x41, 0x5F}) // pop r15
 	cg.emitBytes([]byte{0x41, 0x5E}) // pop r14
 	cg.emitBytes([]byte{0x41, 0x5D}) // pop r13
 	cg.emitBytes([]byte{0x41, 0x5C}) // pop r12
 	cg.emitBytes([]byte{0x5F})       // pop rdi
+
+	// Store result to destination register (rax preserved through all restores).
+	if dstReg != 255 {
+		cg.storeRaxToReg(dstReg)
+	}
 }
 
 // compileCallMethod generates code to call an object method via the object callback.

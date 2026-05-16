@@ -261,6 +261,35 @@ func containsCall(code []byte) bool {
 	return false
 }
 
+// hasBuiltinOps returns true if the bytecode contains OpRegBuiltin.
+func hasBuiltinOps(code []byte) bool {
+	for i := 0; i < len(code); {
+		op := compiler.Opcode(code[i])
+		if op == compiler.OpRegBuiltin {
+			return true
+		}
+		i += 1 + operandWidthCodeGen(op)
+	}
+	return false
+}
+
+// hasCollectionOps returns true if the bytecode contains array/map/object operations
+// that require callback dispatch.
+func hasCollectionOps(code []byte) bool {
+	for i := 0; i < len(code); {
+		op := compiler.Opcode(code[i])
+		switch op {
+		case compiler.OpRegArray, compiler.OpRegArrayEmpty, compiler.OpRegArrayAppend,
+			compiler.OpRegIndex, compiler.OpRegSetIndex,
+			compiler.OpRegMap, compiler.OpRegMapEmpty, compiler.OpRegMapSet,
+			compiler.OpRegGetField, compiler.OpRegSetField, compiler.OpRegGetMethod:
+			return true
+		}
+		i += 1 + operandWidthCodeGen(op)
+	}
+	return false
+}
+
 // generateRecursiveFibCode generates TRUE RECURSIVE Fibonacci code for Windows x64 ABI
 // This implements: fib(n) { if (n <= 1) return n; return fib(n-1) + fib(n-2); }
 // Optimized version: minimal stack frame, optimized register usage
