@@ -16,6 +16,7 @@ TEXT ·callNative(SB), 4, $0-24
     // Save callee-saved registers that Go expects us to preserve
     PUSHQ BP
     MOVQ SP, BP
+    PUSHQ DI       // RDI is callee-saved on Windows x64
     PUSHQ BX
     PUSHQ R12
     PUSHQ R13
@@ -39,6 +40,7 @@ TEXT ·callNative(SB), 4, $0-24
     POPQ R13
     POPQ R12
     POPQ BX
+    POPQ DI        // Restore RDI
     POPQ BP
     RET
 
@@ -52,6 +54,7 @@ TEXT ·callNativeWithArgs(SB), 4, $0-48
     // Save callee-saved registers
     PUSHQ BP
     MOVQ SP, BP
+    PUSHQ DI       // RDI is callee-saved on Windows x64
     PUSHQ BX
     PUSHQ R12
     PUSHQ R13
@@ -88,6 +91,7 @@ TEXT ·callNativeWithArgs(SB), 4, $0-48
     POPQ R13
     POPQ R12
     POPQ BX
+    POPQ DI        // Restore RDI
     POPQ BP
     RET
 
@@ -108,6 +112,7 @@ TEXT ·callNativeWithArgs8(SB), 4, $0-32
     // Save callee-saved registers
     PUSHQ BP
     MOVQ SP, BP
+    PUSHQ DI       // RDI is callee-saved on Windows x64
     // We need to save all registers we'll use
     PUSHQ BX
     PUSHQ R12
@@ -144,6 +149,7 @@ TEXT ·callNativeWithArgs8(SB), 4, $0-32
     POPQ R13
     POPQ R12
     POPQ BX
+    POPQ DI        // Restore RDI
     POPQ BP
     RET
 
@@ -156,6 +162,7 @@ TEXT ·callBuiltinCallback(SB), 4, $0-40
     // Save callee-saved registers
     PUSHQ BP
     MOVQ SP, BP
+    PUSHQ DI       // RDI is callee-saved on Windows x64
     PUSHQ BX
     PUSHQ R12
     PUSHQ R13
@@ -185,6 +192,7 @@ TEXT ·callBuiltinCallback(SB), 4, $0-40
     POPQ R13
     POPQ R12
     POPQ BX
+    POPQ DI        // Restore RDI
     POPQ BP
     RET
 
@@ -197,6 +205,7 @@ TEXT ·callFunctionCallback(SB), 4, $0-40
     // Save callee-saved registers
     PUSHQ BP
     MOVQ SP, BP
+    PUSHQ DI       // RDI is callee-saved on Windows x64
     PUSHQ BX
     PUSHQ R12
     PUSHQ R13
@@ -226,6 +235,7 @@ TEXT ·callFunctionCallback(SB), 4, $0-40
     POPQ R13
     POPQ R12
     POPQ BX
+    POPQ DI        // Restore RDI
     POPQ BP
     RET
 
@@ -238,6 +248,7 @@ TEXT ·callCollectionCallback(SB), 4, $0-40
     // Save callee-saved registers
     PUSHQ BP
     MOVQ SP, BP
+    PUSHQ DI       // RDI is callee-saved on Windows x64
     PUSHQ BX
     PUSHQ R12
     PUSHQ R13
@@ -267,6 +278,7 @@ TEXT ·callCollectionCallback(SB), 4, $0-40
     POPQ R13
     POPQ R12
     POPQ BX
+    POPQ DI        // Restore RDI
     POPQ BP
     RET
 
@@ -279,6 +291,8 @@ TEXT ·builtinCallbackWrapper(SB), 4, $0-32
     // Save callee-saved registers
     PUSHQ BP
     MOVQ SP, BP
+    PUSHQ DI       // RDI is callee-saved on Windows x64
+    PUSHQ SI       // RSI is callee-saved on Windows x64
     PUSHQ BX
     PUSHQ R12
     PUSHQ R13
@@ -312,6 +326,8 @@ TEXT ·builtinCallbackWrapper(SB), 4, $0-32
     POPQ R13
     POPQ R12
     POPQ BX
+    POPQ SI        // Restore RSI
+    POPQ DI        // Restore RDI
     POPQ BP
     RET
 
@@ -320,6 +336,8 @@ TEXT ·builtinCallbackWrapper(SB), 4, $0-32
 TEXT ·functionCallbackWrapper(SB), 4, $0-32
     PUSHQ BP
     MOVQ SP, BP
+    PUSHQ DI       // RDI is callee-saved on Windows x64
+    PUSHQ SI       // RSI is callee-saved on Windows x64
     PUSHQ BX
     PUSHQ R12
     PUSHQ R13
@@ -345,6 +363,8 @@ TEXT ·functionCallbackWrapper(SB), 4, $0-32
     POPQ R13
     POPQ R12
     POPQ BX
+    POPQ SI        // Restore RSI
+    POPQ DI        // Restore RDI
     POPQ BP
     RET
 
@@ -353,6 +373,8 @@ TEXT ·functionCallbackWrapper(SB), 4, $0-32
 TEXT ·collectionCallbackWrapper(SB), 4, $0-32
     PUSHQ BP
     MOVQ SP, BP
+    PUSHQ DI       // RDI is callee-saved on Windows x64
+    PUSHQ SI       // RSI is callee-saved on Windows x64
     PUSHQ BX
     PUSHQ R12
     PUSHQ R13
@@ -378,6 +400,8 @@ TEXT ·collectionCallbackWrapper(SB), 4, $0-32
     POPQ R13
     POPQ R12
     POPQ BX
+    POPQ SI        // Restore RSI
+    POPQ DI        // Restore RDI
     POPQ BP
     RET
 
@@ -386,6 +410,8 @@ TEXT ·collectionCallbackWrapper(SB), 4, $0-32
 TEXT ·objectCallbackWrapper(SB), 4, $0-40
     PUSHQ BP
     MOVQ SP, BP
+    PUSHQ DI       // RDI is callee-saved on Windows x64
+    PUSHQ SI       // RSI is callee-saved on Windows x64
     PUSHQ BX
     PUSHQ R12
     PUSHQ R13
@@ -415,5 +441,7 @@ TEXT ·objectCallbackWrapper(SB), 4, $0-40
     POPQ R13
     POPQ R12
     POPQ BX
+    POPQ SI        // Restore RSI
+    POPQ DI        // Restore RDI
     POPQ BP
     RET

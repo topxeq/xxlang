@@ -56,12 +56,28 @@ func (r *ObjectHandleRegistry) Lookup(handle int64) (objects.Object, bool) {
 	return obj, ok
 }
 
+// Unregister removes a handle from the registry. This should be called when
+// the native code no longer needs to reference the object, to prevent memory leaks.
+func (r *ObjectHandleRegistry) Unregister(handle int64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	id := handle &^ objectHandleTag
+	delete(r.byID, id)
+}
+
 // Clear removes all registered objects. Used for testing or cleanup.
 func (r *ObjectHandleRegistry) Clear() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.byID = make(map[int64]objects.Object)
 	r.nextID = 1
+}
+
+// Size returns the number of currently registered objects (for diagnostics).
+func (r *ObjectHandleRegistry) Size() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.byID)
 }
 
 // nativeIntToObject converts an int64 value from native code to an objects.Object.

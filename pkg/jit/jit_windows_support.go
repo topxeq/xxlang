@@ -405,6 +405,11 @@ func (j *JITVM) Run() error {
 		return j.RegVM.Run()
 	}
 
+	// Clean up object handles after execution to prevent memory leaks.
+	// Handles are only needed during JIT execution; after Run returns,
+	// all results have been converted back to VM values.
+	defer globalObjectRegistry.Clear()
+
 	// Always compile native functions and set up hooks before any execution path,
 	// because the main bytecode may contain OpRegCall that calls into functions.
 	j.compileNativeFunctions()
