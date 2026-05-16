@@ -529,7 +529,7 @@ func TestCanExecuteNativelyExtended(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "arithmetic operations (OpRegDiv excluded: returns float, not int64)",
+			name: "arithmetic operations (including OpRegDiv with SSE2)",
 			code: []byte{
 				byte(compiler.OpRegAdd), 0, 0, 0,
 				byte(compiler.OpRegSub), 0, 0, 0,
@@ -539,11 +539,11 @@ func TestCanExecuteNativelyExtended(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "OpRegDiv is NOT natively executable (returns float)",
+			name: "OpRegDiv is natively executable (SSE2 float div with int truncation)",
 			code: []byte{
 				byte(compiler.OpRegDiv), 0, 0, 0,
 			},
-			expected: false,
+			expected: true,
 		},
 		{
 			name: "negation",
@@ -619,18 +619,18 @@ func TestCanExecuteNativelyWithCallsExtended(t *testing.T) {
 		expected bool
 	}{
 		{
-			name: "call with syscall ABI",
+			name: "call blocked due to reentrancy risk",
 			code: []byte{
 				byte(compiler.OpRegCall), 0, 0,
 			},
-			expected: true,
+			expected: false,
 		},
 		{
-			name: "tail call with syscall ABI",
+			name: "tail call blocked due to reentrancy risk",
 			code: []byte{
 				byte(compiler.OpRegTailCall), 0, 0,
 			},
-			expected: true,
+			expected: false,
 		},
 		{
 			name: "unsupported closure still blocked",

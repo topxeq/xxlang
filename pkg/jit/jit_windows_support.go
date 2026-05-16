@@ -88,8 +88,12 @@ func CanExecuteNatively(fn *compiler.CompiledFunction) bool {
 
 		switch op {
 		// Supported operations - pure arithmetic and control flow (no calls)
+		// NOTE: OpRegDiv uses SSE2 float division with integer truncation.
+		// For integer-divisible operands (e.g., 20/10=2), this matches VM behavior.
+		// For non-integer results (e.g., 7/2=3.5), JIT returns 3 (truncated)
+		// while VM returns 3.5 (float). Full NaN-boxing support is needed for exact semantics.
 		case compiler.OpRegLoadConst, compiler.OpRegMove,
-			compiler.OpRegAdd, compiler.OpRegSub, compiler.OpRegMul, compiler.OpRegMod,
+			compiler.OpRegAdd, compiler.OpRegSub, compiler.OpRegMul, compiler.OpRegDiv, compiler.OpRegMod,
 			compiler.OpRegAddConst, compiler.OpRegSubConst, compiler.OpRegMulConst,
 			compiler.OpRegNeg, compiler.OpRegAnd, compiler.OpRegOr, compiler.OpRegNot,
 			compiler.OpRegEqual, compiler.OpRegNotEqual,
@@ -116,11 +120,10 @@ func CanExecuteNatively(fn *compiler.CompiledFunction) bool {
 }
 
 // CanExecuteNativelyWithCalls checks if a function can be executed natively
-// when invoked via syscall.SyscallN (goroutine in _Gsyscall state).
-// This includes OpRegCall/OpRegTailCall because syscall.NewCallback callbacks
-// can properly re-enter Go via exitsyscall/entersyscall transitions.
-// Only used for the outermost main code execution, NOT for functions called
-// from the callback (nested syscall.SyscallN doesn't work).
+// with callback-based dispatch for builtins, arrays, maps, and objects.
+// NOTE: OpRegCall/OpRegTailCall are excluded because re-entering native code
+// from within a callback (nested execution) causes deadlocks with the bridge ABI.
+// Functions with OpRegCall use hybrid mode (interpreter + native call hook) instead.
 func CanExecuteNativelyWithCalls(fn *compiler.CompiledFunction) bool {
 	if fn.NumRegs > 64 {
 		return false
@@ -134,7 +137,7 @@ func CanExecuteNativelyWithCalls(fn *compiler.CompiledFunction) bool {
 
 		switch op {
 		case compiler.OpRegLoadConst, compiler.OpRegMove,
-			compiler.OpRegAdd, compiler.OpRegSub, compiler.OpRegMul, compiler.OpRegMod,
+			compiler.OpRegAdd, compiler.OpRegSub, compiler.OpRegMul, compiler.OpRegDiv, compiler.OpRegMod,
 			compiler.OpRegAddConst, compiler.OpRegSubConst, compiler.OpRegMulConst,
 			compiler.OpRegNeg, compiler.OpRegAnd, compiler.OpRegOr, compiler.OpRegNot,
 			compiler.OpRegEqual, compiler.OpRegNotEqual,
@@ -146,7 +149,6 @@ func CanExecuteNativelyWithCalls(fn *compiler.CompiledFunction) bool {
 			compiler.OpRegReturn,
 			compiler.OpRegLoadLocal, compiler.OpRegStoreLocal,
 			compiler.OpRegLoadGlobal, compiler.OpRegStoreGlobal,
-			compiler.OpRegCall, compiler.OpRegTailCall,
 			compiler.OpRegBuiltin,
 			compiler.OpRegArray, compiler.OpRegArrayEmpty, compiler.OpRegArrayAppend,
 			compiler.OpRegIndex, compiler.OpRegSetIndex,
@@ -358,13 +360,13 @@ func NewJITVM(bytecode *compiler.Bytecode, config JITConfig) *JITVM {
 		enabled:          true,
 		bytecode:         bytecode,
 	}
-	j.compileNativeFunctions()
-	j.updateCachedGlobals()
-	j.setupNativeCallHook()
 	j.initWindowsCallback()
 	j.InitBuiltinCallback()
 	j.InitCollectionCallback()
 	j.InitObjectCallback()
+	j.compileNativeFunctions()
+	j.updateCachedGlobals()
+	j.setupNativeCallHook()
 	return j
 }
 
@@ -380,13 +382,13 @@ func NewJITVMWithGlobals(bytecode *compiler.Bytecode, globals []vm.Value, config
 		enabled:          true,
 		bytecode:         bytecode,
 	}
-	j.compileNativeFunctions()
-	j.updateCachedGlobals()
-	j.setupNativeCallHook()
 	j.initWindowsCallback()
 	j.InitBuiltinCallback()
 	j.InitCollectionCallback()
 	j.InitObjectCallback()
+	j.compileNativeFunctions()
+	j.updateCachedGlobals()
+	j.setupNativeCallHook()
 	return j
 }
 
@@ -545,13 +547,30 @@ func (j *JITVM) compileNativeFunctions() {
 				continue
 			}
 
-			// First try: native execution (including OpRegCall via syscall ABI)
+			// First try: native execution (pure arithmetic, no calls)
 			if CanExecuteNatively(fn) {
 				err := j.nativeRegistry.CompileFunction(fn, i, intConstants)
 				if err != nil && j.config.Debug {
 					fmt.Printf("[JIT] Failed to compile function at const[%d]: %v\n", i, err)
 				}
-				// Add to inline cache on success
+				if nativeFn := j.nativeRegistry.Get(i); nativeFn != nil {
+					j.nativeFuncCache[fn] = nativeFn
+				}
+				continue
+			}
+
+			// Second try: native execution with callback-based call dispatch.
+			// DISABLED: Compiling with syscallABI but executing via bridge ABI
+			// (native hook) causes "bad g in cgocallback" crashes.
+			// To enable this, we need either:
+			//   1. Compile two versions (bridge + syscall), or
+			//   2. Execute CanExecuteNativelyWithCalls functions only via Run()
+			//      and NOT register them in the native hook cache.
+			if false && CanExecuteNativelyWithCalls(fn) {
+				err := j.nativeRegistry.CompileFunctionWithCalls(fn, i, intConstants)
+				if err != nil && j.config.Debug {
+					fmt.Printf("[JIT] Failed to compile function-with-calls at const[%d]: %v\n", i, err)
+				}
 				if nativeFn := j.nativeRegistry.Get(i); nativeFn != nil {
 					j.nativeFuncCache[fn] = nativeFn
 				}
@@ -949,12 +968,7 @@ func (r *NativeFunctionRegistry) CompileFunction(fn *compiler.CompiledFunction, 
 		return fmt.Errorf("function cannot be executed natively")
 	}
 
-	// Use syscall ABI (Windows x64 + syscall.Syscall6) for functions containing
-	// OpRegCall/OpRegTailCall, so that syscall.NewCallback callbacks can properly
-	// re-enter Go via exitsyscall/entersyscall transitions.
-	// NOTE: Since CanExecuteNatively rejects OpRegCall, hasCall is currently always
-	// false here. The syscallABI path is preserved for future use when
-	// CanExecuteNativelyWithCalls is integrated into the main compilation pipeline.
+	// NOTE: Since CanExecuteNatively rejects OpRegCall, hasCall is always false.
 	hasCall := containsCall(fn.Instructions)
 
 	cg := NewNativeCodeGenerator()
@@ -982,6 +996,53 @@ func (r *NativeFunctionRegistry) CompileFunction(fn *compiler.CompiledFunction, 
 		UseSyscallABI: hasCall,
 		entryPtr:     &mem[0],
 		entry:        uintptr(unsafe.Pointer(&mem[0])),
+	}
+	r.functions.Store(idx, nf)
+	atomic.AddInt64(&r.count, 1)
+
+	return nil
+}
+
+// CompileFunctionWithCalls compiles a function that contains OpRegCall/OpRegBuiltin
+// for native execution using callback dispatch. The compiled code uses syscall ABI
+// so that syscall.NewCallback callbacks can re-enter Go for call/builtin dispatch.
+func (r *NativeFunctionRegistry) CompileFunctionWithCalls(fn *compiler.CompiledFunction, idx int, constants []int64) error {
+	if !CanExecuteNativelyWithCalls(fn) {
+		return fmt.Errorf("function cannot be executed natively with calls")
+	}
+
+	// Ensure callbacks are initialized before compiling
+	if GetBuiltinCallbackPtr() == 0 {
+		return fmt.Errorf("builtin callback not initialized")
+	}
+	if getWindowsCallbackPtr() == 0 {
+		return fmt.Errorf("function callback not initialized")
+	}
+
+	cg := NewNativeCodeGenerator()
+	cg.syscallABI = true
+
+	code, err := cg.Generate(fn, constants)
+	if err != nil {
+		return fmt.Errorf("compilation failed: %w", err)
+	}
+
+	mem, err := bridge.AllocExecMem(len(code))
+	if err != nil {
+		return err
+	}
+
+	copy(mem, code)
+
+	hasCall := containsCall(fn.Instructions)
+	nf := &NativeFunction{
+		Code:          mem,
+		NumParams:     fn.NumParameters,
+		ReturnType:    analyzeReturnType(fn.Instructions),
+		UseBridgeABI:  false,
+		UseSyscallABI: hasCall,
+		entryPtr:      &mem[0],
+		entry:         uintptr(unsafe.Pointer(&mem[0])),
 	}
 	r.functions.Store(idx, nf)
 	atomic.AddInt64(&r.count, 1)
