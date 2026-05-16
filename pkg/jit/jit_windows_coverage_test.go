@@ -529,7 +529,7 @@ func TestCanExecuteNativelyExtended(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "arithmetic operations (OpRegDiv excluded: float semantics)",
+			name: "arithmetic operations (OpRegDiv excluded: returns float, not int64)",
 			code: []byte{
 				byte(compiler.OpRegAdd), 0, 0, 0,
 				byte(compiler.OpRegSub), 0, 0, 0,
@@ -539,7 +539,7 @@ func TestCanExecuteNativelyExtended(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "OpRegDiv is NOT natively executable (float semantics)",
+			name: "OpRegDiv is NOT natively executable (returns float)",
 			code: []byte{
 				byte(compiler.OpRegDiv), 0, 0, 0,
 			},

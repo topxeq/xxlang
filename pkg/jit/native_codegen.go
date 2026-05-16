@@ -1728,24 +1728,16 @@ func (cg *NativeCodeGenerator) compileMul(dst, left, right int) {
 	cg.storeRaxToReg(dst)
 }
 
-func (cg *NativeCodeGenerator) compileDiv(dst, left, right int) {
-	// Division in x86-64: idiv uses rdx:rax / src
-	// Result: quotient in rax, remainder in rdx
-	// SAFETY: Check for division by zero to avoid hardware exception
-	//
-	// IMPORTANT: We must load the dividend BEFORE loading the divisor into rcx,
-	// because loading the divisor to rcx clobbers rcx (VM reg R2). If left==2,
-	// the dividend in rcx would be lost. We use rsi as a temporary save register
-	// since it's not used by the JIT register allocation.
-
-	// Load dividend to rax first, then save to rsi
-	cg.loadRegToRax(left)
-	cg.emitBytes([]byte{0x48, 0x89, 0xC6}) // mov rsi, rax (save dividend)
-
-	// Load divisor to rcx for zero check and idiv
+// loadDivisorToRcx loads the right operand into rcx for division/modulo operations.
+// Handles all register paths: R0 (stack), R1-R7 (hardware regs), R8-R11 (r12-r15), R12+ (stack spill).
+func (cg *NativeCodeGenerator) loadDivisorToRcx(right int) {
 	if right < 8 {
 		if right == 2 {
-			// Already in rcx, just test it
+			// Already in rcx, nothing to do
+		} else if right == 0 {
+			// R0 is on stack at [rbp-8]
+			cg.emitBytes([]byte{0x48, 0x8B, 0x8D}) // mov rcx, [rbp + disp32]
+			cg.emitUint32(r0StackDisp)
 		} else {
 			cg.loadRegToRax(right)
 			cg.emitBytes([]byte{0x48, 0x89, 0xC1}) // mov rcx, rax
@@ -1766,6 +1758,22 @@ func (cg *NativeCodeGenerator) compileDiv(dst, left, right int) {
 		cg.emitBytes([]byte{0x48, 0x8B, 0x8D}) // mov rcx, [rbp + disp32]
 		cg.emitUint32(uint32(-offset))
 	}
+}
+
+func (cg *NativeCodeGenerator) compileDiv(dst, left, right int) {
+	// Float division to match VM semantics: convert both operands to float64,
+	// divide, then truncate the result back to int64.
+	// The VM's Div() method does: float64(left) / float64(right) → truncate to int.
+	// We use SSE2 instructions: cvtsi2sd, divsd, cvttsd2si.
+	//
+	// SAFETY: Check for division by zero to return 0 (matching VM behavior).
+
+	// Load dividend to rax, save to rsi
+	cg.loadRegToRax(left)
+	cg.emitBytes([]byte{0x48, 0x89, 0xC6}) // mov rsi, rax (save dividend)
+
+	// Load divisor to rcx
+	cg.loadDivisorToRcx(right)
 
 	// Test if divisor is zero
 	cg.emitBytes([]byte{0x48, 0x85, 0xC9}) // test rcx, rcx
@@ -1774,12 +1782,18 @@ func (cg *NativeCodeGenerator) compileDiv(dst, left, right int) {
 	jzPos := len(cg.code)
 	cg.emitBytes([]byte{0x74, 0x00}) // jz rel8
 
-	// Restore dividend from rsi
-	cg.emitBytes([]byte{0x48, 0x89, 0xF0}) // mov rax, rsi (restore dividend)
-	cg.emitBytes([]byte{0x48, 0x99}) // cqo: sign-extend rax to rdx:rax
+	// Convert dividend (rsi) to double in xmm0
+	cg.emitBytes([]byte{0x48, 0x89, 0xF0})       // mov rax, rsi (restore dividend)
+	cg.emitBytes([]byte{0xF2, 0x48, 0x0F, 0x2A, 0xC0}) // cvtsi2sd xmm0, rax
 
-	// idiv rcx (ModRM=F9: mod=11, reg=7 for idiv, r/m=1 for RCX)
-	cg.emitBytes([]byte{0x48, 0xF7, 0xF9})
+	// Convert divisor (rcx) to double in xmm1
+	cg.emitBytes([]byte{0xF2, 0x48, 0x0F, 0x2A, 0xC9}) // cvtsi2sd xmm1, rcx
+
+	// Divide: xmm0 = xmm0 / xmm1
+	cg.emitBytes([]byte{0xF2, 0x0F, 0x5E, 0xC1}) // divsd xmm0, xmm1
+
+	// Convert result back to int64 in rax (truncate toward zero)
+	cg.emitBytes([]byte{0xF2, 0x48, 0x0F, 0x2C, 0xC0}) // cvttsd2si rax, xmm0
 
 	// Store result and jump over zero case
 	cg.storeRaxToReg(dst)
@@ -1790,7 +1804,7 @@ func (cg *NativeCodeGenerator) compileDiv(dst, left, right int) {
 	returnZeroPos := len(cg.code)
 	divOffset1 := returnZeroPos - (jzPos + 2)
 	if !CanUseShortJump(divOffset1) {
-		fmt.Printf("[JIT WARNING] Jump offset %d exceeds rel8 range in div/mod zero check\n", divOffset1)
+		fmt.Printf("[JIT WARNING] Jump offset %d exceeds rel8 range in div zero check\n", divOffset1)
 	}
 	cg.code[jzPos+1] = byte(int8(divOffset1))
 
@@ -1802,49 +1816,21 @@ func (cg *NativeCodeGenerator) compileDiv(dst, left, right int) {
 	endPos := len(cg.code)
 	divOffset2 := endPos - (jmpPos + 2)
 	if !CanUseShortJump(divOffset2) {
-		fmt.Printf("[JIT WARNING] Jump offset %d exceeds rel8 range in div/mod skip\n", divOffset2)
+		fmt.Printf("[JIT WARNING] Jump offset %d exceeds rel8 range in div skip\n", divOffset2)
 	}
 	cg.code[jmpPos+1] = byte(int8(divOffset2))
 }
 
 func (cg *NativeCodeGenerator) compileMod(dst, left, right int) {
-	// Mod is the remainder after division
-	// SAFETY: Check for division by zero to avoid hardware exception
-	//
-	// IMPORTANT: We must load the dividend BEFORE loading the divisor into rcx,
-	// because loading the divisor to rcx clobbers rcx (VM reg R2). If left==2,
-	// the dividend in rcx would be lost. We use rsi as a temporary save register
-	// since it's not used by the JIT register allocation.
+	// Modulo (integer remainder) using idiv.
+	// SAFETY: Check for division by zero to avoid hardware exception.
 
 	// Load dividend to rax first, then save to rsi
 	cg.loadRegToRax(left)
 	cg.emitBytes([]byte{0x48, 0x89, 0xC6}) // mov rsi, rax (save dividend)
 
-	// Load divisor to rcx for zero check and idiv
-	if right < 8 {
-		if right == 3 {
-			// Already in rdx, move to rcx
-			cg.emitBytes([]byte{0x48, 0x89, 0xD1}) // mov rcx, rdx
-		} else {
-			cg.loadRegToRax(right)
-			cg.emitBytes([]byte{0x48, 0x89, 0xC1}) // mov rcx, rax
-		}
-	} else if right < 12 {
-		switch right {
-		case 8:
-			cg.emitBytes([]byte{0x4C, 0x89, 0xE1}) // mov rcx, r12
-		case 9:
-			cg.emitBytes([]byte{0x4C, 0x89, 0xE9}) // mov rcx, r13
-		case 10:
-			cg.emitBytes([]byte{0x4C, 0x89, 0xF1}) // mov rcx, r14
-		case 11:
-			cg.emitBytes([]byte{0x4C, 0x89, 0xF9}) // mov rcx, r15
-		}
-	} else {
-		offset := 48 + (right-12)*8
-		cg.emitBytes([]byte{0x48, 0x8B, 0x8D}) // mov rcx, [rbp + disp32]
-		cg.emitUint32(uint32(-offset))
-	}
+	// Load divisor to rcx
+	cg.loadDivisorToRcx(right)
 
 	// Test if divisor is zero
 	cg.emitBytes([]byte{0x48, 0x85, 0xC9}) // test rcx, rcx

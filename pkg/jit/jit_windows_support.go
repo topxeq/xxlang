@@ -105,7 +105,7 @@ func CanExecuteNatively(fn *compiler.CompiledFunction) bool {
 			// Supported - continue
 
 		default:
-			// Unsupported: OpRegCall, OpRegTailCall, OpRegDiv (float semantics), builtin, array, map, closure, etc.
+			// Unsupported: OpRegCall, OpRegTailCall, OpRegDiv (returns float), builtin, array, map, closure, etc.
 			return false
 		}
 
