@@ -30,9 +30,9 @@ type RegCompiler struct {
 	nextSpillSlot int
 	freeSpillSlots []int
 
-	// Method object register stack for nested method calls
-	// Each nested method call uses a different register to avoid corrupting parent calls
-	methodObjRegStack []int
+	// Emergency register save slots for grabRealReg()
+	emergencySlots [NumEmergencyRegs]int
+	emergencyUsed  [NumEmergencyRegs]bool
 
 	// Source mapping
 	sourceMap  *SourceMap
@@ -49,12 +49,14 @@ type RegCompiler struct {
 }
 
 type regScopeState struct {
-	instructions []byte
-	nextTempReg  int
-	maxReg       int
-	freeRegs     []int
-	nextSpillSlot int
+	instructions   []byte
+	nextTempReg    int
+	maxReg         int
+	freeRegs       []int
+	nextSpillSlot  int
 	freeSpillSlots []int
+	emergencySlots [NumEmergencyRegs]int
+	emergencyUsed  [NumEmergencyRegs]bool
 }
 
 type regLoopContext struct {
@@ -66,13 +68,14 @@ type regLoopContext struct {
 // NewRegCompiler creates a new register-based compiler
 func NewRegCompiler() *RegCompiler {
 	return &RegCompiler{
-		constants:    []objects.Object{},
-		symbolTable:  NewSymbolTable(),
-		instructions: []byte{},
-		nextTempReg:  FirstLocalRegister,
-		maxReg:       FirstLocalRegister,
-		freeRegs:     []int{},
-		sourceMap:    NewSourceMap(),
+		constants:      []objects.Object{},
+		symbolTable:    NewSymbolTable(),
+		instructions:   []byte{},
+		nextTempReg:    FirstLocalRegister,
+		maxReg:         FirstLocalRegister,
+		freeRegs:       []int{},
+		sourceMap:      NewSourceMap(),
+		emergencySlots: [NumEmergencyRegs]int{-1, -1, -1, -1},
 	}
 }
 
@@ -80,12 +83,14 @@ func NewRegCompiler() *RegCompiler {
 func (c *RegCompiler) enterScope() {
 	// Save current state to stack
 	c.scopeStack = append(c.scopeStack, regScopeState{
-		instructions: c.instructions,
-		nextTempReg:  c.nextTempReg,
-		maxReg:       c.maxReg,
-		freeRegs:     c.freeRegs,
-		nextSpillSlot: c.nextSpillSlot,
+		instructions:   c.instructions,
+		nextTempReg:    c.nextTempReg,
+		maxReg:         c.maxReg,
+		freeRegs:       c.freeRegs,
+		nextSpillSlot:  c.nextSpillSlot,
 		freeSpillSlots: c.freeSpillSlots,
+		emergencySlots: c.emergencySlots,
+		emergencyUsed:  c.emergencyUsed,
 	})
 
 	// Start with fresh instructions for the new scope
@@ -97,6 +102,8 @@ func (c *RegCompiler) enterScope() {
 	c.freeRegs = []int{}
 	c.nextSpillSlot = 0
 	c.freeSpillSlots = []int{}
+	c.emergencySlots = [NumEmergencyRegs]int{-1, -1, -1, -1}
+	c.emergencyUsed = [NumEmergencyRegs]bool{}
 
 	c.symbolTable = NewEnclosedSymbolTable(c.symbolTable)
 }
@@ -130,6 +137,8 @@ func (c *RegCompiler) leaveScope() *CompiledFunction {
 		c.freeRegs = outer.freeRegs
 		c.nextSpillSlot = outer.nextSpillSlot
 		c.freeSpillSlots = outer.freeSpillSlots
+		c.emergencySlots = outer.emergencySlots
+		c.emergencyUsed = outer.emergencyUsed
 	} else {
 		c.instructions = []byte{}
 		c.nextTempReg = FirstLocalRegister
@@ -137,6 +146,8 @@ func (c *RegCompiler) leaveScope() *CompiledFunction {
 		c.freeRegs = []int{}
 		c.nextSpillSlot = 0
 		c.freeSpillSlots = []int{}
+		c.emergencySlots = [NumEmergencyRegs]int{-1, -1, -1, -1}
+		c.emergencyUsed = [NumEmergencyRegs]bool{}
 	}
 
 	c.symbolTable = c.symbolTable.Outer
@@ -627,50 +638,38 @@ func (c *RegCompiler) compileBlockStatement(n *parser.BlockStatement) (int, erro
 
 // compileIfStatement compiles an if statement
 func (c *RegCompiler) compileIfStatement(n *parser.IfStatement) (int, error) {
-	// Compile condition
 	condReg, err := c.Compile(n.Condition)
 	if err != nil {
 		return 0, err
 	}
 
-	// Jump to else/end if condition is false
 	jumpIfFalsePos := c.emitRegJumpIfFalse(condReg, 0)
 	c.freeTempReg(condReg)
 
-	// Compile consequence
 	consequentReg, err := c.Compile(n.Consequence)
 	if err != nil {
 		return 0, err
 	}
 
-	// Allocate result register and move consequent there
 	resultReg := c.allocTempReg()
-	if consequentReg != resultReg && consequentReg != 0 {
-		c.emitRegMove(resultReg, consequentReg)
-	}
+	c.emitRegMove(resultReg, consequentReg)
+	c.freeTempReg(consequentReg)
 
-	// Jump over alternative
 	jumpPos := c.emitRegJump(0)
 
-	// Patch jump to here (start of alternative/end)
 	c.patchJump(jumpIfFalsePos)
 
-	// Compile alternative if present
 	if n.Alternative != nil {
 		alternativeReg, err := c.Compile(n.Alternative)
 		if err != nil {
 			return 0, err
 		}
-		// Move alternative to result register
-		if alternativeReg != resultReg && alternativeReg != 0 {
-			c.emitRegMove(resultReg, alternativeReg)
-		}
+		c.emitRegMove(resultReg, alternativeReg)
+		c.freeTempReg(alternativeReg)
 	} else {
-		// No alternative - set result to null
 		c.emitRegNull(resultReg)
 	}
 
-	// Patch jump to here (end)
 	c.patchJump(jumpPos)
 
 	return resultReg, nil
@@ -1766,14 +1765,13 @@ func (c *RegCompiler) compileForInStatement(n *parser.ForInStatement) (int, erro
 	}
 
 	// Compare index < length
-	// Use a dedicated fixed register for condition to avoid conflicts with indexReg
-	// This ensures the comparison result doesn't overwrite the index
-	// We use register 250 which is below ReturnRegister (255) but above normal temp registers
-	const forInCondReg = 250
+	// Allocate a temp register for the condition result to avoid overwriting indexReg
+	forInCondReg := c.allocTempReg()
 	c.emitRegLess(forInCondReg, indexReg, lenReg)
 
 	// Jump to end if condition is false
 	jumpIfFalsePos := c.emitRegJumpIfFalse(forInCondReg, 0)
+	c.freeTempReg(forInCondReg)
 	c.freeTempReg(lenReg)
 
 	// Enter loop context
@@ -2186,24 +2184,11 @@ func (c *RegCompiler) compileCallExpression(n *parser.CallExpression) (int, erro
 			return 0, err
 		}
 
-		// Use a stack of safe registers for nested method calls
-		// R250-R259 are reserved for method receiver objects (10 levels of nesting)
-		const methodRegBase = 250
-		const maxMethodNesting = 10
-
-		// Get the current nesting depth
-		nestingDepth := len(c.methodObjRegStack)
-		if nestingDepth >= maxMethodNesting {
-			return 0, fmt.Errorf("method call nesting too deep (max %d)", maxMethodNesting)
-		}
-
-		// Allocate a safe register for this method call
-		safeObjReg := methodRegBase + nestingDepth
-		c.methodObjRegStack = append(c.methodObjRegStack, safeObjReg)
-
-		c.emitRegMove(safeObjReg, objReg)
-		// Free the original objReg if it was a temp register
-		if objReg >= FirstLocalRegister && objReg < NumRegisters-10 {
+		// Save the method receiver object to a spill slot to protect it
+		// from being overwritten during argument compilation.
+		objSpillSlot := c.allocSpillSlot()
+		c.emitRegStoreLocal(objReg, objSpillSlot)
+		if objReg >= FirstLocalRegister {
 			c.freeTempReg(objReg)
 		}
 
@@ -2213,7 +2198,6 @@ func (c *RegCompiler) compileCallExpression(n *parser.CallExpression) (int, erro
 		for i, arg := range n.Arguments {
 			argReg, err := c.Compile(arg)
 			if err != nil {
-				c.methodObjRegStack = c.methodObjRegStack[:len(c.methodObjRegStack)-1]
 				return 0, err
 			}
 			if argReg == ReturnRegister {
@@ -2229,6 +2213,7 @@ func (c *RegCompiler) compileCallExpression(n *parser.CallExpression) (int, erro
 			}
 		}
 
+		// Load arguments into R0..R(n-1) for the method call
 		for i, slot := range spillSlots {
 			c.emitRegLoadLocal(i, slot)
 		}
@@ -2237,14 +2222,17 @@ func (c *RegCompiler) compileCallExpression(n *parser.CallExpression) (int, erro
 			c.freeSpillSlot(spillSlots[i])
 		}
 
+		// Reload receiver into a register beyond the argument range for OpRegCallMethod.
+		// The VM will shift args R0..R(n-1) -> R1..R(n) and put receiver in R0.
+		receiverReg := len(n.Arguments)
+		c.emitRegLoadLocal(receiverReg, objSpillSlot)
+		c.freeSpillSlot(objSpillSlot)
+
 		// Get method name constant
 		nameIdx := c.addConstant(objects.InternString(dot.Property.Value))
 
-		// Emit method call with the safe register
-		c.emitRegCallMethod(safeObjReg, nameIdx, len(n.Arguments))
-
-		// Pop from the method register stack after the call
-		c.methodObjRegStack = c.methodObjRegStack[:len(c.methodObjRegStack)-1]
+		// Emit method call
+		c.emitRegCallMethod(receiverReg, nameIdx, len(n.Arguments))
 
 		return ReturnRegister, nil
 	}
@@ -2307,7 +2295,7 @@ func (c *RegCompiler) compileArrayLiteral(n *parser.ArrayLiteral) (int, error) {
 
 	// Check if we have enough contiguous register space
 	// Need numElements contiguous registers for elements + 1 for dst
-	available := NumRegisters - 1 - c.nextTempReg
+	available := MaxTempReg - c.nextTempReg
 	if available >= numElements {
 		// Enough space - use existing OpRegArray (more efficient)
 		// IMPORTANT: To avoid overwriting source registers during moves,
@@ -2355,22 +2343,22 @@ func (c *RegCompiler) compileArrayLiteral(n *parser.ArrayLiteral) (int, error) {
 		c.freeTempReg(elemReg)
 	}
 
-	// Use fixed registers for overflow case
-	const overflowArrReg = 253
-	const overflowElemReg = 254
+	// Allocate registers for overflow building (physical regs now available after free)
+	dst := c.allocTempReg()
+	elemReg := c.allocTempReg()
 
 	// Create empty array
-	dst := overflowArrReg
 	c.emitRegArrayEmpty(dst)
 
 	// Pop elements from stack and append to array
 	for i := len(elementRegs) - 1; i >= 0; i-- {
-		// Pop element to fixed register
-		c.emitRegPop(overflowElemReg)
+		// Pop element to temp register
+		c.emitRegPop(elemReg)
 		// Append element to array
-		c.emitRegArrayAppend(dst, dst, overflowElemReg)
+		c.emitRegArrayAppend(dst, dst, elemReg)
 	}
 
+	c.freeTempReg(elemReg)
 	return dst, nil
 }
 
@@ -2437,7 +2425,7 @@ func (c *RegCompiler) compileMapLiteral(n *parser.MapLiteral) (int, error) {
 
 	// Check if we have enough contiguous register space
 	// Need count*2 contiguous registers for key-value pairs
-	available := NumRegisters - 1 - c.nextTempReg
+	available := MaxTempReg - c.nextTempReg
 	if available >= count*2 {
 		// Enough space - use existing OpRegMap (more efficient)
 		dst := c.allocTempReg()
@@ -2484,28 +2472,25 @@ func (c *RegCompiler) compileMapLiteral(n *parser.MapLiteral) (int, error) {
 		c.freeTempReg(pair.valReg)
 	}
 
-	// Use fixed registers for overflow case to avoid conflicts
-	// R252 = map result
-	// R253 = key temp
-	// R254 = value temp
-	// R255 = return register (reserved)
-	const overflowMapReg = 252
-	const overflowKeyReg = 253
-	const overflowValReg = 254
+	// Allocate registers for overflow building (physical regs now available after free)
+	dst := c.allocTempReg()
+	keyTempReg := c.allocTempReg()
+	valTempReg := c.allocTempReg()
 
-	dst := overflowMapReg
 	c.emitRegMapEmpty(dst)
 
 	// Pop pairs from stack and add to map
 	for i := len(pairs) - 1; i >= 0; i-- {
 		// Pop value first (it was pushed last)
-		c.emitRegPop(overflowValReg)
+		c.emitRegPop(valTempReg)
 		// Pop key
-		c.emitRegPop(overflowKeyReg)
+		c.emitRegPop(keyTempReg)
 		// Add to map
-		c.emitRegMapSet(dst, dst, overflowKeyReg, overflowValReg)
+		c.emitRegMapSet(dst, dst, keyTempReg, valTempReg)
 	}
 
+	c.freeTempReg(valTempReg)
+	c.freeTempReg(keyTempReg)
 	return dst, nil
 }
 
@@ -2595,15 +2580,15 @@ func (c *RegCompiler) compileDotExpression(n *parser.DotExpression) (int, error)
 
 // compileAssignmentExpression compiles an assignment expression
 func (c *RegCompiler) compileAssignmentExpression(n *parser.AssignmentExpression) (int, error) {
-	// Compile right side
-	valReg, err := c.Compile(n.Value)
-	if err != nil {
-		return 0, err
-	}
-
-	// Determine where to store
+	// Determine where to store and compile left side first for complex targets
+	// to avoid register conflicts with the value register
 	switch left := n.Left.(type) {
 	case *parser.Identifier:
+		// Simple variable assignment: compile value first
+		valReg, err := c.Compile(n.Value)
+		if err != nil {
+			return 0, err
+		}
 		symbol, ok := c.symbolTable.Resolve(left.Value)
 		if !ok {
 			return 0, fmt.Errorf("undefined variable: %s", left.Value)
@@ -2616,8 +2601,10 @@ func (c *RegCompiler) compileAssignmentExpression(n *parser.AssignmentExpression
 		case FreeScope:
 			c.emitRegStoreFree(valReg, symbol.Index)
 		}
+		return valReg, nil
 
 	case *parser.IndexExpression:
+		// a[i] = value: compile left side first, then value
 		objReg, err := c.Compile(left.Left)
 		if err != nil {
 			return 0, err
@@ -2626,21 +2613,32 @@ func (c *RegCompiler) compileAssignmentExpression(n *parser.AssignmentExpression
 		if err != nil {
 			return 0, err
 		}
+		valReg, err := c.Compile(n.Value)
+		if err != nil {
+			return 0, err
+		}
 		c.emitRegSetIndex(objReg, indexReg, valReg)
 		c.freeTempReg(objReg)
 		c.freeTempReg(indexReg)
+		return valReg, nil
 
 	case *parser.DotExpression:
+		// obj.field = value: compile left side first, then value
 		objReg, err := c.Compile(left.Object)
+		if err != nil {
+			return 0, err
+		}
+		valReg, err := c.Compile(n.Value)
 		if err != nil {
 			return 0, err
 		}
 		nameIdx := c.addConstant(objects.InternString(left.Property.Value))
 		c.emitRegSetField(objReg, valReg, nameIdx)
 		c.freeTempReg(objReg)
+		return valReg, nil
 	}
 
-	return valReg, nil
+	return 0, fmt.Errorf("cannot assign to %T", n.Left)
 }
 
 // compileBreakStatement compiles a break statement
@@ -3026,27 +3024,126 @@ func (c *RegCompiler) compileCompoundAssignmentExpression(n *parser.CompoundAssi
 // Register allocation helpers
 
 func (c *RegCompiler) allocTempReg() int {
-	// First, check if there's a freed register we can reuse
 	if len(c.freeRegs) > 0 {
-		// Pop the last freed register
 		reg := c.freeRegs[len(c.freeRegs)-1]
 		c.freeRegs = c.freeRegs[:len(c.freeRegs)-1]
 		return reg
 	}
+	if c.nextTempReg < MaxTempReg {
+		reg := c.nextTempReg
+		c.nextTempReg++
+		if c.nextTempReg > c.maxReg {
+			c.maxReg = c.nextTempReg
+		}
+		return reg
+	}
+	// All physical registers exhausted - allocate a spill slot virtual register.
+	// The caller gets a virtual register number >= SpillSlotRegBase.
+	// Emit functions will transparently handle load/store when they see such a number.
+	slot := c.allocSpillSlot()
+	return SpillSlotRegBase + slot
+}
 
-	// No freed registers available, allocate a new one
-	if c.nextTempReg >= NumRegisters-1 {
-		// We've run out of registers - this is a critical error
-		// Fall back to reusing a high register (will likely cause issues)
-		// In a production compiler, we'd spill to stack/local slots
-		return NumRegisters - 2
+func (c *RegCompiler) isSpillSlot(reg int) bool {
+	return reg >= SpillSlotRegBase
+}
+
+func (c *RegCompiler) spillSlotIdx(reg int) int {
+	return reg - SpillSlotRegBase
+}
+
+func (c *RegCompiler) grabRealReg() int {
+	if len(c.freeRegs) > 0 {
+		reg := c.freeRegs[len(c.freeRegs)-1]
+		c.freeRegs = c.freeRegs[:len(c.freeRegs)-1]
+		return reg
 	}
-	reg := c.nextTempReg
-	c.nextTempReg++
-	if c.nextTempReg > c.maxReg {
-		c.maxReg = c.nextTempReg
+	if c.nextTempReg < MaxTempReg {
+		reg := c.nextTempReg
+		c.nextTempReg++
+		if c.nextTempReg > c.maxReg {
+			c.maxReg = c.nextTempReg
+		}
+		return reg
 	}
-	return reg
+	for i := 0; i < NumEmergencyRegs; i++ {
+		if !c.emergencyUsed[i] {
+			reg := EmergencyRegBase + i
+			if c.emergencySlots[i] < 0 {
+				c.emergencySlots[i] = c.allocSpillSlot()
+			}
+			c.instructions = append(c.instructions, MakeRegInstruction2(OpRegStoreLocal, reg, c.emergencySlots[i])...)
+			c.emergencyUsed[i] = true
+			return reg
+		}
+	}
+	panic("grabRealReg: all emergency registers exhausted - too many simultaneous spill slot materializations")
+}
+
+// materializeForUse loads a spilled virtual register into a temporary physical register for reading.
+// If vreg is already a physical register, returns it directly.
+// Must be paired with releaseMaterialized after the instruction is emitted.
+func (c *RegCompiler) materializeForUse(vreg int) int {
+	if !c.isSpillSlot(vreg) {
+		return vreg
+	}
+	preg := c.grabRealReg()
+	c.instructions = append(c.instructions, MakeRegInstruction2(OpRegLoadLocal, preg, c.spillSlotIdx(vreg))...)
+	return preg
+}
+
+// materializeForDef allocates a temporary physical register for writing to a (possibly spilled) virtual register.
+// No load is emitted since we're defining a new value.
+// Must be paired with finalizeDef after the instruction is emitted.
+func (c *RegCompiler) materializeForDef(vreg int) int {
+	if !c.isSpillSlot(vreg) {
+		return vreg
+	}
+	return c.grabRealReg()
+}
+
+// finalizeDef writes back from the physical register to the spill slot if needed, and releases it.
+func (c *RegCompiler) finalizeDef(vreg int, preg int) {
+	if !c.isSpillSlot(vreg) {
+		return
+	}
+	c.instructions = append(c.instructions, MakeRegInstruction2(OpRegStoreLocal, preg, c.spillSlotIdx(vreg))...)
+	c.freeRealReg(preg)
+}
+
+// releaseMaterialized releases a physical register that was used for a spilled virtual register (read-only).
+func (c *RegCompiler) releaseMaterialized(vreg int, preg int) {
+	if c.isSpillSlot(vreg) {
+		c.freeRealReg(preg)
+	}
+}
+
+func (c *RegCompiler) freeRealReg(reg int) {
+	if reg >= EmergencyRegBase && reg < EmergencyRegBase+NumEmergencyRegs {
+		idx := reg - EmergencyRegBase
+		if c.emergencyUsed[idx] {
+			c.instructions = append(c.instructions, MakeRegInstruction2(OpRegLoadLocal, reg, c.emergencySlots[idx])...)
+			c.emergencyUsed[idx] = false
+		}
+		return
+	}
+	if reg < FirstLocalRegister || reg >= NumRegisters-1 {
+		return
+	}
+	for _, r := range c.freeRegs {
+		if r == reg {
+			return
+		}
+	}
+	if reg == c.nextTempReg-1 {
+		c.nextTempReg--
+		for len(c.freeRegs) > 0 && c.freeRegs[len(c.freeRegs)-1] == c.nextTempReg-1 {
+			c.nextTempReg--
+			c.freeRegs = c.freeRegs[:len(c.freeRegs)-1]
+		}
+	} else {
+		c.freeRegs = append(c.freeRegs, reg)
+	}
 }
 
 // allocContiguousRegisters allocates count contiguous registers starting from the returned index.
@@ -3057,9 +3154,8 @@ func (c *RegCompiler) allocContiguousRegisters(count int) int {
 	}
 
 	// Check if we have enough space
-	available := NumRegisters - 1 - c.nextTempReg // -1 for ReturnRegister
+	available := MaxTempReg - c.nextTempReg
 	if available >= count {
-		// Enough space - allocate normally
 		start := c.nextTempReg
 		for i := 0; i < count; i++ {
 			c.allocTempReg()
@@ -3067,44 +3163,37 @@ func (c *RegCompiler) allocContiguousRegisters(count int) int {
 		return start
 	}
 
-	// Not enough contiguous space - allocate as many as we can
-	// The VM will handle reading from locals for overflow
 	start := c.nextTempReg
-	for c.nextTempReg < NumRegisters-1 {
+	for c.nextTempReg < MaxTempReg {
 		c.allocTempReg()
 	}
 	return start
 }
 
-// ensureRegisterSpace ensures there are at least 'count' registers available.
-// If not, it returns an error (caller should handle by using alternative approach).
 func (c *RegCompiler) ensureRegisterSpace(count int) bool {
-	return c.nextTempReg+count < NumRegisters-1
+	return c.nextTempReg+count < MaxTempReg
 }
 
 func (c *RegCompiler) freeTempReg(reg int) {
-	// Validate register is in valid range and not a reserved register
-	if reg < FirstLocalRegister || reg >= NumRegisters-1 {
-		return // Don't free reserved registers
+	if c.isSpillSlot(reg) {
+		c.freeSpillSlot(c.spillSlotIdx(reg))
+		return
 	}
-
-	// Check if register is already in free list (prevent double-free)
+	if reg < FirstLocalRegister || reg >= NumRegisters-1 {
+		return
+	}
 	for _, r := range c.freeRegs {
 		if r == reg {
-			return // Already freed, skip
+			return
 		}
 	}
-
-	// If this is the last allocated register, decrement the counter
 	if reg == c.nextTempReg-1 {
 		c.nextTempReg--
-		// Also pop any freed registers that are now contiguous with the end
 		for len(c.freeRegs) > 0 && c.freeRegs[len(c.freeRegs)-1] == c.nextTempReg-1 {
 			c.nextTempReg--
 			c.freeRegs = c.freeRegs[:len(c.freeRegs)-1]
 		}
 	} else {
-		// Add to free list for reuse
 		c.freeRegs = append(c.freeRegs, reg)
 	}
 }
@@ -3143,96 +3232,139 @@ func (c *RegCompiler) freeSpillSlot(slot int) {
 
 // Emit helpers
 
+func (c *RegCompiler) emitRegBinOp(op Opcode, dst, src1, src2 int) {
+	pSrc1 := c.materializeForUse(src1)
+	pSrc2 := c.materializeForUse(src2)
+	pDst := c.materializeForDef(dst)
+	c.instructions = append(c.instructions, MakeRegInstruction(op, pDst, pSrc1, pSrc2)...)
+	c.finalizeDef(dst, pDst)
+	c.releaseMaterialized(src2, pSrc2)
+	c.releaseMaterialized(src1, pSrc1)
+}
+
 func (c *RegCompiler) emitRegAdd(dst, src1, src2 int) {
-	c.instructions = append(c.instructions, MakeRegInstruction(OpRegAdd, dst, src1, src2)...)
+	c.emitRegBinOp(OpRegAdd, dst, src1, src2)
 }
 
 func (c *RegCompiler) emitRegSub(dst, src1, src2 int) {
-	c.instructions = append(c.instructions, MakeRegInstruction(OpRegSub, dst, src1, src2)...)
+	c.emitRegBinOp(OpRegSub, dst, src1, src2)
 }
 
 func (c *RegCompiler) emitRegMul(dst, src1, src2 int) {
-	c.instructions = append(c.instructions, MakeRegInstruction(OpRegMul, dst, src1, src2)...)
+	c.emitRegBinOp(OpRegMul, dst, src1, src2)
 }
 
 func (c *RegCompiler) emitRegDiv(dst, src1, src2 int) {
-	c.instructions = append(c.instructions, MakeRegInstruction(OpRegDiv, dst, src1, src2)...)
+	c.emitRegBinOp(OpRegDiv, dst, src1, src2)
 }
 
 func (c *RegCompiler) emitRegMod(dst, src1, src2 int) {
-	c.instructions = append(c.instructions, MakeRegInstruction(OpRegMod, dst, src1, src2)...)
-}
-
-func (c *RegCompiler) emitRegNeg(dst, src int) {
-	c.instructions = append(c.instructions, MakeRegInstruction2(OpRegNeg, dst, src)...)
-}
-
-func (c *RegCompiler) emitRegNot(dst, src int) {
-	c.instructions = append(c.instructions, MakeRegInstruction2(OpRegNot, dst, src)...)
+	c.emitRegBinOp(OpRegMod, dst, src1, src2)
 }
 
 func (c *RegCompiler) emitRegAnd(dst, src1, src2 int) {
-	c.instructions = append(c.instructions, MakeRegInstruction(OpRegAnd, dst, src1, src2)...)
+	c.emitRegBinOp(OpRegAnd, dst, src1, src2)
 }
 
 func (c *RegCompiler) emitRegOr(dst, src1, src2 int) {
-	c.instructions = append(c.instructions, MakeRegInstruction(OpRegOr, dst, src1, src2)...)
+	c.emitRegBinOp(OpRegOr, dst, src1, src2)
 }
 
 func (c *RegCompiler) emitRegLess(dst, src1, src2 int) {
-	c.instructions = append(c.instructions, MakeRegInstruction(OpRegLess, dst, src1, src2)...)
+	c.emitRegBinOp(OpRegLess, dst, src1, src2)
 }
 
 func (c *RegCompiler) emitRegGreater(dst, src1, src2 int) {
-	c.instructions = append(c.instructions, MakeRegInstruction(OpRegGreater, dst, src1, src2)...)
+	c.emitRegBinOp(OpRegGreater, dst, src1, src2)
 }
 
 func (c *RegCompiler) emitRegLessEqual(dst, src1, src2 int) {
-	c.instructions = append(c.instructions, MakeRegInstruction(OpRegLessEqual, dst, src1, src2)...)
+	c.emitRegBinOp(OpRegLessEqual, dst, src1, src2)
 }
 
 func (c *RegCompiler) emitRegGreaterEqual(dst, src1, src2 int) {
-	c.instructions = append(c.instructions, MakeRegInstruction(OpRegGreaterEqual, dst, src1, src2)...)
+	c.emitRegBinOp(OpRegGreaterEqual, dst, src1, src2)
 }
 
 func (c *RegCompiler) emitRegEqual(dst, src1, src2 int) {
-	c.instructions = append(c.instructions, MakeRegInstruction(OpRegEqual, dst, src1, src2)...)
+	c.emitRegBinOp(OpRegEqual, dst, src1, src2)
 }
 
 func (c *RegCompiler) emitRegNotEqual(dst, src1, src2 int) {
-	c.instructions = append(c.instructions, MakeRegInstruction(OpRegNotEqual, dst, src1, src2)...)
+	c.emitRegBinOp(OpRegNotEqual, dst, src1, src2)
+}
+
+func (c *RegCompiler) emitRegUnaryOp(op Opcode, dst, src int) {
+	pSrc := c.materializeForUse(src)
+	pDst := c.materializeForDef(dst)
+	c.instructions = append(c.instructions, MakeRegInstruction2(op, pDst, pSrc)...)
+	c.finalizeDef(dst, pDst)
+	c.releaseMaterialized(src, pSrc)
+}
+
+func (c *RegCompiler) emitRegNeg(dst, src int) {
+	c.emitRegUnaryOp(OpRegNeg, dst, src)
+}
+
+func (c *RegCompiler) emitRegNot(dst, src int) {
+	c.emitRegUnaryOp(OpRegNot, dst, src)
 }
 
 func (c *RegCompiler) emitRegMove(dst, src int) {
-	c.instructions = append(c.instructions, MakeRegInstruction2(OpRegMove, dst, src)...)
+	if c.isSpillSlot(dst) && c.isSpillSlot(src) {
+		tmp := c.grabRealReg()
+		c.instructions = append(c.instructions, MakeRegInstruction2(OpRegLoadLocal, tmp, c.spillSlotIdx(src))...)
+		c.instructions = append(c.instructions, MakeRegInstruction2(OpRegStoreLocal, tmp, c.spillSlotIdx(dst))...)
+		c.freeRealReg(tmp)
+	} else if c.isSpillSlot(dst) {
+		c.instructions = append(c.instructions, MakeRegInstruction2(OpRegStoreLocal, src, c.spillSlotIdx(dst))...)
+	} else if c.isSpillSlot(src) {
+		c.instructions = append(c.instructions, MakeRegInstruction2(OpRegLoadLocal, dst, c.spillSlotIdx(src))...)
+	} else {
+		c.instructions = append(c.instructions, MakeRegInstruction2(OpRegMove, dst, src)...)
+	}
 }
 
 func (c *RegCompiler) emitRegLoadConst(dst, constIdx int) {
-	c.instructions = append(c.instructions, MakeRegInstructionConst(OpRegLoadConst, dst, constIdx)...)
+	pDst := c.materializeForDef(dst)
+	c.instructions = append(c.instructions, MakeRegInstructionConst(OpRegLoadConst, pDst, constIdx)...)
+	c.finalizeDef(dst, pDst)
 }
 
 func (c *RegCompiler) emitRegLoadGlobal(dst, globalIdx int) {
-	c.instructions = append(c.instructions, MakeRegInstructionConst(OpRegLoadGlobal, dst, globalIdx)...)
+	pDst := c.materializeForDef(dst)
+	c.instructions = append(c.instructions, MakeRegInstructionConst(OpRegLoadGlobal, pDst, globalIdx)...)
+	c.finalizeDef(dst, pDst)
 }
 
 func (c *RegCompiler) emitRegStoreGlobal(src, globalIdx int) {
-	c.instructions = append(c.instructions, MakeRegInstructionConst(OpRegStoreGlobal, src, globalIdx)...)
+	pSrc := c.materializeForUse(src)
+	c.instructions = append(c.instructions, MakeRegInstructionConst(OpRegStoreGlobal, pSrc, globalIdx)...)
+	c.releaseMaterialized(src, pSrc)
 }
 
 func (c *RegCompiler) emitRegLoadLocal(dst, localIdx int) {
-	c.instructions = append(c.instructions, MakeRegInstruction2(OpRegLoadLocal, dst, localIdx)...)
+	pDst := c.materializeForDef(dst)
+	c.instructions = append(c.instructions, MakeRegInstruction2(OpRegLoadLocal, pDst, localIdx)...)
+	c.finalizeDef(dst, pDst)
 }
 
 func (c *RegCompiler) emitRegStoreLocal(src, localIdx int) {
-	c.instructions = append(c.instructions, MakeRegInstruction2(OpRegStoreLocal, src, localIdx)...)
+	pSrc := c.materializeForUse(src)
+	c.instructions = append(c.instructions, MakeRegInstruction2(OpRegStoreLocal, pSrc, localIdx)...)
+	c.releaseMaterialized(src, pSrc)
 }
 
 func (c *RegCompiler) emitRegLoadFree(dst, freeIdx int) {
-	c.instructions = append(c.instructions, MakeRegInstruction2(OpRegLoadFree, dst, freeIdx)...)
+	pDst := c.materializeForDef(dst)
+	c.instructions = append(c.instructions, MakeRegInstruction2(OpRegLoadFree, pDst, freeIdx)...)
+	c.finalizeDef(dst, pDst)
 }
 
 func (c *RegCompiler) emitRegStoreFree(src, freeIdx int) {
-	c.instructions = append(c.instructions, MakeRegInstruction2(OpRegStoreFree, src, freeIdx)...)
+	pSrc := c.materializeForUse(src)
+	c.instructions = append(c.instructions, MakeRegInstruction2(OpRegStoreFree, pSrc, freeIdx)...)
+	c.releaseMaterialized(src, pSrc)
 }
 
 func (c *RegCompiler) emitRegJump(offset int) int {
@@ -3242,161 +3374,253 @@ func (c *RegCompiler) emitRegJump(offset int) int {
 }
 
 func (c *RegCompiler) emitRegJumpIfFalse(condReg, offset int) int {
+	pCond := c.materializeForUse(condReg)
 	pos := len(c.instructions)
-	c.instructions = append(c.instructions, MakeRegJumpCond(OpRegJumpIfFalse, condReg, offset)...)
+	c.instructions = append(c.instructions, MakeRegJumpCond(OpRegJumpIfFalse, pCond, offset)...)
+	c.releaseMaterialized(condReg, pCond)
 	return pos
 }
 
 func (c *RegCompiler) emitRegNull(dst int) {
-	c.instructions = append(c.instructions, MakeRegInstruction1(OpRegNull, dst)...)
+	pDst := c.materializeForDef(dst)
+	c.instructions = append(c.instructions, byte(OpRegNull), byte(pDst))
+	c.finalizeDef(dst, pDst)
 }
 
 func (c *RegCompiler) emitRegTrue(dst int) {
-	c.instructions = append(c.instructions, MakeRegInstruction1(OpRegTrue, dst)...)
-}
-
-func (c *RegCompiler) emitRegAddConst(dst, src, constIdx int) {
-	c.instructions = append(c.instructions,
-		byte(OpRegAddConst),
-		byte(dst),
-		byte(src),
-		byte(constIdx>>8),
-		byte(constIdx),
-	)
+	pDst := c.materializeForDef(dst)
+	c.instructions = append(c.instructions, byte(OpRegTrue), byte(pDst))
+	c.finalizeDef(dst, pDst)
 }
 
 func (c *RegCompiler) emitRegFalse(dst int) {
-	c.instructions = append(c.instructions, MakeRegInstruction1(OpRegFalse, dst)...)
+	pDst := c.materializeForDef(dst)
+	c.instructions = append(c.instructions, byte(OpRegFalse), byte(pDst))
+	c.finalizeDef(dst, pDst)
+}
+
+func (c *RegCompiler) emitRegAddConst(dst, src, constIdx int) {
+	pSrc := c.materializeForUse(src)
+	pDst := c.materializeForDef(dst)
+	c.instructions = append(c.instructions,
+		byte(OpRegAddConst),
+		byte(pDst),
+		byte(pSrc),
+		byte(constIdx>>8),
+		byte(constIdx),
+	)
+	c.finalizeDef(dst, pDst)
+	c.releaseMaterialized(src, pSrc)
 }
 
 func (c *RegCompiler) emitRegCall(funcReg, numArgs int) {
-	c.instructions = append(c.instructions, MakeRegInstruction2(OpRegCall, funcReg, numArgs)...)
+	pFunc := c.materializeForUse(funcReg)
+	c.instructions = append(c.instructions, byte(OpRegCall), byte(pFunc), byte(numArgs))
+	c.releaseMaterialized(funcReg, pFunc)
 }
 
 func (c *RegCompiler) emitRegTailCall(funcReg, numArgs int) {
-	c.instructions = append(c.instructions, MakeRegInstruction2(OpRegTailCall, funcReg, numArgs)...)
+	pFunc := c.materializeForUse(funcReg)
+	c.instructions = append(c.instructions, byte(OpRegTailCall), byte(pFunc), byte(numArgs))
+	c.releaseMaterialized(funcReg, pFunc)
 }
 
 func (c *RegCompiler) emitRegBuiltin(builtinIdx, numArgs int) {
-	c.instructions = append(c.instructions, []byte{
+	c.instructions = append(c.instructions,
 		byte(OpRegBuiltin),
-		byte(builtinIdx >> 8),
+		byte(builtinIdx>>8),
 		byte(builtinIdx),
 		byte(numArgs),
-	}...)
+	)
 }
 
 func (c *RegCompiler) emitRegLoadBuiltin(dst, builtinIdx int) {
-	c.instructions = append(c.instructions, []byte{
+	pDst := c.materializeForDef(dst)
+	c.instructions = append(c.instructions,
 		byte(OpRegLoadBuiltin),
-		byte(dst),
-		byte(builtinIdx >> 8),
+		byte(pDst),
+		byte(builtinIdx>>8),
 		byte(builtinIdx),
-	}...)
+	)
+	c.finalizeDef(dst, pDst)
 }
 
 func (c *RegCompiler) emitRegReturn(reg int) {
-	c.instructions = append(c.instructions, MakeRegInstruction1(OpRegReturn, reg)...)
+	pReg := c.materializeForUse(reg)
+	c.instructions = append(c.instructions, byte(OpRegReturn), byte(pReg))
+	c.releaseMaterialized(reg, pReg)
 }
 
 func (c *RegCompiler) emitRegArray(dst, startReg, count int) {
-	c.instructions = append(c.instructions, MakeRegInstruction(OpRegArray, dst, startReg, count)...)
+	pDst := c.materializeForDef(dst)
+	c.instructions = append(c.instructions, MakeRegInstruction(OpRegArray, pDst, startReg, count)...)
+	c.finalizeDef(dst, pDst)
 }
 
 func (c *RegCompiler) emitRegArrayEmpty(dst int) {
-	c.instructions = append(c.instructions, MakeRegInstruction1(OpRegArrayEmpty, dst)...)
+	pDst := c.materializeForDef(dst)
+	c.instructions = append(c.instructions, MakeRegInstruction1(OpRegArrayEmpty, pDst)...)
+	c.finalizeDef(dst, pDst)
 }
 
 func (c *RegCompiler) emitRegArrayAppend(dst, arrReg, elemReg int) {
-	c.instructions = append(c.instructions, MakeRegInstruction(OpRegArrayAppend, dst, arrReg, elemReg)...)
+	pArr := c.materializeForUse(arrReg)
+	pElem := c.materializeForUse(elemReg)
+	pDst := c.materializeForDef(dst)
+	c.instructions = append(c.instructions, MakeRegInstruction(OpRegArrayAppend, pDst, pArr, pElem)...)
+	c.finalizeDef(dst, pDst)
+	c.releaseMaterialized(elemReg, pElem)
+	c.releaseMaterialized(arrReg, pArr)
 }
 
 func (c *RegCompiler) emitRegMapEmpty(dst int) {
-	c.instructions = append(c.instructions, MakeRegInstruction1(OpRegMapEmpty, dst)...)
+	pDst := c.materializeForDef(dst)
+	c.instructions = append(c.instructions, MakeRegInstruction1(OpRegMapEmpty, pDst)...)
+	c.finalizeDef(dst, pDst)
 }
 
 func (c *RegCompiler) emitRegMapSet(dst, mapReg, keyReg, valReg int) {
-	c.instructions = append(c.instructions, []byte{byte(OpRegMapSet), byte(dst), byte(mapReg), byte(keyReg), byte(valReg)}...)
+	pMap := c.materializeForUse(mapReg)
+	pKey := c.materializeForUse(keyReg)
+	pVal := c.materializeForUse(valReg)
+	pDst := c.materializeForDef(dst)
+	c.instructions = append(c.instructions, []byte{byte(OpRegMapSet), byte(pDst), byte(pMap), byte(pKey), byte(pVal)}...)
+	c.finalizeDef(dst, pDst)
+	c.releaseMaterialized(valReg, pVal)
+	c.releaseMaterialized(keyReg, pKey)
+	c.releaseMaterialized(mapReg, pMap)
 }
 
 func (c *RegCompiler) emitRegMap(dst, startReg, count int) {
-	c.instructions = append(c.instructions, MakeRegInstruction(OpRegMap, dst, startReg, count)...)
+	// Note: startReg must be a physical register since it references a contiguous range.
+	// Bulk map creation is typically used for small map literals where registers are available.
+	pDst := c.materializeForDef(dst)
+	c.instructions = append(c.instructions, MakeRegInstruction(OpRegMap, pDst, startReg, count)...)
+	c.finalizeDef(dst, pDst)
 }
 
 func (c *RegCompiler) emitRegIndex(dst, objReg, indexReg int) {
-	c.instructions = append(c.instructions, MakeRegInstruction(OpRegIndex, dst, objReg, indexReg)...)
+	pObj := c.materializeForUse(objReg)
+	pIdx := c.materializeForUse(indexReg)
+	pDst := c.materializeForDef(dst)
+	c.instructions = append(c.instructions, MakeRegInstruction(OpRegIndex, pDst, pObj, pIdx)...)
+	c.finalizeDef(dst, pDst)
+	c.releaseMaterialized(indexReg, pIdx)
+	c.releaseMaterialized(objReg, pObj)
 }
 
 func (c *RegCompiler) emitRegSetIndex(objReg, indexReg, valReg int) {
-	c.instructions = append(c.instructions, MakeRegInstruction(OpRegSetIndex, objReg, indexReg, valReg)...)
+	pObj := c.materializeForUse(objReg)
+	pIdx := c.materializeForUse(indexReg)
+	pVal := c.materializeForUse(valReg)
+	c.instructions = append(c.instructions, MakeRegInstruction(OpRegSetIndex, pObj, pIdx, pVal)...)
+	c.releaseMaterialized(valReg, pVal)
+	c.releaseMaterialized(indexReg, pIdx)
+	c.releaseMaterialized(objReg, pObj)
 }
 
 func (c *RegCompiler) emitRegSlice(dst, objReg, startReg, endReg int) {
-	c.instructions = append(c.instructions, MakeRegInstruction4(OpRegSlice, dst, objReg, startReg, endReg)...)
+	pObj := c.materializeForUse(objReg)
+	pStart := c.materializeForUse(startReg)
+	pEnd := c.materializeForUse(endReg)
+	pDst := c.materializeForDef(dst)
+	c.instructions = append(c.instructions, MakeRegInstruction4(OpRegSlice, pDst, pObj, pStart, pEnd)...)
+	c.finalizeDef(dst, pDst)
+	c.releaseMaterialized(endReg, pEnd)
+	c.releaseMaterialized(startReg, pStart)
+	c.releaseMaterialized(objReg, pObj)
 }
 
 func (c *RegCompiler) emitRegIterKey(dst, iterReg, indexReg int) {
-	c.instructions = append(c.instructions, MakeRegInstruction(OpRegIterKey, dst, iterReg, indexReg)...)
+	pIter := c.materializeForUse(iterReg)
+	pIdx := c.materializeForUse(indexReg)
+	pDst := c.materializeForDef(dst)
+	c.instructions = append(c.instructions, MakeRegInstruction(OpRegIterKey, pDst, pIter, pIdx)...)
+	c.finalizeDef(dst, pDst)
+	c.releaseMaterialized(indexReg, pIdx)
+	c.releaseMaterialized(iterReg, pIter)
 }
 
 func (c *RegCompiler) emitRegIterValue(dst, iterReg, indexReg int) {
-	c.instructions = append(c.instructions, MakeRegInstruction(OpRegIterValue, dst, iterReg, indexReg)...)
+	pIter := c.materializeForUse(iterReg)
+	pIdx := c.materializeForUse(indexReg)
+	pDst := c.materializeForDef(dst)
+	c.instructions = append(c.instructions, MakeRegInstruction(OpRegIterValue, pDst, pIter, pIdx)...)
+	c.finalizeDef(dst, pDst)
+	c.releaseMaterialized(indexReg, pIdx)
+	c.releaseMaterialized(iterReg, pIter)
 }
 
 func (c *RegCompiler) emitRegLoadModule(dst, constIdx int) {
-	c.instructions = append(c.instructions, MakeRegInstructionConst(OpRegLoadModule, dst, constIdx)...)
+	pDst := c.materializeForDef(dst)
+	c.instructions = append(c.instructions, MakeRegInstructionConst(OpRegLoadModule, pDst, constIdx)...)
+	c.finalizeDef(dst, pDst)
 }
 
 func (c *RegCompiler) emitRegGetExport(dst, moduleReg, nameIdx int) {
-	c.instructions = append(c.instructions, MakeRegInstruction(OpRegGetExport, dst, moduleReg, nameIdx)...)
+	pMod := c.materializeForUse(moduleReg)
+	pDst := c.materializeForDef(dst)
+	c.instructions = append(c.instructions, MakeRegInstruction(OpRegGetExport, pDst, pMod, nameIdx)...)
+	c.finalizeDef(dst, pDst)
+	c.releaseMaterialized(moduleReg, pMod)
 }
 
 func (c *RegCompiler) emitRegSetExport(srcReg, nameIdx int) {
-	c.instructions = append(c.instructions, MakeRegInstructionConst(OpRegSetExport, srcReg, nameIdx)...)
+	pSrc := c.materializeForUse(srcReg)
+	c.instructions = append(c.instructions, MakeRegInstructionConst(OpRegSetExport, pSrc, nameIdx)...)
+	c.releaseMaterialized(srcReg, pSrc)
 }
 
 func (c *RegCompiler) emitRegGetField(dst, objReg, nameIdx int) {
-	// Format: OpRegGetField dst obj name_idx_hi name_idx_lo
+	pObj := c.materializeForUse(objReg)
+	pDst := c.materializeForDef(dst)
 	c.instructions = append(c.instructions,
 		byte(OpRegGetField),
-		byte(dst),
-		byte(objReg),
+		byte(pDst),
+		byte(pObj),
 		byte(nameIdx>>8),
 		byte(nameIdx),
 	)
+	c.finalizeDef(dst, pDst)
+	c.releaseMaterialized(objReg, pObj)
 }
 
 func (c *RegCompiler) emitRegSetField(objReg, valReg, nameIdx int) {
-	// Format: OpRegSetField obj val name_idx_hi name_idx_lo
+	pObj := c.materializeForUse(objReg)
+	pVal := c.materializeForUse(valReg)
 	c.instructions = append(c.instructions,
 		byte(OpRegSetField),
-		byte(objReg),
-		byte(valReg),
+		byte(pObj),
+		byte(pVal),
 		byte(nameIdx>>8),
 		byte(nameIdx),
 	)
+	c.releaseMaterialized(valReg, pVal)
+	c.releaseMaterialized(objReg, pObj)
 }
 
 func (c *RegCompiler) emitRegCallMethod(objReg, nameIdx, numArgs int) {
-	// Format: OpRegCallMethod obj name_idx_hi name_idx_lo num_args
+	pObj := c.materializeForUse(objReg)
 	c.instructions = append(c.instructions,
 		byte(OpRegCallMethod),
-		byte(objReg),
+		byte(pObj),
 		byte(nameIdx>>8),
 		byte(nameIdx),
 		byte(numArgs),
 	)
+	c.releaseMaterialized(objReg, pObj)
 }
 
 func (c *RegCompiler) emitRegTailCallMethod(objReg, nameIdx, numArgs int) {
-	// Format: OpRegTailCallMethod obj name_idx_hi name_idx_lo num_args
+	pObj := c.materializeForUse(objReg)
 	c.instructions = append(c.instructions,
 		byte(OpRegTailCallMethod),
-		byte(objReg),
+		byte(pObj),
 		byte(nameIdx>>8),
 		byte(nameIdx),
 		byte(numArgs),
 	)
+	c.releaseMaterialized(objReg, pObj)
 }
 
 // patchJump patches a jump instruction with the correct offset
@@ -3421,11 +3645,15 @@ func (c *RegCompiler) addConstant(obj objects.Object) int {
 }
 
 func (c *RegCompiler) emitRegPush(srcReg int) {
-	c.instructions = append(c.instructions, byte(OpRegPush), byte(srcReg))
+	pSrc := c.materializeForUse(srcReg)
+	c.instructions = append(c.instructions, byte(OpRegPush), byte(pSrc))
+	c.releaseMaterialized(srcReg, pSrc)
 }
 
 func (c *RegCompiler) emitRegPop(dstReg int) {
-	c.instructions = append(c.instructions, byte(OpRegPop), byte(dstReg))
+	pDst := c.materializeForDef(dstReg)
+	c.instructions = append(c.instructions, byte(OpRegPop), byte(pDst))
+	c.finalizeDef(dstReg, pDst)
 }
 
 // emitRegPrimeInnerLoop emits OpRegPrimeInnerLoop

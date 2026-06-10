@@ -817,18 +817,21 @@ func String(ins []byte) string {
 // ============================================================================
 
 const (
-	// NumRegisters is the number of registers per frame
 	NumRegisters = 256
 
-	// NumArgRegisters is the number of argument registers (R0-R7)
 	NumArgRegisters = 8
 
-	// ReturnRegister is the register index for return values
 	ReturnRegister = 255
 
-	// FirstLocalRegister is the first register available for local variables
-	// R0-R7 are reserved for arguments
 	FirstLocalRegister = 8
+
+	SpillSlotRegBase = 1000
+
+	EmergencyRegBase = 251
+
+	NumEmergencyRegs = 4
+
+	MaxTempReg = EmergencyRegBase
 )
 
 // IsRegisterOpcode returns true if the opcode is a register-based operation
