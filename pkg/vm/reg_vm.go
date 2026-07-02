@@ -1155,8 +1155,8 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 
 		obj := regs[objReg].ToObject()
 
-		// Get the field name from object constants
-		nameObj := vm.objConstants[nameIdx]
+		// Get the field name from the frame's constants (frame-local for cross-module correctness)
+		nameObj := frame.Constants[nameIdx].ToObject()
 		name, ok := nameObj.(*objects.String)
 		if !ok {
 			return fmt.Errorf("field name is not a string")
@@ -1311,8 +1311,8 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 		obj := regs[objReg].ToObject()
 		val := regs[valReg].ToObject()
 
-		// Get the field name from object constants
-		nameObj := vm.objConstants[nameIdx]
+		// Get the field name from the frame's constants (frame-local for cross-module correctness)
+		nameObj := frame.Constants[nameIdx].ToObject()
 		name, ok := nameObj.(*objects.String)
 		if !ok {
 			return fmt.Errorf("field name is not a string")
@@ -1340,8 +1340,8 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 
 		obj := regs[objReg].ToObject()
 
-		// Get the method name from object constants
-		nameObj := vm.objConstants[nameIdx]
+		// Get the method name from the frame's constants (frame-local for cross-module correctness)
+		nameObj := frame.Constants[nameIdx].ToObject()
 		name, ok := nameObj.(*objects.String)
 		if !ok {
 			return fmt.Errorf("method name is not a string")
@@ -1583,8 +1583,8 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 	case compiler.OpRegLoadModule:
 		_, dst, constIdx := compiler.DecodeRegInstructionConst(code[frame.IP:])
 		frame.IP += 4
-		// Load the module path from constants
-		pathObj := vm.objConstants[constIdx]
+		// Load the module path from the frame's constants (frame-local for cross-module correctness)
+		pathObj := frame.Constants[constIdx].ToObject()
 		path, ok := pathObj.(*objects.String)
 		if !ok {
 			return fmt.Errorf("module path is not a string")
@@ -1604,8 +1604,8 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 		if !ok {
 			return fmt.Errorf("cannot get export from non-module")
 		}
-		// Get the export name from object constants
-		nameObj := vm.objConstants[nameIdx]
+		// Get the export name from the frame's constants (frame-local for cross-module correctness)
+		nameObj := frame.Constants[nameIdx].ToObject()
 		name, ok := nameObj.(*objects.String)
 		if !ok {
 			return fmt.Errorf("export name is not a string")
@@ -1624,8 +1624,8 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 		if vm.currentModule == nil {
 			return fmt.Errorf("no current module for export")
 		}
-		// Get the export name from object constants
-		nameObj := vm.objConstants[nameIdx]
+		// Get the export name from the frame's constants (frame-local for cross-module correctness)
+		nameObj := frame.Constants[nameIdx].ToObject()
 		name, ok := nameObj.(*objects.String)
 		if !ok {
 			return fmt.Errorf("export name is not a string")
@@ -2385,8 +2385,8 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 		frame.IP += 7
 
 		name := ""
-		if nameIdx < len(vm.objConstants) {
-			if str, ok := vm.objConstants[nameIdx].(*objects.String); ok {
+		if nameIdx < len(frame.Constants) {
+			if str, ok := frame.Constants[nameIdx].ToObject().(*objects.String); ok {
 				name = str.Value
 			}
 		}
@@ -2512,8 +2512,8 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 
 		// Get method name
 		var methodName string
-		if methodIdx < len(vm.objConstants) {
-			if str, ok := vm.objConstants[methodIdx].(*objects.String); ok {
+		if methodIdx < len(frame.Constants) {
+			if str, ok := frame.Constants[methodIdx].ToObject().(*objects.String); ok {
 				methodName = str.Value
 			}
 		}
@@ -3863,10 +3863,14 @@ func (vm *RegVM) handleRegTailCall(frame *RegFrame, code []byte) error {
 	// Get the function to call
 	var targetFn *compiler.CompiledFunction
 	var freeVars []Value
+	var closureConstants []objects.Object // constants from the closure (for cross-module TCO)
+	var closureGlobals []Value            // globals from the closure (for cross-module TCO)
 
 	// Fast path: check specific types
 	if closure := fn.GetClosure(); closure != nil {
 		targetFn = closure.Fn
+		closureConstants = closure.Constants
+		closureGlobals = closure.GlobalsValues
 		// Use FreeVarsValues for register VM, convert FreeVars if needed
 		if closure.FreeVarsValues != nil {
 			freeVars = closure.FreeVarsValues
@@ -3884,6 +3888,8 @@ func (vm *RegVM) handleRegTailCall(frame *RegFrame, code []byte) error {
 		switch fnObj := obj.(type) {
 		case *Closure:
 			targetFn = fnObj.Fn
+			closureConstants = fnObj.Constants
+			closureGlobals = fnObj.GlobalsValues
 			// Use FreeVarsValues for register VM, convert FreeVars if needed
 			if fnObj.FreeVarsValues != nil {
 				freeVars = fnObj.FreeVarsValues
@@ -3896,13 +3902,19 @@ func (vm *RegVM) handleRegTailCall(frame *RegFrame, code []byte) error {
 		case *compiler.CompiledFunction:
 			targetFn = fnObj
 		case *objects.Builtin:
-			// Builtins don't benefit from TCO, fall back to normal call
-			frame.IP += 3
-			return vm.callBuiltin(fnObj, int(numArgs), frame)
+			// Builtins don't benefit from TCO; execute and return immediately.
+			// compileTailCall does not emit OpRegReturn after OpRegTailCall,
+			// so we must trigger the frame return here.
+			if err := vm.callBuiltin(fnObj, int(numArgs), frame); err != nil {
+				return err
+			}
+			return vm.handleRegReturn(frame)
 		case *objects.Class:
-			// Classes don't benefit from TCO, fall back to normal constructor call
-			frame.IP += 3
-			return vm.callClassConstructor(fnObj, int(numArgs), frame)
+			// Classes don't benefit from TCO; execute and return immediately.
+			if err := vm.callClassConstructor(fnObj, int(numArgs), frame); err != nil {
+				return err
+			}
+			return vm.handleRegReturn(frame)
 		default:
 			return fmt.Errorf("cannot tail call %s", obj.Type())
 		}
@@ -3938,6 +3950,22 @@ func (vm *RegVM) handleRegTailCall(frame *RegFrame, code []byte) error {
 	frame.IP = 0
 	frame.FreeVars = freeVars
 
+	// Update frame constants if the closure brought its own (cross-module TCO)
+	if closureConstants != nil {
+		newConstants := make([]Value, len(closureConstants))
+		for i, c := range closureConstants {
+			if c != nil {
+				newConstants[i] = NewObject(c)
+			}
+		}
+		frame.Constants = newConstants
+	}
+
+	// Update frame globals if the closure brought its own (cross-module TCO)
+	if closureGlobals != nil {
+		frame.Globals = closureGlobals
+	}
+
 	// Allocate locals for the new function
 	if cap(frame.Locals) >= targetFn.NumLocals {
 		frame.Locals = frame.Locals[:targetFn.NumLocals]
@@ -3964,8 +3992,8 @@ func (vm *RegVM) handleRegTailCallMethod(frame *RegFrame, code []byte) error {
 
 	obj := regs[objReg].ToObject()
 
-	// Get the method name from object constants
-	nameObj := vm.objConstants[nameIdx]
+	// Get the method name from the frame's constants (frame-local for cross-module correctness)
+	nameObj := frame.Constants[nameIdx].ToObject()
 	name, ok := nameObj.(*objects.String)
 	if !ok {
 		return fmt.Errorf("method name is not a string")
@@ -4015,6 +4043,17 @@ func (vm *RegVM) handleRegTailCallMethod(frame *RegFrame, code []byte) error {
 			}
 		}
 		_ = mapObj
+	} else if mod, ok := obj.(*objects.Module); ok {
+		// Handle Module objects - check early before primitive type check
+		// (must mirror OpRegCallMethod; otherwise Module falls into the
+		//  primitive branch because TagModule <= TagStringBuilder is true)
+		export, found := mod.Exports[name.Value]
+		if !found {
+			return fmt.Errorf("export '%s' not found in module '%s'", name.Value, mod.Name)
+		}
+		method = export
+		isMapFunctionValue = true // Module exports are called without receiver
+		_ = mod
 	} else if obj.TypeTag() <= objects.TagStringBuilder {
 		typeTag := obj.TypeTag()
 		nameHash := hashName(name.Value)
@@ -4044,15 +4083,16 @@ func (vm *RegVM) handleRegTailCallMethod(frame *RegFrame, code []byte) error {
 	if isMapFunctionValue {
 		switch fn := method.(type) {
 		case *objects.Builtin:
-			// Builtins don't benefit from TCO, execute normally
+			// Builtins don't benefit from TCO; execute and return result immediately.
+			// compileTailCall does not emit OpRegReturn after OpRegTailCallMethod,
+			// so we must trigger the frame return here.
 			args := make([]objects.Object, numArgs)
 			for i := 0; i < numArgs; i++ {
 				args[i] = regs[i].ToObject()
 			}
 			result := fn.Fn(args...)
 			regs[compiler.ReturnRegister] = NewObject(result)
-			frame.IP += 5
-			return nil
+			return vm.handleRegReturn(frame)
 		case *compiler.CompiledFunction:
 			return vm.tailCallMethodCompiledFunction(fn, numArgs, frame)
 		case *Closure:
@@ -4071,15 +4111,16 @@ func (vm *RegVM) handleRegTailCallMethod(frame *RegFrame, code []byte) error {
 
 	switch fn := method.(type) {
 	case *objects.Builtin:
-		// Builtins don't benefit from TCO, execute normally
+		// Builtins don't benefit from TCO; execute and return result immediately.
+		// compileTailCall does not emit OpRegReturn after OpRegTailCallMethod,
+		// so we must trigger the frame return here.
 		args := make([]objects.Object, numArgs+1)
 		for i := 0; i <= numArgs; i++ {
 			args[i] = regs[i].ToObject()
 		}
 		result := fn.Fn(args...)
 		regs[compiler.ReturnRegister] = NewObject(result)
-		frame.IP += 5
-		return nil
+		return vm.handleRegReturn(frame)
 	case *compiler.CompiledFunction:
 		if err := vm.tailCallMethodCompiledFunction(fn, numArgs+1, frame); err != nil {
 			return err
@@ -4182,6 +4223,22 @@ func (vm *RegVM) tailCallMethodClosure(closure *Closure, numArgs int, frame *Reg
 	frame.Fn = fn
 	frame.IP = 0
 
+	// Update frame constants if the closure brought its own (cross-module TCO)
+	if closure.Constants != nil {
+		newConstants := make([]Value, len(closure.Constants))
+		for i, c := range closure.Constants {
+			if c != nil {
+				newConstants[i] = NewObject(c)
+			}
+		}
+		frame.Constants = newConstants
+	}
+
+	// Update frame globals if the closure brought its own (cross-module TCO)
+	if closure.GlobalsValues != nil {
+		frame.Globals = closure.GlobalsValues
+	}
+
 	// Set up free variables from closure
 	if closure.FreeVarsValues != nil {
 		frame.FreeVars = closure.FreeVarsValues
@@ -4250,8 +4307,24 @@ func (vm *RegVM) runFunction(fn *compiler.CompiledFunction, args []Value) {
 func (vm *RegVM) runFunctionWithClosure(fn *compiler.CompiledFunction, closure *Closure, args []Value) {
 	// Create a new frame
 	frame := NewRegFrame(fn)
-	frame.Constants = vm.constants
-	frame.Globals = vm.globals
+	// Use the closure's constants if available (for cross-module goroutines)
+	if closure.Constants != nil {
+		newConstants := make([]Value, len(closure.Constants))
+		for i, c := range closure.Constants {
+			if c != nil {
+				newConstants[i] = NewObject(c)
+			}
+		}
+		frame.Constants = newConstants
+	} else {
+		frame.Constants = vm.constants
+	}
+	// Use the closure's globals if available (for cross-module goroutines)
+	if closure.GlobalsValues != nil {
+		frame.Globals = closure.GlobalsValues
+	} else {
+		frame.Globals = vm.globals
+	}
 	frame.FreeVars = closure.FreeVarsValues
 
 	// Copy arguments to registers

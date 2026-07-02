@@ -1920,14 +1920,19 @@ func (c *RegCompiler) compileTailCall(n *parser.CallExpression) (int, error) {
 		if err != nil {
 			return 0, err
 		}
-		if objReg == ReturnRegister {
-			tempReg := c.allocTempReg()
-			c.emitRegMove(tempReg, objReg)
-			objReg = tempReg
+
+		// Save the method receiver object to a spill slot to protect it
+		// from being overwritten during argument compilation (arguments are
+		// moved to R0..R(n-1) below, which may alias objReg).
+		objSpillSlot := c.allocSpillSlot()
+		c.emitRegStoreLocal(objReg, objSpillSlot)
+		if objReg >= FirstLocalRegister {
+			c.freeTempReg(objReg)
 		}
 
-		// Compile arguments to temporary registers
-		argRegs := make([]int, len(n.Arguments))
+		// Compile arguments, spilling each to a local slot immediately
+		// to prevent register reuse overwriting previous argument values
+		spillSlots := make([]int, len(n.Arguments))
 		for i, arg := range n.Arguments {
 			argReg, err := c.Compile(arg)
 			if err != nil {
@@ -1938,30 +1943,37 @@ func (c *RegCompiler) compileTailCall(n *parser.CallExpression) (int, error) {
 				c.emitRegMove(tempReg, argReg)
 				argReg = tempReg
 			}
-			argRegs[i] = argReg
-		}
-
-		// Move arguments to R0-R7
-		for i, argReg := range argRegs {
-			if argReg != i {
-				c.emitRegMove(i, argReg)
+			spillSlot := c.allocSpillSlot()
+			c.emitRegStoreLocal(argReg, spillSlot)
+			spillSlots[i] = spillSlot
+			if argReg >= FirstLocalRegister {
+				c.freeTempReg(argReg)
 			}
 		}
 
-		// Free temporary registers
-		for i := len(argRegs) - 1; i >= 0; i-- {
-			if argRegs[i] >= FirstLocalRegister {
-				c.freeTempReg(argRegs[i])
-			}
+		// Load arguments into R0..R(n-1) for the method call
+		for i, slot := range spillSlots {
+			c.emitRegLoadLocal(i, slot)
 		}
+
+		for i := len(spillSlots) - 1; i >= 0; i-- {
+			c.freeSpillSlot(spillSlots[i])
+		}
+
+		// Reload receiver into a register beyond the argument range.
+		// The VM will shift args R0..R(n-1) -> R1..R(n) and put receiver in R0
+		// (for non-map-function values) or use it directly (for module exports).
+		receiverReg := len(n.Arguments)
+		c.emitRegLoadLocal(receiverReg, objSpillSlot)
+		c.freeSpillSlot(objSpillSlot)
 
 		// Get method name constant
 		nameIdx := c.addConstant(objects.InternString(dot.Property.Value))
 
 		// Emit tail call method instruction
-		c.emitRegTailCallMethod(objReg, nameIdx, len(n.Arguments))
-		if objReg >= FirstLocalRegister {
-			c.freeTempReg(objReg)
+		c.emitRegTailCallMethod(receiverReg, nameIdx, len(n.Arguments))
+		if receiverReg >= FirstLocalRegister {
+			c.freeTempReg(receiverReg)
 		}
 
 		return 0, nil
