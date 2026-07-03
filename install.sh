@@ -1,12 +1,17 @@
 #!/bin/bash
 #
-# Xxlang Installation Script
-# Downloads and installs the latest version of Xxlang from GitHub Releases
+# Xxlang Installation / Update Script
+# Downloads and installs the latest version of Xxlang from GitHub Releases.
+# If Xxlang is already installed, compares versions and skips the download
+# when the installed version matches the latest release (use --force to
+# reinstall anyway).
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/topxeq/xxlang/master/install.sh | bash
 #   or
 #   wget -qO- https://raw.githubusercontent.com/topxeq/xxlang/master/install.sh | bash
+#   or, to force reinstall:
+#   curl -fsSL https://raw.githubusercontent.com/topxeq/xxlang/master/install.sh | bash -s -- --force
 #
 
 set -e
@@ -22,6 +27,21 @@ NC='\033[0m' # No Color
 REPO="topxeq/xxlang"
 BINARY_NAME="xxl"
 INSTALL_DIR="/usr/local/bin"
+FORCE=0
+
+# Parse flags
+for arg in "$@"; do
+    case "$arg" in
+        --force|-f)
+            FORCE=1
+            ;;
+        --help|-h)
+            echo "Usage: $0 [--force]"
+            echo "  --force  Reinstall even if the installed version is up to date."
+            exit 0
+            ;;
+    esac
+done
 
 # Print functions
 info() {
@@ -38,6 +58,31 @@ warn() {
 
 error() {
     echo -e "${RED}[ERROR]${NC} $1" >&2
+}
+
+# Compare two semantic version strings of the form X.Y.Z.
+# Returns 0 if equal, 1 if $1 < $2, 2 if $1 > $2.
+version_compare() {
+    local a="$1" b="$2"
+    if [ "$a" = "$b" ]; then
+        return 0
+    fi
+    # Split on '.' and read into three positional parameters. Using `read`
+    # with IFS=. avoids the word-splitting pitfall of `set --` under a
+    # non-default IFS, and works on bash 3+ (macOS) and bash 4+ alike.
+    local a1 a2 a3 b1 b2 b3
+    IFS=. read -r a1 a2 a3 <<< "$a"
+    IFS=. read -r b1 b2 b3 <<< "$b"
+    # Empty segments default to 0
+    a1="${a1:-0}"; a2="${a2:-0}"; a3="${a3:-0}"
+    b1="${b1:-0}"; b2="${b2:-0}"; b3="${b3:-0}"
+    if [ "$a1" -lt "$b1" ]; then return 1; fi
+    if [ "$a1" -gt "$b1" ]; then return 2; fi
+    if [ "$a2" -lt "$b2" ]; then return 1; fi
+    if [ "$a2" -gt "$b2" ]; then return 2; fi
+    if [ "$a3" -lt "$b3" ]; then return 1; fi
+    if [ "$a3" -gt "$b3" ]; then return 2; fi
+    return 0
 }
 
 # Detect OS
@@ -60,6 +105,17 @@ detect_arch() {
         arm*)           echo "arm" ;;
         *)              echo "unknown" ;;
     esac
+}
+
+# Get the version of the currently installed xxl binary, if any.
+# Prints the version string (e.g. "0.9.10") on success, empty on failure.
+get_installed_version() {
+    local bin="$1"
+    if [ -z "$bin" ] || [ ! -x "$bin" ]; then
+        return 0
+    fi
+    # `xxl version` prints "Xxlang v0.9.10". Extract the part after "v".
+    "$bin" version 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 | sed -E 's/^v//'
 }
 
 # Get latest release version from GitHub API
@@ -118,7 +174,7 @@ extract_zip() {
     elif command -v 7z &> /dev/null; then
         7z x -y -o"$dest" "$archive" > /dev/null
     else
-        error "unzip or 7z is required for extraction. Please install one of them."
+        error "unzip or 7z is required for extraction. Please install it."
         exit 1
     fi
 }
@@ -154,18 +210,87 @@ main() {
     info "Detected OS: $OS"
     info "Detected Architecture: $ARCH"
 
+    # Determine binary name and install directory first, so we can check
+    # the currently installed version before hitting the network.
+    if [ "$OS" = "windows" ]; then
+        BINARY_NAME="xxl.exe"
+    else
+        BINARY_NAME="xxl"
+    fi
+
+    if [ "$OS" = "windows" ]; then
+        # For Windows (Git Bash, etc.)
+        if [ -d "$HOME/bin" ]; then
+            INSTALL_DIR="$HOME/bin"
+        else
+            INSTALL_DIR="$HOME"
+        fi
+    else
+        # For Linux/macOS
+        # Check if we can write to /usr/local/bin
+        if [ -w "/usr/local/bin" ] || [ "$(id -u)" = "0" ]; then
+            INSTALL_DIR="/usr/local/bin"
+        elif [ -d "$HOME/.local/bin" ]; then
+            INSTALL_DIR="$HOME/.local/bin"
+        elif [ -d "$HOME/bin" ]; then
+            INSTALL_DIR="$HOME/bin"
+        else
+            # Create ~/.local/bin
+            mkdir -p "$HOME/.local/bin"
+            INSTALL_DIR="$HOME/.local/bin"
+
+            # Add to PATH if not already there
+            if ! echo "$PATH" | grep -q "$HOME/.local/bin"; then
+                warn "Adding $HOME/.local/bin to PATH..."
+                echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
+                export PATH="$HOME/.local/bin:$PATH"
+            fi
+        fi
+    fi
+
+    INSTALL_PATH="${INSTALL_DIR}/${BINARY_NAME}"
+
     # Get latest version
     info "Fetching latest version..."
     VERSION=$(get_latest_version)
     info "Latest version: $VERSION"
 
+    # Check the currently installed version (if any) and skip the download
+    # when it already matches the latest release.
+    INSTALLED_VERSION=$(get_installed_version "$INSTALL_PATH")
+    # Also try `xxl` from PATH in case INSTALL_PATH doesn't point at it.
+    if [ -z "$INSTALLED_VERSION" ] && command -v xxl &> /dev/null; then
+        INSTALLED_VERSION=$(get_installed_version "$(command -v xxl)")
+    fi
+
+    if [ -n "$INSTALLED_VERSION" ]; then
+        info "Installed version: $INSTALLED_VERSION"
+        if [ "$FORCE" -eq 0 ]; then
+            version_compare "$INSTALLED_VERSION" "$VERSION"
+            cmp=$?
+            if [ "$cmp" -eq 0 ]; then
+                success "Already up to date (v${INSTALLED_VERSION}). Nothing to do."
+                success "Use --force to reinstall."
+                exit 0
+            elif [ "$cmp" -eq 2 ]; then
+                # Installed is newer than the latest release tag — happens for
+                # local builds ahead of a release. Don't downgrade.
+                warn "Installed version (${INSTALLED_VERSION}) is newer than the latest release (${VERSION}). Not downgrading."
+                exit 0
+            fi
+            info "Update available: ${INSTALLED_VERSION} -> ${VERSION}"
+        else
+            warn "Force reinstall requested — ignoring installed version ${INSTALLED_VERSION}."
+        fi
+    else
+        info "No previous installation detected — performing fresh install."
+    fi
+
     # Build download URL - using compressed archives
     # Format: xxlang-{os}-{arch}.tar.gz (Linux/macOS) or xxlang-{os}-{arch}.zip (Windows)
     if [ "$OS" = "windows" ]; then
-        BINARY_NAME="xxl.exe"
         ARCHIVE_NAME="xxlang-${OS}-${ARCH}.zip"
     else
-        BINARY_NAME="xxl"
         ARCHIVE_NAME="xxlang-${OS}-${ARCH}.tar.gz"
     fi
 
@@ -204,47 +329,27 @@ main() {
     # Make executable
     chmod +x "$EXTRACTED_BINARY"
 
-    # Determine install directory
-    if [ "$OS" = "windows" ]; then
-        # For Windows (Git Bash, etc.)
-        if [ -d "$HOME/bin" ]; then
-            INSTALL_DIR="$HOME/bin"
+    # Replace the existing binary. On Unix we can overwrite directly via
+    # rename. On Windows (Git Bash / MSYS) the running exe cannot be removed
+    # or overwritten while it is mapped; renaming it aside first matches the
+    # strategy used by `xxl update` (v0.9.9+) and lets the new file take its
+    # place.
+    if [ -f "$INSTALL_PATH" ]; then
+        info "Replacing existing installation..."
+        if [ "$OS" = "windows" ]; then
+            OLD_PATH="${INSTALL_PATH}.old"
+            rm -f "$OLD_PATH"
+            mv "$INSTALL_PATH" "$OLD_PATH" 2>/dev/null || true
+            mv "$EXTRACTED_BINARY" "$INSTALL_PATH"
+            rm -f "$OLD_PATH" 2>/dev/null || true
         else
-            INSTALL_DIR="$HOME"
+            # On Unix, rename atomically replaces the file (even if running).
+            mv "$EXTRACTED_BINARY" "$INSTALL_PATH"
         fi
     else
-        # For Linux/macOS
-        # Check if we can write to /usr/local/bin
-        if [ -w "/usr/local/bin" ] || [ "$(id -u)" = "0" ]; then
-            INSTALL_DIR="/usr/local/bin"
-        elif [ -d "$HOME/.local/bin" ]; then
-            INSTALL_DIR="$HOME/.local/bin"
-        elif [ -d "$HOME/bin" ]; then
-            INSTALL_DIR="$HOME/bin"
-        else
-            # Create ~/.local/bin
-            mkdir -p "$HOME/.local/bin"
-            INSTALL_DIR="$HOME/.local/bin"
-
-            # Add to PATH if not already there
-            if ! echo "$PATH" | grep -q "$HOME/.local/bin"; then
-                warn "Adding $HOME/.local/bin to PATH..."
-                echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
-                export PATH="$HOME/.local/bin:$PATH"
-            fi
-        fi
+        info "Installing to $INSTALL_PATH..."
+        mv "$EXTRACTED_BINARY" "$INSTALL_PATH"
     fi
-
-    # Check if already installed
-    INSTALL_PATH="${INSTALL_DIR}/${BINARY_NAME}"
-    if [ -f "$INSTALL_PATH" ]; then
-        info "Removing existing installation..."
-        rm -f "$INSTALL_PATH"
-    fi
-
-    # Install
-    info "Installing to $INSTALL_PATH..."
-    mv "$EXTRACTED_BINARY" "$INSTALL_PATH"
 
     # Cleanup
     rm -rf "$TMP_DIR"

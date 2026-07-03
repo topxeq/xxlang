@@ -1,5 +1,8 @@
-# Xxlang Installation Script for Windows
-# Downloads and installs the latest version of Xxlang from GitHub Releases
+# Xxlang Installation / Update Script for Windows
+# Downloads and installs the latest version of Xxlang from GitHub Releases.
+# If Xxlang is already installed, compares versions and skips the download
+# when the installed version matches the latest release (use -Force to
+# reinstall anyway).
 #
 # Usage:
 #   iwr -useb https://raw.githubusercontent.com/topxeq/xxlang/master/install.ps1 | iex
@@ -7,10 +10,14 @@
 # Or with PowerShell 7+:
 #   irm https://raw.githubusercontent.com/topxeq/xxlang/master/install.ps1 | iex
 #
+# Force reinstall:
+#   iwr -useb https://raw.githubusercontent.com/topxeq/xxlang/master/install.ps1 | iex -ArgumentList "-Force"
+#
 
 param(
     [string]$InstallDir = "",
-    [switch]$NoPathUpdate
+    [switch]$NoPathUpdate,
+    [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
@@ -87,6 +94,43 @@ function Get-Architecture {
     }
 }
 
+# Compare two semantic version strings of the form X.Y.Z.
+# Returns 0 if equal, -1 if $a < $b, 1 if $a > $b.
+function Compare-Version {
+    param([string]$a, [string]$b)
+    if ($a -eq $b) { return 0 }
+    $aParts = $a -split '\.' | ForEach-Object { [int]($_) }
+    $bParts = $b -split '\.' | ForEach-Object { [int]($_) }
+    # Pad to equal length
+    while ($aParts.Count -lt 3) { $aParts += 0 }
+    while ($bParts.Count -lt 3) { $bParts += 0 }
+    for ($i = 0; $i -lt 3; $i++) {
+        if ($aParts[$i] -lt $bParts[$i]) { return -1 }
+        if ($aParts[$i] -gt $bParts[$i]) { return 1 }
+    }
+    return 0
+}
+
+# Get the version of the currently installed xxl.exe, if any.
+# Returns the version string (e.g. "0.9.10") on success, $null on failure.
+function Get-InstalledVersion {
+    param([string]$BinPath)
+
+    if ([string]::IsNullOrEmpty($BinPath) -or -not (Test-Path $BinPath)) {
+        return $null
+    }
+    try {
+        # `xxl version` prints "Xxlang v0.9.10". Extract the X.Y.Z part.
+        $output = & $BinPath version 2>$null
+        if ($output -match 'v(\d+\.\d+\.\d+)') {
+            return $matches[1]
+        }
+    } catch {
+        # Binary might be wrong arch, corrupted, etc. Treat as not installed.
+    }
+    return $null
+}
+
 # Get latest version from GitHub
 function Get-LatestVersion {
     try {
@@ -128,19 +172,8 @@ function Main {
     $arch = Get-Architecture
     Write-Info "Detected Architecture: $arch"
 
-    # Get latest version
-    Write-Info "Fetching latest version..."
-    $version = Get-LatestVersion
-    Write-Info "Latest version: $version"
-
-    # Build download URL - using zip archive
-    # Format: xxlang-windows-{arch}.zip
-    $archiveName = "xxlang-windows-$arch.zip"
-    $downloadUrl = "https://github.com/$Repo/releases/download/v$version/$archiveName"
-
-    Write-Info "Download URL: $downloadUrl"
-
-    # Determine install directory
+    # Determine install directory first, so we can check the currently
+    # installed version before hitting the network.
     if ([string]::IsNullOrEmpty($InstallDir)) {
         # Default to user's local bin or AppData
         $localAppData = [Environment]::GetFolderPath("LocalApplicationData")
@@ -160,6 +193,51 @@ function Main {
     }
 
     $installPath = Join-Path $InstallDir $BinaryName
+
+    # Get latest version
+    Write-Info "Fetching latest version..."
+    $version = Get-LatestVersion
+    Write-Info "Latest version: $version"
+
+    # Check the currently installed version (if any) and skip the download
+    # when it already matches the latest release.
+    $installedVersion = Get-InstalledVersion -BinPath $installPath
+    # Also try `xxl` from PATH in case installPath doesn't point at it.
+    if ([string]::IsNullOrEmpty($installedVersion)) {
+        $xxlInPath = Get-Command xxl -ErrorAction SilentlyContinue
+        if ($xxlInPath) {
+            $installedVersion = Get-InstalledVersion -BinPath $xxlInPath.Source
+        }
+    }
+
+    if (-not [string]::IsNullOrEmpty($installedVersion)) {
+        Write-Info "Installed version: $installedVersion"
+        if (-not $Force) {
+            $cmp = Compare-Version -a $installedVersion -b $version
+            if ($cmp -eq 0) {
+                Write-Success "Already up to date (v$installedVersion). Nothing to do."
+                Write-Success "Use -Force to reinstall."
+                exit 0
+            } elseif ($cmp -gt 0) {
+                # Installed is newer than the latest release tag — happens for
+                # local builds ahead of a release. Don't downgrade.
+                Write-Warn "Installed version ($installedVersion) is newer than the latest release ($version). Not downgrading."
+                exit 0
+            }
+            Write-Info "Update available: $installedVersion -> $version"
+        } else {
+            Write-Warn "Force reinstall requested — ignoring installed version $installedVersion."
+        }
+    } else {
+        Write-Info "No previous installation detected — performing fresh install."
+    }
+
+    # Build download URL - using zip archive
+    # Format: xxlang-windows-{arch}.zip
+    $archiveName = "xxlang-windows-$arch.zip"
+    $downloadUrl = "https://github.com/$Repo/releases/download/v$version/$archiveName"
+
+    Write-Info "Download URL: $downloadUrl"
 
     # Download archive
     Write-Info "Downloading Xxlang v$version..."
@@ -195,15 +273,43 @@ function Main {
         exit 1
     }
 
-    # Remove existing installation
+    # Replace the existing binary. On Windows the running exe cannot be
+    # removed or overwritten while it is mapped, but renaming it aside first
+    # is allowed. This matches the strategy used by `xxl update` (v0.9.9+):
+    #   1. Copy the new binary to installPath + ".new" (sibling, so same drive).
+    #   2. Rename the current exe to ".old".
+    #   3. Rename ".new" into place.
+    #   4. Best-effort remove ".old".
+    # Each step tolerates the previous step having been skipped, so the
+    # script is idempotent across failed runs.
     if (Test-Path $installPath) {
-        Write-Info "Removing existing installation..."
-        Remove-Item $installPath -Force
-    }
+        Write-Info "Replacing existing installation..."
+        $newPath = "$installPath.new"
+        $oldPath = "$installPath.old"
 
-    # Install
-    Write-Info "Installing to $installPath..."
-    Move-Item $extractedBinary $installPath -Force
+        # Stage the new binary next to the target.
+        Remove-Item $newPath -Force -ErrorAction SilentlyContinue
+        Copy-Item $extractedBinary $newPath -Force
+
+        # Move the current executable aside (Windows allows renaming a
+        # running exe; only creating a new file with the same name while
+        # the old one is mapped is restricted).
+        Remove-Item $oldPath -Force -ErrorAction SilentlyContinue
+        if (Test-Path $installPath) {
+            Move-Item $installPath $oldPath -Force
+        }
+
+        # Move the new binary into place.
+        Move-Item $newPath $installPath -Force
+
+        # Best-effort cleanup of the old executable. If the old binary is
+        # still mapped (e.g. an xxl process is still running), this fails —
+        # that's harmless and it will be removable after that process exits.
+        Remove-Item $oldPath -Force -ErrorAction SilentlyContinue
+    } else {
+        Write-Info "Installing to $installPath..."
+        Move-Item $extractedBinary $installPath -Force
+    }
 
     # Cleanup
     Remove-Item $tempArchive -Force -ErrorAction SilentlyContinue

@@ -21,4 +21,4 @@ package version
 
 // Version is the Xxlang version string (without the leading "v"), e.g.
 // "0.9.8". It matches the git tag for releases.
-var Version = "0.9.9"
+var Version = "0.9.10"
