@@ -169,12 +169,29 @@ var BuiltinRegistry = []string{
 	// Unicode character handling
 	"toChars",
 	"charLen",
-	// HTTP server built-in functions (moved to http module, kept as builtins for compatibility)
+	// HTTP server built-in functions
 	"httpStatusName",
 	"isHttpReq",
 	"isHttpResp",
 	"urlEncode",
 	"urlDecode",
+	// HTTP response/request builtins (declared in HttpBuiltins, registered in init)
+	"writeResp",
+	"setRespHeader",
+	"addRespHeader",
+	"setContentType",
+	"status",
+	"getReqHeader",
+	"getReqHeaders",
+	"setCookie",
+	"getCookie",
+	"getCookies",
+	"redirect",
+	"serveFile",
+	"queryParam",
+	"queryParams",
+	"formValue",
+	"parseForm",
 	// Concurrency built-in functions
 	"makeTube",
 	"closeTube",

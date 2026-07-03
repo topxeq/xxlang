@@ -15,8 +15,13 @@ var HttpBuiltins = map[string]*Builtin{
 	// Usage: writeResp(response, content)
 	"writeResp": {
 		Fn: func(args ...Object) Object {
-			if len(args) != 2 {
-				return newError("wrong number of arguments for writeResp. got=%d, want=2", len(args))
+			// Accept 2 or 3 arguments: (response, content) or
+			// (response, content, request). The request argument is
+			// accepted for compatibility with the documented usage
+			// `writeResp(responseG, body, requestG)` and is currently
+			// unused; it may be used in the future for response flushing.
+			if len(args) != 2 && len(args) != 3 {
+				return newError("wrong number of arguments for writeResp. got=%d, want=2 or 3", len(args))
 			}
 
 			resp, ok := args[0].(*HttpResp)
@@ -597,11 +602,10 @@ var HttpBuiltins = map[string]*Builtin{
 	},
 }
 
-// RegisterHttpBuiltins registers HTTP built-in functions into the main Builtins map.
+// RegisterHttpBuiltins is kept for backward compatibility; registration now
+// happens in init() above.
 func RegisterHttpBuiltins() {
-	for name, builtin := range HttpBuiltins {
-		Builtins[name] = builtin
-	}
+	// already done in init(); nothing to do here
 }
 
 // httpStatusNames maps status codes to their names.
@@ -638,6 +642,14 @@ var httpStatusNames = map[int]string{
 // HttpStatusName returns the name for an HTTP status code.
 // Usage: httpStatusName(code)
 func init() {
+	// Merge all HttpBuiltins into the main Builtins map at init time so that
+	// (a) the compiler can resolve them via BuiltinRegistry, and
+	// (b) they are available in every execution mode (serve / run / eval),
+	//     not only after Server.Start() calls RegisterHttpBuiltins().
+	for name, b := range HttpBuiltins {
+		Builtins[name] = b
+	}
+
 	Builtins["httpStatusName"] = &Builtin{
 		Fn: func(args ...Object) Object {
 			if len(args) != 1 {
@@ -665,6 +677,7 @@ func init() {
 			if len(args) != 1 {
 				return newError("wrong number of arguments for isHttpReq. got=%d, want=1", len(args))
 			}
+
 			_, ok := args[0].(*HttpReq)
 			return &Bool{Value: ok}
 		},
@@ -676,6 +689,7 @@ func init() {
 			if len(args) != 1 {
 				return newError("wrong number of arguments for isHttpResp. got=%d, want=1", len(args))
 			}
+
 			_, ok := args[0].(*HttpResp)
 			return &Bool{Value: ok}
 		},
