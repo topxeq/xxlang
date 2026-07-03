@@ -142,18 +142,28 @@ func updateCmd(args []string) error {
 	}
 	defer os.Remove(extractedFile)
 
-	// Backup the current executable
+	// Backup the current executable (best-effort; used only as a last-resort
+	// recovery if replaceExecutable fails AND its internal rollback also fails).
 	backupPath := execPath + ".backup"
 	if err := copyFile(execPath, backupPath); err != nil {
 		// If backup fails, try to continue anyway (might be first run)
 		fmt.Printf("Warning: could not create backup: %v\n", err)
 	}
 
-	// Replace the executable
+	// Replace the executable. replaceExecutable performs its own internal
+	// rollback on failure (renaming the old executable back into place), so
+	// we only fall back to the backup copy if the target is missing afterward.
 	if err := replaceExecutable(extractedFile, targetPath); err != nil {
-		// Try to restore from backup
-		if restoreErr := os.Rename(backupPath, execPath); restoreErr != nil {
-			fmt.Printf("Error: failed to restore backup: %v\n", restoreErr)
+		// Check whether the target executable still exists. replaceExecutable
+		// tries to restore it on failure, but that restoration may also fail
+		// (e.g., the old file was renamed away and cannot be renamed back
+		// because the process is still mapped).
+		if _, statErr := os.Stat(targetPath); statErr != nil {
+			// Last-resort recovery: copy the backup back into place. Using
+			// copyFile (not os.Rename) avoids cross-drive rename failures.
+			if restoreErr := copyFile(backupPath, targetPath); restoreErr != nil {
+				fmt.Printf("Error: failed to restore backup: %v\n", restoreErr)
+			}
 		}
 		return fmt.Errorf("failed to replace executable: %v", err)
 	}
@@ -621,37 +631,57 @@ func copyFile(src, dst string) error {
 	return os.Chmod(dst, sourceInfo.Mode())
 }
 
-// replaceExecutable replaces the current executable with the new one
+// replaceExecutable replaces the current executable with the new one.
+//
+// The new binary lives at tempPath (typically extracted into os.TempDir(),
+// which may be on a different drive than targetPath on Windows). os.Rename
+// cannot move files across drives on Windows, so we always copy the new
+// binary to a sibling file (targetPath + ".new") next to the target first,
+// then perform same-directory renames to swap it in. This works on every
+// platform and avoids the cross-drive rename failure that previously left
+// users with no xxl.exe after an update.
 func replaceExecutable(tempPath, targetPath string) error {
-	// Make the new file executable
+	// Make the new file executable (no-op on Windows, but harmless).
 	if err := os.Chmod(tempPath, 0755); err != nil {
 		return err
 	}
 
-	// On Windows, we cannot replace a running executable directly
-	// We need to rename the old one and then move the new one
-	if runtime.GOOS == "windows" {
-		oldPath := targetPath + ".old"
-		// Remove old backup if exists
-		os.Remove(oldPath)
-		// Rename current executable
-		if err := os.Rename(targetPath, oldPath); err != nil {
-			return fmt.Errorf("could not rename old executable: %v", err)
-		}
-		// Move new executable
-		if err := os.Rename(tempPath, targetPath); err != nil {
-			// Try to restore
-			os.Rename(oldPath, targetPath)
-			return fmt.Errorf("could not move new executable: %v", err)
-		}
-		// Remove old executable (might fail if still in use, that's ok)
-		os.Remove(oldPath)
-	} else {
-		// On Unix systems, we can overwrite directly
-		if err := os.Rename(tempPath, targetPath); err != nil {
-			return err
-		}
+	// Stage the new binary next to the target. copyFile uses io.Copy under
+	// the hood, so it works across drives (unlike os.Rename).
+	newPath := targetPath + ".new"
+	// Clean up any leftover .new from a previous failed attempt.
+	os.Remove(newPath)
+	if err := copyFile(tempPath, newPath); err != nil {
+		return fmt.Errorf("could not stage new executable: %v", err)
 	}
+	// Ensure the staged file is executable on Unix.
+	if err := os.Chmod(newPath, 0755); err != nil {
+		os.Remove(newPath)
+		return fmt.Errorf("could not set permissions on new executable: %v", err)
+	}
+
+	// Swap: move the current executable aside, then move the new one in.
+	// On Windows, renaming a running .exe is allowed; only creating a new
+	// file with the same name while the old one is mapped is restricted —
+	// which is exactly why we rename the old one out of the way first.
+	oldPath := targetPath + ".old"
+	os.Remove(oldPath)
+	if err := os.Rename(targetPath, oldPath); err != nil {
+		os.Remove(newPath)
+		return fmt.Errorf("could not rename old executable: %v", err)
+	}
+	if err := os.Rename(newPath, targetPath); err != nil {
+		// Restore the previous executable so the user is not left without one.
+		os.Rename(oldPath, targetPath)
+		os.Remove(newPath)
+		return fmt.Errorf("could not move new executable into place: %v", err)
+	}
+
+	// Best-effort cleanup of the old executable. On Windows this may fail
+	// with "Access is denied" if the old binary is still mapped in some
+	// process; that is harmless — it will be removable after a reboot, and
+	// the next update attempt removes it via os.Remove(oldPath) above.
+	os.Remove(oldPath)
 
 	return nil
 }
