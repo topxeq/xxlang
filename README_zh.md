@@ -64,6 +64,19 @@ wget -qO- https://raw.githubusercontent.com/topxeq/xxlang/master/install.sh | ba
 iwr -useb https://raw.githubusercontent.com/topxeq/xxlang/master/install.ps1 | iex
 ```
 
+**Windows (cmd.exe):**
+```cmd
+powershell -NoProfile -Command "iwr -useb https://raw.githubusercontent.com/topxeq/xxlang/master/install.ps1 | iex"
+```
+
+安装脚本会自动检测已安装的版本，当本地版本与最新发布版本一致时跳过下载。如需强制重装：
+
+- **bash:** 追加 `-- --force`（例如 `curl ... | bash -s -- --force`）
+- **PowerShell / cmd:** 使用 scriptblock 形式传入 `-Force`：
+  ```powershell
+  & ([scriptblock]::Create((iwr -useb https://raw.githubusercontent.com/topxeq/xxlang/master/install.ps1))) -Force
+  ```
+
 ### 方式 2：下载预编译二进制文件
 
 从 [GitHub Releases](https://github.com/topxeq/xxlang/releases) 下载适合你平台的最新版本：

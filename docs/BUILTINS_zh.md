@@ -260,6 +260,17 @@ pln("您的 OTP: ", otp)
 
 **注意：** 密钥必须是 TOTP 验证器应用使用的有效 base32 编码字符串。
 
+### getXxlVersion()
+
+返回当前 Xxlang 解释器的版本号字符串（例如 `"0.9.11"`）。不接受参数。
+
+```xxl
+var v = getXxlVersion()
+pln("Xxlang v" + v)  // 例如 "Xxlang v0.9.11"
+```
+
+返回的版本号与 GitHub 上的发布标签一致，是解释器版本的唯一来源 —— 命令行的 `xxl version` 输出的也是同一个值。
+
 ### typeOf(obj, detailed?)
 
 返回对象的类型字符串。当 `detailed=true` 时，对实例对象返回类名而非 "INSTANCE"。

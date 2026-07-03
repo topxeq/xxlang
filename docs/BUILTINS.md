@@ -266,6 +266,17 @@ pln("Your OTP: ", otp)
 
 **Note:** The secret must be a valid base32-encoded string as used by TOTP authenticator apps.
 
+### getXxlVersion()
+
+Returns the current Xxlang interpreter version as a string (e.g. `"0.9.11"`). Takes no arguments.
+
+```xxl
+var v = getXxlVersion()
+pln("Xxlang v" + v)  // e.g. "Xxlang v0.9.11"
+```
+
+The returned version matches the release tag on GitHub. It is the single source of truth for the interpreter version — the same value is reported by `xxl version` on the command line.
+
 ### typeOf(obj, detailed?)
 
 Returns the type of an object as a string. With `detailed=true`, returns the class name for instances instead of "INSTANCE".
