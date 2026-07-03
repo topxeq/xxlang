@@ -17,6 +17,7 @@ import (
 	"github.com/topxeq/xxlang/pkg/lexer"
 	"github.com/topxeq/xxlang/pkg/objects"
 	"github.com/topxeq/xxlang/pkg/parser"
+	"github.com/topxeq/xxlang/pkg/version"
 	"github.com/topxeq/xxlang/pkg/vm"
 )
 
@@ -33,7 +34,7 @@ var (
 func handleServiceCommands(args []string) {
 	// Check if running in service mode
 	if hasSwitch(args, "-service") {
-		fmt.Println(serviceNameG, "V", Version, "is running in service mode")
+		fmt.Println(serviceNameG, "V", version.Version, "is running in service mode")
 		serviceModeG = true
 
 		s := initSvc()
@@ -261,7 +262,7 @@ func initSvc() *service.Service {
 	svcConfig := &service.Config{
 		Name:        serviceNameG,
 		DisplayName: "Xxlang Service",
-		Description: "Xxlang Script Language Service V" + Version,
+		Description: "Xxlang Script Language Service V" + version.Version,
 		Arguments:   []string{"-service"},
 	}
 
@@ -278,7 +279,7 @@ func initSvc() *service.Service {
 
 // doWork is the main service work function
 func doWork() {
-	logWithTime("%s V%s", serviceNameG, Version)
+	logWithTime("%s V%s", serviceNameG, version.Version)
 	logWithTime("os: %s, basePath: %s, config: %s", runtime.GOOS, basePathG, configFileNameG)
 	logWithTime("command-line args: %v", os.Args)
 	logWithTime("Service started.")

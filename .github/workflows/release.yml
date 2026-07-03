@@ -21,15 +21,31 @@ jobs:
           go-version: '1.23'
           cache: true
 
+      - name: Verify version.go matches release tag
+        run: |
+          # Extract version from git tag (remove 'v' prefix)
+          EXPECTED="${GITHUB_REF_NAME#v}"
+          # Extract Version from pkg/version/version.go
+          ACTUAL=$(grep '^var Version' pkg/version/version.go | sed -E 's/.*"(.*)".*/\1/')
+          if [ -z "$ACTUAL" ]; then
+            echo "ERROR: could not extract Version from pkg/version/version.go"
+            exit 1
+          fi
+          echo "Tag version:   $EXPECTED"
+          echo "version.go:    $ACTUAL"
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "ERROR: git tag '$EXPECTED' does not match version.go Version '$ACTUAL'"
+            echo "Bump pkg/version/version.go before tagging."
+            exit 1
+          fi
+
       - name: Build binaries
         run: |
-          # Get version from git tag (remove 'v' prefix)
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "Building version: $VERSION"
-
           mkdir -p dist
 
           # Build for different platforms
+          # No -ldflags -X main.Version=... needed: the version is read from
+          # pkg/version/version.go (single source of truth since v0.9.7).
           platforms=(
             "linux/amd64"
             "linux/arm64"
@@ -47,14 +63,14 @@ jobs:
             fi
 
             echo "Building for $os/$arch..."
-            GOOS=$os GOARCH=$arch go build -ldflags="-s -w -X main.Version=$VERSION" -o "$output" ./cmd/xxl
+            GOOS=$os GOARCH=$arch go build -ldflags="-s -w" -o "$output" ./cmd/xxl
 
             cd dist
             if [ "$os" = "windows" ]; then
               # Build GUI version (no console window) for Windows
               echo "Building GUI version (xxlw.exe) for $os/$arch..."
               cd ..
-              GOOS=$os GOARCH=$arch go build -ldflags="-s -w -H windowsgui -X main.Version=$VERSION" -o "dist/xxlw.exe" ./cmd/xxl
+              GOOS=$os GOARCH=$arch go build -ldflags="-s -w -H windowsgui" -o "dist/xxlw.exe" ./cmd/xxl
               cd dist
               # Create zip with both console and GUI versions
               zip "xxlang-$os-$arch.zip" xxl.exe xxlw.exe

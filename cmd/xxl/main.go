@@ -28,6 +28,7 @@ import (
 	"github.com/topxeq/xxlang/pkg/parser"
 	"github.com/topxeq/xxlang/pkg/server"
 	"github.com/topxeq/xxlang/pkg/stdlib"
+	"github.com/topxeq/xxlang/pkg/version"
 	"github.com/topxeq/xxlang/pkg/vm"
 )
 
@@ -53,14 +54,6 @@ const (
 	PROMPT          = ">> "
 	CONTINUE_PROMPT = ".. "
 )
-
-// Version is set via -ldflags at build time. Default is "dev" for local builds.
-var Version = "dev"
-
-// BuildNumber is a hardcoded build number for development builds.
-// Format: YYYYMMDDNN (year month day + daily sequence number, e.g., 2026032401)
-// This should be updated manually for each significant build.
-var BuildNumber = "2026070301"
 
 // REPL represents an interactive REPL session
 type REPL struct {
@@ -112,13 +105,6 @@ func splitArgs(args []string) (interpreterArgs []string, scriptArgs []string) {
 }
 
 func main() {
-	// Propagate the build-time version (injected via -ldflags -X main.Version=...)
-	// to the objects package so the getXxlVersion() builtin can read it.
-	objects.XxlVersion = Version
-	// Propagate the build number (hard-coded in this file) for the
-	// getXxlBuildNumber() builtin.
-	objects.XxlBuildNumber = BuildNumber
-
 	// First, check if this executable has embedded bytecode
 	if hasEmbeddedBytecode() {
 		runEmbeddedBytecode()
@@ -379,11 +365,7 @@ func runEmbeddedBytecodeVM(bytecode *compiler.Bytecode) {
 }
 
 func printUsage() {
-	if Version == "dev" {
-		fmt.Printf("Xxlang v%s.%s\n", Version, BuildNumber)
-	} else {
-		fmt.Printf("Xxlang v%s\n", Version)
-	}
+	fmt.Printf("Xxlang v%s.%s\n", version.Version, version.BuildNumber)
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Println("  xxl                         Start interactive REPL (or run auto.xxl if exists)")
@@ -445,22 +427,14 @@ func printUsage() {
 }
 
 func printVersion() {
-	if Version == "dev" {
-		fmt.Printf("Xxlang v%s.%s\n", Version, BuildNumber)
-	} else {
-		fmt.Printf("Xxlang v%s\n", Version)
-	}
+	fmt.Printf("Xxlang v%s.%s\n", version.Version, version.BuildNumber)
 }
 
 func startREPL() {
 	repl := NewREPL()
 	scanner := bufio.NewScanner(os.Stdin)
 
-	if Version == "dev" {
-		fmt.Println("Xxlang REPL v" + Version + "." + BuildNumber)
-	} else {
-		fmt.Println("Xxlang REPL v" + Version)
-	}
+	fmt.Println("Xxlang REPL v" + version.Version + "." + version.BuildNumber)
 	fmt.Println("Type 'exit' or 'quit' to exit, 'help' for help, 'history' for command history")
 	fmt.Println("Multi-line: end line with '{' to continue")
 	fmt.Print(PROMPT)
@@ -1011,11 +985,7 @@ func serveCmd(args []string) error {
 
 	// Create and start server
 	srv := server.NewServer(cfg)
-	if Version == "dev" {
-		fmt.Printf("Xxlang Server v%s.%s\n", Version, BuildNumber)
-	} else {
-		fmt.Printf("Xxlang Server v%s\n", Version)
-	}
+	fmt.Printf("Xxlang Server v%s.%s\n", version.Version, version.BuildNumber)
 	fmt.Printf("Web path: %s\n", cfg.WebPath)
 	fmt.Printf("Microservice path: %s\n", cfg.MSPath)
 	if cfg.HTTPSPort > 0 {

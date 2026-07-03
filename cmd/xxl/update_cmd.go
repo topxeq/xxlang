@@ -15,6 +15,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/topxeq/xxlang/pkg/version"
 )
 
 // GitHubRelease represents a GitHub release
@@ -73,7 +75,7 @@ func getProxyInfo() string {
 
 // updateCmd implements the self-update command
 func updateCmd(args []string) error {
-	fmt.Printf("Current version: %s\n", Version)
+	fmt.Printf("Current version: %s\n", version.Version)
 
 	// Show proxy info if configured
 	if proxyInfo := getProxyInfo(); proxyInfo != "" {
@@ -94,7 +96,7 @@ func updateCmd(args []string) error {
 	fmt.Printf("Latest version: %s\n", latestVersion)
 
 	// Compare versions
-	if latestVersion == Version {
+	if latestVersion == version.Version {
 		fmt.Println("You are already running the latest version!")
 		return nil
 	}

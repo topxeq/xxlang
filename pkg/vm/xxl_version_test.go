@@ -1,6 +1,9 @@
 // pkg/vm/xxl_version_test.go
-// Tests for the getXxlVersion() builtin, which exposes the build-time
-// Xxlang version string to scripts.
+// Tests for the getXxlVersion() and getXxlBuildNumber() builtins, which
+// expose the Xxlang version string and build number to scripts.
+//
+// Since v0.9.7 both values live in pkg/version as the single source of
+// truth; these tests verify the builtins read from that package.
 package vm
 
 import (
@@ -10,6 +13,7 @@ import (
 	"github.com/topxeq/xxlang/pkg/lexer"
 	"github.com/topxeq/xxlang/pkg/objects"
 	"github.com/topxeq/xxlang/pkg/parser"
+	"github.com/topxeq/xxlang/pkg/version"
 )
 
 // TestGetXxlVersionInRegistry verifies the name is listed in BuiltinRegistry.
@@ -35,38 +39,34 @@ func TestGetXxlVersionResolvedByCompiler(t *testing.T) {
 	}
 }
 
-// TestGetXxlVersionDefault verifies the default value is "dev" when no
-// build-time injection has occurred (as in a local `go test` run).
+// TestGetXxlVersionDefault verifies that the builtin returns the value
+// defined in pkg/version (the single source of truth).
 func TestGetXxlVersionDefault(t *testing.T) {
-	// Save and restore to keep the test isolated.
-	saved := objects.XxlVersion
-	defer func() { objects.XxlVersion = saved }()
-
-	objects.XxlVersion = "dev"
 	src := `return getXxlVersion()`
 	out, err := runRegScriptReturn(t, src)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if out != "dev" {
-		t.Errorf("default version = %q, want %q", out, "dev")
+	if out != version.Version {
+		t.Errorf("default version = %q, want %q (version.Version)", out, version.Version)
 	}
 }
 
-// TestGetXxlVersionInjected verifies that a version set on objects.XxlVersion
-// (mimicking what cmd/xxl does at startup) flows through to the builtin.
-func TestGetXxlVersionInjected(t *testing.T) {
-	saved := objects.XxlVersion
-	defer func() { objects.XxlVersion = saved }()
+// TestGetXxlVersionOverride verifies that a value set on version.Version
+// flows through to the builtin. (Production code must never reassign this;
+// the override here is only for test isolation.)
+func TestGetXxlVersionOverride(t *testing.T) {
+	saved := version.Version
+	defer func() { version.Version = saved }()
 
-	objects.XxlVersion = "9.9.9-test"
+	version.Version = "9.9.9-test"
 	src := `return getXxlVersion()`
 	out, err := runRegScriptReturn(t, src)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if out != "9.9.9-test" {
-		t.Errorf("injected version = %q, want %q", out, "9.9.9-test")
+		t.Errorf("overridden version = %q, want %q", out, "9.9.9-test")
 	}
 }
 
@@ -109,59 +109,54 @@ func TestGetXxlBuildNumberResolvedByCompiler(t *testing.T) {
 	}
 }
 
-// TestGetXxlBuildNumberDefault verifies the default value is "0" when no
-// value has been propagated from cmd/xxl.
+// TestGetXxlBuildNumberDefault verifies that the builtin returns the value
+// defined in pkg/version (the single source of truth).
 func TestGetXxlBuildNumberDefault(t *testing.T) {
-	saved := objects.XxlBuildNumber
-	defer func() { objects.XxlBuildNumber = saved }()
-
-	objects.XxlBuildNumber = "0"
 	src := `return getXxlBuildNumber()`
 	out, err := runRegScriptReturn(t, src)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if out != "0" {
-		t.Errorf("default build number = %q, want %q", out, "0")
+	if out != version.BuildNumber {
+		t.Errorf("default build number = %q, want %q (version.BuildNumber)", out, version.BuildNumber)
 	}
 }
 
-// TestGetXxlBuildNumberInjected verifies that a value set on
-// objects.XxlBuildNumber (mimicking what cmd/xxl does at startup) flows
-// through to the builtin.
-func TestGetXxlBuildNumberInjected(t *testing.T) {
-	saved := objects.XxlBuildNumber
-	defer func() { objects.XxlBuildNumber = saved }()
+// TestGetXxlBuildNumberOverride verifies that a value set on
+// version.BuildNumber flows through to the builtin.
+func TestGetXxlBuildNumberOverride(t *testing.T) {
+	saved := version.BuildNumber
+	defer func() { version.BuildNumber = saved }()
 
-	objects.XxlBuildNumber = "2026070301"
+	version.BuildNumber = "2026070301"
 	src := `return getXxlBuildNumber()`
 	out, err := runRegScriptReturn(t, src)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if out != "2026070301" {
-		t.Errorf("injected build number = %q, want %q", out, "2026070301")
+		t.Errorf("overridden build number = %q, want %q", out, "2026070301")
 	}
 }
 
 // TestGetXxlVersionAndBuildNumberCombined verifies the common health.xxl
 // usage: concatenating version and build number to match CLI output.
 func TestGetXxlVersionAndBuildNumberCombined(t *testing.T) {
-	savedV := objects.XxlVersion
-	savedB := objects.XxlBuildNumber
+	savedV := version.Version
+	savedB := version.BuildNumber
 	defer func() {
-		objects.XxlVersion = savedV
-		objects.XxlBuildNumber = savedB
+		version.Version = savedV
+		version.BuildNumber = savedB
 	}()
 
-	objects.XxlVersion = "0.9.5"
-	objects.XxlBuildNumber = "2026070301"
+	version.Version = "0.9.7"
+	version.BuildNumber = "2026070302"
 	src := `return "v" + getXxlVersion() + "." + getXxlBuildNumber()`
 	out, err := runRegScriptReturn(t, src)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := "v0.9.5.2026070301"
+	want := "v0.9.7.2026070302"
 	if out != want {
 		t.Errorf("combined = %q, want %q", out, want)
 	}
