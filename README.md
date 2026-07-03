@@ -65,6 +65,21 @@ wget -qO- https://raw.githubusercontent.com/topxeq/xxlang/master/install.sh | ba
 iwr -useb https://raw.githubusercontent.com/topxeq/xxlang/master/install.ps1 | iex
 ```
 
+**Windows (cmd.exe):**
+```cmd
+powershell -NoProfile -Command "iwr -useb https://raw.githubusercontent.com/topxeq/xxlang/master/install.ps1 | iex"
+```
+
+The install scripts automatically detect an existing installation and skip
+the download when the installed version matches the latest release. To force
+a reinstall:
+
+- **bash:** append `-- --force` (e.g. `curl ... | bash -s -- --force`)
+- **PowerShell / cmd:** use the scriptblock form to pass `-Force`:
+  ```powershell
+  & ([scriptblock]::Create((iwr -useb https://raw.githubusercontent.com/topxeq/xxlang/master/install.ps1))) -Force
+  ```
+
 ### Option 2: Download Pre-built Binary
 
 Download the latest release for your platform from [GitHub Releases](https://github.com/topxeq/xxlang/releases):
