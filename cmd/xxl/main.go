@@ -365,7 +365,7 @@ func runEmbeddedBytecodeVM(bytecode *compiler.Bytecode) {
 }
 
 func printUsage() {
-	fmt.Printf("Xxlang v%s.%s\n", version.Version, version.BuildNumber)
+	fmt.Printf("Xxlang v%s\n", version.Version)
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Println("  xxl                         Start interactive REPL (or run auto.xxl if exists)")
@@ -427,14 +427,14 @@ func printUsage() {
 }
 
 func printVersion() {
-	fmt.Printf("Xxlang v%s.%s\n", version.Version, version.BuildNumber)
+	fmt.Printf("Xxlang v%s\n", version.Version)
 }
 
 func startREPL() {
 	repl := NewREPL()
 	scanner := bufio.NewScanner(os.Stdin)
 
-	fmt.Println("Xxlang REPL v" + version.Version + "." + version.BuildNumber)
+	fmt.Println("Xxlang REPL v" + version.Version)
 	fmt.Println("Type 'exit' or 'quit' to exit, 'help' for help, 'history' for command history")
 	fmt.Println("Multi-line: end line with '{' to continue")
 	fmt.Print(PROMPT)
@@ -985,7 +985,7 @@ func serveCmd(args []string) error {
 
 	// Create and start server
 	srv := server.NewServer(cfg)
-	fmt.Printf("Xxlang Server v%s.%s\n", version.Version, version.BuildNumber)
+	fmt.Printf("Xxlang Server v%s\n", version.Version)
 	fmt.Printf("Web path: %s\n", cfg.WebPath)
 	fmt.Printf("Microservice path: %s\n", cfg.MSPath)
 	if cfg.HTTPSPort > 0 {

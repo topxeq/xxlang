@@ -27,7 +27,6 @@ func init() {
 	Builtins["getPPid"] = &Builtin{Fn: builtinGetPPid}
 	Builtins["hostname"] = &Builtin{Fn: builtinHostname}
 	Builtins["getXxlVersion"] = &Builtin{Fn: builtinGetXxlVersion}
-	Builtins["getXxlBuildNumber"] = &Builtin{Fn: builtinGetXxlBuildNumber}
 }
 
 // getEnv - get environment variable
@@ -220,16 +219,6 @@ func builtinGetXxlVersion(args ...Object) Object {
 		return newError("wrong number of arguments for getXxlVersion. got=%d, want=0", len(args))
 	}
 	return NewString(version.Version)
-}
-
-// getXxlBuildNumber - get the Xxlang build number string.
-// Usage: getXxlBuildNumber() -> string
-// The build number is defined in pkg/version (single source of truth).
-func builtinGetXxlBuildNumber(args ...Object) Object {
-	if len(args) != 0 {
-		return newError("wrong number of arguments for getXxlBuildNumber. got=%d, want=0", len(args))
-	}
-	return NewString(version.BuildNumber)
 }
 
 // getPid - get process ID

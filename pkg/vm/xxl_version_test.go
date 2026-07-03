@@ -1,9 +1,10 @@
 // pkg/vm/xxl_version_test.go
-// Tests for the getXxlVersion() and getXxlBuildNumber() builtins, which
-// expose the Xxlang version string and build number to scripts.
+// Tests for the getXxlVersion() builtin, which exposes the Xxlang version
+// string to scripts.
 //
-// Since v0.9.7 both values live in pkg/version as the single source of
-// truth; these tests verify the builtins read from that package.
+// Since v0.9.7 the version lives in pkg/version as the single source of
+// truth. In v0.9.8 the BuildNumber was removed entirely; these tests cover
+// the remaining getXxlVersion() builtin.
 package vm
 
 import (
@@ -86,78 +87,17 @@ func TestGetXxlVersionCompileCheck(t *testing.T) {
 	}
 }
 
-// TestGetXxlBuildNumberInRegistry verifies the name is listed in BuiltinRegistry.
-func TestGetXxlBuildNumberInRegistry(t *testing.T) {
+// TestGetXxlBuildNumberRemoved verifies that the getXxlBuildNumber builtin
+// (removed in v0.9.8) is no longer in the registry and no longer resolves.
+// Scripts that previously called it must now fail to compile.
+func TestGetXxlBuildNumberRemoved(t *testing.T) {
 	for _, name := range objects.BuiltinRegistry {
 		if name == "getXxlBuildNumber" {
-			return
+			t.Fatal("BuiltinRegistry still contains \"getXxlBuildNumber\" (should have been removed in v0.9.8)")
 		}
 	}
-	t.Error("BuiltinRegistry missing \"getXxlBuildNumber\"")
-}
-
-// TestGetXxlBuildNumberResolvedByCompiler verifies the compiler resolves the
-// name to BuiltinScope.
-func TestGetXxlBuildNumberResolvedByCompiler(t *testing.T) {
 	st := compiler.NewSymbolTable()
-	sym, ok := st.Resolve("getXxlBuildNumber")
-	if !ok {
-		t.Fatal("compiler did not resolve \"getXxlBuildNumber\"")
-	}
-	if sym.Scope != compiler.BuiltinScope {
-		t.Errorf("\"getXxlBuildNumber\" resolved to scope %v, want BuiltinScope", sym.Scope)
-	}
-}
-
-// TestGetXxlBuildNumberDefault verifies that the builtin returns the value
-// defined in pkg/version (the single source of truth).
-func TestGetXxlBuildNumberDefault(t *testing.T) {
-	src := `return getXxlBuildNumber()`
-	out, err := runRegScriptReturn(t, src)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if out != version.BuildNumber {
-		t.Errorf("default build number = %q, want %q (version.BuildNumber)", out, version.BuildNumber)
-	}
-}
-
-// TestGetXxlBuildNumberOverride verifies that a value set on
-// version.BuildNumber flows through to the builtin.
-func TestGetXxlBuildNumberOverride(t *testing.T) {
-	saved := version.BuildNumber
-	defer func() { version.BuildNumber = saved }()
-
-	version.BuildNumber = "2026070301"
-	src := `return getXxlBuildNumber()`
-	out, err := runRegScriptReturn(t, src)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if out != "2026070301" {
-		t.Errorf("overridden build number = %q, want %q", out, "2026070301")
-	}
-}
-
-// TestGetXxlVersionAndBuildNumberCombined verifies the common health.xxl
-// usage: concatenating version and build number to match CLI output.
-func TestGetXxlVersionAndBuildNumberCombined(t *testing.T) {
-	savedV := version.Version
-	savedB := version.BuildNumber
-	defer func() {
-		version.Version = savedV
-		version.BuildNumber = savedB
-	}()
-
-	version.Version = "0.9.7"
-	version.BuildNumber = "2026070302"
-	src := `return "v" + getXxlVersion() + "." + getXxlBuildNumber()`
-	out, err := runRegScriptReturn(t, src)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	want := "v0.9.7.2026070302"
-	if out != want {
-		t.Errorf("combined = %q, want %q", out, want)
+	if _, ok := st.Resolve("getXxlBuildNumber"); ok {
+		t.Fatal("compiler still resolves \"getXxlBuildNumber\" (should have been removed in v0.9.8)")
 	}
 }
