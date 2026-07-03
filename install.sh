@@ -329,18 +329,33 @@ main() {
     # Make executable
     chmod +x "$EXTRACTED_BINARY"
 
-    # Replace the existing binary. On Unix we can overwrite directly via
-    # rename. On Windows (Git Bash / MSYS) the running exe cannot be removed
-    # or overwritten while it is mapped; renaming it aside first matches the
-    # strategy used by `xxl update` (v0.9.9+) and lets the new file take its
-    # place.
+    # Replace the existing binary.
+    #
+    # On Unix, `mv` across filesystems falls back to copy+unlink automatically,
+    # so a direct rename into place works even if /tmp is on a different
+    # filesystem than the install dir.
+    #
+    # On Windows (Git Bash / MSYS), `mv` across drives fails with
+    # "The system cannot move the file to a different disk drive" — the same
+    # cross-drive rename bug that `xxl update` had before v0.9.9. Also, the
+    # running exe cannot be removed or overwritten while it is mapped, but
+    # renaming it aside first is allowed. So we use the same copy-then-rename
+    # strategy as `xxl update` v0.9.9+:
+    #   1. Copy the new binary to INSTALL_PATH.new (sibling, same drive).
+    #   2. Rename the running exe to INSTALL_PATH.old.
+    #   3. Rename INSTALL_PATH.new into place.
+    #   4. Best-effort remove INSTALL_PATH.old.
     if [ -f "$INSTALL_PATH" ]; then
         info "Replacing existing installation..."
         if [ "$OS" = "windows" ]; then
+            NEW_PATH="${INSTALL_PATH}.new"
             OLD_PATH="${INSTALL_PATH}.old"
+            rm -f "$NEW_PATH"
+            cp "$EXTRACTED_BINARY" "$NEW_PATH"
+            chmod +x "$NEW_PATH"
             rm -f "$OLD_PATH"
             mv "$INSTALL_PATH" "$OLD_PATH" 2>/dev/null || true
-            mv "$EXTRACTED_BINARY" "$INSTALL_PATH"
+            mv "$NEW_PATH" "$INSTALL_PATH"
             rm -f "$OLD_PATH" 2>/dev/null || true
         else
             # On Unix, rename atomically replaces the file (even if running).
@@ -348,7 +363,13 @@ main() {
         fi
     else
         info "Installing to $INSTALL_PATH..."
-        mv "$EXTRACTED_BINARY" "$INSTALL_PATH"
+        if [ "$OS" = "windows" ]; then
+            # Cross-drive mv may fail on Windows; use cp + rm instead.
+            cp "$EXTRACTED_BINARY" "$INSTALL_PATH"
+            chmod +x "$INSTALL_PATH"
+        else
+            mv "$EXTRACTED_BINARY" "$INSTALL_PATH"
+        fi
     fi
 
     # Cleanup
