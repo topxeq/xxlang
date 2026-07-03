@@ -24,7 +24,14 @@ func init() {
 	Builtins["getPid"] = &Builtin{Fn: builtinGetPid}
 	Builtins["getPPid"] = &Builtin{Fn: builtinGetPPid}
 	Builtins["hostname"] = &Builtin{Fn: builtinHostname}
+	Builtins["getXxlVersion"] = &Builtin{Fn: builtinGetXxlVersion}
 }
+
+// XxlVersion holds the Xxlang version string. It defaults to "dev" and is
+// overridden by the binary entry point (cmd/xxl) at startup with the value
+// injected via -ldflags (-X main.Version=...). Exposing it as a package-level
+// variable here lets the builtin getXxlVersion() read it without import cycles.
+var XxlVersion = "dev"
 
 // getEnv - get environment variable
 // Usage: getEnv(key) -> string or null
@@ -206,6 +213,17 @@ func builtinGetSysInfo(args ...Object) Object {
 	}
 
 	return NewMap(pairs)
+}
+
+// getXxlVersion - get the Xxlang version string.
+// Usage: getXxlVersion() -> string
+// The version is injected at build time via -ldflags (-X main.Version=...)
+// and defaults to "dev" for local builds.
+func builtinGetXxlVersion(args ...Object) Object {
+	if len(args) != 0 {
+		return newError("wrong number of arguments for getXxlVersion. got=%d, want=0", len(args))
+	}
+	return NewString(XxlVersion)
 }
 
 // getPid - get process ID

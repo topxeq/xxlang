@@ -112,6 +112,10 @@ func splitArgs(args []string) (interpreterArgs []string, scriptArgs []string) {
 }
 
 func main() {
+	// Propagate the build-time version (injected via -ldflags -X main.Version=...)
+	// to the objects package so the getXxlVersion() builtin can read it.
+	objects.XxlVersion = Version
+
 	// First, check if this executable has embedded bytecode
 	if hasEmbeddedBytecode() {
 		runEmbeddedBytecode()

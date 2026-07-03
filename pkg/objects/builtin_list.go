@@ -353,6 +353,7 @@ var BuiltinRegistry = []string{
 	"exit",
 	"getSysInfo",
 	"getPid",
+	"getXxlVersion",
 	"getPPid",
 	"hostname",
 	// Float utilities
