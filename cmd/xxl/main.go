@@ -60,7 +60,7 @@ var Version = "dev"
 // BuildNumber is a hardcoded build number for development builds.
 // Format: YYYYMMDDNN (year month day + daily sequence number, e.g., 2026032401)
 // This should be updated manually for each significant build.
-var BuildNumber = "2026032402"
+var BuildNumber = "2026070301"
 
 // REPL represents an interactive REPL session
 type REPL struct {
@@ -115,6 +115,9 @@ func main() {
 	// Propagate the build-time version (injected via -ldflags -X main.Version=...)
 	// to the objects package so the getXxlVersion() builtin can read it.
 	objects.XxlVersion = Version
+	// Propagate the build number (hard-coded in this file) for the
+	// getXxlBuildNumber() builtin.
+	objects.XxlBuildNumber = BuildNumber
 
 	// First, check if this executable has embedded bytecode
 	if hasEmbeddedBytecode() {

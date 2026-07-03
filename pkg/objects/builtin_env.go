@@ -25,6 +25,7 @@ func init() {
 	Builtins["getPPid"] = &Builtin{Fn: builtinGetPPid}
 	Builtins["hostname"] = &Builtin{Fn: builtinHostname}
 	Builtins["getXxlVersion"] = &Builtin{Fn: builtinGetXxlVersion}
+	Builtins["getXxlBuildNumber"] = &Builtin{Fn: builtinGetXxlBuildNumber}
 }
 
 // XxlVersion holds the Xxlang version string. It defaults to "dev" and is
@@ -32,6 +33,12 @@ func init() {
 // injected via -ldflags (-X main.Version=...). Exposing it as a package-level
 // variable here lets the builtin getXxlVersion() read it without import cycles.
 var XxlVersion = "dev"
+
+// XxlBuildNumber holds the Xxlang build number. It defaults to "0" and is
+// overridden by the binary entry point (cmd/xxl) at startup. The build number
+// is hard-coded in cmd/xxl/main.go (not ldflags-injected), so it is propagated
+// to objects the same way XxlVersion is.
+var XxlBuildNumber = "0"
 
 // getEnv - get environment variable
 // Usage: getEnv(key) -> string or null
@@ -224,6 +231,17 @@ func builtinGetXxlVersion(args ...Object) Object {
 		return newError("wrong number of arguments for getXxlVersion. got=%d, want=0", len(args))
 	}
 	return NewString(XxlVersion)
+}
+
+// getXxlBuildNumber - get the Xxlang build number string.
+// Usage: getXxlBuildNumber() -> string
+// The build number is hard-coded in cmd/xxl/main.go and propagated to this
+// package at startup. It defaults to "0" for local builds.
+func builtinGetXxlBuildNumber(args ...Object) Object {
+	if len(args) != 0 {
+		return newError("wrong number of arguments for getXxlBuildNumber. got=%d, want=0", len(args))
+	}
+	return NewString(XxlBuildNumber)
 }
 
 // getPid - get process ID
