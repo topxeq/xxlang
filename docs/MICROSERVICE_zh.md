@@ -104,7 +104,19 @@ var remoteAddr = requestG.remoteAddr // 客户端地址
 var proto = requestG.proto           // 协议
 var contentLength = requestG.contentLength
 var header = requestG.header         // 头作为 Map
+
+// 读取请求体
+var body = requestG.body             // 整个 body 作为字符串（无大小限制）
+var bodyCapped = requestG.readBody(1048576)   // 限制最多 1 MB
+var bodyAll   = requestG.readBody(0)          // 0 / 负数 / 不传参 = 无限制
+
+// 上传文件（multipart/form-data）
+var files = requestG.files           // Map：字段名 -> FileUpload 数组
 ```
+
+`readBody(maxBytes)` 是 `body` 的可选限流版本：语言层不强制限制请求体大小，
+处理不可信输入的脚本应主动调用 `readBody` 传入显式上限以约束内存使用。
+`body` 不做限制地读取整个 body，保留它是为了向后兼容以及合法大 body 场景。
 
 ### 响应函数
 

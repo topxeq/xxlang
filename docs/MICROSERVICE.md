@@ -104,7 +104,21 @@ var remoteAddr = requestG.remoteAddr // Client address
 var proto = requestG.proto           // Protocol
 var contentLength = requestG.contentLength
 var header = requestG.header         // Headers as Map
+
+// Reading the request body
+var body = requestG.body             // Whole body as string (no size limit)
+var bodyCapped = requestG.readBody(1048576)   // Cap at 1 MB
+var bodyAll   = requestG.readBody(0)          // 0 / negative / no arg = no limit
+
+// Uploaded files (multipart/form-data)
+var files = requestG.files           // Map of fieldName -> FileUpload array
 ```
+
+`readBody(maxBytes)` is the opt-in, script-controlled counterpart to `body`:
+the language does not impose a hard body size limit, so scripts handling
+untrusted input should call `readBody` with an explicit cap to bound memory
+use. `body` reads the entire body without limit and is kept for backward
+compatibility and for legitimate large-body cases.
 
 ### Response Functions
 

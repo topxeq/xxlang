@@ -139,7 +139,8 @@ The `HttpReq` object has been extended with file-related members:
 
 | Member | Type | Description |
 |--------|------|-------------|
-| `body` | string | Raw request body |
+| `body` | string | Raw request body, read in full with no size limit |
+| `readBody(maxBytes)` | string | Read request body with an optional size cap. `maxBytes <= 0` (or omitted) means no limit. Use this instead of `body` when handling untrusted input to bound memory use. |
 | `files` | map | Uploaded files (fieldName -> FileUpload array) |
 
 ### Accessing Files
