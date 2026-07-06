@@ -91,6 +91,22 @@ func (r *HttpReq) GetMember(name string) Object {
 			}
 			return NewReader(r.Value.Body)
 		}}
+	case "readBody":
+		// readBody(maxBytes) reads the request body as a string, optionally
+		// capped at maxBytes. Pass 0 or a negative value for no limit.
+		// Unlike `body` (which always reads the whole thing), this lets the
+		// script bound memory use on untrusted requests.
+		return &Builtin{Fn: func(args ...Object) Object {
+			var maxBytes int64 = -1
+			if len(args) >= 1 {
+				if n, ok := args[0].(*Int); ok {
+					maxBytes = n.Value
+				} else {
+					return newError("argument to 'readBody' must be INT, got %s", args[0].Type())
+				}
+			}
+			return r.readBody(maxBytes)
+		}}
 	}
 
 	return NULL
@@ -116,13 +132,34 @@ func (r *HttpReq) getHeaders() Object {
 	return NewMap(pairs)
 }
 
-// getBody reads the request body as a string.
+// getBody reads the request body as a string with no size limit.
 // Note: This consumes the body and it cannot be read again.
+// For untrusted requests, prefer readBody(maxBytes) to bound memory use.
 func (r *HttpReq) getBody() Object {
 	if r.Value.Body == nil {
 		return NewString("")
 	}
 	body, err := io.ReadAll(r.Value.Body)
+	if err != nil {
+		return NewString("")
+	}
+	return NewString(string(body))
+}
+
+// readBody reads the request body as a string, optionally capped at maxBytes.
+// maxBytes <= 0 means no limit. This is the script-facing, user-controllable
+// counterpart to getBody — the language does not impose a hard cap so that
+// scripts dealing with large legitimate bodies are not silently truncated;
+// scripts handling untrusted input should call readBody with an explicit cap.
+func (r *HttpReq) readBody(maxBytes int64) Object {
+	if r.Value.Body == nil {
+		return NewString("")
+	}
+	var reader io.Reader = r.Value.Body
+	if maxBytes > 0 {
+		reader = io.LimitReader(reader, maxBytes)
+	}
+	body, err := io.ReadAll(reader)
 	if err != nil {
 		return NewString("")
 	}

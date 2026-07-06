@@ -98,8 +98,33 @@ func (s *Server) setupRoutes() {
 	s.Mux.HandleFunc("/", s.handleWebRequest)
 }
 
+// cleanupRequest releases resources associated with an HTTP request that the
+// Go stdlib does not release automatically. In particular, ParseMultipartForm
+// spills oversized uploads to temp files under os.TempDir() and the caller is
+// responsible for calling MultipartForm.RemoveAll() — otherwise these files
+// accumulate on disk and the in-memory FileHeader references pile up in the
+// process heap, eventually causing OOM on long-running servers. This must be
+// deferred at the very top of every HTTP entry handler so it runs regardless
+// of which code path the request takes.
+func cleanupRequest(req *http.Request) {
+	if req == nil {
+		return
+	}
+	if req.MultipartForm != nil {
+		// Best-effort: errors here are not actionable.
+		_ = req.MultipartForm.RemoveAll()
+	}
+	// http.Server closes req.Body after the handler returns, but closing
+	// here too is harmless and covers non-stdlib callers.
+	if req.Body != nil {
+		_ = req.Body.Close()
+	}
+}
+
 // handleMicroservice handles microservice requests
 func (s *Server) handleMicroservice(res http.ResponseWriter, req *http.Request) {
+	defer cleanupRequest(req)
+
 	res.Header().Set("Access-Control-Allow-Origin", "*")
 	res.Header().Set("Access-Control-Allow-Headers", "*")
 	res.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -138,6 +163,8 @@ func (s *Server) handleMicroservice(res http.ResponseWriter, req *http.Request) 
 
 // handleWebRequest handles web page requests
 func (s *Server) handleWebRequest(res http.ResponseWriter, req *http.Request) {
+	defer cleanupRequest(req)
+
 	path := req.URL.Path
 
 	// Default to index.xxl for root
