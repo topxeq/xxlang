@@ -7,6 +7,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 
 	"github.com/topxeq/xxlang/pkg/compiler"
 	"github.com/topxeq/xxlang/pkg/lexer"
@@ -55,6 +56,35 @@ type RegVM struct {
 
 	// Next global index for new global variables in Eval
 	nextGlobalIndex int
+
+	// builtinFuncs is this VM's private copy of the builtin function table.
+	// The copy is necessary for concurrency: builtins like runCode/loadPlugin/
+	// delegate need to be bound to THIS VM instance; the global table shared
+	// across VMs would race under concurrent HTTP requests.
+	builtinFuncs []*objects.Builtin
+
+	// framePool is this VM's private call-frame pool. Frames must NOT be
+	// pooled globally: under concurrent VM execution a globally pooled frame
+	// could be reused by another VM while still referenced by this VM
+	// (e.g. via LastResult reading the main frame).
+	framePool *sync.Pool
+}
+
+// newFrame allocates (or recycles) a call frame from this VM's private pool.
+func (vm *RegVM) newFrame(fn *compiler.CompiledFunction) *RegFrame {
+	f := vm.framePool.Get().(*RegFrame)
+	f.pool = vm.framePool
+	initFrame(f, fn)
+	return f
+}
+
+// newFramePool creates a fresh per-VM call-frame pool.
+func newFramePool() *sync.Pool {
+	return &sync.Pool{
+		New: func() interface{} {
+			return &RegFrame{}
+		},
+	}
 }
 
 // NewRegVM creates a new register-based VM
@@ -71,14 +101,10 @@ func NewRegVM(bytecode *compiler.Bytecode) *RegVM {
 		NumParameters: 0,
 		NumRegs:       bytecode.MainNumRegs,
 	}
-	mainFrame := NewRegFrame(mainFn)
-	mainFrame.Constants = constants
-	mainFrame.Globals = make([]Value, GlobalsSize)
 
 	frames := make([]*RegFrame, MaxFrames)
-	frames[0] = mainFrame
 
-	return &RegVM{
+	vm := &RegVM{
 		constants:        constants,
 		objConstants:     bytecode.Constants,
 		frames:           frames,
@@ -90,7 +116,13 @@ func NewRegVM(bytecode *compiler.Bytecode) *RegVM {
 		pendingException: ValueNull,
 		symbolTable:      compiler.NewSymbolTable(),
 		nextGlobalIndex:  0,
+		framePool:        newFramePool(),
 	}
+	vm.frames[0] = vm.newFrame(mainFn)
+	vm.frames[0].Constants = constants
+	vm.frames[0].Globals = vm.globals
+	vm.builtinFuncs = buildVMBuiltinFuncs(vm)
+	return vm
 }
 
 // NewRegVMWithGlobals creates a register VM with custom globals
@@ -106,14 +138,10 @@ func NewRegVMWithGlobals(bytecode *compiler.Bytecode, globals []Value) *RegVM {
 		NumParameters: 0,
 		NumRegs:       bytecode.MainNumRegs,
 	}
-	mainFrame := NewRegFrame(mainFn)
-	mainFrame.Constants = constants
-	mainFrame.Globals = globals
 
 	frames := make([]*RegFrame, MaxFrames)
-	frames[0] = mainFrame
 
-	return &RegVM{
+	vm := &RegVM{
 		constants:        constants,
 		objConstants:     bytecode.Constants,
 		frames:           frames,
@@ -125,7 +153,13 @@ func NewRegVMWithGlobals(bytecode *compiler.Bytecode, globals []Value) *RegVM {
 		pendingException: ValueNull,
 		symbolTable:      compiler.NewSymbolTable(),
 		nextGlobalIndex:  0,
+		framePool:        newFramePool(),
 	}
+	vm.frames[0] = vm.newFrame(mainFn)
+	vm.frames[0].Constants = constants
+	vm.frames[0].Globals = globals
+	vm.builtinFuncs = buildVMBuiltinFuncs(vm)
+	return vm
 }
 
 // NewRegVMWithSymbolTable creates a register VM with a shared symbol table
@@ -145,14 +179,10 @@ func NewRegVMWithSymbolTable(bytecode *compiler.Bytecode, symbolTable *compiler.
 		NumParameters: 0,
 		NumRegs:       bytecode.MainNumRegs,
 	}
-	mainFrame := NewRegFrame(mainFn)
-	mainFrame.Constants = constants
-	mainFrame.Globals = globals // Share the same globals array
 
 	frames := make([]*RegFrame, MaxFrames)
-	frames[0] = mainFrame
 
-	return &RegVM{
+	vm := &RegVM{
 		constants:        constants,
 		objConstants:     bytecode.Constants,
 		frames:           frames,
@@ -164,7 +194,13 @@ func NewRegVMWithSymbolTable(bytecode *compiler.Bytecode, symbolTable *compiler.
 		pendingException: ValueNull,
 		symbolTable:      symbolTable,
 		nextGlobalIndex:  symbolTable.NumDefinitions,
+		framePool:        newFramePool(),
 	}
+	vm.frames[0] = vm.newFrame(mainFn)
+	vm.frames[0].Constants = constants
+	vm.frames[0].Globals = globals
+	vm.builtinFuncs = buildVMBuiltinFuncs(vm)
+	return vm
 }
 
 // currentFrame returns the current frame
@@ -323,28 +359,17 @@ func (vm *RegVM) SetCurrentModule(mod *objects.Module) {
 
 // Run executes the bytecode in the register VM
 func (vm *RegVM) Run() error {
-	// Register callbacks for dynamic code execution
-	prevCallback := objects.SetRunCodeImpl(func(code string, args *objects.Map) (objects.Object, error) {
-		return RunCodeInRegVM(code, args, vm)
-	})
-	defer objects.SetRunCodeImpl(prevCallback)
+	// NOTE: runCode/loadPlugin/delegate/callUserFunc callbacks are no longer
+	// registered as global singletons here. Each VM carries its own bound
+	// copies in vm.builtinFuncs (runCode/delegate/loadPlugin) and closures
+	// carry their own VM context (objects.UserFuncCaller). This is required
+	// for safe concurrent execution of multiple VMs.
 
-	prevLoadPlugin := objects.SetLoadPluginImpl(func(path string) (objects.Object, error) {
-		return vm.loadPluginByPath(path)
-	})
-	defer objects.SetLoadPluginImpl(prevLoadPlugin)
-
-	// Register callback for calling user functions from builtin methods
-	prevCallUserFunc := objects.SetCallUserFuncImpl(func(fnObj objects.Object, args ...objects.Object) (objects.Object, error) {
-		return CallUserFuncInRegVM(fnObj, args, vm)
-	})
-	defer objects.SetCallUserFuncImpl(prevCallUserFunc)
-
-	// Register callback for delegate (dynamic function creation)
-	prevDelegate := objects.SetDelegateImpl(func(source string) (objects.Object, error) {
-		return CreateDelegateInRegVM(source, vm)
-	})
-	defer objects.SetDelegateImpl(prevDelegate)
+	// NOTE: registry lifecycle is NOT tracked here. Callers that consume the
+	// VM result (e.g. RunScriptOnHttp, interpreter.Eval) must bracket their
+	// execution with BeginExecution()/EndExecution() AFTER reading the result.
+	// Doing it inside Run() would clear the registry before the caller can
+	// resolve LastResult() via ToObject().
 
 	frame := vm.currentFrame()
 	code := frame.Instructions()
@@ -653,9 +678,9 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 		dst := code[frame.IP+1]
 		builtinIdx := int(code[frame.IP+2])<<8 | int(code[frame.IP+3])
 		frame.IP += 4
-		builtin := getBuiltin(builtinIdx)
-		if builtin == nil {
-			return fmt.Errorf("invalid builtin index: %d", builtinIdx)
+		builtin, err := vm.vmBuiltin(builtinIdx)
+		if err != nil {
+			return err
 		}
 		regs[dst] = NewObject(builtin)
 
@@ -690,6 +715,7 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 			Globals:        nil, // Not used in register VM
 			FreeVarsValues: make([]Value, numFree),
 		}
+		closure.bindVMContext(vm)
 
 		// Copy free variables from registers (these are the captured values)
 		for i := 0; i < numFree; i++ {
@@ -2631,6 +2657,12 @@ func (vm *RegVM) executeRegInstruction(op compiler.Opcode, frame *RegFrame, code
 
 		// Start goroutine
 		go func() {
+			// Keep the registry alive while this goroutine runs. The main
+			// request's EndExecution must not clear objects this goroutine
+			// still references. (Its own result is never read, so ending the
+			// count here is safe.)
+			BeginExecution()
+			defer EndExecution()
 			if closure != nil {
 				newVM.runFunctionWithClosure(compiledFn, closure, args)
 			} else {
@@ -2977,7 +3009,7 @@ func (vm *RegVM) callClosure(closure *Closure, numArgs int, callerFrame *RegFram
 	}
 
 	// Create new frame
-	newFrame := NewRegFrame(fn)
+	newFrame := vm.newFrame(fn)
 
 	// Use the closure's constants if available, otherwise use caller's constants
 	if closure.Constants != nil {
@@ -3080,7 +3112,7 @@ func (vm *RegVM) callCompiledFunction(fn *compiler.CompiledFunction, numArgs int
 	}
 
 	// Create new frame
-	newFrame := NewRegFrame(fn)
+	newFrame := vm.newFrame(fn)
 	newFrame.Constants = callerFrame.Constants
 	newFrame.Globals = callerFrame.Globals
 
@@ -3113,7 +3145,14 @@ func (vm *RegVM) callBuiltin(builtin *objects.Builtin, numArgs int, frame *RegFr
 	// Collect arguments from R0-R7
 	args := make([]objects.Object, numArgs)
 	for i := 0; i < numArgs; i++ {
-		args[i] = frame.Registers[i].ToObject()
+		obj := frame.Registers[i].ToObject()
+		// Same VM-bound closure wrapping as handleRegBuiltin.
+		if cf, ok := obj.(*compiler.CompiledFunction); ok {
+			cl := &Closure{Fn: cf}
+			cl.bindVMContext(vm)
+			obj = cl
+		}
+		args[i] = obj
 	}
 
 	// Call the builtin
@@ -3186,7 +3225,7 @@ func (vm *RegVM) runFunctionSync(fn *compiler.CompiledFunction, numArgs int, cal
 	}
 
 	// Create new frame
-	newFrame := NewRegFrame(fn)
+	newFrame := vm.newFrame(fn)
 	newFrame.Constants = callerFrame.Constants
 	newFrame.Globals = callerFrame.Globals
 
@@ -3226,7 +3265,7 @@ func (vm *RegVM) runClosureSync(closure *Closure, numArgs int, callerFrame *RegF
 	}
 
 	// Create new frame
-	newFrame := NewRegFrame(fn)
+	newFrame := vm.newFrame(fn)
 	newFrame.Constants = callerFrame.Constants
 	newFrame.Globals = callerFrame.Globals
 
@@ -3269,16 +3308,28 @@ func (vm *RegVM) runClosureSync(closure *Closure, numArgs int, callerFrame *RegF
 
 // handleRegBuiltin handles OpRegBuiltin - direct builtin call by auto-assigned index
 func (vm *RegVM) handleRegBuiltin(builtinIdx, numArgs int, frame *RegFrame) error {
-	// Get the builtin function by auto-assigned index (O(1) array lookup)
-	builtin := getBuiltin(builtinIdx)
-	if builtin == nil {
-		return fmt.Errorf("builtin function not found: %d", builtinIdx)
+	// Get the builtin function from this VM's private table (O(1) array lookup)
+	builtin, err := vm.vmBuiltin(builtinIdx)
+	if err != nil {
+		return err
 	}
 
 	// Collect arguments from R0-R7
 	args := make([]objects.Object, numArgs)
 	for i := 0; i < numArgs; i++ {
-		args[i] = frame.Registers[i].ToObject()
+		obj := frame.Registers[i].ToObject()
+		// The compiler may pass a bare *compiler.CompiledFunction directly
+		// (instead of a Closure) for lambdas without free variables. Builtins
+		// that call back into the script (mapArray/filterArray/sortBy/...)
+		// need a VM-bound closure so the callback dispatches to THIS VM under
+		// concurrent execution. Wrap lazily — the original register value is
+		// untouched.
+		if cf, ok := obj.(*compiler.CompiledFunction); ok {
+			cl := &Closure{Fn: cf}
+			cl.bindVMContext(vm)
+			obj = cl
+		}
+		args[i] = obj
 	}
 
 	// Call the builtin
@@ -3477,7 +3528,7 @@ func CallUserFuncInRegVM(fnObj objects.Object, args []objects.Object, regVM *Reg
 	}
 
 	// Create a new frame for the function call
-	newFrame := NewRegFrame(compiledFn)
+	newFrame := regVM.newFrame(compiledFn)
 	newFrame.Constants = regVM.constants
 	newFrame.Globals = regVM.globals
 
@@ -3615,6 +3666,7 @@ func CreateDelegateInRegVM(source string, regVM *RegVM) (objects.Object, error) 
 		Fn:        compiledFn,
 		Constants: bytecode.Constants,
 	}
+	closure.bindVMContext(regVM)
 
 	return closure, nil
 }
@@ -3824,6 +3876,7 @@ func (vm *RegVM) loadModule(importPath string, frame *RegFrame) (*objects.Module
 				FreeVarsValues: fn.FreeVarsValues,
 				GlobalsValues:  moduleGlobals, // Store the Value slice directly
 			}
+			newClosure.bindVMContext(vm)
 			mod.Exports[name] = newClosure
 		case *compiler.CompiledFunction:
 			// Wrap the compiled function in a closure with the module's globals
@@ -3835,6 +3888,7 @@ func (vm *RegVM) loadModule(importPath string, frame *RegFrame) (*objects.Module
 				FreeVarsValues: nil,
 				GlobalsValues:  moduleGlobals,
 			}
+			newClosure.bindVMContext(vm)
 			mod.Exports[name] = newClosure
 		}
 	}
@@ -4284,7 +4338,7 @@ func (vm *RegVM) cloneForGoroutine() *RegVM {
 // runFunction runs a compiled function in the current VM (for goroutines)
 func (vm *RegVM) runFunction(fn *compiler.CompiledFunction, args []Value) {
 	// Create a new frame
-	frame := NewRegFrame(fn)
+	frame := vm.newFrame(fn)
 	frame.Constants = vm.constants
 	frame.Globals = vm.globals
 
@@ -4306,7 +4360,7 @@ func (vm *RegVM) runFunction(fn *compiler.CompiledFunction, args []Value) {
 // runFunctionWithClosure runs a compiled function with closure in the current VM
 func (vm *RegVM) runFunctionWithClosure(fn *compiler.CompiledFunction, closure *Closure, args []Value) {
 	// Create a new frame
-	frame := NewRegFrame(fn)
+	frame := vm.newFrame(fn)
 	// Use the closure's constants if available (for cross-module goroutines)
 	if closure.Constants != nil {
 		newConstants := make([]Value, len(closure.Constants))
@@ -4386,7 +4440,7 @@ func (vm *RegVM) Eval(code string) (objects.Object, error) {
 	}
 
 	// Create new frame with current globals
-	frame := NewRegFrame(mainFn)
+	frame := vm.newFrame(mainFn)
 	frame.Constants = newConstants
 	frame.Globals = vm.globals
 

@@ -387,6 +387,7 @@ func printUsage() {
 	fmt.Println("  -cert=<path>      Certificate path (default: .)")
 	fmt.Println("  -http=<port>      HTTP port (default: 80, 0 to disable)")
 	fmt.Println("  -https=<port>     HTTPS port (default: 443, 0 to disable)")
+	fmt.Println("  -pprof=<port>     pprof monitoring port (default: 0, disabled)")
 	fmt.Println("  -config=<file>    Configuration file path (JSON format)")
 	fmt.Println()
 	fmt.Println("Options:")
@@ -941,6 +942,8 @@ func serveCmd(args []string) error {
 			fmt.Sscanf(strings.TrimPrefix(args[i], "-http="), "%d", &cfg.HTTPPort)
 		case strings.HasPrefix(args[i], "-https="):
 			fmt.Sscanf(strings.TrimPrefix(args[i], "-https="), "%d", &cfg.HTTPSPort)
+		case strings.HasPrefix(args[i], "-pprof="):
+			fmt.Sscanf(strings.TrimPrefix(args[i], "-pprof="), "%d", &cfg.PprofPort)
 		case strings.HasPrefix(args[i], "-config="):
 			// Load from config file
 			configFile := strings.TrimPrefix(args[i], "-config=")

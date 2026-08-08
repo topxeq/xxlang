@@ -24,6 +24,12 @@ type RegFrame struct {
 	// Select statement state
 	SelectCases    []VMSelectCase // Cases for current select statement
 	SelectNumCases int            // Number of cases in current select
+
+	// pool is the per-VM pool this frame was allocated from.
+	// nil means the frame is not pooled (garbage-collected on release).
+	// Per-VM pooling is required: a globally shared frame pool would let one
+	// concurrent VM reuse another VM's still-in-use frames, corrupting state.
+	pool *sync.Pool
 }
 
 // VMSelectCase represents a case in a select statement
@@ -33,17 +39,16 @@ type VMSelectCase struct {
 	Value objects.Object // Value to send (for send case)
 }
 
-// Register frame pool for reducing allocations
-var regFramePool = sync.Pool{
-	New: func() interface{} {
-		return &RegFrame{}
-	},
+// NewRegFrame creates a new register-based call frame (not pooled).
+func NewRegFrame(fn *compiler.CompiledFunction) *RegFrame {
+	f := &RegFrame{}
+	initFrame(f, fn)
+	return f
 }
 
-// NewRegFrame creates a new register-based call frame
-func NewRegFrame(fn *compiler.CompiledFunction) *RegFrame {
-	f := regFramePool.Get().(*RegFrame)
-
+// initFrame (re)initializes a frame for the given function.
+// Used both for fresh frames and frames recycled from a per-VM pool.
+func initFrame(f *RegFrame, fn *compiler.CompiledFunction) {
 	f.Fn = fn
 	f.IP = 0 // Start at instruction 0
 
@@ -75,13 +80,16 @@ func NewRegFrame(fn *compiler.CompiledFunction) *RegFrame {
 	f.Constants = nil
 	f.Globals = nil
 	f.This = ValueNull
-
-	return f
+	f.CurrentClass = nil
+	f.SelectCases = nil
+	f.SelectNumCases = 0
 }
 
-// Release returns the frame to the pool for reuse
+// Release returns the frame to its owning VM's pool for reuse.
+// Frames created without a pool (pool == nil) are simply dropped and
+// garbage-collected.
 func (f *RegFrame) Release() {
-	// Don't clear registers here - they'll be reset when reused in NewRegFrame
+	// Don't clear registers here - they'll be reset when reused in initFrame
 	// This saves an O(256) loop on every function return
 
 	// Clear references
@@ -96,8 +104,12 @@ func (f *RegFrame) Release() {
 	f.This = ValueNull
 	f.Locals = f.Locals[:0]
 	f.CurrentClass = nil
+	f.SelectCases = nil
+	f.SelectNumCases = 0
 
-	regFramePool.Put(f)
+	if f.pool != nil {
+		f.pool.Put(f)
+	}
 }
 
 // Instructions returns the compiled function's instructions

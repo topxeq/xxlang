@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,11 +24,12 @@ const EndResponseMarker = "TX_END_RESPONSE_XT"
 
 // Config holds server configuration
 type Config struct {
-	HTTPPort  int    `json:"httpPort"`
-	HTTPSPort int    `json:"httpsPort"`
-	WebPath   string `json:"webPath"`
-	MSPath    string `json:"msPath"`
-	CertPath  string `json:"certPath"`
+	HTTPPort     int    `json:"httpPort"`
+	HTTPSPort    int    `json:"httpsPort"`
+	WebPath      string `json:"webPath"`
+	MSPath       string `json:"msPath"`
+	CertPath     string `json:"certPath"`
+	PprofPort    int    `json:"pprofPort"`    // pprof monitoring port (0 = disabled)
 }
 
 // Server represents the HTTP/HTTPS server
@@ -55,6 +57,18 @@ func (s *Server) Start() error {
 
 	// Setup routes
 	s.setupRoutes()
+
+	// Start pprof monitoring server if configured
+	if s.Config.PprofPort > 0 {
+		go func() {
+			addr := fmt.Sprintf(":%d", s.Config.PprofPort)
+			fmt.Printf("[pprof] Starting monitoring server on port %d\n", s.Config.PprofPort)
+			fmt.Printf("[pprof] Access: http://localhost:%d/debug/pprof/\n", s.Config.PprofPort)
+			if err := http.ListenAndServe(addr, nil); err != nil {
+				fmt.Printf("[pprof] Server error: %v\n", err)
+			}
+		}()
+	}
 
 	errChan := make(chan error, 2)
 
@@ -296,6 +310,14 @@ func (s *Server) executeXHP(scriptPath string, res http.ResponseWriter, req *htt
 // RunScriptOnHttp executes Xxlang code for HTTP request
 func RunScriptOnHttp(code, scriptPath string, res http.ResponseWriter, req *http.Request,
 	paraMap map[string]string, globals map[string]interface{}) (string, error) {
+
+	// Track VM execution so the global object registry can be cleared once the
+	// last in-flight VM finishes. MUST be called before ANY NewObject/convert
+	// call below — the request/response/map globals are registered into the
+	// shared registry, and an early clear by another request would invalidate
+	// those object indices while this request is still running.
+	vm.BeginExecution()
+	defer vm.EndExecution()
 
 	// Lexical analysis
 	l := lexer.New(code)

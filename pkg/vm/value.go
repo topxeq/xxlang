@@ -18,6 +18,7 @@ package vm
 import (
 	"fmt"
 	"math"
+	"sync"
 	"sync/atomic"
 	"unsafe"
 
@@ -96,48 +97,75 @@ func NewBool(b bool) Value {
 }
 
 // objectRegistry is a GC-visible storage for boxed objects.
-// OPTIMIZED: Uses lock-free operations for single-threaded VM execution.
+// Thread-safe design:
+//   - Mutations (register/release/Clear) are guarded by mu.
+//   - Reads (get) are lock-free: they atomically load the current slice
+//     pointer and then atomically load the slot. Growth replaces the slice
+//     pointer (copy-on-write), so concurrent readers always see a stable,
+//     valid backing array.
 type objectRegistry struct {
-	objects []unsafe.Pointer // Slice is GC-visible (stores raw pointers)
-	freeIdx []int            // Freed indices for reuse
-	nextIdx int32            // Next available index (atomic)
+	mu      sync.Mutex
+	objsPtr unsafe.Pointer // *[]unsafe.Pointer, atomically replaced on growth/clear
+	freeIdx []int          // Freed indices for reuse
+	nextIdx int32          // Next available index
 }
 
 // globalRegistry is the global object registry for the VM
-// OPTIMIZED: Uses atomic operations instead of mutex
-var globalRegistry = &objectRegistry{
-	objects: make([]unsafe.Pointer, 4096), // Pre-allocate larger
-	freeIdx: make([]int, 0, 64),
+var globalRegistry = newObjectRegistry()
+
+// newObjectRegistry creates an empty registry with the initial capacity.
+func newObjectRegistry() *objectRegistry {
+	objs := make([]unsafe.Pointer, 4096)
+	return &objectRegistry{
+		objsPtr: unsafe.Pointer(&objs),
+		freeIdx: make([]int, 0, 64),
+	}
 }
 
-// register stores an object and returns its index (lock-free for single-threaded use)
+// currentObjects returns the current slice of slots (lock-free read).
+func (r *objectRegistry) currentObjects() []unsafe.Pointer {
+	return *(*[]unsafe.Pointer)(atomic.LoadPointer(&r.objsPtr))
+}
+
+// register stores an object and returns its index
 func (r *objectRegistry) register(obj objects.Object) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	objs := r.currentObjects()
+
 	// Try to reuse a freed index
 	if len(r.freeIdx) > 0 {
 		idx := r.freeIdx[len(r.freeIdx)-1]
 		r.freeIdx = r.freeIdx[:len(r.freeIdx)-1]
-		r.objects[idx] = unsafe.Pointer(&obj)
+		atomic.StorePointer(&objs[idx], unsafe.Pointer(&obj))
 		return idx
 	}
 
-	// Allocate new index atomically
-	idx := int(atomic.AddInt32(&r.nextIdx, 1) - 1)
-	if idx >= len(r.objects) {
-		// Grow the slice (this is not thread-safe, but VM is single-threaded)
-		newObjects := make([]unsafe.Pointer, len(r.objects)*2)
-		copy(newObjects, r.objects)
-		r.objects = newObjects
+	// Allocate new index
+	idx := int(r.nextIdx)
+	r.nextIdx++
+	if idx >= len(objs) {
+		// Grow the slice (copy-on-write; readers keep the old slice)
+		newObjs := make([]unsafe.Pointer, len(objs)*2)
+		copy(newObjs, objs)
+		objs = newObjs
+		atomic.StorePointer(&r.objsPtr, unsafe.Pointer(&objs))
 	}
-	r.objects[idx] = unsafe.Pointer(&obj)
+	atomic.StorePointer(&objs[idx], unsafe.Pointer(&obj))
 	return idx
 }
 
 // get retrieves an object by index (lock-free)
 func (r *objectRegistry) get(idx int) objects.Object {
-	if idx < 0 || idx >= len(r.objects) {
+	if idx < 0 {
 		return nil
 	}
-	ptr := (*objects.Object)(atomic.LoadPointer(&r.objects[idx]))
+	objs := r.currentObjects()
+	if idx >= len(objs) {
+		return nil
+	}
+	ptr := (*objects.Object)(atomic.LoadPointer(&objs[idx]))
 	if ptr == nil {
 		return nil
 	}
@@ -146,17 +174,23 @@ func (r *objectRegistry) get(idx int) objects.Object {
 
 // release marks an index as free for reuse
 func (r *objectRegistry) release(idx int) {
-	if idx >= 0 && idx < len(r.objects) {
-		r.objects[idx] = nil
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	objs := r.currentObjects()
+	if idx >= 0 && idx < len(objs) {
+		atomic.StorePointer(&objs[idx], nil)
 		r.freeIdx = append(r.freeIdx, idx)
 	}
 }
 
 // Clear clears all objects from the registry
 func (r *objectRegistry) Clear() {
-	r.objects = make([]unsafe.Pointer, 4096)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	objs := make([]unsafe.Pointer, 4096)
+	atomic.StorePointer(&r.objsPtr, unsafe.Pointer(&objs))
 	r.freeIdx = r.freeIdx[:0]
-	atomic.StoreInt32(&r.nextIdx, 0)
+	r.nextIdx = 0
 }
 
 // ClearRegistry clears the global object registry
@@ -164,9 +198,48 @@ func ClearRegistry() {
 	globalRegistry.Clear()
 }
 
+// activeVMCount tracks how many VM executions are currently in flight.
+// The registry can only be safely cleared when no VM is running, because
+// clearing it while another VM is executing would invalidate that VM's
+// object references.
+//
+// execMu serializes BeginExecution/EndExecution so that the "decrement to
+// zero + clear" sequence is atomic: a new VM cannot start (and register
+// objects) in the middle of a clear.
+var (
+	execMu        sync.Mutex
+	activeVMCount int32
+)
+
+// BeginExecution must be called BEFORE any object registration for a VM
+// execution (i.e. before NewRegVM*), and before vm.Run().
+// It increments the active VM counter under execMu.
+func BeginExecution() {
+	execMu.Lock()
+	atomic.AddInt32(&activeVMCount, 1)
+	execMu.Unlock()
+}
+
+// EndExecution is called after a VM finishes running and all its objects
+// have been consumed. When the last in-flight VM finishes, the global object
+// registry is cleared so that all objects created during execution become
+// garbage-collectable.
+func EndExecution() {
+	execMu.Lock()
+	defer execMu.Unlock()
+	if atomic.AddInt32(&activeVMCount, -1) <= 0 {
+		ClearRegistry()
+		// Reset to zero to keep the counter stable (e.g. after unbalanced calls)
+		atomic.StoreInt32(&activeVMCount, 0)
+	}
+}
+
 // RegistryStats returns statistics about the object registry
 func RegistryStats() (total, used int) {
-	return len(globalRegistry.objects), int(atomic.LoadInt32(&globalRegistry.nextIdx)) - len(globalRegistry.freeIdx)
+	globalRegistry.mu.Lock()
+	defer globalRegistry.mu.Unlock()
+	objs := globalRegistry.currentObjects()
+	return len(objs), int(globalRegistry.nextIdx) - len(globalRegistry.freeIdx)
 }
 
 // NewObject creates a Value from an object pointer

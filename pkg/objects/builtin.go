@@ -4499,11 +4499,28 @@ func SetCallUserFuncImpl(fn func(fnObj Object, args ...Object) (Object, error)) 
 
 // CallUserFunc calls a user-defined function from within a builtin method
 // Returns an error if the callback is not set or if the call fails
+//
+// Concurrency: user function objects (closures) may carry their own VM-bound
+// call context (UserFuncCaller). When present, that context is used instead of
+// the global callUserFuncImpl, which is not safe for concurrent VM execution.
 func CallUserFunc(fn Object, args ...Object) (Object, error) {
+	if caller, ok := fn.(UserFuncCaller); ok {
+		return caller.CallUserFuncInContext(args...)
+	}
 	if callUserFuncImpl == nil {
 		return nil, fmt.Errorf("user function callback not available in this context")
 	}
 	return callUserFuncImpl(fn, args...)
+}
+
+// UserFuncCaller is implemented by function objects (e.g. vm.Closure) that
+// know how to call themselves within the VM context that created them.
+// This enables concurrent VM executions: each closure carries its own
+// callback instead of sharing a global one.
+type UserFuncCaller interface {
+	// CallUserFuncInContext calls this function object with the given args
+	// using the VM context that created it.
+	CallUserFuncInContext(args ...Object) (Object, error)
 }
 
 // DelegateImpl is the implementation function for delegate, set by the VM

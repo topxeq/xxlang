@@ -131,6 +131,10 @@ func (i *Interpreter) evalRegister(program *parser.Program) (objects.Object, err
 	v := vm.NewRegVMWithObjectGlobals(bytecode, i.globals)
 	v.SetLoader(i.loader)
 
+	// Keep the object registry alive until the result is resolved below.
+	vm.BeginExecution()
+	defer vm.EndExecution()
+
 	if err := v.Run(); err != nil {
 		return nil, fmt.Errorf("runtime error: %v", err)
 	}
@@ -221,6 +225,10 @@ func (i *Interpreter) evalFileRegister(program *parser.Program, absPath string) 
 	v.SetLoader(i.loader)
 	v.SetSourcePath(absPath)
 	v.SetCurrentModule(mainModule)
+
+	// Keep the object registry alive until the result is resolved below.
+	vm.BeginExecution()
+	defer vm.EndExecution()
 
 	if err := v.Run(); err != nil {
 		return nil, fmt.Errorf("runtime error: %v", err)
